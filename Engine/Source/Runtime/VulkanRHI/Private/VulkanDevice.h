@@ -45,8 +45,6 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasMemoryBudget : 1;
 			uint32 HasDriverProperties : 1;
 			uint32 HasEXTFragmentDensityMap : 1;
-			uint32 HasEXTFragmentDensityMap2 : 1;
-			uint32 HasKHRFragmentShadingRate : 1;
 			uint32 HasEXTFullscreenExclusive : 1;
 			uint32 HasKHRImageFormatList : 1;
 			uint32 HasEXTASTCDecodeMode : 1;
@@ -54,7 +52,6 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasAtomicInt64 : 1;
 			uint32 HasBufferAtomicInt64 : 1;
 			uint32 HasScalarBlockLayoutFeatures : 1;
-			uint32 HasKHRMultiview : 1;
 		};
 		uint32 Packed;
 	};
@@ -215,39 +212,6 @@ public:
 		return GpuProps;
 	}
 
-#if VULKAN_SUPPORTS_FRAGMENT_DENSITY_MAP
-	inline const VkPhysicalDeviceFragmentDensityMapFeaturesEXT& GetFragmentDensityMapFeatures() const
-	{
-		return FragmentDensityMapFeatures;
-	}
-#endif
-
-#if VULKAN_SUPPORTS_FRAGMENT_DENSITY_MAP2
-	inline const VkPhysicalDeviceFragmentDensityMap2FeaturesEXT& GetFragmentDensityMap2Features() const
-	{
-		return FragmentDensityMap2Features;
-	}
-#endif
-
-#if VULKAN_SUPPORTS_FRAGMENT_SHADING_RATE
-	inline const VkPhysicalDeviceFragmentShadingRateFeaturesKHR& GetFragmentShadingRateFeatures() const
-	{
-		return FragmentShadingRateFeatures;
-	}
-
-	inline const VkPhysicalDeviceFragmentShadingRatePropertiesKHR& GetFragmentShadingRateProperties() const
-	{
-		return FragmentShadingRateProperties;
-	}
-#endif
-
-#if VULKAN_SUPPORTS_MULTIVIEW
-	inline const VkPhysicalDeviceMultiviewFeatures& GetMultiviewFeatures() const
-	{
-		return MultiviewFeatures;
-	}
-#endif
-
 	inline const VkPhysicalDeviceLimits& GetLimits() const
 	{
 		return GpuProps.limits;
@@ -288,7 +252,7 @@ public:
 		return TimestampValidBitsMask;
 	}
 
-	bool IsTextureFormatSupported(VkFormat Format, uint32 RequiredFeatures) const;
+	bool IsTextureFormatSupported(VkFormat Format) const;
 	bool IsBufferFormatSupported(VkFormat Format) const;
 
 	const VkComponentMapping& GetFormatComponentMapping(EPixelFormat UEFormat) const;
@@ -370,7 +334,8 @@ public:
 		return *ComputeContext;
 	}
 
-	void NotifyDeletedImage(VkImage Image, bool bRenderTarget);
+	void NotifyDeletedRenderTarget(VkImage Image);
+	void NotifyDeletedImage(VkImage Image);
 
 #if VULKAN_ENABLE_DRAW_MARKERS
 	inline PFN_vkCmdDebugMarkerBeginEXT GetCmdDbgMarkerBegin() const
@@ -452,18 +417,13 @@ public:
 
 private:
 	void MapFormatSupport(EPixelFormat UEFormat, VkFormat VulkanFormat);
-	void MapFormatSupportWithFallback(EPixelFormat UEFormat, uint32 TextureRequiredFeatures, VkFormat VulkanFormat, TArrayView<const VkFormat> FallbackTextureFormats);
+	void MapFormatSupportWithFallback(EPixelFormat UEFormat, VkFormat VulkanFormat, TArrayView<const VkFormat> FallbackTextureFormats);
 	void MapFormatSupport(EPixelFormat UEFormat, VkFormat VulkanFormat, int32 BlockBytes);
 	void SetComponentMapping(EPixelFormat UEFormat, VkComponentSwizzle r, VkComponentSwizzle g, VkComponentSwizzle b, VkComponentSwizzle a);
 
 	FORCEINLINE void MapFormatSupportWithFallback(EPixelFormat UEFormat, VkFormat VulkanFormat, std::initializer_list<VkFormat> FallbackTextureFormats)
 	{
-		MapFormatSupportWithFallback(UEFormat, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT, VulkanFormat, MakeArrayView(FallbackTextureFormats));
-	}
-	
-	FORCEINLINE void MapFormatSupportWithFallback(EPixelFormat UEFormat, uint32 TextureRequiredFeatures, VkFormat VulkanFormat, std::initializer_list<VkFormat> FallbackTextureFormats)
-	{
-		MapFormatSupportWithFallback(UEFormat, TextureRequiredFeatures, VulkanFormat, MakeArrayView(FallbackTextureFormats));
+		MapFormatSupportWithFallback(UEFormat, VulkanFormat, MakeArrayView(FallbackTextureFormats));
 	}
 
 	void SubmitCommands(FVulkanCommandListContext* Context);
@@ -494,24 +454,6 @@ private:
 
 	VkPhysicalDevice Gpu;
 	VkPhysicalDeviceProperties GpuProps;
-#if VULKAN_SUPPORTS_FRAGMENT_DENSITY_MAP
-	VkPhysicalDeviceFragmentDensityMapFeaturesEXT FragmentDensityMapFeatures;
-#endif
-
-#if VULKAN_SUPPORTS_FRAGMENT_DENSITY_MAP2
-	VkPhysicalDeviceFragmentDensityMap2FeaturesEXT FragmentDensityMap2Features;
-#endif
-
-#if VULKAN_SUPPORTS_FRAGMENT_SHADING_RATE
-	VkPhysicalDeviceFragmentShadingRatePropertiesKHR FragmentShadingRateProperties;
-	VkPhysicalDeviceFragmentShadingRateFeaturesKHR FragmentShadingRateFeatures;
-	TArray<VkPhysicalDeviceFragmentShadingRateKHR> FragmentShadingRates;
-#endif
-
-#if VULKAN_SUPPORTS_MULTIVIEW
-	VkPhysicalDeviceMultiviewFeatures MultiviewFeatures;
-#endif
-
 #if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	VkPhysicalDeviceIDPropertiesKHR GpuIdProps;
 #endif

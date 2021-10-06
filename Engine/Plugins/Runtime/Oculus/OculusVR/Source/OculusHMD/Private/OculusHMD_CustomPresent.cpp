@@ -14,7 +14,6 @@
 #include "Android/AndroidJNI.h"
 #include "Android/AndroidEGL.h"
 #include "Android/AndroidApplication.h"
-#include "Android/AndroidPlatformMisc.h"
 #endif
 
 #define VULKAN_CUBEMAP_POSITIVE_Y 2
@@ -32,16 +31,11 @@ FCustomPresent::FCustomPresent(class FOculusHMD* InOculusHMD, ovrpRenderAPIType 
 	, RenderAPI(InRenderAPI)
 	, DefaultPixelFormat(InDefaultPixelFormat)
 	, bSupportsSRGB(bInSupportsSRGB)
-	, bIsStandaloneStereoDevice(false)
 {
 	CheckInGameThread();
 
 	DefaultOvrpTextureFormat = GetOvrpTextureFormat(GetDefaultPixelFormat());
 	DefaultDepthOvrpTextureFormat = ovrpTextureFormat_None;
-
-#if PLATFORM_ANDROID
-	bIsStandaloneStereoDevice = FAndroidMisc::GetDeviceMake() == FString("Oculus");
-#endif
 
 	// grab a pointer to the renderer module for displaying our mirror window
 	static const FName RendererModuleName("Renderer");
@@ -92,7 +86,7 @@ bool FCustomPresent::NeedsNativePresent()
 		}
 	}
 
-	if (bIsStandaloneStereoDevice)
+	if (FPlatformMisc::IsStandaloneStereoOnlyDevice())
 	{
 		bNeedsNativePresent = false;
 	}
@@ -118,7 +112,7 @@ bool FCustomPresent::Present(int32& SyncInterval)
 		}
 	}
 
-	if (bIsStandaloneStereoDevice)
+	if (FPlatformMisc::IsStandaloneStereoOnlyDevice())
 	{
 		bNeedsNativePresent = false;
 	}

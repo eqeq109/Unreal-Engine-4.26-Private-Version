@@ -12,10 +12,6 @@ struct FLandscapeMaterialTextureStreamingInfo
 {
 	GENERATED_USTRUCT_BODY()
 
-	FLandscapeMaterialTextureStreamingInfo()
-		: TexelFactor(0.0f)
-	{}
-
 	UPROPERTY()
 	FName TextureName;
 

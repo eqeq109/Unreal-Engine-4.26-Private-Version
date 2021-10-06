@@ -37,7 +37,6 @@ using namespace DirectX;
 /** Controls access to our references */
 std::mutex MeshRefsLock;
 bool bIsRunning = false;
-bool bIsStopping = false;
 SpatialSurfaceObserver SurfaceObserver = nullptr;
 event_token OnChangeEventToken;
 std::map<guid, long long> LastGuidToLastUpdateMap;
@@ -234,7 +233,7 @@ void MeshUpdateObserver::OnSurfacesChanged(SpatialSurfaceObserver Observer, winr
 	}
 }
 
-bool MeshUpdateObserver::StartMeshObserver(
+void MeshUpdateObserver::StartMeshObserver(
 	float InTriangleDensity,
 	float InVolumeSize,
 	void(*StartFunctionPointer)(),
@@ -243,7 +242,6 @@ bool MeshUpdateObserver::StartMeshObserver(
 	void(*FinishFunctionPointer)()
 )
 {
-	bIsStopping = false;
 	TriangleDensityPerCubicMeter = InTriangleDensity;
 	VolumeSize = InVolumeSize;
 
@@ -251,28 +249,28 @@ bool MeshUpdateObserver::StartMeshObserver(
 	if (OnStartMeshUpdates == nullptr)
 	{
 		Log(L"Null start updates function pointer passed to StartMeshObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	OnAllocateBuffers = AllocFunctionPointer;
 	if (OnAllocateBuffers == nullptr)
 	{
 		Log(L"Null allocate buffers function pointer passed to StartMeshObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	OnRemovedMesh = RemovedMeshPointer;
 	if (OnRemovedMesh == nullptr)
 	{
 		Log(L"Null removed mesh function pointer passed to StartMeshObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	OnFinishMeshUpdates = FinishFunctionPointer;
 	if (OnFinishMeshUpdates == nullptr)
 	{
 		Log(L"Null finish updates function pointer passed to StartMeshObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	// If it's supported, request access
@@ -285,12 +283,6 @@ bool MeshUpdateObserver::StartMeshObserver(
 			if (asyncInfo.GetResults() == SpatialPerceptionAccessStatus::Allowed)
 			{
 				std::lock_guard<std::mutex> lock(MeshRefsLock);
-				if (bIsStopping)
-				{
-					bIsStopping = false;
-					return;
-				}
-
 				SurfaceObserver = SpatialSurfaceObserver();
 				if (SurfaceObserver != nullptr)
 				{
@@ -307,13 +299,10 @@ bool MeshUpdateObserver::StartMeshObserver(
 				Log(L"User denied permission for spatial mapping. No updates will occur.");
 			}
 		});
-
-		return true;
 	}
 	else
 	{
 		Log(L"SpatialSurfaceObserver::IsSupported() returned false. No updates will occur.");
-		return false;
 	}
 }
 
@@ -351,8 +340,6 @@ void MeshUpdateObserver::UpdateBoundingVolume(SpatialCoordinateSystem InCoordina
 void MeshUpdateObserver::StopMeshObserver()
 {
 	std::lock_guard<std::mutex> lock(MeshRefsLock);
-	bIsStopping = true;
-
 	if (SurfaceObserver != nullptr)
 	{
 		// Stop our callback from doing any processing first

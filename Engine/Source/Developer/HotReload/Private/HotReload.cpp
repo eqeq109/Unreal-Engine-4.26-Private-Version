@@ -1010,7 +1010,7 @@ void FHotReloadModule::ReplaceReferencesToReconstructedCDOs()
 
 	// Distribute objects uniformly between tasks.
 	int32 CurrentTaskId = 0;
-	for (FThreadSafeObjectIterator ObjIter; ObjIter; ++ObjIter)
+	for (FObjectIterator ObjIter; ObjIter; ++ObjIter)
 	{
 		UObject* CurObject = *ObjIter;
 

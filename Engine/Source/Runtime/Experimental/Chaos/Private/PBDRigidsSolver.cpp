@@ -21,97 +21,47 @@
 #include "EventsData.h"
 #include "RewindData.h"
 #include "ChaosSolverConfiguration.h"
-#include "Chaos/PullPhysicsDataImp.h"
-#include "Chaos/PhysicsSolverBaseImpl.h"
-
-#include "ProfilingDebugging/CsvProfiler.h"
 
 //PRAGMA_DISABLE_OPTIMIZATION
 
 DEFINE_LOG_CATEGORY_STATIC(LogPBDRigidsSolver, Log, All);
 
-// Stat Counters
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumDisabledParticles"), STAT_ChaosCounter_NumDisabledParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumParticles"), STAT_ChaosCounter_NumParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumDynamicParticles"), STAT_ChaosCounter_NumDynamicParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumActiveDynamicParticles"), STAT_ChaosCounter_NumActiveDynamicParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumKinematicParticles"), STAT_ChaosCounter_NumKinematicParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumStaticParticles"), STAT_ChaosCounter_NumStaticParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumGeomCollParticles"), STAT_ChaosCounter_NumGeometryCollectionParticles, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumIslands"), STAT_ChaosCounter_NumIslands, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumContacts"), STAT_ChaosCounter_NumContacts, STATGROUP_ChaosCounters);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumJoints"), STAT_ChaosCounter_NumJoints, STATGROUP_ChaosCounters);
-
-CSV_DEFINE_CATEGORY(ChaosCounters, true);
-
-// Stat Iteration counters
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumIterations"), STAT_ChaosIterations_NumIterations, STATGROUP_ChaosIterations);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumCollisionIterations"), STAT_ChaosIterations_NumCollisionIterations, STATGROUP_ChaosIterations);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumJointIterations"), STAT_ChaosIterations_NumJointIterations, STATGROUP_ChaosIterations);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumPushOutIterations"), STAT_ChaosIterations_NumPushOutIterations, STATGROUP_ChaosIterations);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumPushOutCollisionIterations"), STAT_ChaosIterations_NumPushOutCollisionIterations, STATGROUP_ChaosIterations);
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("NumPushOutJointIterations"), STAT_ChaosIterations_NumPushOutJointIterations, STATGROUP_ChaosIterations);
-
-
 // DebugDraw CVars
 #if CHAOS_DEBUG_DRAW
 
 // Must be 0 when checked in...
-#define CHAOS_SOLVER_ENABLE_DEBUG_DRAW 0
+#define CHAOS_SOLVER_ENABLE_DEBUG_DRAW 1
 
 int32 ChaosSolverDebugDrawShapes = CHAOS_SOLVER_ENABLE_DEBUG_DRAW;
 int32 ChaosSolverDebugDrawCollisions = CHAOS_SOLVER_ENABLE_DEBUG_DRAW;
-int32 ChaosSolverDebugDrawCollidingShapes = 0;
 int32 ChaosSolverDebugDrawBounds = 0;
 int32 ChaosSolverDrawTransforms = 0;
 int32 ChaosSolverDrawIslands = 0;
-int32 ChaosSolverDrawShapesShowStatic = 1;
-int32 ChaosSolverDrawShapesShowKinematic = 1;
-int32 ChaosSolverDrawShapesShowDynamic = 1;
-int32 ChaosSolverDrawJoints = 0;
-Chaos::DebugDraw::FChaosDebugDrawJointFeatures ChaosSolverDrawJointFeatures = Chaos::DebugDraw::FChaosDebugDrawJointFeatures::MakeDefault();
 FAutoConsoleVariableRef CVarChaosSolverDrawShapes(TEXT("p.Chaos.Solver.DebugDrawShapes"), ChaosSolverDebugDrawShapes, TEXT("Draw Shapes (0 = never; 1 = end of frame)."));
 FAutoConsoleVariableRef CVarChaosSolverDrawCollisions(TEXT("p.Chaos.Solver.DebugDrawCollisions"), ChaosSolverDebugDrawCollisions, TEXT("Draw Collisions (0 = never; 1 = end of frame)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawCollidingShapes(TEXT("p.Chaos.Solver.DebugDrawCollidingShapes"), ChaosSolverDebugDrawCollidingShapes, TEXT("Draw Shapes that have collisions on them (0 = never; 1 = end of frame)."));
 FAutoConsoleVariableRef CVarChaosSolverDrawBounds(TEXT("p.Chaos.Solver.DebugDrawBounds"), ChaosSolverDebugDrawBounds, TEXT("Draw bounding volumes inside the broadphase (0 = never; 1 = end of frame)."));
 FAutoConsoleVariableRef CVarChaosSolverDrawTransforms(TEXT("p.Chaos.Solver.DebugDrawTransforms"), ChaosSolverDrawTransforms, TEXT("Draw particle transforms (0 = never; 1 = end of frame)."));
 FAutoConsoleVariableRef CVarChaosSolverDrawIslands(TEXT("p.Chaos.Solver.DebugDrawIslands"), ChaosSolverDrawIslands, TEXT("Draw solver islands (0 = never; 1 = end of frame)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawShapesShapesStatic(TEXT("p.Chaos.Solver.DebugDraw.ShowStatics"), ChaosSolverDrawShapesShowStatic, TEXT("If DebugDrawShapes is enabled, whether to show static objects"));
-FAutoConsoleVariableRef CVarChaosSolverDrawShapesShapesKinematic(TEXT("p.Chaos.Solver.DebugDraw.ShowKinematics"), ChaosSolverDrawShapesShowKinematic, TEXT("If DebugDrawShapes is enabled, whether to show kinematic objects"));
-FAutoConsoleVariableRef CVarChaosSolverDrawShapesShapesDynamic(TEXT("p.Chaos.Solver.DebugDraw.ShowDynamics"), ChaosSolverDrawShapesShowDynamic, TEXT("If DebugDrawShapes is enabled, whether to show dynamic objects"));
-FAutoConsoleVariableRef CVarChaosSolverDrawJoints(TEXT("p.Chaos.Solver.DebugDrawJoints"), ChaosSolverDrawJoints, TEXT("Draw joints"));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesCoMConnector(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.CoMConnector"), ChaosSolverDrawJointFeatures.bCoMConnector, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesActorConnector(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.ActorConnector"), ChaosSolverDrawJointFeatures.bActorConnector, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesStretch(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Stretch"), ChaosSolverDrawJointFeatures.bStretch, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesAxes(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Axes"), ChaosSolverDrawJointFeatures.bAxes, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesLevel(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Level"), ChaosSolverDrawJointFeatures.bLevel, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesIndex(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Index"), ChaosSolverDrawJointFeatures.bIndex, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesColor(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Color"), ChaosSolverDrawJointFeatures.bColor, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesBatch(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Batch"), ChaosSolverDrawJointFeatures.bBatch, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
-FAutoConsoleVariableRef CVarChaosSolverDrawJointFeaturesIsland(TEXT("p.Chaos.Solver.DebugDraw.JointFeatures.Island"), ChaosSolverDrawJointFeatures.bIsland, TEXT("Joint features mask (see FDebugDrawJointFeatures)."));
 
 Chaos::DebugDraw::FChaosDebugDrawSettings ChaosSolverDebugDebugDrawSettings(
-	/* ArrowSize =					*/ 10.0f,
-	/* BodyAxisLen =				*/ 30.0f,
-	/* ContactLen =					*/ 30.0f,
-	/* ContactWidth =				*/ 6.0f,
-	/* ContactPhiWidth =			*/ 0.0f,
-	/* ContactOwnerWidth =			*/ 0.0f,
-	/* ConstraintAxisLen =			*/ 30.0f,
-	/* JointComSize =				*/ 2.0f,
-	/* LineThickness =				*/ 1.0f,
-	/* DrawScale =					*/ 1.0f,
-	/* FontHeight =					*/ 10.0f,
-	/* FontScale =					*/ 1.5f,
-	/* ShapeThicknesScale =			*/ 1.0f,
-	/* PointSize =					*/ 5.0f,
-	/* VelScale =					*/ 0.0f,
-	/* AngVelScale =				*/ 0.0f,
-	/* ImpulseScale =				*/ 0.0f,
-	/* DrawPriority =				*/ 10.0f,
-	/* bShowSimple =				*/ true,
-	/* bShowComplex =				*/ false,
-	/* bInShowLevelSetCollision =	*/ true
+	/* ArrowSize =			*/ 10.0f,
+	/* BodyAxisLen =		*/ 30.0f,
+	/* ContactLen =			*/ 30.0f,
+	/* ContactWidth =		*/ 6.0f,
+	/* ContactPhiWidth =	*/ 0.0f,
+	/* ContactOwnerWidth =	*/ 0.0f,
+	/* ConstraintAxisLen =	*/ 30.0f,
+	/* JointComSize =		*/ 2.0f,
+	/* LineThickness =		*/ 1.5f,
+	/* DrawScale =			*/ 1.0f,
+	/* FontHeight =			*/ 10.0f,
+	/* FontScale =			*/ 1.5f,
+	/* ShapeThicknesScale = */ 1.0f,
+	/* PointSize =			*/ 2.0f,
+	/* VelScale =			*/ 1.0f,
+	/* AngVelScale =		*/ 0.0f,
+	/* ImpulseScale =		*/ 0.05f,
+	/* DrawPriority =		*/ 10.0f
 );
 FAutoConsoleVariableRef CVarChaosSolverArrowSize(TEXT("p.Chaos.Solver.DebugDraw.ArrowSize"), ChaosSolverDebugDebugDrawSettings.ArrowSize, TEXT("ArrowSize."));
 FAutoConsoleVariableRef CVarChaosSolverBodyAxisLen(TEXT("p.Chaos.Solver.DebugDraw.BodyAxisLen"), ChaosSolverDebugDebugDrawSettings.BodyAxisLen, TEXT("BodyAxisLen."));
@@ -127,9 +77,6 @@ FAutoConsoleVariableRef CVarChaosSolverVelScale(TEXT("p.Chaos.Solver.DebugDraw.V
 FAutoConsoleVariableRef CVarChaosSolverAngVelScale(TEXT("p.Chaos.Solver.DebugDraw.AngVelScale"), ChaosSolverDebugDebugDrawSettings.AngVelScale, TEXT("If >0 show angular velocity when drawing particle transforms."));
 FAutoConsoleVariableRef CVarChaosSolverImpulseScale(TEXT("p.Chaos.Solver.DebugDraw.ImpulseScale"), ChaosSolverDebugDebugDrawSettings.ImpulseScale, TEXT("If >0 show impulses when drawing collisions."));
 FAutoConsoleVariableRef CVarChaosSolverScale(TEXT("p.Chaos.Solver.DebugDraw.Scale"), ChaosSolverDebugDebugDrawSettings.DrawScale, TEXT("Scale applied to all Chaos Debug Draw line lengths etc."));
-FAutoConsoleVariableRef CVarChaosSolverShowSimple(TEXT("p.Chaos.Solver.DebugDraw.ShowSimple"), ChaosSolverDebugDebugDrawSettings.bShowSimpleCollision, TEXT("Whether to show simple collision is shape drawing is enabled"));
-FAutoConsoleVariableRef CVarChaosSolverShowComplex(TEXT("p.Chaos.Solver.DebugDraw.ShowComplex"), ChaosSolverDebugDebugDrawSettings.bShowComplexCollision, TEXT("Whether to show complex collision is shape drawing is enabled"));
-FAutoConsoleVariableRef CVarChaosSolverShowLevelSet(TEXT("p.Chaos.Solver.DebugDraw.ShowLevelSet"), ChaosSolverDebugDebugDrawSettings.bShowLevelSetCollision, TEXT("Whether to show levelset collision is shape drawing is enabled"));
 
 #endif
 
@@ -138,10 +85,6 @@ FAutoConsoleVariableRef CVarChaosSolverUseParticlePool(TEXT("p.Chaos.Solver.UseP
 
 int32 ChaosSolverParticlePoolNumFrameUntilShrink = 30;
 FAutoConsoleVariableRef CVarChaosSolverParticlePoolNumFrameUntilShrink(TEXT("p.Chaos.Solver.ParticlePoolNumFrameUntilShrink"), ChaosSolverParticlePoolNumFrameUntilShrink, TEXT("Num Frame until we can potentially shrink the pool"));
-
-// Select the solver technique to use until we settle on the final one...
-int32 ChaosSolver_SolverType = (int32)Chaos::EConstraintSolverType::GbfPbd;
-FAutoConsoleVariableRef CVarChaosSolverSolverType(TEXT("p.Chaos.Solver.SolverType"), ChaosSolver_SolverType, TEXT("0 = None; 1 = GbfPbd; 2 = Pbd; 3 = QuasiPbd"));
 
 // Iteration count cvars
 // These override the engine config if >= 0
@@ -167,7 +110,7 @@ FAutoConsoleVariableRef CVarChaosSolverJointPushOutPairIterations(TEXT("p.Chaos.
 
 // Collision detection cvars
 // These override the engine config if >= 0
-Chaos::FRealSingle ChaosSolverCullDistance = -1.0f;
+float ChaosSolverCullDistance = -1.0f;
 FAutoConsoleVariableRef CVarChaosSolverCullDistance(TEXT("p.Chaos.Solver.Collision.CullDistance"), ChaosSolverCullDistance, TEXT("Override cull distance (if >= 0)"));
 
 int32 ChaosSolverCleanupCommandsOnDestruction = 1;
@@ -176,19 +119,17 @@ FAutoConsoleVariableRef CVarChaosSolverCleanupCommandsOnDestruction(TEXT("p.Chao
 int32 ChaosSolverCollisionDeferNarrowPhase = 0;
 FAutoConsoleVariableRef CVarChaosSolverCollisionDeferNarrowPhase(TEXT("p.Chaos.Solver.Collision.DeferNarrowPhase"), ChaosSolverCollisionDeferNarrowPhase, TEXT("Create contacts for all broadphase pairs, perform NarrowPhase later."));
 
-// Allow one-shot or incremental manifolds where supported (which depends on shape pair types)
-int32 ChaosSolverCollisionUseManifolds = 1;
-FAutoConsoleVariableRef CVarChaosSolverCollisionUseManifolds(TEXT("p.Chaos.Solver.Collision.UseManifolds"), ChaosSolverCollisionUseManifolds, TEXT("Enable/Disable use of manifolds in collision."));
+// Old manifold system
+int32 ChaosSolverCollisionUseManifolds = 0;
+FAutoConsoleVariableRef CVarChaosSolverCollisionUseManifolds(TEXT("p.Chaos.Solver.Collision.UseManifolds"), ChaosSolverCollisionUseManifolds, TEXT("Enable/Disable use of manifoldes in collision."));
 
+// New manifold system
+int32 ChaosSolverCollisionUseIncrememtalManifolds = 1;
+FAutoConsoleVariableRef CVarChaosUseIncrementalManifold(TEXT("p.Chaos.Solver.Collision.UseIncrementalManifolds"), ChaosSolverCollisionUseIncrememtalManifolds, TEXT("Enable/Disable use of incremental manifolds."));
 
-// Joint cvars
-float ChaosSolverJointMinSolverStiffness = 1.0f;
-float ChaosSolverJointMaxSolverStiffness = 1.0f;
-int32 ChaosSolverJointNumIterationsAtMaxSolverStiffness = 1;
-FAutoConsoleVariableRef CVarChaosSolverJointMinSolverStiffness(TEXT("p.Chaos.Solver.Joint.MinSolverStiffness"), ChaosSolverJointMinSolverStiffness, TEXT("Solver stiffness on first iteration, increases each iteration toward MaxSolverStiffness."));
-FAutoConsoleVariableRef CVarChaosSolverJointMaxSolverStiffness(TEXT("p.Chaos.Solver.Joint.MaxSolverStiffness"), ChaosSolverJointMaxSolverStiffness, TEXT("Solver stiffness on last iteration, increases each iteration from MinSolverStiffness."));
-FAutoConsoleVariableRef CVarChaosSolverJointNumIterationsAtMaxSolverStiffness(TEXT("p.Chaos.Solver.Joint.NumIterationsAtMaxSolverStiffness"), ChaosSolverJointNumIterationsAtMaxSolverStiffness, TEXT("How many iterations we want at MaxSolverStiffness."));
-
+// New One-shot manifolds (only for boxes right now)
+int32 ChaosSolverCollisionUseOneShotManifolds = 1;
+FAutoConsoleVariableRef CVarChaosUseOneShotManifold(TEXT("p.Chaos.Solver.Collision.UseOneShotManifolds"), ChaosSolverCollisionUseOneShotManifolds, TEXT("Enable/Disable use of OneShot manifolds where available. If enabled Incremental manifold setting will be ignored"));
 
 int32 ChaosVisualDebuggerEnable = 1;
 FAutoConsoleVariableRef CVarChaosVisualDebuggerEnable(TEXT("p.Chaos.VisualDebuggerEnable"), ChaosVisualDebuggerEnable, TEXT("Enable/Disable pushing/saving data to the visual debugger"));
@@ -196,17 +137,16 @@ FAutoConsoleVariableRef CVarChaosVisualDebuggerEnable(TEXT("p.Chaos.VisualDebugg
 namespace Chaos
 {
 
+	template <typename Traits>
 	class AdvanceOneTimeStepTask : public FNonAbandonableTask
 	{
 		friend class FAutoDeleteAsyncTask<AdvanceOneTimeStepTask>;
 	public:
 		AdvanceOneTimeStepTask(
-			FPBDRigidsSolver* Scene
-			, const FReal DeltaTime
-			, const FSubStepInfo& SubStepInfo)
+			TPBDRigidsSolver<Traits>* Scene,
+			const float DeltaTime)
 			: MSolver(Scene)
 			, MDeltaTime(DeltaTime)
-			, MSubStepInfo(SubStepInfo)
 		{
 			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("AdvanceOneTimeStepTask::AdvanceOneTimeStepTask()"));
 		}
@@ -217,23 +157,28 @@ namespace Chaos
 			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("AdvanceOneTimeStepTask::DoWork()"));
 			MSolver->StartingSceneSimulation();
 
-			if(MDeltaTime > 0)	//if delta time is 0 we are flushing data, user callbacks should not be triggered because there is no sim
-			{
-				MSolver->ApplyCallbacks_Internal(MSolver->GetSolverTime(), MDeltaTime);	//question: is SolverTime the right thing to pass in here?
-			}
+			MSolver->ApplyCallbacks_Internal();
 			MSolver->GetEvolution()->GetRigidClustering().ResetAllClusterBreakings();
 
 			{
 				SCOPE_CYCLE_COUNTER(STAT_UpdateParams);
-				Chaos::FPBDPositionConstraints PositionTarget; // Dummy for now
-				TMap<int32, int32> TargetedParticles;
+				Chaos::TPBDPositionConstraints<float, 3> PositionTarget; // Dummy for now
+				TMap<int32, int32> PositionTargetedParticles;
+				//TArray<FKinematicProxy> AnimatedPositions;
+				Chaos::TArrayCollectionArray<float> Strains;
 				{
-					MSolver->FieldParameterUpdateCallback(PositionTarget, TargetedParticles);
+					FPerSolverFieldSystem& FieldObj = MSolver->GetPerSolverField();
+					auto& GeomCollectionParticles = MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles();
+					FieldObj.FieldParameterUpdateCallback(MSolver, GeomCollectionParticles, Strains,
+						PositionTarget, PositionTargetedParticles, /*AnimatedPositions,*/ MSolver->GetSolverTime());
+					auto& ClusteredParticles = MSolver->GetEvolution()->GetParticles().GetClusteredParticles();
+					FieldObj.FieldParameterUpdateCallback(MSolver, ClusteredParticles, Strains,
+						PositionTarget, PositionTargetedParticles, /*AnimatedPositions,*/ MSolver->GetSolverTime());
 				}
 
-				for (FGeometryCollectionPhysicsProxy* GeoclObj : MSolver->GetGeometryCollectionPhysicsProxies_Internal())
+				for (TGeometryCollectionPhysicsProxy<Traits>* Obj : MSolver->GetGeometryCollectionPhysicsProxies_Internal())
 				{
-					GeoclObj->FieldParameterUpdateCallback(MSolver);
+					Obj->ParameterUpdateCallback(MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles(), MSolver->GetSolverTime());
 				}
 
 				MSolver->GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager().ProcessPendingQueues();
@@ -264,24 +209,29 @@ namespace Chaos
 				//
 				// * If we have used all of our substeps but still have time remaining, then some
 				//   energy will be lost.
-				const FReal MinDeltaTime = MSolver->GetMinDeltaTime();
-				const FReal MaxDeltaTime = MSolver->GetMaxDeltaTime();
+				const float MinDeltaTime = MSolver->GetMinDeltaTime();
+				const float MaxDeltaTime = MSolver->GetMaxDeltaTime();
 				int32 StepsRemaining = MSolver->GetMaxSubSteps();
-				FReal TimeRemaining = MDeltaTime;
+				float TimeRemaining = MDeltaTime;
 				bool bFirstStep = true;
 				while (StepsRemaining > 0 && TimeRemaining > MinDeltaTime)
 				{
 					--StepsRemaining;
-					const FReal DeltaTime = MaxDeltaTime > 0.f ? FMath::Min(TimeRemaining, MaxDeltaTime) : TimeRemaining;
+					const float DeltaTime = MaxDeltaTime > 0.f ? FMath::Min(TimeRemaining, MaxDeltaTime) : TimeRemaining;
 					TimeRemaining -= DeltaTime;
 
+					Chaos::TArrayCollectionArray<FVector> Forces, Torques;
 					{
-						MSolver->FieldForcesUpdateCallback();
+						FPerSolverFieldSystem& FieldObj = MSolver->GetPerSolverField();
+						auto& GeomCollectionParticles = MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles();
+						FieldObj.FieldForcesUpdateCallback(MSolver, GeomCollectionParticles, Forces, Torques, MSolver->GetSolverTime());
+						auto& ClusteredParticles = MSolver->GetEvolution()->GetParticles().GetClusteredParticles();
+						FieldObj.FieldForcesUpdateCallback(MSolver, ClusteredParticles, Forces, Torques, MSolver->GetSolverTime());
 					}
 
-					for (FGeometryCollectionPhysicsProxy* GeoCollectionObj : MSolver->GetGeometryCollectionPhysicsProxies_Internal())
+					for (TGeometryCollectionPhysicsProxy<Traits>* Obj : MSolver->GetGeometryCollectionPhysicsProxies_Internal())
 					{
-						GeoCollectionObj->FieldForcesUpdateCallback(MSolver);
+						Obj->ParameterUpdateCallback(MSolver->GetEvolution()->GetParticles().GetGeometryCollectionParticles(), MSolver->GetSolverTime());
 					}
 
 					if(FRewindData* RewindData = MSolver->GetRewindData())
@@ -290,7 +240,7 @@ namespace Chaos
 						MSolver->GetEvolution()->SetCurrentStepResimCache(bFirstStep ? RewindData->GetCurrentStepResimCache() : nullptr);
 					}
 
-					MSolver->GetEvolution()->AdvanceOneTimeStep(DeltaTime, MSubStepInfo);
+					MSolver->GetEvolution()->AdvanceOneTimeStep(DeltaTime);
 					MSolver->PostEvolutionVDBPush();
 					bFirstStep = false;
 				}
@@ -317,8 +267,6 @@ namespace Chaos
 #endif
 			}
 
-			MSolver->UpdateCounters();
-
 			{
 				SCOPE_CYCLE_COUNTER(STAT_EventDataGathering);
 				{
@@ -341,18 +289,11 @@ namespace Chaos
 				RewindData->FinishFrame();
 			}
 
-			MSolver->FinalizeCallbackData_Internal();
-
 			MSolver->GetSolverTime() += MDeltaTime;
 			MSolver->GetCurrentFrame()++;
 			MSolver->PostTickDebugDraw(MDeltaTime);
 
-			//Editor ticks with 0 dt. We don't want to buffer any dirty data from this since it won't be consumed
-			//TODO: handle this more gracefully
-			if(MDeltaTime > 0)
-			{
-				MSolver->CompleteSceneSimulation();
-			}
+			MSolver->CompleteSceneSimulation();
 		}
 
 	protected:
@@ -362,15 +303,15 @@ namespace Chaos
 			RETURN_QUICK_DECLARE_CYCLE_STAT(AdvanceOneTimeStepTask, STATGROUP_ThreadPoolAsyncTasks);
 		}
 
-		FPBDRigidsSolver* MSolver;
-		FReal MDeltaTime;
-		FSubStepInfo MSubStepInfo;
+		TPBDRigidsSolver<Traits>* MSolver;
+		float MDeltaTime;
 		TSharedPtr<FCriticalSection> PrevLock, CurrentLock;
 		TSharedPtr<FEvent> PrevEvent, CurrentEvent;
 	};
 
-	FPBDRigidsSolver::FPBDRigidsSolver(const EMultiBufferMode BufferingModeIn, UObject* InOwner)
-		: Super(BufferingModeIn, BufferingModeIn == EMultiBufferMode::Single ? EThreadingModeTemp::SingleThread : EThreadingModeTemp::TaskGraph, InOwner)
+	template <typename Traits>
+	TPBDRigidsSolver<Traits>::TPBDRigidsSolver(const EMultiBufferMode BufferingModeIn, UObject* InOwner)
+		: Super(BufferingModeIn, BufferingModeIn == EMultiBufferMode::Single ? EThreadingModeTemp::SingleThread : EThreadingModeTemp::TaskGraph, InOwner, TraitToIdx<Traits>())
 		, CurrentFrame(0)
 		, MTime(0.0)
 		, MLastDt(0.0)
@@ -380,11 +321,12 @@ namespace Chaos
 		, bHasFloor(true)
 		, bIsFloorAnalytic(false)
 		, FloorHeight(0.f)
-		, MEvolution(new FPBDRigidsEvolution(Particles, SimMaterials, &ContactModifiers, BufferingModeIn == Chaos::EMultiBufferMode::Single))
-		, MEventManager(new FEventManager(BufferingModeIn))
+		, MEvolution(new FPBDRigidsEvolution(Particles, SimMaterials, BufferingModeIn == Chaos::EMultiBufferMode::Single))
+		, MEventManager(new TEventManager<Traits>(BufferingModeIn))
 		, MSolverEventFilters(new FSolverEventFilters())
 		, MDirtyParticlesBuffer(new FDirtyParticlesBuffer(BufferingModeIn, BufferingModeIn == Chaos::EMultiBufferMode::Single))
 		, MCurrentLock(new FCriticalSection())
+		, bUseCollisionResimCache(false)
 		, JointConstraintRule(JointConstraints)
 		, SuspensionConstraintRule(SuspensionConstraints)
 		, PerSolverField(nullptr)
@@ -395,7 +337,7 @@ namespace Chaos
 		MEvolution->AddConstraintRule(&SuspensionConstraintRule);
 
 		MEvolution->SetInternalParticleInitilizationFunction(
-			[this](const Chaos::FGeometryParticleHandle* OldParticle, const Chaos::FGeometryParticleHandle* NewParticle) {
+			[this](const Chaos::TGeometryParticleHandle<float, 3>* OldParticle, const Chaos::TGeometryParticleHandle<float, 3>* NewParticle) {
 				if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(OldParticle))
 				{
 					for (IPhysicsProxyBase* Proxy : *Proxies)
@@ -404,11 +346,9 @@ namespace Chaos
 					}
 				}
 			});
-		
-		JointConstraints.SetUpdateVelocityInApplyConstraints(true);
 	}
 
-	FReal MaxBoundsForTree = (FReal)10000;
+	float MaxBoundsForTree = 10000;
 	FAutoConsoleVariableRef CVarMaxBoundsForTree(
 		TEXT("p.MaxBoundsForTree"),
 		MaxBoundsForTree,
@@ -416,18 +356,21 @@ namespace Chaos
 		TEXT(""),
 		ECVF_Default);
 
-	void FPBDRigidsSolver::RegisterObject(FSingleParticlePhysicsProxy* Proxy)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::RegisterObject(TGeometryParticle<float, 3>* GTParticle)
 	{
 		LLM_SCOPE(ELLMTag::Chaos);
 
-		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("FPBDRigidsSolver::RegisterObject()"));
-		auto& RigidBody_External = Proxy->GetGameThreadAPI();
+		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("TPBDRigidsSolver::RegisterObject()"));
 
-		if (RigidBody_External.Geometry() && RigidBody_External.Geometry()->HasBoundingBox() && RigidBody_External.Geometry()->BoundingBox().Extents().Max() >= MaxBoundsForTree)
+		// Make sure this particle doesn't already have a proxy
+		checkSlow(GTParticle->GetProxy() == nullptr);
+
+		if (GTParticle->Geometry() && GTParticle->Geometry()->HasBoundingBox() && GTParticle->Geometry()->BoundingBox().Extents().Max() >= MaxBoundsForTree)
 		{
-			RigidBody_External.SetSpatialIdx(FSpatialAccelerationIdx{ 1,0 });
+			GTParticle->SetSpatialIdx(FSpatialAccelerationIdx{ 1,0 });
 		}
-		if (!ensure(Proxy->GetParticle_LowLevel()->IsParticleValid()))
+		if (!ensure(GTParticle->IsParticleValid()))
 		{
 			return;
 		}
@@ -435,92 +378,144 @@ namespace Chaos
 		// NOTE: Do we really need these lists of proxies if we can just
 		// access them through the GTParticles list?
 		
+		IPhysicsProxyBase* ProxyBase;
 
-		RigidBody_External.SetUniqueIdx(GetEvolution()->GenerateUniqueIdx());
-		TrackGTParticle_External(*Proxy->GetParticle_LowLevel());	//todo: remove this
+		GTParticle->SetUniqueIdx(GetEvolution()->GenerateUniqueIdx());
 		//Chaos::FParticlePropertiesData& RemoteParticleData = *DirtyPropertiesManager->AccessProducerBuffer()->NewRemoteParticleProperties();
 		//Chaos::FShapeRemoteDataContainer& RemoteShapeContainer = *DirtyPropertiesManager->AccessProducerBuffer()->NewRemoteShapeContainer();
 
-		Proxy->SetSolver(this);
-		Proxy->GetParticle_LowLevel()->SetProxy(Proxy);
-		AddDirtyProxy(Proxy);
-
-		UpdateParticleInAccelerationStructure_External(Proxy->GetParticle_LowLevel(), /*bDelete=*/false);
-	}
-
-	int32 LogCorruptMap = 0;
-	FAutoConsoleVariableRef CVarLogCorruptMap(TEXT("p.LogCorruptMap"), LogCorruptMap, TEXT(""));
-
-
-	void FPBDRigidsSolver::UnregisterObject(FSingleParticlePhysicsProxy* Proxy)
-	{
-		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("FPBDRigidsSolver::UnregisterObject()"));
-
-		ClearGTParticle_External(*Proxy->GetParticle_LowLevel());	//todo: remove this
-
-		UpdateParticleInAccelerationStructure_External(Proxy->GetParticle_LowLevel(), /*bDelete=*/true);
-
-		// remove the proxy from the invalidation list
-		RemoveDirtyProxy(Proxy);
-
-		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		Proxy->MarkDeleted();
-
-		// Null out the particle's proxy pointer
-		Proxy->GetParticle_LowLevel()->SetProxy(nullptr);	//todo: use TUniquePtr for better ownership
-
-		// Remove the proxy from the GT proxy map
-
-
-		Chaos::FIgnoreCollisionManager& CollisionManager = GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager();
+		// Make a physics proxy, giving it our particle and particle handle
+		const EParticleType InParticleType = GTParticle->ObjectType();
+		if (InParticleType == EParticleType::Rigid)
 		{
-			int32 ExternalTimestamp = GetMarshallingManager().GetExternalTimestamp_External();
-			Chaos::FIgnoreCollisionManager::FDeactivationArray& PendingMap = CollisionManager.GetPendingDeactivationsForGameThread(ExternalTimestamp);
-			if (!PendingMap.Contains(Proxy->GetGameThreadAPI().UniqueIdx()))
-			{
-				PendingMap.Add(Proxy->GetGameThreadAPI().UniqueIdx());
-			}
+			auto Proxy = new FRigidParticlePhysicsProxy(GTParticle->CastToRigidParticle(), nullptr);
+			RigidParticlePhysicsProxies.Add((FRigidParticlePhysicsProxy*)Proxy);
+			ProxyBase = Proxy;
+		}
+		else if (InParticleType == EParticleType::Kinematic)
+		{
+			auto Proxy = new FKinematicGeometryParticlePhysicsProxy(GTParticle->CastToKinematicParticle(), nullptr);
+			KinematicGeometryParticlePhysicsProxies.Add((FKinematicGeometryParticlePhysicsProxy*)Proxy);
+			ProxyBase = Proxy;
+		}
+		else // Assume it's a static (geometry) if it's not dynamic or kinematic
+		{
+			auto Proxy = new FGeometryParticlePhysicsProxy(GTParticle, nullptr);
+			GeometryParticlePhysicsProxies.Add((FGeometryParticlePhysicsProxy*)Proxy);
+			ProxyBase = Proxy;
 		}
 
+		ProxyBase->SetSolver(this);
+
+		// Associate the proxy with the particle
+		GTParticle->SetProxy(ProxyBase);
+
+		AddDirtyProxy(ProxyBase);
+
+		UpdateParticleInAccelerationStructure_External(GTParticle, /*bDelete=*/false);
+	}
+
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::UnregisterObject(TGeometryParticle<float, 3>* GTParticle)
+	{
+		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("TPBDRigidsSolver::UnregisterObject()"));
+
+		// Get the proxy associated with this particle
+		IPhysicsProxyBase* InProxy = GTParticle->GetProxy();
+		check(InProxy);
+
+		// Grab the particle's type
+		const EParticleType InParticleType = GTParticle->ObjectType();
+
+		UpdateParticleInAccelerationStructure_External(GTParticle, /*bDelete=*/true);
+
+		// remove the proxy from the invalidation list
+		RemoveDirtyProxy(GTParticle->GetProxy());
+
+		// mark proxy timestamp so we avoid trying to pull from sim after deletion
+		GTParticle->GetProxy()->SetSyncTimestamp(MarshallingManager.GetExternalTimestamp_External());
+
+		// Null out the particle's proxy pointer
+		GTParticle->SetProxy(nullptr);
+
+		// Remove the proxy from the GT proxy map
+		if (InParticleType == EParticleType::Rigid)
+		{
+			RigidParticlePhysicsProxies.RemoveSingleSwap((FRigidParticlePhysicsProxy*)InProxy);
+		}
+		else if (InParticleType == EParticleType::Kinematic)
+		{
+			KinematicGeometryParticlePhysicsProxies.RemoveSingleSwap((FKinematicGeometryParticlePhysicsProxy*)InProxy);
+		}
+		else if (InParticleType == EParticleType::GeometryCollection)
+		{
+			check(false); // This shouldn't happen.
+		}
+		else
+		{
+			GeometryParticlePhysicsProxies.RemoveSingleSwap((FGeometryParticlePhysicsProxy*)InProxy);
+		}
 
 		// Enqueue a command to remove the particle and delete the proxy
-		EnqueueCommandImmediate([Proxy, this]()
+		EnqueueCommandImmediate([InProxy, InParticleType, this]()
 		{
-			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("FPBDRigidsSolver::UnregisterObject() ~ Dequeue"));
+			UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("TPBDRigidsSolver::UnregisterObject() ~ Dequeue"));
 
 				// Generally need to remove stale events for particles that no longer exist
-				GetEventManager()->template ClearEvents<FCollisionEventData>(EEventType::Collision, [Proxy]
+				GetEventManager()->template ClearEvents<FCollisionEventData>(EEventType::Collision, [InProxy]
 				(FCollisionEventData& EventDataInOut)
 				{
 					Chaos::FCollisionDataArray const& CollisionData = EventDataInOut.CollisionData.AllCollisionsArray;
 					if (CollisionData.Num() > 0)
 					{
-						check(Proxy);
-						TArray<int32> const* const CollisionIndices = EventDataInOut.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap.Find(Proxy);
+						check(InProxy);
+						TArray<int32> const* const CollisionIndices = EventDataInOut.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap.Find(InProxy);
 						if (CollisionIndices)
 						{
 							for (int32 EncodedCollisionIdx : *CollisionIndices)
 							{
 								bool bSwapOrder;
-								int32 CollisionIdx = Chaos::FEventManager::DecodeCollisionIndex(EncodedCollisionIdx, bSwapOrder);
+								int32 CollisionIdx = Chaos::TEventManager<Traits>::DecodeCollisionIndex(EncodedCollisionIdx, bSwapOrder);
 
 								// invalidate but don't delete from array, as this would mean we'd need to reindex PhysicsProxyToIndicesMap to maintain the other collisions lookup
-								Chaos::FCollidingData& CollisionDataItem = EventDataInOut.CollisionData.AllCollisionsArray[CollisionIdx];
+								Chaos::TCollisionData<float, 3>& CollisionDataItem = EventDataInOut.CollisionData.AllCollisionsArray[CollisionIdx];
 								CollisionDataItem.ParticleProxy = nullptr;
 								CollisionDataItem.LevelsetProxy = nullptr;
 							}
 
-							EventDataInOut.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap.Remove(Proxy);
+							EventDataInOut.PhysicsProxyToCollisionIndices.PhysicsProxyToIndicesMap.Remove(InProxy);
 						}
 					}
 
 				});
 
-			FGeometryParticleHandle* Handle = Proxy->GetHandle_LowLevel();
-			Proxy->SetHandle(nullptr);
-			const int32 OffsetForRewind = MRewindData ? MRewindData->Capacity() : 0;
-			PendingDestroyPhysicsProxy.Add(  FPendingDestroyInfo{Proxy, GetCurrentFrame() + OffsetForRewind});
-			
+			// Get the physics thread-handle from the proxy, and then delete the proxy.
+			//
+			// NOTE: We have to delete the proxy from its derived version, because the
+			// base destructor is protected. This makes everything just a bit uglier,
+			// maybe that extra safety is not needed if we continue to contain all
+			// references to proxy instances entirely in Chaos?
+			TGeometryParticleHandle<float, 3>* Handle;
+			if (InParticleType == Chaos::EParticleType::Rigid)
+			{
+				auto Proxy = (FRigidParticlePhysicsProxy*)InProxy;
+
+				Handle = Proxy->GetHandle();
+				delete Proxy;
+			}
+			else if (InParticleType == Chaos::EParticleType::Kinematic)
+			{
+				auto Proxy = (FKinematicGeometryParticlePhysicsProxy*)InProxy;
+				Handle = Proxy->GetHandle();
+				delete Proxy;
+			}
+			else
+			{
+				auto Proxy = (FGeometryParticlePhysicsProxy*)InProxy;
+				Handle = Proxy->GetHandle();
+				delete Proxy;
+			}
+
 			//If particle was created and destroyed before commands were enqueued just skip. I suspect we can skip entire lambda, but too much code to verify right now
 
 			if(Handle)
@@ -531,10 +526,6 @@ namespace Chaos
 					RewindData->RemoveParticle(Handle->UniqueIdx());
 				}
   
-				if(LogCorruptMap)
-				{
-					UE_LOG(LogChaos, Warning, TEXT("UnregisterObject this:%llx, Handle:%llx &MParticleToProxy:%llx, MParticleToProxy.Num():%d"), this, Handle, &MParticleToProxy, MParticleToProxy.Num());
-				}
 				MParticleToProxy.Remove(Handle);
   
 				// Use the handle to destroy the particle data
@@ -545,11 +536,13 @@ namespace Chaos
 
 	}
 
-	void FPBDRigidsSolver::RegisterObject(FGeometryCollectionPhysicsProxy* InProxy)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::RegisterObject(TGeometryCollectionPhysicsProxy<Traits>* InProxy)
 	{
-		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("FPBDRigidsSolver::RegisterObject(FGeometryCollectionPhysicsProxy*)"));
+		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("TPBDRigidsSolver::RegisterObject(TGeometryCollectionPhysicsProxy*)"));
+		GeometryCollectionPhysicsProxies_External.AddUnique(InProxy);
 		InProxy->SetSolver(this);
-		InProxy->Initialize(GetEvolution());
+		InProxy->Initialize();
 		InProxy->NewData(); // Buffers data on the proxy.
 		FParticlesType* InParticles = &GetParticles();
 
@@ -557,56 +550,59 @@ namespace Chaos
 		EnqueueCommandImmediate([InParticles, InProxy, this]()
 		{
 			UE_LOG(LogPBDRigidsSolver, Verbose, 
-				TEXT("FPBDRigidsSolver::RegisterObject(FGeometryCollectionPhysicsProxy*)"));
+				TEXT("TPBDRigidsSolver::RegisterObject(TGeometryCollectionPhysicsProxy*)"));
 			check(InParticles);
 			InProxy->InitializeBodiesPT(this, *InParticles);
 			GeometryCollectionPhysicsProxies_Internal.Add(InProxy);
 		});
 	}
 	
-	void FPBDRigidsSolver::UnregisterObject(FGeometryCollectionPhysicsProxy* InProxy)
+	template <typename Traits>
+	bool TPBDRigidsSolver<Traits>::UnregisterObject(TGeometryCollectionPhysicsProxy<Traits>* InProxy)
 	{
 		check(InProxy);
-		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		InProxy->MarkDeleted();
 
 		RemoveDirtyProxy(InProxy);
 
-		// Particles are removed from acceleration structure in FPhysScene_Chaos::RemoveObject.
-		
+		int32 NumRemoved = GeometryCollectionPhysicsProxies_External.Remove(InProxy);
+
 		EnqueueCommandImmediate([InProxy, this]()
 			{
-				const TArray<Chaos::FPBDRigidClusteredParticleHandle*>& ParticleHandles = InProxy->GetSolverParticleHandles();
-				for (const Chaos::FPBDRigidClusteredParticleHandle* ParticleHandle : ParticleHandles)
+				GeometryCollectionPhysicsProxies_Internal.RemoveSingle(InProxy);
+
+				const TArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& ParticleHandles = InProxy->GetSolverParticleHandles();
+				for (const Chaos::TPBDRigidClusteredParticleHandle<float, 3> * ParticleHandle : ParticleHandles)
 				{
 					RemoveParticleToProxy(ParticleHandle);
 				}
-				GeometryCollectionPhysicsProxies_Internal.RemoveSingle(InProxy);
+
 				InProxy->SyncBeforeDestroy();
-				InProxy->OnRemoveFromSolver(this);
 				delete InProxy;
 			});
+
+		return NumRemoved == 1;
 	}
 
-	void FPBDRigidsSolver::RegisterObject(Chaos::FJointConstraint* GTConstraint)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::RegisterObject(Chaos::FJointConstraint* GTConstraint)
 	{
 		FJointConstraintPhysicsProxy* JointProxy = new FJointConstraintPhysicsProxy(GTConstraint, nullptr);
 		JointProxy->SetSolver(this);
 
+		JointConstraintPhysicsProxies_External.AddUnique(JointProxy);
 		AddDirtyProxy(JointProxy);
 	}
 
-	void FPBDRigidsSolver::UnregisterObject(Chaos::FJointConstraint* GTConstraint)
+	template <typename Traits>
+	bool TPBDRigidsSolver<Traits>::UnregisterObject(Chaos::FJointConstraint* GTConstraint)
 	{
 		FJointConstraintPhysicsProxy* JointProxy = GTConstraint->GetProxy<FJointConstraintPhysicsProxy>();
 		check(JointProxy);
 
+		JointProxy->SetSolver(static_cast<TPBDRigidsSolver<Traits>*>(nullptr));
 		RemoveDirtyProxy(JointProxy);
 
-		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		GTConstraint->GetProxy()->MarkDeleted();
-
-
+		int32 NumRemoved = JointConstraintPhysicsProxies_External.Remove(JointProxy);
 		GTConstraint->SetProxy(static_cast<FJointConstraintPhysicsProxy*>(nullptr));
 
 		GTConstraint->ReleaseKinematicEndPoint(this);
@@ -620,26 +616,30 @@ namespace Chaos
 				JointConstraintPhysicsProxies_Internal.RemoveSingle(JointProxy);
 				delete JointProxy;
 			});
+
+		return NumRemoved == 1;
 	}
 
-	void FPBDRigidsSolver::RegisterObject(Chaos::FSuspensionConstraint* GTConstraint)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::RegisterObject(Chaos::FSuspensionConstraint* GTConstraint)
 	{
 		FSuspensionConstraintPhysicsProxy* SuspensionProxy = new FSuspensionConstraintPhysicsProxy(GTConstraint, nullptr);
 		SuspensionProxy->SetSolver(this);
 
+		SuspensionConstraintPhysicsProxies.AddUnique(SuspensionProxy);
 		AddDirtyProxy(SuspensionProxy);
 	}
 
-	void FPBDRigidsSolver::UnregisterObject(Chaos::FSuspensionConstraint* GTConstraint)
+	template <typename Traits>
+	bool TPBDRigidsSolver<Traits>::UnregisterObject(Chaos::FSuspensionConstraint* GTConstraint)
 	{
 		FSuspensionConstraintPhysicsProxy* SuspensionProxy = GTConstraint->GetProxy<FSuspensionConstraintPhysicsProxy>();
 		check(SuspensionProxy);
 
-		// mark proxy timestamp so we avoid trying to pull from sim after deletion
-		SuspensionProxy->MarkDeleted();
-
+		SuspensionProxy->SetSolver(static_cast<TPBDRigidsSolver<Traits>*>(nullptr));
 		RemoveDirtyProxy(SuspensionProxy);
 
+		int32 NumRemoved = SuspensionConstraintPhysicsProxies.Remove(SuspensionProxy);
 		GTConstraint->SetProxy(static_cast<FSuspensionConstraintPhysicsProxy*>(nullptr));
 
 		FParticlesType* InParticles = &GetParticles();
@@ -650,15 +650,48 @@ namespace Chaos
 				SuspensionProxy->DestroyOnPhysicsThread(this);
 				delete SuspensionProxy;
 			});
+
+		return NumRemoved == 1;
 	}
 
-	CHAOS_API int32 RewindCaptureNumFrames = -1;
+	template <typename Traits>
+	bool TPBDRigidsSolver<Traits>::IsSimulating() const
+	{
+		for (FGeometryParticlePhysicsProxy* Obj : GeometryParticlePhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (FKinematicGeometryParticlePhysicsProxy* Obj : KinematicGeometryParticlePhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (FRigidParticlePhysicsProxy* Obj : RigidParticlePhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (FSkeletalMeshPhysicsProxy* Obj : SkeletalMeshPhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (FStaticMeshPhysicsProxy* Obj : StaticMeshPhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		for (TGeometryCollectionPhysicsProxy<Traits>* Obj : GeometryCollectionPhysicsProxies_External)
+			if (Obj->IsSimulating())
+				return true;
+		for (FJointConstraintPhysicsProxy* Obj : JointConstraintPhysicsProxies_External)
+			if (Obj->IsSimulating())
+				return true;
+		for (FSuspensionConstraintPhysicsProxy* Obj : SuspensionConstraintPhysicsProxies)
+			if (Obj->IsSimulating())
+				return true;
+		return false;
+	}
+
+	int32 RewindCaptureNumFrames = -1;
 	FAutoConsoleVariableRef CVarRewindCaptureNumFrames(TEXT("p.RewindCaptureNumFrames"),RewindCaptureNumFrames,TEXT("The number of frames to capture rewind for. Requires restart of solver"));
 
 	int32 UseResimCache = 0;
 	FAutoConsoleVariableRef CVarUseResimCache(TEXT("p.UseResimCache"),UseResimCache,TEXT("Whether resim uses cache to skip work, requires recreating world to take effect"));
-
-	void FPBDRigidsSolver::Reset()
+	
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::Reset()
 	{
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::Reset()"));
 
@@ -668,7 +701,7 @@ namespace Chaos
 		MMaxDeltaTime = 1.f;
 		MMinDeltaTime = SMALL_NUMBER;
 		MMaxSubSteps = 1;
-		MEvolution = TUniquePtr<FPBDRigidsEvolution>(new FPBDRigidsEvolution(Particles, SimMaterials, &ContactModifiers, BufferMode == EMultiBufferMode::Single)); 
+		MEvolution = TUniquePtr<FPBDRigidsEvolution>(new FPBDRigidsEvolution(Particles, SimMaterials, BufferMode == EMultiBufferMode::Single)); 
 
 		PerSolverField = MakeUnique<FPerSolverFieldSystem>();
 
@@ -685,10 +718,11 @@ namespace Chaos
 			FinalizeRewindData(ActiveParticles);
 		});
 
-		FEventDefaults::RegisterSystemEvents(*GetEventManager());
+		TEventDefaults<Traits>::RegisterSystemEvents(*GetEventManager());
 	}
 
-	void FPBDRigidsSolver::ChangeBufferMode(Chaos::EMultiBufferMode InBufferMode)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::ChangeBufferMode(Chaos::EMultiBufferMode InBufferMode)
 	{
 		// This seems unused inside the solver? #BH
 		BufferMode = InBufferMode;
@@ -696,46 +730,28 @@ namespace Chaos
 		SetThreadingMode_External(BufferMode == EMultiBufferMode::Single ? EThreadingModeTemp::SingleThread : EThreadingModeTemp::TaskGraph);
 	}
 
-	void FPBDRigidsSolver::StartingSceneSimulation()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::StartingSceneSimulation()
 	{
 		LLM_SCOPE(ELLMTag::Chaos);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_StartedSceneSimulation);
 
-		GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager().PopStorageData_Internal(GetEvolution()->LatestExternalTimestampConsumed_Internal);
-	}
-
-	void FPBDRigidsSolver::DestroyPendingProxies_Internal()
-	{
-		for(int32 Idx = PendingDestroyPhysicsProxy.Num() - 1; Idx >= 0; --Idx)
+		if (HasActiveParticles())
 		{
-			FPendingDestroyInfo& Info = PendingDestroyPhysicsProxy[Idx];
-			if(Info.DestroyOnStep <= GetCurrentFrame())
-			{
-				ensure(Info.Proxy->GetHandle_LowLevel() == nullptr);	//should have already cleared this out
-				delete Info.Proxy;
-				PendingDestroyPhysicsProxy.RemoveAtSwap(Idx);
-			}
+			GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager().FlipBufferPreSolve();
 		}
 	}
 
-	void FPBDRigidsSolver::AdvanceSolverBy(const FReal DeltaTime, const FSubStepInfo& SubStepInfo)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::AdvanceSolverBy(const FReal DeltaTime)
 	{
-		const FReal StartSimTime = GetSolverTime();
 		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bDeferUpdate = (ChaosSolverCollisionDeferNarrowPhase != 0);
 		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bAllowManifolds = (ChaosSolverCollisionUseManifolds != 0);
-		
-		FPBDJointSolverSettings JointsSettings = JointConstraints.GetSettings();
-		JointsSettings.MinSolverStiffness = ChaosSolverJointMinSolverStiffness;
-		JointsSettings.MaxSolverStiffness = ChaosSolverJointMaxSolverStiffness;
-		JointsSettings.NumIterationsAtMaxSolverStiffness = ChaosSolverJointNumIterationsAtMaxSolverStiffness;
-		JointConstraints.SetSettings(JointsSettings);
+		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bUseIncrementalManifold = (ChaosSolverCollisionUseIncrememtalManifolds != 0);
+		MEvolution->GetCollisionDetector().GetNarrowPhase().GetContext().bUseOneShotManifolds = (ChaosSolverCollisionUseOneShotManifolds != 0);
 
 		// Apply CVAR overrides if set
 		{
-			GetEvolution()->GetCollisionConstraints().SetSolverType((EConstraintSolverType)ChaosSolver_SolverType);
-			// @todo(chaos): implement solver type switching for joints
-			//GetJointConstraints().SetSolverType((EConstraintSolverType)ChaosImmediate_SolverType);
-
 			if (ChaosSolverIterations >= 0)
 			{
 				SetIterations(ChaosSolverIterations);
@@ -769,41 +785,26 @@ namespace Chaos
 		UE_LOG(LogPBDRigidsSolver, Verbose, TEXT("PBDRigidsSolver::Tick(%3.5f)"), DeltaTime);
 		MLastDt = DeltaTime;
 		EventPreSolve.Broadcast(DeltaTime);
-		AdvanceOneTimeStepTask(this, DeltaTime, SubStepInfo).DoWork();
-
-		if(DeltaTime > 0)
-		{
-			//pass information back to external thread
-			//we skip dt=0 case because sync data should be identical if dt = 0
-			MarshallingManager.FinalizePullData_Internal(MEvolution->LatestExternalTimestampConsumed_Internal, StartSimTime, DeltaTime);
-		}
-
-		if(SubStepInfo.Step == SubStepInfo.NumSteps - 1)
-		{
-			//final step so we can destroy proxies
-			DestroyPendingProxies_Internal();
-		}
+		AdvanceOneTimeStepTask<Traits>(this, DeltaTime).DoWork();
 	}
 
-	void FPBDRigidsSolver::SetExternalTimestampConsumed_Internal(const int32 Timestamp)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::SetExternalTimestampConsumed_External(const int32 Timestamp)
 	{
-		MEvolution->LatestExternalTimestampConsumed_Internal = Timestamp;
+		MEvolution->LatestExternalTimestampConsumed = Timestamp;
 	}
 
-	void FPBDRigidsSolver::SyncEvents_GameThread()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::SyncEvents_GameThread()
 	{
 		GetEventManager()->DispatchEvents();
 	}
 
-	void FPBDRigidsSolver::PushPhysicsState(const FReal DeltaTime, const int32 NumSteps, const int32 NumExternalSteps)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::PushPhysicsState(const FReal DeltaTime)
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_PushPhysicsState);
-		ensure(NumSteps > 0);
-		ensure(NumExternalSteps > 0);
-		//TODO: interpolate some data based on num steps
-
 		FPushPhysicsData* PushData = MarshallingManager.GetProducerData_External();
-		const FReal DynamicsWeight = FReal(1) / NumExternalSteps;
 		FDirtySet* DirtyProxiesData = &PushData->DirtyProxiesDataBuffer;
 		FDirtyPropertiesManager* Manager = &PushData->DirtyPropertiesManager;
 
@@ -812,7 +813,7 @@ namespace Chaos
 		FShapeDirtyData* ShapeDirtyData = DirtyProxiesData->GetShapesDirtyData();
 		auto ProcessProxyGT =[ShapeDirtyData, Manager, DirtyProxiesData](auto Proxy, int32 ParticleDataIdx, FDirtyProxy& DirtyProxy)
 		{
-			auto Particle = Proxy->GetParticle_LowLevel();
+			auto Particle = Proxy->GetParticle();
 			Particle->SyncRemoteData(*Manager,ParticleDataIdx,DirtyProxy.ParticleData,DirtyProxy.ShapeDataIndices,ShapeDirtyData);
 			Proxy->ClearAccumulatedData();
 			Proxy->ResetDirtyIdx();
@@ -820,17 +821,25 @@ namespace Chaos
 
 
 		//todo: if we allocate remote data ahead of time we could go wide
-		DirtyProxiesData->ParallelForEachProxy([&ProcessProxyGT, this, DynamicsWeight](int32 DataIdx, FDirtyProxy& Dirty)
+		DirtyProxiesData->ParallelForEachProxy([&ProcessProxyGT, this](int32 DataIdx, FDirtyProxy& Dirty)
 		{
 			switch(Dirty.Proxy->GetType())
 			{
-			case EPhysicsProxyType::SingleParticleProxy:
+			case EPhysicsProxyType::SingleRigidParticleType:
 			{
-				auto Proxy = static_cast<FSingleParticlePhysicsProxy*>(Dirty.Proxy);
-				if(auto Rigid = Proxy->GetParticle_LowLevel()->CastToRigidParticle())
-				{
-					Rigid->ApplyDynamicsWeight(DynamicsWeight);
-				}
+				auto Proxy = static_cast<FRigidParticlePhysicsProxy*>(Dirty.Proxy);
+				ProcessProxyGT(Proxy,DataIdx,Dirty);
+				break;
+			}
+			case EPhysicsProxyType::SingleKinematicParticleType:
+			{
+				auto Proxy = static_cast<FKinematicGeometryParticlePhysicsProxy*>(Dirty.Proxy);
+				ProcessProxyGT(Proxy,DataIdx,Dirty);
+				break;
+			}
+			case EPhysicsProxyType::SingleGeometryParticleType:
+			{
+				auto Proxy = static_cast<FGeometryParticlePhysicsProxy*>(Dirty.Proxy);
 				ProcessProxyGT(Proxy,DataIdx,Dirty);
 				break;
 			}
@@ -857,12 +866,11 @@ namespace Chaos
 			}
 		});
 
-		GetEvolution()->GetBroadPhase().GetIgnoreCollisionManager().PushProducerStorageData_External(MarshallingManager.GetExternalTimestamp_External());
-
-		MarshallingManager.Step_External(DeltaTime, NumSteps);
+		MarshallingManager.Step_External(DeltaTime);
 	}
 
-	void FPBDRigidsSolver::ProcessSinglePushedData_Internal(FPushPhysicsData& PushData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::ProcessSinglePushedData_Internal(FPushPhysicsData& PushData)
 	{
 		FRewindData* RewindData = GetRewindData();
 
@@ -870,7 +878,7 @@ namespace Chaos
 		FDirtyPropertiesManager* Manager = &PushData.DirtyPropertiesManager;
 		FShapeDirtyData* ShapeDirtyData = DirtyProxiesData->GetShapesDirtyData();
 
-		auto ProcessProxyPT = [Manager,ShapeDirtyData,RewindData, this](auto& Proxy,int32 DataIdx,FDirtyProxy& Dirty,const auto& CreateHandleFunc)
+		auto ProcessProxyPT = [Manager,ShapeDirtyData,RewindData,this](auto& Proxy,int32 DataIdx,FDirtyProxy& Dirty,const auto& CreateHandleFunc)
 		{
 			const bool bIsNew = !Proxy->IsInitialized();
 			if(bIsNew)
@@ -879,46 +887,33 @@ namespace Chaos
 				const FUniqueIdx* UniqueIdx = NonFrequentData ? &NonFrequentData->UniqueIdx() : nullptr;
 				Proxy->SetHandle(CreateHandleFunc(UniqueIdx));
 
-				auto Handle = Proxy->GetHandle_LowLevel();
-				Handle->GTGeometryParticle() = Proxy->GetParticle_LowLevel();
+				auto Handle = Proxy->GetHandle();
+				Handle->GTGeometryParticle() = Proxy->GetParticle();
 			}
 
-			if(Proxy->GetHandle_LowLevel())
+			if(RewindData)
 			{
-				if (RewindData)
+				//may want to remove branch by templatizing lambda
+				if(RewindData->IsResim())
 				{
-					//may want to remove branch by templatizing lambda
-					if (RewindData->IsResim())
-					{
-						RewindData->PushGTDirtyData<true>(*Manager, DataIdx, Dirty);
-					}
-					else
-					{
-						RewindData->PushGTDirtyData<false>(*Manager, DataIdx, Dirty);
-					}
+					RewindData->PushGTDirtyData<true>(*Manager,DataIdx,Dirty);
+				} else
+				{
+					RewindData->PushGTDirtyData<false>(*Manager,DataIdx,Dirty);
 				}
+			}
 
-				Proxy->PushToPhysicsState(*Manager, DataIdx, Dirty, ShapeDirtyData, *GetEvolution());
-			}
-			else
-			{
-				//The only valid time for a handle to not exist is during a resim, when the proxy was already deleted
-				//Another way would be to sanitize pending push data, but this would be expensive
-				ensure(RewindData && RewindData->IsResim());
-			}
+			Proxy->PushToPhysicsState(*Manager,DataIdx,Dirty,ShapeDirtyData,*GetEvolution());
 
 			if(bIsNew)
 			{
-				auto Handle = Proxy->GetHandle_LowLevel();
-				if(auto Rigid = Handle->CastToRigidParticle())
-				{
-					Rigid->SetPreObjectStateLowLevel(Rigid->ObjectState());	//created this frame so pre is the initial value
-				}
-
+				auto Handle = Proxy->GetHandle();
 				AddParticleToProxy(Handle,Proxy);
 				GetEvolution()->CreateParticle(Handle);
-				Proxy->SetInitialized(GetCurrentFrame());
+				Proxy->SetInitialized(true);
 			}
+
+			Dirty.Clear(*Manager,DataIdx,ShapeDirtyData);
 		};
 
 		if(RewindData)
@@ -931,41 +926,44 @@ namespace Chaos
 		{
 			switch(Dirty.Proxy->GetType())
 			{
-				case EPhysicsProxyType::SingleParticleProxy:
-				{
-					auto Proxy = static_cast<FSingleParticlePhysicsProxy*>(Dirty.Proxy);
-					ProcessProxyPT(Proxy, DataIdx, Dirty, [this, &Dirty](const FUniqueIdx* UniqueIdx) -> TGeometryParticleHandle<FReal,3>*
-					{
-						switch (Dirty.ParticleData.GetParticleBufferType())
-						{
-							case EParticleType::Static: return Particles.CreateStaticParticles(1, UniqueIdx)[0];
-							case EParticleType::Kinematic: return Particles.CreateKinematicParticles(1, UniqueIdx)[0];
-							case EParticleType::Rigid: return Particles.CreateDynamicParticles(1, UniqueIdx)[0];
-							default: check(false); return nullptr;
-						}
-					});
-					break;
-				}
-			
-				case EPhysicsProxyType::GeometryCollectionType:
-				{
-					// Currently no push needed for geometry collections and they handle the particle creation internally
-					// #TODO This skips the rewind data push so GC will not be rewindable until resolved.
-					Dirty.Proxy->ResetDirtyIdx();
-					break;
-				}
-				case EPhysicsProxyType::JointConstraintType:
-				case EPhysicsProxyType::SuspensionConstraintType:
-				{
-					// Pass until after all bodies are created. 
-					break;
-				}
-				default:
-				{
-					ensure(0 && TEXT("Unknown proxy type in physics solver."));
-					//Can't use, but we can still mark as "clean"
-					Dirty.Proxy->ResetDirtyIdx();
-				}
+			case EPhysicsProxyType::SingleRigidParticleType:
+			{
+				auto Proxy = static_cast<FRigidParticlePhysicsProxy*>(Dirty.Proxy);
+				ProcessProxyPT(Proxy,DataIdx,Dirty,[this](const FUniqueIdx* UniqueIdx){ return Particles.CreateDynamicParticles(1,UniqueIdx)[0]; });
+				break;
+			}
+			case EPhysicsProxyType::SingleKinematicParticleType:
+			{
+				auto Proxy = static_cast<FKinematicGeometryParticlePhysicsProxy*>(Dirty.Proxy);
+				ProcessProxyPT(Proxy,DataIdx,Dirty,[this](const FUniqueIdx* UniqueIdx){ return Particles.CreateKinematicParticles(1,UniqueIdx)[0]; });
+				break;
+			}
+			case EPhysicsProxyType::SingleGeometryParticleType:
+			{
+				auto Proxy = static_cast<FGeometryParticlePhysicsProxy*>(Dirty.Proxy);
+				ProcessProxyPT(Proxy,DataIdx,Dirty,[this](const FUniqueIdx* UniqueIdx){ return Particles.CreateStaticParticles(1,UniqueIdx)[0]; });
+				break;
+			}
+			case EPhysicsProxyType::GeometryCollectionType:
+			{
+				// Currently no push needed for geometry collections and they handle the particle creation internally
+				// #TODO This skips the rewind data push so GC will not be rewindable until resolved.
+				Dirty.Proxy->ResetDirtyIdx();
+				break;
+			}
+			case EPhysicsProxyType::JointConstraintType:
+			case EPhysicsProxyType::SuspensionConstraintType:
+			{
+				// Pass until after all bodies are created. 
+				break;
+			}
+			default:
+			{
+				ensure(0 && TEXT("Unknown proxy type in physics solver."));
+				//Can't use, but we can still mark as "clean"
+				Dirty.Proxy->ResetDirtyIdx();
+			}
+
 			}
 		});
 
@@ -981,6 +979,7 @@ namespace Chaos
 				if (bIsNew)
 				{
 					JointProxy->InitializeOnPhysicsThread(this);
+					JointConstraintPhysicsProxies_Internal.Add(JointProxy);
 					JointProxy->SetInitialized();
 				}
 				JointProxy->PushStateOnPhysicsThread(this);
@@ -1012,244 +1011,246 @@ namespace Chaos
 		//MarshallingManager.FreeData_Internal(&PushData);
 	}
 
-	void FPBDRigidsSolver::ProcessPushedData_Internal(FPushPhysicsData& PushData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::ProcessPushedData_Internal(const TArray<FPushPhysicsData*>& PushDataArray)
 	{
-		ensure(PushData.InternalStep == CurrentFrame);	//push data was generated for this specific frame
-
-		//update callbacks
-		SimCallbackObjects.Reserve(SimCallbackObjects.Num() + PushData.SimCallbackObjectsToAdd.Num());
-		for(ISimCallbackObject* SimCallbackObject : PushData.SimCallbackObjectsToAdd)
+		for(FPushPhysicsData* PushData : PushDataArray)
 		{
-			SimCallbackObjects.Add(SimCallbackObject);
-			if (SimCallbackObject->bContactModification)
+			//update callbacks
 			{
-				ContactModifiers.Add(SimCallbackObject);
-			}
-		}
-
-		//save any pending data for this particular interval
-		for (const FSimCallbackInputAndObject& InputAndCallbackObj : PushData.SimCallbackInputs)
-		{
-			InputAndCallbackObj.CallbackObject->SetCurrentInput_Internal(InputAndCallbackObj.Input);
-		}
-
-		//remove any callbacks that are unregistered
-		for (ISimCallbackObject* RemovedCallbackObject : PushData.SimCallbackObjectsToRemove)
-		{
-			RemovedCallbackObject->bPendingDelete = true;
-		}
-
-		for (int32 Idx = ContactModifiers.Num() - 1; Idx >= 0; --Idx)
-		{
-			ISimCallbackObject* Callback = ContactModifiers[Idx];
-			if (Callback->bPendingDelete)
-			{
-				//will also be in SimCallbackObjects so we'll delete it in that loop
-				ContactModifiers.RemoveAtSwap(Idx);
-			}
-		}
-
-		for (int32 Idx = SimCallbackObjects.Num() - 1; Idx >= 0; --Idx)
-		{
-			ISimCallbackObject* Callback = SimCallbackObjects[Idx];
-			if (Callback->bPendingDelete)
-			{
-				SimCallbackObjects.RemoveAtSwap(Idx);
-			}
-		}
-
-		ProcessSinglePushedData_Internal(PushData);
-
-		//run any commands passed in. These don't generate outputs and are a one off so just do them here
-		//note: commands run before sim callbacks. This is important for sub-stepping since we want each sub-step to have a consistent view
-		//so for example if the user deletes a floor surface, we want all sub-steps to see that in the same way
-		//also note, the commands run after data is marshalled over. This is important because data marshalling ensures any GT property changes are seen by command
-		//for example a particle may not be created until marshalling occurs, and then a command could explicitly modify something like a collision setting
-		for (FSimCallbackCommandObject* SimCallbackObject : PushData.SimCommands)
-		{
-			SimCallbackObject->PreSimulate_Internal();
-			delete SimCallbackObject;
-		}
-		PushData.SimCommands.Reset();
-
-		if(MRewindCallback && !IsShuttingDown())
-		{
-			MRewindCallback->ProcessInputs_Internal(MRewindData->CurrentFrame(), PushData.SimCallbackInputs);
-		}
-	}
-
-	void FPBDRigidsSolver::ConditionalApplyRewind_Internal()
-	{
-		if(!IsShuttingDown() && MRewindCallback && !MRewindData->IsResim())
-		{
-			const int32 LastStep = MRewindData->CurrentFrame() - 1;
-			const int32 ResimStep = MRewindCallback->TriggerRewindIfNeeded_Internal(LastStep);
-			if(ResimStep != INDEX_NONE)
-			{
-				if(ensure(MRewindData->RewindToFrame(ResimStep)))
+				for(FSimCallbackHandle* NewCallback : PushData->SimCallbacksToAdd)
 				{
-					CurrentFrame = ResimStep;
-					const int32 NumResimSteps = LastStep - ResimStep + 1;
-					TArray<FPushPhysicsData*> RecordedPushData = MarshallingManager.StealHistory_Internal(NumResimSteps);
-					bool bFirst = true;
-					// Do rollback as necessary
-					for (int32 Step = ResimStep; Step <= LastStep; ++Step)
+					if(ensure(NewCallback->PTHandle == nullptr)) //if not null we have double registration
 					{
-						FPushPhysicsData* PushData = RecordedPushData[LastStep - Step];	//push data is sorted as latest first
-						if(bFirst)
-						{
-							MTime = PushData->StartTime;	//not sure if sub-steps have proper StartTime so just do this once and let solver evolve remaining time
-						}
-
-						MRewindCallback->PreResimStep_Internal(Step, bFirst);
-						FPhysicsSolverAdvanceTask ImmediateTask(*this, *PushData);
-						ImmediateTask.AdvanceSolver();
-						MRewindCallback->PostResimStep_Internal(Step);
-
-						bFirst = false;
+						FSimCallbackHandlePT* PTCallback = new FSimCallbackHandlePT(NewCallback);	//todo: use better memory management
+						SimCallbacks.Add(PTCallback);
+						NewCallback->PTHandle = PTCallback;
 					}
 				}
+
+				for(int32 Idx = 0; Idx < PushData->SimCallbacksToRemove.Num(); ++Idx)
+				{
+					FSimCallbackHandle* RemovedCallback = PushData->SimCallbacksToRemove[Idx];
+					if(ensure(RemovedCallback->PTHandle != nullptr)) //if not null we are unregistering something that was never registered (or double delete) 
+					{
+						if(Idx == 0)
+						{
+							//callback was removed right away so skip it entirely (unless it was tagged as running at least once no matter what)
+							RemovedCallback->PTHandle->bPendingDelete = !RemovedCallback->bRunOnceMore;
+						}
+						else
+						{
+							//want to delete, but came later in interval so need to run at least once
+							RemovedCallback->bRunOnceMore = true;
+						}
+					}
+				}
+
+				//save any pending data for this particular interval
+				for(const FSimCallbackDataPair& Pair : PushData->SimCallbackDataPairs)
+				{
+					const FSimCallbackHandle* Handle = Pair.Callback;
+					check(Handle->PTHandle);	//must have been registered already
+					Handle->PTHandle->IntervalData.Add(Pair.Data);
+				}
 			}
+
+			ProcessSinglePushedData_Internal(*PushData);
+			MarshallingManager.FreeData_Internal(PushData);
 		}
 	}
 
-	void FPBDRigidsSolver::CompleteSceneSimulation()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::CompleteSceneSimulation()
 	{
 		LLM_SCOPE(ELLMTag::Chaos);
 		SCOPE_CYCLE_COUNTER(STAT_BufferPhysicsResults);
 
-		EventPreBuffer.Broadcast(MLastDt);
-		GetDirtyParticlesBuffer()->CaptureSolverData(this);
-		BufferPhysicsResults();
+		if(HasActiveParticles())
+		{
+			EventPreBuffer.Broadcast(MLastDt);
+			GetDirtyParticlesBuffer()->CaptureSolverData(this);
+			BufferPhysicsResults();
+			FlipBuffers();
+		}
 	}
 
-	void FPBDRigidsSolver::BufferPhysicsResults()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::BufferPhysicsResults()
 	{
 		//ensure(IsInPhysicsThread());
-		TArray<FGeometryCollectionPhysicsProxy*> ActiveGC;
+		TArray<TGeometryCollectionPhysicsProxy<Traits>*> ActiveGC;
 		ActiveGC.Reserve(GeometryCollectionPhysicsProxies_Internal.Num());
 
-		FPullPhysicsData* PullData = MarshallingManager.GetCurrentPullData_Internal();
-
-		TParticleView<FPBDRigidParticles>& DirtyParticles = GetParticles().GetDirtyParticlesView();
-
-		//todo: should be able to go wide just add defaulted etc...
+		TParticleView<TPBDRigidParticles<float, 3>>& DirtyParticles = GetParticles().GetDirtyParticlesView();
+		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& DirtyParticle : DirtyParticles)
 		{
-			ensure(PullData->DirtyRigids.Num() == 0);	//we only fill this once per frame
-			int32 BufferIdx = 0;
-			PullData->DirtyRigids.Reserve(DirtyParticles.Num());
-
-			for (Chaos::TPBDRigidParticleHandleImp<FReal, 3, false>& DirtyParticle : DirtyParticles)
+			if( const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(DirtyParticle.Handle()))
 			{
-				if( const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(DirtyParticle.Handle()))
+				for (IPhysicsProxyBase* Proxy : *Proxies)
 				{
-					for (IPhysicsProxyBase* Proxy : *Proxies)
+					if (Proxy != nullptr)
 					{
-							if(Proxy != nullptr)
+						switch (DirtyParticle.GetParticleType())
 						{
-								switch(DirtyParticle.GetParticleType())
-							{
-							case Chaos::EParticleType::Rigid:
-								{
-									PullData->DirtyRigids.AddDefaulted();
-									((FSingleParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults(PullData->DirtyRigids.Last());
-									break;
-								}
-							case Chaos::EParticleType::Kinematic:
-							case Chaos::EParticleType::Static:
-								ensure(false);
-								break;
-							case Chaos::EParticleType::GeometryCollection:
-								ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-								break;
-							case Chaos::EParticleType::Clustered:
-								ActiveGC.AddUnique((FGeometryCollectionPhysicsProxy*)(Proxy));
-								break;
-							default:
-								check(false);
-							}
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->BufferPhysicsResults();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						default:
+							check(false);
 						}
 					}
 				}
 			}
 		}
 
+		for (auto* GCProxy : ActiveGC)
 		{
-			ensure(PullData->DirtyGeometryCollections.Num() == 0);	//we only fill this once per frame
-			PullData->DirtyGeometryCollections.Reserve(ActiveGC.Num());
-
-			for (int32 Idx = 0; Idx < ActiveGC.Num(); ++Idx)
-			{
-				PullData->DirtyGeometryCollections.AddDefaulted();
-				ActiveGC[Idx]->BufferPhysicsResults(this, PullData->DirtyGeometryCollections.Last());
-			}
+			GCProxy->BufferPhysicsResults();
 		}
 
+		for (FJointConstraintPhysicsProxy* Proxy : JointConstraintPhysicsProxies_Internal)
 		{
-			ensure(PullData->DirtyJointConstraints.Num() == 0);	//we only fill this once per frame
-			PullData->DirtyJointConstraints.Reserve(JointConstraintPhysicsProxies_Internal.Num());
-
-			for(int32 Idx = 0; Idx < JointConstraintPhysicsProxies_Internal.Num(); ++Idx)
-			{
-				PullData->DirtyJointConstraints.AddDefaulted();
-				JointConstraintPhysicsProxies_Internal[Idx]->BufferPhysicsResults(PullData->DirtyJointConstraints.Last());
-			}
+			Proxy->BufferPhysicsResults();
 		}
-		
 
-		
 		// Now that results have been buffered we have completed a solve step so we can broadcast that event
 		EventPostSolve.Broadcast(MLastDt);
-
-
-		Particles.ClearTransientDirty();
-
 	}
 
-	void FPBDRigidsSolver::BeginDestroy()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::FlipBuffers()
 	{
-		MEvolution->SetCanStartAsyncTasks(false);
+		//ensure(IsInPhysicsThread());
+		TArray<TGeometryCollectionPhysicsProxy<Traits>*> ActiveGC;
+		ActiveGC.Reserve(GeometryCollectionPhysicsProxies_Internal.Num());
+
+		TParticleView<TPBDRigidParticles<float, 3>>& DirtyParticles = GetParticles().GetDirtyParticlesView();
+		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& DirtyParticle : DirtyParticles)
+		{
+			if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(DirtyParticle.Handle()))
+			{
+				for (IPhysicsProxyBase* Proxy : *Proxies)
+				{
+					if (Proxy != nullptr)
+					{
+						switch (DirtyParticle.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->FlipBuffer();
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
+				}
+			}
+		}
+
+		for (auto* GCProxy : ActiveGC)
+		{
+			GCProxy->FlipBuffer();
+		}
+
+		for (FJointConstraintPhysicsProxy* Proxy : JointConstraintPhysicsProxies_Internal)
+		{
+			Proxy->FlipBuffer();
+		}
+
 	}
-	
+
 	// This function is not called during normal Engine execution.  
 	// FPhysScene_ChaosInterface::EndFrame() calls 
 	// FPhysScene_ChaosInterface::SyncBodies() instead, and then immediately afterwards 
 	// calls FPBDRigidsSovler::SyncEvents_GameThread().  This function is used by tests,
 	// however.
-	void FPBDRigidsSolver::UpdateGameThreadStructures()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::UpdateGameThreadStructures()
 	{
-		PullPhysicsStateForEachDirtyProxy_External([](auto){});
+		//ensure(IsInGameThread());
+		TArray<TGeometryCollectionPhysicsProxy<Traits>*> ActiveGC;
+		ActiveGC.Reserve(GeometryCollectionPhysicsProxies_External.Num());
+
+		TParticleView<TPBDRigidParticles<float, 3>>& DirtyParticles = GetParticles().GetDirtyParticlesView();
+		const int32 SolverSyncTimestamp = MarshallingManager.GetExternalTimestampConsumed_External();
+		for (Chaos::TPBDRigidParticleHandleImp<float, 3, false>& DirtyParticle : DirtyParticles)
+		{
+			if (const TSet<IPhysicsProxyBase*>* Proxies = GetProxies(DirtyParticle.Handle()))
+			{
+				for (IPhysicsProxyBase* Proxy : *Proxies)
+				{
+					if (Proxy != nullptr)
+					{
+						switch (DirtyParticle.GetParticleType())
+						{
+						case Chaos::EParticleType::Rigid:
+							((FRigidParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState(SolverSyncTimestamp);
+							break;
+						case Chaos::EParticleType::Kinematic:
+							((FKinematicGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState(SolverSyncTimestamp);
+							break;
+						case Chaos::EParticleType::Static:
+							((FGeometryParticlePhysicsProxy*)(Proxy))->PullFromPhysicsState(SolverSyncTimestamp);
+							break;
+						case Chaos::EParticleType::GeometryCollection:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						case Chaos::EParticleType::Clustered:
+							ActiveGC.AddUnique((TGeometryCollectionPhysicsProxy<Traits>*)(Proxy));
+							break;
+						default:
+							check(false);
+						}
+					}
+				}
+			}
+		}
+
+		for (auto* GCProxy : ActiveGC)
+		{
+			GCProxy->PullFromPhysicsState(SolverSyncTimestamp);
+		}
+
+		for (FJointConstraintPhysicsProxy* Proxy : JointConstraintPhysicsProxies_External)
+		{
+			Proxy->PullFromPhysicsState(SolverSyncTimestamp);
+		}
+
 	}
 
-	int32 FPBDRigidsSolver::NumJointConstraints() const
-	{
-		return JointConstraints.NumConstraints();
-	}
-	
-	int32 FPBDRigidsSolver::NumCollisionConstraints() const
-	{
-		return GetEvolution()->GetCollisionConstraints().NumConstraints();
-	}
-
-
-	void FPBDRigidsSolver::PostTickDebugDraw(FReal Dt) const
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::PostTickDebugDraw(FReal Dt) const
 	{
 #if CHAOS_DEBUG_DRAW
-		QUICK_SCOPE_CYCLE_COUNTER(SolverDebugDraw);
 		if (ChaosSolverDebugDrawShapes == 1)
 		{
-			if (ChaosSolverDrawShapesShowStatic)
-			{
-				DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetActiveStaticParticlesView(), FColor(128, 0, 0), &ChaosSolverDebugDebugDrawSettings);
-			}
-			if (ChaosSolverDrawShapesShowKinematic)
-			{
-				DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetActiveKinematicParticlesView(), FColor(64, 32, 0), &ChaosSolverDebugDebugDrawSettings);
-			}
-			if (ChaosSolverDrawShapesShowDynamic)
-			{
-				DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetNonDisabledDynamicView(), FColor(255, 255, 0), &ChaosSolverDebugDebugDrawSettings);
-			}
+			DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetActiveStaticParticlesView(), FColor(128, 0, 0), &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetActiveKinematicParticlesView(), FColor(64, 32, 0), &ChaosSolverDebugDebugDrawSettings);
+			DebugDraw::DrawParticleShapes(FRigidTransform3(), Particles.GetNonDisabledDynamicView(), FColor(255, 255, 0), &ChaosSolverDebugDebugDrawSettings);
 		}
 		if (ChaosSolverDebugDrawCollisions == 1) 
 		{
@@ -1267,58 +1268,11 @@ namespace Chaos
 		{
 			DebugDraw::DrawConstraintGraph(FRigidTransform3(), GetEvolution()->GetCollisionConstraintsRule().GetGraphColor(), &ChaosSolverDebugDebugDrawSettings);
 		}
-		if (ChaosSolverDebugDrawCollidingShapes == 1)
-		{
-			DebugDraw::DrawCollidingShapes(FRigidTransform3(), GetEvolution()->GetCollisionConstraints(), 1.f, &ChaosSolverDebugDebugDrawSettings);
-		}
-		if (ChaosSolverDrawJoints == 1)
-		{
-			DebugDraw::DrawJointConstraints(FRigidTransform3(), JointConstraints, 1.0f, ChaosSolverDrawJointFeatures, &ChaosSolverDebugDebugDrawSettings);
-		}
 #endif
 	}
 
-	void FPBDRigidsSolver::UpdateCounters() const
-	{
-		// Particle counts
-		SET_DWORD_STAT(STAT_ChaosCounter_NumDisabledParticles, GetEvolution()->GetParticles().GetAllParticlesView().Num() - GetEvolution()->GetParticles().GetNonDisabledView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumParticles, GetEvolution()->GetParticles().GetNonDisabledView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumDynamicParticles, GetEvolution()->GetParticles().GetNonDisabledDynamicView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumActiveDynamicParticles, GetEvolution()->GetParticles().GetActiveParticlesView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumKinematicParticles, GetEvolution()->GetParticles().GetActiveKinematicParticlesView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumStaticParticles, GetEvolution()->GetParticles().GetActiveStaticParticlesView().Num());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumGeometryCollectionParticles, GetEvolution()->GetParticles().GetGeometryCollectionParticles().Size());
-
-		// Constraint counts
-		SET_DWORD_STAT(STAT_ChaosCounter_NumIslands, GetEvolution()->GetConstraintGraph().NumIslands());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumContacts, NumCollisionConstraints());
-		SET_DWORD_STAT(STAT_ChaosCounter_NumJoints, NumJointConstraints());
-
-		// Iterations
-		SET_DWORD_STAT(STAT_ChaosIterations_NumIterations, GetEvolution()->GetNumIterations());
-		SET_DWORD_STAT(STAT_ChaosIterations_NumCollisionIterations, GetEvolution()->GetCollisionConstraints().GetPairIterations());
-		SET_DWORD_STAT(STAT_ChaosIterations_NumJointIterations, GetJointConstraints().GetSettings().ApplyPairIterations);
-		SET_DWORD_STAT(STAT_ChaosIterations_NumPushOutIterations, GetEvolution()->GetNumPushOutIterations());
-		SET_DWORD_STAT(STAT_ChaosIterations_NumPushOutCollisionIterations, GetEvolution()->GetCollisionConstraints().GetPushOutPairIterations());
-		SET_DWORD_STAT(STAT_ChaosIterations_NumPushOutJointIterations, GetJointConstraints().GetSettings().ApplyPushOutPairIterations);
-
-#if CSV_PROFILER
-		// Particle counts
-		CSV_CUSTOM_STAT(ChaosCounters, NumDisabledParticles, GetEvolution()->GetParticles().GetAllParticlesView().Num() - GetEvolution()->GetParticles().GetNonDisabledView().Num(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumParticles, GetEvolution()->GetParticles().GetNonDisabledView().Num(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumDynamicParticles, GetEvolution()->GetParticles().GetNonDisabledDynamicView().Num(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumKinematicParticles, GetEvolution()->GetParticles().GetActiveKinematicParticlesView().Num(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumStaticParticles, GetEvolution()->GetParticles().GetActiveStaticParticlesView().Num(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumGeometryCollectionParticles, (int)GetEvolution()->GetParticles().GetGeometryCollectionParticles().Size(), ECsvCustomStatOp::Accumulate);
-
-		// Constraint counts
-		CSV_CUSTOM_STAT(ChaosCounters, NumIslands, GetEvolution()->GetConstraintGraph().NumIslands(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumContacts, NumCollisionConstraints(), ECsvCustomStatOp::Accumulate);
-		CSV_CUSTOM_STAT(ChaosCounters, NumJoints, NumJointConstraints(), ECsvCustomStatOp::Accumulate);
-#endif
-	}
-
-	void FPBDRigidsSolver::PostEvolutionVDBPush() const
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::PostEvolutionVDBPush() const
 	{
 #if CHAOS_VISUAL_DEBUGGER_ENABLED
 		if (ChaosVisualDebuggerEnable)
@@ -1326,63 +1280,67 @@ namespace Chaos
 			const TGeometryParticleHandles<FReal, 3>&  AllParticleHandles = GetEvolution()->GetParticleHandles();
 			for (uint32 ParticelIndex = 0; ParticelIndex < AllParticleHandles.Size(); ParticelIndex++)
 			{
-				const TUniquePtr<FGeometryParticleHandle>& ParticleHandle = AllParticleHandles.Handle(ParticelIndex);
+				const TUniquePtr<TGeometryParticleHandle<float, 3>>& ParticleHandle = AllParticleHandles.Handle(ParticelIndex);
 				ChaosVisualDebugger::ParticlePositionLog(ParticleHandle->X());				
 			}
 		}
 #endif
 	}
 
-	void FPBDRigidsSolver::UpdateMaterial(Chaos::FMaterialHandle InHandle, const Chaos::FChaosPhysicsMaterial& InNewData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::UpdateMaterial(Chaos::FMaterialHandle InHandle, const Chaos::FChaosPhysicsMaterial& InNewData)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		*SimMaterials.Get(InHandle.InnerHandle) = InNewData;
 	}
 
-	void FPBDRigidsSolver::CreateMaterial(Chaos::FMaterialHandle InHandle, const Chaos::FChaosPhysicsMaterial& InNewData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::CreateMaterial(Chaos::FMaterialHandle InHandle, const Chaos::FChaosPhysicsMaterial& InNewData)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		ensure(SimMaterials.Create(InNewData) == InHandle.InnerHandle);
 	}
 
-	void FPBDRigidsSolver::DestroyMaterial(Chaos::FMaterialHandle InHandle)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::DestroyMaterial(Chaos::FMaterialHandle InHandle)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		SimMaterials.Destroy(InHandle.InnerHandle);
 	}
 
-	void FPBDRigidsSolver::UpdateMaterialMask(Chaos::FMaterialMaskHandle InHandle, const Chaos::FChaosPhysicsMaterialMask& InNewData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::UpdateMaterialMask(Chaos::FMaterialMaskHandle InHandle, const Chaos::FChaosPhysicsMaterialMask& InNewData)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		*SimMaterialMasks.Get(InHandle.InnerHandle) = InNewData;
 	}
 
-	void FPBDRigidsSolver::CreateMaterialMask(Chaos::FMaterialMaskHandle InHandle, const Chaos::FChaosPhysicsMaterialMask& InNewData)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::CreateMaterialMask(Chaos::FMaterialMaskHandle InHandle, const Chaos::FChaosPhysicsMaterialMask& InNewData)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		ensure(SimMaterialMasks.Create(InNewData) == InHandle.InnerHandle);
 	}
 
-	void FPBDRigidsSolver::DestroyMaterialMask(Chaos::FMaterialMaskHandle InHandle)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::DestroyMaterialMask(Chaos::FMaterialMaskHandle InHandle)
 	{
-		TSolverSimMaterialScope<ELockType::Write> Scope(this);
 		SimMaterialMasks.Destroy(InHandle.InnerHandle);
 	}
 
-	void FPBDRigidsSolver::SyncQueryMaterials_External()
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::SyncQueryMaterials()
 	{
-		// Using lock on sim material is an imprefect workaround, we may block while physics thread is updating sim materials in callbacks.
-		// QueryMaterials may be slightly stale. Need to rethink lifetime + ownership of materials for async case.
-		//acquire external data lock
-		FPhysicsSceneGuardScopedWrite ScopedWrite(GetExternalDataLock_External());
-		TSolverSimMaterialScope<ELockType::Read> SimMatLock(this);
-		
-		QueryMaterials_External = SimMaterials;
-		QueryMaterialMasks_External = SimMaterialMasks;
+		TSolverQueryMaterialScope<ELockType::Write> Scope(this);
+		QueryMaterials = SimMaterials;
+		QueryMaterialMasks = SimMaterialMasks;
 	}
 
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::EnableRewindCapture(int32 NumFrames, bool InUseCollisionResimCache)
+	{
+		check(Traits::IsRewindable());
+		MRewindData = MakeUnique<FRewindData>(NumFrames, InUseCollisionResimCache);
+		bUseCollisionResimCache = InUseCollisionResimCache;
+	}
 
-	void FPBDRigidsSolver::FinalizeRewindData(const TParticleView<TPBDRigidParticles<FReal,3>>& DirtyParticles)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::FinalizeRewindData(const TParticleView<TPBDRigidParticles<FReal,3>>& DirtyParticles)
 	{
 		using namespace Chaos;
 		//Simulated objects must have their properties captured for rewind
@@ -1393,7 +1351,7 @@ namespace Chaos
 			MRewindData->PrepareFrameForPTDirty(DirtyParticles.Num());
 			
 			int32 DataIdx = 0;
-			for(TPBDRigidParticleHandleImp<FReal,3,false>& DirtyParticle : DirtyParticles)
+			for(TPBDRigidParticleHandleImp<float,3,false>& DirtyParticle : DirtyParticles)
 			{
 				//may want to remove branch using templates outside loop
 				if (MRewindData->IsResim())
@@ -1408,14 +1366,15 @@ namespace Chaos
 		}
 	}
 
-	void FPBDRigidsSolver::UpdateExternalAccelerationStructure_External(ISpatialAccelerationCollection<FAccelerationStructureHandle,FReal,3>*& ExternalStructure)
+	template <typename Traits>
+	void TPBDRigidsSolver<Traits>::UpdateExternalAccelerationStructure_External(TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal,3>,FReal,3>>& ExternalStructure)
 	{
 		GetEvolution()->UpdateExternalAccelerationStructure_External(ExternalStructure,*PendingSpatialOperations_External);
 	}
 
-	Chaos::FClusterCreationParameters::EConnectionMethod ToInternalConnectionMethod(EClusterUnionMethod InMethod)
+	Chaos::FClusterCreationParameters<Chaos::FReal>::EConnectionMethod ToInternalConnectionMethod(EClusterUnionMethod InMethod)
 	{
-		using ETargetEnum = Chaos::FClusterCreationParameters::EConnectionMethod;
+		using ETargetEnum = Chaos::FClusterCreationParameters<Chaos::FReal>::EConnectionMethod;
 		switch(InMethod)
 		{
 		case EClusterUnionMethod::PointImplicit:
@@ -1431,7 +1390,8 @@ namespace Chaos
 		return ETargetEnum::None;
 	}
 
-	void Chaos::FPBDRigidsSolver::ApplyConfig(const FChaosSolverConfiguration& InConfig)
+	template <typename Traits>
+	void Chaos::TPBDRigidsSolver<Traits>::ApplyConfig(const FChaosSolverConfiguration& InConfig)
 	{
 		GetEvolution()->GetRigidClustering().SetClusterConnectionFactor(InConfig.ClusterConnectionFactor);
 		GetEvolution()->GetRigidClustering().SetClusterUnionConnectionType(ToInternalConnectionMethod(InConfig.ClusterUnionConnectionType));
@@ -1451,19 +1411,9 @@ namespace Chaos
 		SetUseContactGraph(InConfig.bGenerateContactGraph);
 	}
 
-	FPBDRigidsSolver::~FPBDRigidsSolver() = default;
-
-	void Chaos::FPBDRigidsSolver::FieldParameterUpdateCallback(
-		Chaos::FPBDPositionConstraints& PositionTarget,
-		TMap<int32, int32>& TargetedParticles)
-	{
-		GetPerSolverField().FieldParameterUpdateCallback(this, PositionTarget, TargetedParticles);
-	}
-
-	void Chaos::FPBDRigidsSolver::FieldForcesUpdateCallback()
-	{
-		GetPerSolverField().FieldForcesUpdateCallback(this);
-	}
+#define EVOLUTION_TRAIT(Trait) template class CHAOS_API TPBDRigidsSolver<Trait>;
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
 
 }; // namespace Chaos
 

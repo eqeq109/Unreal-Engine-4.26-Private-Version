@@ -9,7 +9,6 @@
 #include "ActorFactoryEmptyActor.generated.h"
 
 class AActor;
-struct FActorSpawnParameters;
 struct FAssetData;
 class ULevel;
 
@@ -26,6 +25,6 @@ public:
 	virtual bool CanCreateActorFrom( const FAssetData& AssetData, FText& OutErrorMsg ) override;
 
 protected:
-	virtual AActor* SpawnActor(UObject* InAsset, ULevel* InLevel, const FTransform& InTransform, const FActorSpawnParameters& InSpawnParams) override;
+	virtual AActor* SpawnActor( UObject* Asset, ULevel* InLevel, const FTransform& Transform, EObjectFlags ObjectFlags, const FName Name ) override;
 
 };

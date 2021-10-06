@@ -6,7 +6,6 @@
 #include "Common/UdpSocketReceiver.h"
 #include "Containers/Map.h"
 #include "Containers/Queue.h"
-
 #include "HAL/Runnable.h"
 #include "IMessageTransport.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
@@ -19,7 +18,6 @@
 #include "UdpMessagingPrivate.h"
 #include "Shared/UdpMessageSegment.h"
 #include "Transport/UdpMessageResequencer.h"
-#include "Transport/UdpCircularQueue.h"
 
 class FArrayReader;
 class FEvent;
@@ -32,8 +30,6 @@ class FUdpSerializedMessage;
 class FUdpSocketSender;
 class IMessageAttachment;
 enum class EUdpMessageFormat : uint8;
-
-constexpr const uint16 MessageProcessorWorkQueueSize{1024};
 
 /**
  * Implements a message processor for UDP messages.
@@ -65,9 +61,6 @@ class FUdpMessageProcessor
 
 		/** Holds the collection of message segmenters. */
 		TMap<int32, TSharedPtr<FUdpMessageSegmenter>> Segmenters;
-
-		/** Holds of queue of MessageIds to send. They are processed in round-robin fashion. */
-		TUdpCircularQueue<int32> WorkQueue{MessageProcessorWorkQueueSize};
 
 		/** Default constructor. */
 		FNodeInfo()
@@ -407,10 +400,9 @@ protected:
 	 * Updates all segmenters of the specified node.
 	 *
 	 * @param NodeInfo Details for the node to update.
-	 * @param MaxSendBytes the approximate max number of bytes allowed to be sent to that node. can be exceeded by up to 1k since we don't send partial segments.
-	 * @return The actual number of bytes written or -1 if error
+	 * @return true if the update was successful
 	 */
-	int32 UpdateSegmenters(FNodeInfo& NodeInfo, uint32 MaxSendBytes);
+	bool UpdateSegmenters(FNodeInfo& NodeInfo);
 
 	/**
 	 * Updates all reassemblers of the specified node.
@@ -431,23 +423,19 @@ protected:
 
 private:
 
-	/** Consume an Outbound Message for processing. A result of true will be returned if it was added for processing. */
-	bool ConsumeOneOutboundMessage(const FOutboundMessage& OutboundMessage);
-
 	/** Holds the queue of outbound messages. */
 	TQueue<FInboundSegment, EQueueMode::Mpsc> InboundSegments;
 
 	/** Holds the queue of outbound messages. */
 	TQueue<FOutboundMessage, EQueueMode::Mpsc> OutboundMessages;
 
+private:
+
 	/** Holds the hello sender. */
 	FUdpMessageBeacon* Beacon;
 
 	/** Holds the current time. */
 	FDateTime CurrentTime;
-
-	/** Holds the delta time between two ticks. */
-	FTimespan DeltaTime;
 
 	/** Holds the protocol version that can be communicated in. */
 	TArray<uint8> SupportedProtocolVersions;
@@ -485,6 +473,8 @@ private:
 	/** Holds an event signaling that inbound messages need to be processed. */
 	TSharedPtr<FEvent, ESPMode::ThreadSafe> WorkEvent;
 
+private:
+
 	/** Holds a delegate to be invoked when a message was received on the transport channel. */
 	FOnMessageReassembled MessageReassembledDelegate;
 
@@ -499,9 +489,7 @@ private:
 
 	/** The configured message format (from UUdpMessagingSettings). */
 	EUdpMessageFormat MessageFormat;
-
-	/** If our round-robin work queues couldn't accept the last outbound message then store a deferred message for next round. */
-	TOptional<FOutboundMessage> DeferredOutboundMessage;
+private:
 
 	/** Defines the maximum number of Hello segments that can be dropped before a remote endpoint is considered dead. */
 	static const int32 DeadHelloIntervals;

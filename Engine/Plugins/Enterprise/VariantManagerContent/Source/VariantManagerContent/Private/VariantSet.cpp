@@ -16,7 +16,7 @@ UVariantSet::FOnVariantSetChanged UVariantSet::OnThumbnailUpdated;
 
 namespace VariantSetImpl
 {
-	/** Makes it so that all others variants that depend on 'Variant' have those particular dependencies deleted */
+	/** Makes it so that all others variants that depend on 'Variant' have those particular dependencies reset to nullptr */
 	void ResetVariantDependents( UVariant* Variant )
 	{
 		if ( !Variant )
@@ -34,15 +34,13 @@ namespace VariantSetImpl
 		const bool bOnlyEnabledDependencies = false;
 		for ( UVariant* Dependent : Variant->GetDependents( LevelVariantSets, bOnlyEnabledDependencies ) )
 		{
-			for ( int32 DependencyIndex = Dependent->GetNumDependencies() - 1; DependencyIndex >= 0; --DependencyIndex )
+			for ( int32 DependencyIndex = 0; DependencyIndex < Dependent->GetNumDependencies(); ++DependencyIndex )
 			{
 				FVariantDependency& Dependency = Dependent->GetDependency( DependencyIndex );
 				UVariant* TargetVariant = Dependency.Variant.Get();
 				if ( TargetVariant == Variant )
 				{
-					// Delete the entire dependency because we can't leave a dependency without a valid Variant selected or
-					// we may run into minor slightly awkward states (i.e. not being able to pick *any* variant)
-					Dependent->DeleteDependency( DependencyIndex );
+					Dependency.Variant = nullptr;
 				}
 			}
 		}
@@ -260,8 +258,8 @@ void UVariantSet::RemoveVariants(const TArray<UVariant*>& InVariants)
 	for (UVariant* Variant : InVariants)
 	{
 		Variants.RemoveSingle(Variant);
-		VariantSetImpl::ResetVariantDependents( Variant );
 		Variant->Rename(nullptr, GetTransientPackage());
+		VariantSetImpl::ResetVariantDependents( Variant );
 	}
 }
 

@@ -12,72 +12,96 @@ FAutoConsoleVariableRef CVarChaosLongRangeISPCEnabled(TEXT("p.Chaos.LongRange.IS
 
 using namespace Chaos;
 
-void FPBDLongRangeConstraints::Apply(FPBDParticles& Particles, const FReal /*Dt*/, const TArray<int32>& ConstraintIndices) const
+template<class T, int d>
+void TPBDLongRangeConstraints<T, d>::Apply(TPBDParticles<T, d>& InParticles, const T Dt, const TArray<int32>& ConstraintIndices) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_PBD_LongRange);
-	if (!Stiffness.HasWeightMap())
+	switch (GetMode())
 	{
-		const FReal ExpStiffnessValue = (FReal)Stiffness;
-		for (const int32 ConstraintIndex : ConstraintIndices)
+	case EMode::FastTetherFastLength:
+	case EMode::AccurateTetherFastLength:
+		for (int32 i : ConstraintIndices)
 		{
-			const FTether& Tether = Tethers[ConstraintIndex];
-			Particles.P(Tether.End) += Stiffness[Tether.End - ParticleOffset] * Tether.GetDelta(Particles);
+			Apply(MEuclideanConstraints[i], InParticles, Dt, MDists[i]);
 		}
-	}
-	else
-	{
-		for (const int32 ConstraintIndex : ConstraintIndices)
+		break;
+	case EMode::AccurateTetherAccurateLength:
+		for (int32 i : ConstraintIndices)
 		{
-			const FTether& Tether = Tethers[ConstraintIndex];
-			const FReal ExpStiffnessValue = Stiffness[Tether.End - ParticleOffset];
-			Particles.P(Tether.End) += Stiffness[Tether.End - ParticleOffset] * Tether.GetDelta(Particles);
+			Apply(MGeodesicConstraints[i], InParticles, Dt, MDists[i]);
 		}
+		break;
+	default:
+		unimplemented();
+		break;
 	}
 }
 
-void FPBDLongRangeConstraints::Apply(FPBDParticles& Particles, const FReal /*Dt*/) const
+template<class T, int d>
+void TPBDLongRangeConstraints<T, d>::Apply(TPBDParticles<T, d>& InParticles, const T Dt) const
+{
+	SCOPE_CYCLE_COUNTER(STAT_PBD_LongRange);
+	switch (GetMode())
+	{
+	case EMode::FastTetherFastLength:
+	case EMode::AccurateTetherFastLength:
+		for (int32 i = 0; i < MEuclideanConstraints.Num(); ++i)
+		{
+			Apply(MEuclideanConstraints[i], InParticles, Dt, MDists[i]);
+		}
+		break;
+	case EMode::AccurateTetherAccurateLength:
+		for (int32 i = 0; i < MGeodesicConstraints.Num(); ++i)
+		{
+			Apply(MGeodesicConstraints[i], InParticles, Dt, MDists[i]);
+		}
+		break;
+	default:
+		unimplemented();
+		break;
+	}
+}
+
+template<>
+void TPBDLongRangeConstraints<float, 3>::Apply(TPBDParticles<float, 3>& InParticles, const float Dt) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_PBD_LongRange);
 
-	if (!Stiffness.HasWeightMap())
+	switch (GetMode())
 	{
-		const FReal ExpStiffnessValue = (FReal)Stiffness;
-#if INTEL_ISPC
-		if (bRealTypeCompatibleWithISPC && bChaos_LongRange_ISPC_Enabled)
+	case EMode::FastTetherFastLength:
+	case EMode::AccurateTetherFastLength:
+		if (bChaos_LongRange_ISPC_Enabled)
 		{
-			// Run particles in parallel, and ranges in sequence to avoid a race condition when updating the same particle from different tethers
-			TethersView.RangeFor([this, &Particles, ExpStiffnessValue](TArray<FTether>& InTethers, int32 Offset, int32 Range)
-				{
-					ispc::ApplyLongRangeConstraints(
-						(ispc::FVector*)Particles.GetP().GetData(),
-						(ispc::FTether*)(InTethers.GetData() + Offset),
-						ExpStiffnessValue,
-						Range - Offset);
-				});
+#if INTEL_ISPC
+			ispc::ApplyLongRangeConstraints(
+				(ispc::FVector*)InParticles.GetP().GetData(),
+				(ispc::FUIntVector2*)MEuclideanConstraints.GetData(),
+				MDists.GetData(),
+				MStiffness,
+				MEuclideanConstraints.Num());
+#endif
 		}
 		else
-#endif
 		{
-			// Run particles in parallel, and ranges in sequence to avoid a race condition when updating the same particle from different tethers
-			static const int32 MinParallelSize = 500;
-			TethersView.ParallelFor([this, &Particles, ExpStiffnessValue](TArray<FTether>& InTethers, int32 Index)
-				{
-					const FTether& Tether = InTethers[Index];
-					Particles.P(Tether.End) += ExpStiffnessValue * Tether.GetDelta(Particles);
-				}, MinParallelSize);
-		}
-	}
-	else
-	{
-		// TODO: ISPC implementation
-
-		// Run particles in parallel, and ranges in sequence to avoid a race condition when updating the same particle from different tethers
-		static const int32 MinParallelSize = 500;
-		TethersView.ParallelFor([this, &Particles](TArray<FTether>& InTethers, int32 Index)
+			for (int32 i = 0; i < MEuclideanConstraints.Num(); ++i)
 			{
-				const FTether& Tether = InTethers[Index];
-				Particles.P(Tether.End) += Stiffness[Tether.End - ParticleOffset] * Tether.GetDelta(Particles);
-			}, MinParallelSize);
+				Apply(MEuclideanConstraints[i], InParticles, Dt, MDists[i]);
+			}
+		}
+		break;
+
+	case EMode::AccurateTetherAccurateLength:
+		for (int32 i = 0; i < MGeodesicConstraints.Num(); ++i)
+		{
+			Apply(MGeodesicConstraints[i], InParticles, Dt, MDists[i]);
+		}
+		break;
+
+	default:
+		unimplemented();
+		break;
 	}
 }
 
+template class Chaos::TPBDLongRangeConstraints<float, 3>;

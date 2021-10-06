@@ -14,7 +14,6 @@ bool FOnlineExternalUITwitch::ShowLoginUI(const int ControllerIndex, bool bShowO
 	FString ErrorStr;
 	if (ControllerIndex >= 0 && ControllerIndex < MAX_LOCAL_PLAYERS)
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		FOnlineIdentityTwitchPtr IdentityInt = TwitchSubsystem->GetTwitchIdentityService();
 		if (IdentityInt.IsValid())
 		{
@@ -62,7 +61,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		{
 			ErrorStr = TEXT("ShowLoginUI: Missing identity interface");
 		}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 	else
 	{
@@ -84,7 +82,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	return bStarted;
 }
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 FLoginFlowResult FOnlineExternalUITwitch::ParseRedirectResult(const FTwitchLoginURL& URLDetails, const FString& RedirectURL)
 {
 	FLoginFlowResult Result;
@@ -137,13 +134,11 @@ FLoginFlowResult FOnlineExternalUITwitch::ParseRedirectResult(const FTwitchLogin
 
 	return Result;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 FLoginFlowResult FOnlineExternalUITwitch::OnLoginRedirectURL(const FString& RedirectURL)
 {
 	FLoginFlowResult Result;
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	FOnlineIdentityTwitchPtr IdentityInt = TwitchSubsystem->GetTwitchIdentityService();
 	if (IdentityInt.IsValid())
 	{  
@@ -161,7 +156,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			}
 		}
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	return Result;
 }
@@ -171,7 +165,6 @@ void FOnlineExternalUITwitch::OnLoginUIComplete(const FLoginFlowResult& Result, 
 	bool bStarted = false;
 	if (Result.IsValid())
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		FOnlineIdentityTwitchPtr IdentityInt = TwitchSubsystem->GetTwitchIdentityService();
 		if (IdentityInt.IsValid())
 		{
@@ -181,7 +174,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			CompletionDelegate = FOnLoginCompleteDelegate::CreateThreadSafeSP(this, &FOnlineExternalUITwitch::OnAccessTokenLoginComplete, Delegate);
 			IdentityInt->LoginWithAccessToken(ControllerIndex, Result.Token, CompletionDelegate);
 		}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 
 	if (!bStarted)
@@ -210,7 +202,7 @@ void FOnlineExternalUITwitch::OnConsoleShowWebUrlComplete(const FString& FinalUr
 
 void FOnlineExternalUITwitch::OnAccessTokenLoginComplete(int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& ErrorStr, FOnLoginUIClosedDelegate Delegate)
 {
-	FUniqueNetIdPtr StrongUserId = UserId.AsShared();
+	TSharedPtr<const FUniqueNetId> StrongUserId = UserId.AsShared();
 	FOnlineError Error(bWasSuccessful);
 	if (!bWasSuccessful)
 	{

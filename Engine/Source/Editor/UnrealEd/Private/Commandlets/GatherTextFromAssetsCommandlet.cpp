@@ -48,8 +48,18 @@ public:
 		FLoadPackageLogOutputRedirector* LogOutputRedirector;
 	};
 
-	FLoadPackageLogOutputRedirector() = default;
-	virtual ~FLoadPackageLogOutputRedirector() = default;
+	FLoadPackageLogOutputRedirector()
+		: ErrorCount(0)
+		, WarningCount(0)
+		, FormattedErrorsAndWarningsList()
+		, PackageContext()
+		, OriginalWarningContext(nullptr)
+	{
+	}
+
+	virtual ~FLoadPackageLogOutputRedirector()
+	{
+	}
 
 	void BeginCapturingLogData(const FString& InPackageContext)
 	{
@@ -59,6 +69,11 @@ public:
 		GWarn = this;
 
 		PackageContext = InPackageContext;
+
+		// Reset the counts and previous log output
+		ErrorCount = 0;
+		WarningCount = 0;
+		FormattedErrorsAndWarningsList.Reset();
 	}
 
 	void EndCapturingLogData()
@@ -73,19 +88,14 @@ public:
 		{
 			static const FString LogIndentation = TEXT("    ");
 
-			UE_LOG(LogGatherTextFromAssetsCommandlet, Display, TEXT("Package '%s' produced %d error(s) and %d warning(s) while loading (see below). Please verify that your text has gathered correctly."), *PackageContext, ErrorCount, WarningCount);
-			for (const FString& FormattedOutput : FormattedErrorsAndWarningsList)
+			UE_LOG(LogGatherTextFromAssetsCommandlet, Display, TEXT("Package '%s' produced %d error(s) and %d warning(s) while loading. Please verify that your text has gathered correctly."), *PackageContext, ErrorCount, WarningCount);
+
+			GWarn->Log(NAME_None, ELogVerbosity::Display, FString::Printf(TEXT("The following errors and warnings were reported while loading '%s':"), *PackageContext));
+			for (const auto& FormattedOutput : FormattedErrorsAndWarningsList)
 			{
 				GWarn->Log(NAME_None, ELogVerbosity::Display, LogIndentation + FormattedOutput);
 			}
 		}
-
-		PackageContext.Reset();
-
-		// Reset the counts and previous log output
-		ErrorCount = 0;
-		WarningCount = 0;
-		FormattedErrorsAndWarningsList.Reset();
 	}
 
 	virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) override
@@ -93,14 +103,12 @@ public:
 		if (Verbosity == ELogVerbosity::Error)
 		{
 			++ErrorCount;
-			// Downgrade Error to Log while loading packages to avoid false positives from things searching for "Error:" tokens in the log file
-			FormattedErrorsAndWarningsList.Add(FOutputDeviceHelper::FormatLogLine(ELogVerbosity::Log, Category, V));
+			FormattedErrorsAndWarningsList.Add(FOutputDeviceHelper::FormatLogLine(Verbosity, Category, V));
 		}
 		else if (Verbosity == ELogVerbosity::Warning)
 		{
 			++WarningCount;
-			// Downgrade Warning to Log while loading packages to avoid false positives from things searching for "Warning:" tokens in the log file
-			FormattedErrorsAndWarningsList.Add(FOutputDeviceHelper::FormatLogLine(ELogVerbosity::Log, Category, V));
+			FormattedErrorsAndWarningsList.Add(FOutputDeviceHelper::FormatLogLine(Verbosity, Category, V));
 		}
 		else if (Verbosity == ELogVerbosity::Display)
 		{
@@ -115,12 +123,12 @@ public:
 	}
 
 private:
-	int32 ErrorCount = 0;
-	int32 WarningCount = 0;
+	int32 ErrorCount;
+	int32 WarningCount;
 	TArray<FString> FormattedErrorsAndWarningsList;
 
 	FString PackageContext;
-	FFeedbackContext* OriginalWarningContext = nullptr;
+	FFeedbackContext* OriginalWarningContext;
 };
 
 class FAssetGatherCacheMetrics
@@ -217,7 +225,7 @@ void UGatherTextFromAssetsCommandlet::ProcessGatherableTextDataArray(const TArra
 
 				FLocItem Source(GatherableTextData.SourceData.SourceString);
 
-				GatherManifestHelper->AddSourceText(GatherableTextData.NamespaceName, Source, Context);
+				GatherManifestHelper->AddSourceText(GatherableTextData.NamespaceName, Source, Context, &TextSourceSiteContext.SiteDescription);
 			}
 		}
 	}
@@ -419,8 +427,6 @@ int32 UGatherTextFromAssetsCommandlet::Main(const FString& Params)
 	{
 		return -1;
 	}
-
-	FGatherTextDelegates::GetAdditionalGatherPaths.Broadcast(GatherManifestHelper->GetTargetName(), IncludePathFilters, ExcludePathFilters);
 
 	// Get destination path
 	FString DestinationPath;

@@ -80,8 +80,6 @@ struct CHAOSVEHICLESCORE_API FSimpleWheelConfig
 		, LateralFrictionMultiplier(1.0f)
 		, LongitudinalFrictionMultiplier(1.0f)
 		, SideSlipModifier(1.0f)
-		, SlipThreshold(20.0f)
-		, SkidThreshold(20.0f)
 	{
 
 	}
@@ -114,9 +112,6 @@ struct CHAOSVEHICLESCORE_API FSimpleWheelConfig
 	float LateralFrictionMultiplier;
 	float LongitudinalFrictionMultiplier;
 	float SideSlipModifier;
-
-	float SlipThreshold;
-	float SkidThreshold;
 
 	// #todo: simulated Damage
 	//EWheelDamageStatus DamageStatus;
@@ -257,14 +252,9 @@ public:
 		return bInContact;
 	}
 
-	bool IsSlipping() const
+	bool IsSpinning() const
 	{ 
-		return (FMath::Abs(GetSlipMagnitude()) > Setup().SlipThreshold);
-	}
-
-	bool IsSkidding() const
-	{
-		return (FMath::Abs(GetSkidMagnitude()) > Setup().SkidThreshold);
+		return false;// (FMath::Abs(Spin) > 0.1f);
 	}
 
 	float GetSteeringAngle() const
@@ -324,21 +314,6 @@ public:
 	{
 		return Omega * Re;
 	}
-
-	/** Get the difference between the wheel speed and the effective ground speed of the vehicle at the wheel
-	  * positive if wheel is faster than effective ground speed, negative if wheel is slower */
-	float GetSlipMagnitude() const
-	{
-		return GetWheelGroundSpeed() - GetRoadSpeed();
-	}
-
-	/** Get the effective ground speed along the lateral wheel axis
-      * positive if wheel is faster than effective ground speed, negative if wheel is slower */
-	float GetSkidMagnitude() const
-	{
-		return GroundVelocityVector.Y;
-	}
-
 
 	/** 
 	 * Simulate - figure out wheel lateral and longitudinal forces based on available friction at the wheel

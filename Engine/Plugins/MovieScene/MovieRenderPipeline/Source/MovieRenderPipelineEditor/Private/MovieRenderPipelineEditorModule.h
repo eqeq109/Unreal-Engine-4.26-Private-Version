@@ -3,9 +3,6 @@
 #pragma once
 
 #include "IMovieRenderPipelineEditorModule.h"
-#include "IMovieRendererInterface.h"
-#include "Delegates/IDelegateInstance.h"
-
 class UMoviePipelineShotConfig;
 class UMoviePipelineMasterConfig;
 class UMoviePipelineExecutorBase;
@@ -20,12 +17,4 @@ public:
 private:
 	void RegisterSettings();
 	void UnregisterSettings();
-
-	void RegisterMovieRenderer();
-	void UnregisterMovieRenderer();
-
-	TSharedPtr<class FAssetTypeActions_PipelineMasterConfig> MasterConfigAssetActions;
-	TSharedPtr<class FAssetTypeActions_PipelineShotConfig> ShotConfigAssetActions;
-	TSharedPtr<class FAssetTypeActions_PipelineQueue> QueueAssetActions;
-	FDelegateHandle MovieRendererDelegate;
 };

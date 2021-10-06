@@ -75,17 +75,17 @@ public:
 		UpdateInfo();
 	}
 
-	void PushInfo(const FNiagaraSystemInstance* Inst)
+	void PushInfo(FNiagaraSystemInstance* Inst)
 	{
 		PushInfo(Inst ? Inst->GetCrashReporterTag() : NullString);
 	}
 
-	void PushInfo(const FNiagaraSystemSimulation* SystemSim)
+	void PushInfo(FNiagaraSystemSimulation* SystemSim)
 	{
 		PushInfo(SystemSim ? SystemSim->GetCrashReporterTag() : NullString);
 	}
 
-	void PushInfo(const UNiagaraSystem* System)
+	void PushInfo(UNiagaraSystem* System)
 	{
 		PushInfo(System ? System->GetCrashReporterTag() : NullString);
 	}
@@ -144,7 +144,7 @@ private:
 	FString							NullString;
 };
 
-FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(const FNiagaraSystemInstance* Inst)
+FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(FNiagaraSystemInstance* Inst)
 {
 	bWasEnabled = GbEnableNiagaraCRHandler != 0;
 	if (bWasEnabled)
@@ -153,7 +153,7 @@ FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(const FNiagaraSystemInsta
 	}
 }
 
-FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(const FNiagaraSystemSimulation* Sim)
+FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(FNiagaraSystemSimulation* Sim)
 {
 	bWasEnabled = GbEnableNiagaraCRHandler != 0;
 	if (bWasEnabled)
@@ -162,7 +162,7 @@ FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(const FNiagaraSystemSimul
 	}
 }
 
-FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(const UNiagaraSystem* System)
+FNiagaraCrashReporterScope::FNiagaraCrashReporterScope(UNiagaraSystem* System)
 {
 	bWasEnabled = GbEnableNiagaraCRHandler != 0;
 	if (bWasEnabled)

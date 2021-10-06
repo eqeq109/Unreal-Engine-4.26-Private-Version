@@ -88,13 +88,13 @@ public:
 	}
 
 	/** return true if this cache is writable **/
-	virtual bool IsWritable() const override
+	virtual bool IsWritable() override
 	{
 		return InnerBackend->IsWritable();
 	}
 
 	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() const override
+	virtual ESpeedClass GetSpeedClass() override
 	{
 		return InnerBackend->GetSpeedClass();
 	}
@@ -200,17 +200,16 @@ public:
 		return InnerBackend->RemoveCachedData(CacheKey, bTransient);
 	}
 
-	virtual TSharedRef<FDerivedDataCacheStatsNode> GatherUsageStats() const override
+	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override
 	{
-		TSharedRef<FDerivedDataCacheStatsNode> Usage = MakeShared<FDerivedDataCacheStatsNode>(this, TEXT("CorruptionWrapper"));
-		Usage->Stats.Add(TEXT(""), UsageStats);
-
-		if (InnerBackend)
+		COOK_STAT(
 		{
-			Usage->Children.Add(InnerBackend->GatherUsageStats());
-		}
-
-		return Usage;
+			UsageStatsMap.Add(GraphPath + TEXT(": CorruptionWrapper"), UsageStats);
+			if (InnerBackend)
+			{
+				InnerBackend->GatherUsageStats(UsageStatsMap, GraphPath + TEXT(". 0"));
+			}
+		});
 	}
 
 	virtual bool TryToPrefetch(const TCHAR* CacheKey) override

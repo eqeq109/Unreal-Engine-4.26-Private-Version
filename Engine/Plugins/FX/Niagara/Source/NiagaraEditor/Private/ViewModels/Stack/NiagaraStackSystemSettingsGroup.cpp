@@ -30,9 +30,9 @@ public:
 		return NewParameterVariable;
 	}
 
-	virtual TArray<FString> GetCategories() const override
+	virtual FText GetCategory() const override
 	{
-		return {FNiagaraEditorUtilities::GetVariableTypeCategory(GetNewParameterVariable()).ToString()};
+		return FNiagaraEditorUtilities::GetVariableTypeCategory(GetNewParameterVariable());
 	}
 
 	virtual FText GetDisplayName() const override
@@ -142,16 +142,6 @@ void UNiagaraStackSystemSettingsGroup::RefreshChildrenInternal(const TArray<UNia
 
 void UNiagaraStackSystemSettingsGroup::ParameterAdded(FNiagaraVariable AddedParameter)
 {
-	if (AddedParameter.GetType().IsDataInterface())
-	{
-		UNiagaraDataInterface* DataInterfaceParameter = UserParameterStore->GetDataInterface(AddedParameter);
-		if (DataInterfaceParameter != nullptr)
-		{
-			TArray<UObject*> ChangedObjects;
-			ChangedObjects.Add(DataInterfaceParameter);
-			OnDataObjectModified().Broadcast(ChangedObjects, ENiagaraDataObjectChange::Added);
-		}
-	}
 	RefreshChildren();
 }
 

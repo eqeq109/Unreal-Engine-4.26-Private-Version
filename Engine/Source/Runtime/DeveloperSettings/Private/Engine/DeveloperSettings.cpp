@@ -31,6 +31,7 @@ FName UDeveloperSettings::GetContainerName() const
 	return ProjectName;
 }
 
+
 FName UDeveloperSettings::GetCategoryName() const
 {
 	static const FName GeneralName(TEXT("General"));
@@ -99,6 +100,7 @@ TSharedPtr<SWidget> UDeveloperSettings::GetCustomSettingsWidget() const
 {
 	return TSharedPtr<SWidget>();
 }
+
 
 
 #if WITH_EDITOR

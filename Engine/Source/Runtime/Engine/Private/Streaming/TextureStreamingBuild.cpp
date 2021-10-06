@@ -15,6 +15,7 @@ TextureStreamingBuild.cpp : Contains definitions to build texture streaming data
 #include "Components/StaticMeshComponent.h"
 #include "Misc/FeedbackContext.h"
 #include "Engine/Texture2D.h"
+#include "DebugViewModeMaterialProxy.h"
 #include "ShaderCompiler.h"
 #include "Engine/StaticMesh.h"
 #include "Streaming/TextureStreamingHelpers.h"
@@ -46,7 +47,7 @@ ENGINE_API bool BuildTextureStreamingComponentData(UWorld* InWorld, EMaterialQua
 
 	// Used to reset per level index for textures.
 	TArray<UTexture2D*> AllTextures;
-	for (FThreadSafeObjectIterator Iter(UTexture2D::StaticClass()); Iter && bFullRebuild; ++Iter)
+	for (FObjectIterator Iter(UTexture2D::StaticClass()); Iter && bFullRebuild; ++Iter)
 	{
 		UTexture2D* Texture2D = Cast<UTexture2D>(*Iter);
 		if (Texture2D)

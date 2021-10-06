@@ -10,7 +10,6 @@
 #include "IMediaEventSink.h"
 #include "IMediaTickable.h"
 #include "IMediaTimeSource.h"
-#include "IMediaPlayerLifecycleManager.h"
 #include "MediaPlayerOptions.h"
 #include "Math/Quat.h"
 #include "Math/Range.h"
@@ -27,7 +26,6 @@ class IMediaOptions;
 class IMediaPlayer;
 class IMediaSamples;
 class IMediaModule;
-class IMediaPlayerFactory;
 
 enum class EMediaEvent;
 enum class EMediaCacheState;
@@ -36,7 +34,6 @@ enum class EMediaTrackType;
 
 struct FMediaAudioTrackFormat;
 struct FMediaVideoTrackFormat;
-struct FMediaPlayerOptions;
 
 
 /**
@@ -553,19 +550,8 @@ public:
 	 *
 	 * @param Time The time to block on, or FTimespan::MinValue to disable.
 	 * @see TickFetch
-	 * @note Deprecated: Use SetBlockOnTimeRange instead
 	 */
 	void SetBlockOnTime(const FTimespan& Time);
-
-	/**
-	 * Set the time range on which to block.
-	 *
-	 * If set, this player will block in TickFetch until the video sample
-	 * for the specified time are actually available.
-	 *
-	 * @param TimeRange The time range to block on, use empty range to disable
-	 */
-	void SetBlockOnTimeRange(const TRange<FTimespan>& TimeRange);
 
 	/**
 	 * Set sample caching options.
@@ -718,8 +704,8 @@ protected:
 	 */
 	bool BlockOnFetch() const;
 
-	/** Flush all media sample sinks & player plugin. */
-	void Flush(bool bExcludePlayer = false);
+	/** Flush all media sample sinks. */
+	void FlushSinks();
 
 	/**
 	 * Get details about the specified audio track format.
@@ -739,7 +725,7 @@ protected:
 	 * @param Options The media options for the URL.
 	 * @return The player if found, or nullptr otherwise.
 	 */
-	IMediaPlayerFactory *GetPlayerFactoryForUrl(const FString& Url, const IMediaOptions* Options) const;
+	TSharedPtr<IMediaPlayer, ESPMode::ThreadSafe> GetPlayerForUrl(const FString& Url, const IMediaOptions* Options);
 
 	/**
 	 * Get details about the specified audio track format.
@@ -765,22 +751,21 @@ protected:
 protected:
 	bool HaveAudioPlayback() const;
 	bool HaveVideoPlayback() const;
-	float GetUnpausedRate() const;
 
 	/** Fetch audio samples from the player and forward them to the registered sinks. */
 	void ProcessAudioSamples(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
 
+	/** Fetch audio samples from the player and forward them to the registered sinks. */
+	void ProcessCaptionSamples(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
+
 	/** Fetch metadata samples from the player and forward them to the registered sinks. */
 	void ProcessMetadataSamples(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
 
-	/** Fetch audio samples from the player and forward them to the registered sinks. */
-	void ProcessCaptionSamplesV1(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
-
 	/** Fetch subtitle samples from the player and forward them to the registered sinks. */
-	void ProcessSubtitleSamplesV1(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
+	void ProcessSubtitleSamples(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
 
 	/** Fetch video samples from the player and forward them to the registered sinks. */
-	void ProcessVideoSamplesV1(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
+	void ProcessVideoSamples(IMediaSamples& Samples, TRange<FTimespan> TimeRange);
 
 protected:
 
@@ -789,27 +774,12 @@ protected:
 	void ReceiveMediaEvent(EMediaEvent Event) override;
 
 private:
-	friend class FMediaPlayerLifecycleManagerDelegateControl;
 
-	// Internal
-	bool NotifyLifetimeManagerDelegate_PlayerOpen(IMediaPlayerLifecycleManagerDelegate::IControlRef& NewLifecycleManagerDelegateControl, const FString& InUrl, const IMediaOptions* Options, const FMediaPlayerOptions* InPlayerOptions, IMediaPlayerFactory* PlayerFactory, bool bWillCreatePlayer, uint32 WillUseNewResources, uint64 NewPlayerInstanceID);
-	bool NotifyLifetimeManagerDelegate_PlayerCreated();
-	bool NotifyLifetimeManagerDelegate_PlayerCreateFailed();
-	bool NotifyLifetimeManagerDelegate_PlayerClosed();
-	bool NotifyLifetimeManagerDelegate_PlayerDestroyed();
-	bool NotifyLifetimeManagerDelegate_PlayerResourcesReleased(uint32 ResourceFlags);
-
-	bool ProcessVideoSamples(IMediaSamples& Samples, const TRange<FMediaTimeStamp>& TimeRange);
+	void ProcessVideoSamples(IMediaSamples& Samples, const TRange<FMediaTimeStamp> & TimeRange);
 	void ProcessCaptionSamples(IMediaSamples& Samples, TRange<FMediaTimeStamp> TimeRange);
 	void ProcessSubtitleSamples(IMediaSamples& Samples, TRange<FMediaTimeStamp> TimeRange);
 
-	void PreSampleProcessingTimeHandling();
-	bool GetCurrentPlaybackTimeRange(TRange<FMediaTimeStamp>& TimeRange, float Rate, FTimespan DeltaTime, bool bDoNotUseFrameStartReference) const;
-	void PostSampleProcessingTimeHandling(FTimespan DeltaTime);
-
-	void DestroyPlayer();
-
-	bool ContinueOpen(IMediaPlayerLifecycleManagerDelegate::IControlRef NewLifecycleManagerDelegateControl, const FString& Url, const IMediaOptions* Options, const FMediaPlayerOptions* PlayerOptions, IMediaPlayerFactory* PlayerFactory, bool bCreateNewPlayer, uint64 NewPlayerInstanceID);
+	bool GetCurrentPlaybackTimeRange(TRange<FMediaTimeStamp> & TimeRange, float Rate, FTimespan DeltaTime, bool bDoNotUseFrameStartReference) const;
 
 	/** Audio sample sinks. */
 	TWeakPtr<FMediaAudioSampleSink, ESPMode::ThreadSafe> PrimaryAudioSink;
@@ -829,52 +799,8 @@ private:
 
 private:
 
-	class FBlockOnRange
-	{
-	public:
-		FBlockOnRange(FMediaPlayerFacade* InFacade) : Facade(InFacade) { Reset(); }
-
-		void SetRange(const TRange<FTimespan> & NewRange);
-
-		const TRange<FMediaTimeStamp> & GetRange() const;
-		bool IsSet() const;
-
-		void Flush();
-
-		void Reset()
-		{
-			BlockOnRange = TRange<FMediaTimeStamp>::Empty();
-			CurrentTimeRange = TRange<FTimespan>::Empty();
-			LastBlockOnRange = TRange<FTimespan>::Empty();
-			RangeIsDirty = false;
-			OnBlockSeqIndex = 0;
-		}
-
-	private:
-		/** The hosting player facade */
-		FMediaPlayerFacade* Facade;
-
-		/** The last user set time range to block on */
-		TRange<FTimespan> CurrentTimeRange;
-
-		/** The time range to block on sample fetching. */
-		mutable TRange<FMediaTimeStamp> BlockOnRange;
-
-		/** Last user provided BlockOnRange value */
-		mutable TRange<FTimespan> LastBlockOnRange;
-
-		/** Flag to indicate if internal range is valid or not */
-		mutable bool RangeIsDirty;
-
-		/** Sequence index used during blocked playback processing */
-		mutable int64 OnBlockSeqIndex;
-	};
-
-	FBlockOnRange BlockOnRange;
-
-
-	/** Flag to indicate block on range feature as disabled for the current playback session due to previous timeout */
-	bool BlockOnRangeDisabled;
+	/** The time to block on sample fetching. */
+	FTimespan BlockOnTime;
 
 	/** Media sample cache. */
 	FMediaSampleCache* Cache;
@@ -887,9 +813,6 @@ private:
 
 	/** The last used non-zero play rate (zero if playback never started). */
 	float LastRate;
-
-	/** The last rate set with the facade (unfiltered by player). */
-	float CurrentRate;
 
 	/** Flag indicating that we have an active audio setup */
 	bool bHaveActiveAudio;
@@ -907,12 +830,6 @@ private:
 	/** The low-level player used to play the media source. */
 	TSharedPtr<IMediaPlayer, ESPMode::ThreadSafe> Player;
 
-	/** Low level player instance ID */
-	uint64 PlayerInstanceID = ~0;
-
-	/** Low level player will use callback to notify of resource release */
-	bool PlayerUsesResourceReleaseNotification = false;
-
 	/** Media player Guid */
 	FGuid PlayerGuid;
 
@@ -928,19 +845,16 @@ private:
 	/** Time of last audio sample decoded. */
 	FMediaTimeStampSample LastAudioSampleProcessedTime;
 
-	/** Time/Range of last video sample decoded. */
-	TRange<FMediaTimeStamp> LastVideoSampleProcessedTimeRange;
+	/** Time of last video sample decoded. */
+	FMediaTimeStampSample LastVideoSampleProcessedTime;
 
 	/** Timestamp for audio considered "current" for this frame (use ONLY for return to outside code) */
 	FMediaTimeStamp CurrentFrameAudioTimeStamp;
 
-	/** Timestamp for video considered "current" for this frame (stays valid even after a flush, until new data comes in) */
-	FMediaTimeStamp CurrentFrameVideoTimeStamp;
-
 	/** Estimation for next frame's video timestamp (used when no audio present or active in stream) */
 	FMediaTimeStampSample NextEstVideoTimeAtFrameStart;
 
-	/** Set if sinks are to be flushed at the request of the player. */
+	/** Set if sinks are to be flushed at the request of the player. **/
 	TAtomic<bool>	bIsSinkFlushPending;
 
 	/** Latch for error state of the most recently used player to be queried after it may have been closed. **/
@@ -948,7 +862,4 @@ private:
 
 	/** Mediamodule we are working in */
 	IMediaModule* MediaModule;
-
-	/** Control interface for lifecycle manager delegate */
-	IMediaPlayerLifecycleManagerDelegate::IControlRef LifecycleManagerDelegateControl;
 };

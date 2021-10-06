@@ -51,10 +51,10 @@ struct FGerstnerWaveOctave
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Octave)
-	int32 NumWaves = 16;
+	int32 NumWaves;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Octave)
-	float AmplitudeScale = 1.0f;
+	float AmplitudeScale;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Octave | Direction")
 	float MainDirection = 0.0f;

@@ -238,7 +238,6 @@ FConcertSyncServer::~FConcertSyncServer()
 
 void FConcertSyncServer::Startup(const UConcertServerConfig* InServerConfig, const EConcertSyncSessionFlags InSessionFlags)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_Startup);
 	SessionFlags = InSessionFlags;
 
 	// Boot the server instance
@@ -314,7 +313,6 @@ void FConcertSyncServer::OnArchivedSessionDestroyed(const IConcertServer& InServ
 
 bool FConcertSyncServer::ArchiveSession(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InLiveSession, const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo, const FConcertSessionFilter& InSessionFilter)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_ArchiveSession);
 	return CopySession(InServer, InLiveSession, InArchivedSessionRoot, InSessionFilter);
 }
 
@@ -332,7 +330,6 @@ bool FConcertSyncServer::ArchiveSession(const IConcertServer& InServer, const FS
 
 bool FConcertSyncServer::CopySession(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InLiveSession, const FString& NewSessionRoot, const FConcertSessionFilter& InSessionFilter)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_CopySession);
 	if (TSharedPtr<FConcertSyncServerLiveSession> LiveSession = LiveSessions.FindRef(InLiveSession->GetId()))
 	{
 		return ConcertSyncServerUtils::MigrateSessionData(LiveSession->GetSessionDatabase(), NewSessionRoot, InSessionFilter);
@@ -342,7 +339,6 @@ bool FConcertSyncServer::CopySession(const IConcertServer& InServer, TSharedRef<
 
 bool FConcertSyncServer::ExportSession(const IConcertServer& InServer, const FGuid& InSessionId, const FString& DestDir, const FConcertSessionFilter& InSessionFilter, bool bAnonymizeData)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_ExportSession);
 	if (TSharedPtr<FConcertSyncServerLiveSession> LiveSession = LiveSessions.FindRef(InSessionId)) // If the session is live.
 	{
 		ConcertSyncServerUtils::WriteSessionInfoToDirectory(DestDir, LiveSession->GetSession().GetSessionInfo());
@@ -359,8 +355,6 @@ bool FConcertSyncServer::ExportSession(const IConcertServer& InServer, const FGu
 
 bool FConcertSyncServer::RestoreSession(const IConcertServer& InServer, const FGuid& InArchivedSessionId, const FString& InLiveSessionRoot, const FConcertSessionInfo& InLiveSessionInfo, const FConcertSessionFilter& InSessionFilter)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_RestoreSession);
-
 	if (TSharedPtr<FConcertSyncServerArchivedSession> ArchivedSession = ArchivedSessions.FindRef(InArchivedSessionId))
 	{
 		return ConcertSyncServerUtils::MigrateSessionData(ArchivedSession->GetSessionDatabase(), InLiveSessionRoot, InSessionFilter);
@@ -370,7 +364,6 @@ bool FConcertSyncServer::RestoreSession(const IConcertServer& InServer, const FG
 
 bool FConcertSyncServer::GetSessionActivities(const IConcertServer& InServer, const FGuid& SessionId, int64 FromActivityId, int64 ActivityCount, TArray<FConcertSessionSerializedPayload>& Activities, TMap<FGuid, FConcertClientInfo>& OutEndpointClientInfoMap, bool bIncludeDetails)
 {
-	SCOPED_CONCERT_TRACE(ConcertServer_GetSessionActivities);
 	if (TSharedPtr<FConcertSyncServerLiveSession> LiveSession = LiveSessions.FindRef(SessionId))
 	{
 		return GetSessionActivities(LiveSession->GetSessionDatabase(), FromActivityId, ActivityCount, Activities, OutEndpointClientInfoMap, bIncludeDetails);

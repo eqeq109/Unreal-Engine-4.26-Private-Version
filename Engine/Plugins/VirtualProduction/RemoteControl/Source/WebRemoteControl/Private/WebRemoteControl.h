@@ -5,10 +5,11 @@
 #include "Containers/ContainersFwd.h"
 #include "IWebRemoteControlModule.h"
 #include "IRemoteControlModule.h"
-#include "HAL/IConsoleManager.h"
 #include "HttpRouteHandle.h"
 #include "HttpServerResponse.h"
 #include "HttpServerRequest.h"
+#include "Misc/Guid.h"
+#include "HAL/IConsoleManager.h"
 #include "RemoteControlRequest.h"
 #include "RemoteControlRoute.h"
 #include "RemoteControlWebSocketServer.h"
@@ -39,12 +40,10 @@ public:
 	//~ Begin IWebRemoteControlModule Interface
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
-	virtual FDelegateHandle RegisterRequestPreprocessor(FHttpRequestHandler RequestPreprocessor) override;
-	virtual void UnregisterRequestPreprocessor(const FDelegateHandle& RequestPreprocessorHandle) override;
-	virtual FOnWebServerStarted& OnHttpServerStarted() override { return OnHttpServerStartedDelegate; }
-	virtual FSimpleMulticastDelegate& OnHttpServerStopped() override { return OnHttpServerStoppedDelegate; }
-	virtual FOnWebServerStarted& OnWebSocketServerStarted() override { return OnWebSocketServerStartedDelegate; }
-	virtual FSimpleMulticastDelegate& OnWebSocketServerStopped() override { return OnWebSocketServerStoppedDelegate; }
+	FOnWebServerStarted& OnHttpServerStarted() override { return OnHttpServerStartedDelegate; }
+	FSimpleMulticastDelegate& OnHttpServerStopped() override { return OnHttpServerStoppedDelegate; }
+	FOnWebServerStarted& OnWebSocketServerStarted() override { return OnWebSocketServerStartedDelegate; }
+	FSimpleMulticastDelegate& OnWebSocketServerStopped() override { return OnWebSocketServerStoppedDelegate; }
 	//~ End IWebRemoteControlModule Interface
 
 	/**
@@ -113,9 +112,6 @@ private:
 	bool HandlePresetCallFunctionRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandlePresetSetPropertyRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandlePresetGetPropertyRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
-	bool HandlePresetGetExposedActorPropertyRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
-	bool HandlePresetGetExposedActorPropertiesRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
-	bool HandlePresetSetExposedActorPropertyRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandleGetPresetRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandleGetPresetsRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandleDescribeObjectRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
@@ -124,8 +120,6 @@ private:
 	bool HandleGetMetadataRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandleMetadataFieldOperationsRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 	bool HandleSearchObjectRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
-	bool HandleEntityMetadataOperationsRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
-	bool HandleEntitySetLabelRoute(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete);
 
 	//~ Websocket route handlers
 	void HandleWebSocketHttpMessage(const struct FRemoteControlWebSocketMessage& WebSocketMessage);
@@ -136,10 +130,10 @@ private:
 	//~ Settings
 	void RegisterSettings();
 	void UnregisterSettings();
-	void OnSettingsModified(UObject* Settings, FPropertyChangedEvent& PropertyChangedEvent);
+	bool OnSettingsModified();
 #endif
 
-private:
+
 	/** Console commands handles. */
 	TArray<TUniquePtr<FAutoConsoleCommand>> ConsoleCommands;
 
@@ -175,14 +169,6 @@ private:
 
 	/** Holds the client currently making a request. */
 	FGuid ActingClientId;
-
-	/** List of preprocessor delegates that need to be registered when the server is started. */
-	TMap<FDelegateHandle, FHttpRequestHandler> PreprocessorsToRegister;
-
-	/**
-	 * Mappings of preprocessors delegate handles generated from the WebRC module to the ones generated from the Http Module.
-	 */
-	TMap<FDelegateHandle, FDelegateHandle> PreprocessorsHandleMappings;
 
 	//~ Server started stopped delegates.
 	FOnWebServerStarted OnHttpServerStartedDelegate;

@@ -93,14 +93,8 @@ public:
 	 */
 	void SetCheckpointSaveMaxMSPerFrame(const float InCheckpointSaveMaxMSPerFrame);
 
-	/**
-	 * Whether to reload the default map when StopReplay is called.
-	 */
-	UPROPERTY(EditAnywhere, Category=Replay)
-	bool bLoadDefaultMapOnStop = true;
-
 private:
-	void StopExistingReplays(UWorld* InWorld);
+	void StopExistingReplays();
 
 	void OnSeamlessTravelStart(UWorld* CurrentWorld, const FString& LevelName);
 	void OnSeamlessLevelTransition(UWorld* CurrentWorld);

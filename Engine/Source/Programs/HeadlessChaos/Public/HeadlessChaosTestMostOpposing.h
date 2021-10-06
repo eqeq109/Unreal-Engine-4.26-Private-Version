@@ -7,9 +7,12 @@
 
 namespace ChaosTest {
 
+	template<typename T>
 	void ConvexMostOpposing();
 
+	template<typename T>
 	void TrimeshMostOpposing();
 
+	template <typename T>
 	void ScaledMostOpposing();
 }

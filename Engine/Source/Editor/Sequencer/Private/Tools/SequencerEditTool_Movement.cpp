@@ -23,7 +23,6 @@ const FName FSequencerEditTool_Movement::Identifier = "Movement";
 
 FSequencerEditTool_Movement::FSequencerEditTool_Movement(FSequencer& InSequencer)
 	: FSequencerEditTool(InSequencer)
-	, CursorDecorator(nullptr)
 { }
 
 
@@ -56,13 +55,8 @@ FReply FSequencerEditTool_Movement::OnMouseButtonDown(SWidget& OwnerWidget, cons
 			}
 		}
 
-		UpdateCursorDecorator(MyGeometry, MouseEvent);
-
 		return FReply::Handled().PreventThrottling();
 	}
-
-	UpdateCursorDecorator(MyGeometry, MouseEvent);
-
 	return FReply::Unhandled();
 }
 
@@ -111,13 +105,8 @@ FReply FSequencerEditTool_Movement::OnMouseMove(SWidget& OwnerWidget, const FGeo
 			}
 		}
 
-		UpdateCursorDecorator(MyGeometry, MouseEvent);
-
 		return Reply;
 	}
-
-	UpdateCursorDecorator(MyGeometry, MouseEvent);
-
 	return FReply::Unhandled();
 }
 
@@ -357,13 +346,9 @@ FReply FSequencerEditTool_Movement::OnMouseButtonUp(SWidget& OwnerWidget, const 
 				);
 			}
 
-			UpdateCursorDecorator(MyGeometry, MouseEvent);
-	
 			return FReply::Handled().SetUserFocus(MenuContent.ToSharedRef(), EFocusCause::SetDirectly).ReleaseMouseCapture();
 		}
 	}
-
-	UpdateCursorDecorator(MyGeometry, MouseEvent);
 
 	return FReply::Handled();
 }
@@ -373,22 +358,11 @@ void FSequencerEditTool_Movement::OnMouseCaptureLost()
 {
 	DelayedDrag.Reset();
 	DragOperation = nullptr;
-	CursorDecorator = nullptr;
 }
 
 
 int32 FSequencerEditTool_Movement::OnPaint(const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId) const
 {
-	if (CursorDecorator)
-	{
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			++LayerId,
-			AllottedGeometry.ToPaintGeometry(DragPosition + FVector2D(5, -25), CursorDecorator->ImageSize),
-			CursorDecorator
-			);
-	}
-
 	if (DelayedDrag.IsSet() && DelayedDrag->IsDragging())
 	{
 		const TSharedPtr<ISequencerHotspot>& Hotspot = DelayedDrag->Hotspot;
@@ -499,19 +473,6 @@ int32 FSequencerEditTool_Movement::OnPaint(const FGeometry& AllottedGeometry, co
 	return LayerId;
 }
 
-void FSequencerEditTool_Movement::UpdateCursorDecorator(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent)
-{
-	DragPosition = MyGeometry.AbsoluteToLocal(CursorEvent.GetScreenSpacePosition());
-	
-	TSharedPtr<ISequencerHotspot> Hotspot = DelayedDrag.IsSet()
-		? DelayedDrag->Hotspot
-		: Sequencer.GetHotspot();
-
-	if (Hotspot.IsValid())
-	{
-		CursorDecorator = Hotspot->GetCursorDecorator(MyGeometry, CursorEvent);
-	}
-}
 
 FCursorReply FSequencerEditTool_Movement::OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const
 {

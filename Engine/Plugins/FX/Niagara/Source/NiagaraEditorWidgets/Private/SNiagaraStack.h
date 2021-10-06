@@ -71,9 +71,7 @@ private:
 
 	void OnNameColumnWidthChanged(float Width);
 	void OnContentColumnWidthChanged(float Width);
-
-	void OnStackExpansionChanged();
-	void StackStructureChanged(ENiagaraStructureChangedFlags Info);
+	void StackStructureChanged();
 
 	EVisibility GetVisibilityForItem(UNiagaraStackEntry* Item) const;
 
@@ -134,6 +132,4 @@ private:
 	TSharedPtr<SSearchBox> SearchBox;
 
 	TSharedPtr<FNiagaraStackCommandContext> StackCommandContext;
-
-	bool bSynchronizeExpansionPending;
 };

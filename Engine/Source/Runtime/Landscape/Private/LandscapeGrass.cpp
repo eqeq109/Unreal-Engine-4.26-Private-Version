@@ -1095,9 +1095,14 @@ int32 UMaterialExpressionLandscapeGrassOutput::Compile(class FMaterialCompiler* 
 {
 	if (GrassTypes.IsValidIndex(OutputIndex))
 	{
-		// Default input to 0 if not connected.
-		int32 CodeInput = GrassTypes[OutputIndex].Input.IsConnected() ? GrassTypes[OutputIndex].Input.Compile(Compiler) : Compiler->Constant(0.f);
-		return Compiler->CustomOutput(this, OutputIndex, CodeInput);
+		if (GrassTypes[OutputIndex].Input.Expression)
+		{
+			return Compiler->CustomOutput(this, OutputIndex, GrassTypes[OutputIndex].Input.Compile(Compiler));
+		}
+		else
+		{
+			return CompilerError(Compiler, TEXT("Input missing"));
+		}
 	}
 
 	return INDEX_NONE;
@@ -2793,7 +2798,6 @@ void ALandscapeProxy::UpdateGrass(const TArray<FVector>& Cameras, int32& InOutNu
 
 											for (auto& LOD : HierarchicalInstancedStaticMeshComponent->LODData)
 											{
-												// This trasient OverrideMapBuildData will be cleaned up by UMapBuildDataRegistry::CleanupTransientOverrideMapBuildData() if the underlying MeshMapBuildData is gone
 												LOD.OverrideMapBuildData = MakeUnique<FMeshMapBuildData>();
 												LOD.OverrideMapBuildData->LightMap = GrassLightMap;
 												LOD.OverrideMapBuildData->ShadowMap = GrassShadowMap;

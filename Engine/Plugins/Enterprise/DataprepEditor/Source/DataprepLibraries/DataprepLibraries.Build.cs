@@ -28,14 +28,6 @@ namespace UnrealBuildTool.Rules
 					"StaticMeshDescription",
 					"ToolMenus",
 					"UnrealEd",
-					"PhysicsCore",
-				}
-			);
-
-			PrivateIncludePaths.AddRange(
-				new string[] 
-				{
-					"DataprepCore/Private/Shared",
 				}
 			);
 		}

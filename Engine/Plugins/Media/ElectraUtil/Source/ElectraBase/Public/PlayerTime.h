@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/Timespan.h"
 #include <limits>
 
 namespace Electra
@@ -34,21 +33,6 @@ public:
 		return kPosInf;
 	}
 
-	static int64 MillisecondsToHNS(int64 InMilliseconds)
-	{
-		return InMilliseconds * 10000;
-	}
-
-	static int64 MicrosecondsToHNS(int64 InMicroseconds)
-	{
-		return InMicroseconds * 10;
-	}
-
-	static int64 NinetykHzToHNS(int64 In90kHz)
-	{
-		return In90kHz * 1000 / 9;
-	}
-
 	FTimeValue()
 		: HNS(0)
 		, bIsValid(false)
@@ -71,18 +55,6 @@ public:
 		return *this;
 	}
 
-	explicit FTimeValue(int64 InHNS) : HNS(InHNS), bIsValid(true), bIsInfinity(false)
-	{
-	}
-	explicit FTimeValue(double Seconds)
-	{
-		SetFromSeconds(Seconds);
-	}
-	explicit FTimeValue(int64 Numerator, uint32 Denominator)
-	{
-		SetFromND(Numerator, Denominator);
-	}
-
 	bool IsValid() const
 	{
 		return bIsValid;
@@ -92,17 +64,6 @@ public:
 	{
 		return bIsInfinity;
 	}
-
-	bool IsPositiveInfinity() const
-	{
-		return bIsInfinity && HNS >= 0;
-	}
-
-	bool IsNegativeInfinity() const
-	{
-		return bIsInfinity && HNS < 0;
-	}
-
 
 	double GetAsSeconds(double DefaultIfInvalid=0.0) const
 	{
@@ -131,19 +92,6 @@ public:
 
 	//! Returns this time value in a custom timebase. Requires internal bigint conversion and is therefor SLOW!
 	int64 GetAsTimebase(uint32 CustomTimebase) const;
-
-	FTimespan GetAsTimespan() const
-	{
-		if (!bIsValid)
-		{
-			return FTimespan::MinValue();
-		}
-		if (IsInfinity())
-		{
-			return HNS >= 0 ? FTimespan::MaxValue() : FTimespan::MinValue();
-		}
-		return FTimespan(HNS);
-	}
 
 	FTimeValue& SetToInvalid()
 	{
@@ -238,9 +186,50 @@ public:
 		return *this;
 	}
 
-	FTimeValue& SetFromND(int64 Numerator, uint32 Denominator);
+	FTimeValue& SetFromND(int64 Numerator, uint32 Denominator)
+	{
+		if (Denominator != 0)
+		{
+			if (Denominator == 10000000)
+			{
+				HNS 		= Numerator;
+				bIsValid	= true;
+				bIsInfinity = false;
+			}
+			else if (Numerator >= -922337203685LL && Numerator <= 922337203685LL)
+			{
+				HNS 		= Numerator * 10000000 / Denominator;
+				bIsValid	= true;
+				bIsInfinity = false;
+			}
+			else
+			{
+				// Need a bigint here!
+				check(!"TODO");
+				HNS 		= (int64)(Numerator * (10000000.0 / (double)Denominator));
+				bIsValid	= true;
+				bIsInfinity = false;
+			}
+		}
+		else
+		{
+			HNS 		= Numerator>=0 ? 0x7fffffffffffffffLL : -0x7fffffffffffffffLL;
+			bIsValid	= true;
+			bIsInfinity = true;
+		}
+		return *this;
+	}
+
 
 	FTimeValue& SetFromTimeFraction(const FTimeFraction& TimeFraction);
+
+
+	FTimeValue& AdvanceBySeconds(double Seconds)
+	{
+		FTimeValue tv;
+		tv.SetFromSeconds(Seconds);
+		return operator += (tv);
+	}
 
 
 	bool operator == (const FTimeValue& rhs) const
@@ -296,7 +285,7 @@ public:
 				}
 				else
 				{
-					SetToPositiveInfinity();
+					SetToInvalid();
 				}
 			}
 			else
@@ -319,7 +308,7 @@ public:
 				}
 				else
 				{
-					SetToPositiveInfinity();
+					SetToInvalid();
 				}
 			}
 			else
@@ -366,10 +355,6 @@ public:
 				Result.HNS = HNS + rhs.HNS;
 				Result.bIsValid = true;
 			}
-			else
-			{
-				Result.SetToPositiveInfinity();
-			}
 		}
 		return Result;
 	}
@@ -384,10 +369,6 @@ public:
 				Result.HNS = HNS - rhs.HNS;
 				Result.bIsValid = true;
 			}
-			else
-			{
-				Result.SetToPositiveInfinity();
-			}
 		}
 		return Result;
 	}
@@ -395,16 +376,9 @@ public:
 	inline FTimeValue operator << (int32 Shift) const
 	{
 		FTimeValue Result(*this);
-		if (bIsValid)
+		if (bIsValid && !bIsInfinity)
 		{
-			if (!bIsInfinity)
-			{
-				Result.HNS <<= Shift;
-			}
-			else
-			{
-				Result.SetToPositiveInfinity();
-			}
+			Result.HNS <<= Shift;
 		}
 		return Result;
 	}
@@ -412,16 +386,9 @@ public:
 	inline FTimeValue operator >> (int32 Shift) const
 	{
 		FTimeValue Result(*this);
-		if (bIsValid)
+		if (bIsValid && !bIsInfinity)
 		{
-			if (!bIsInfinity)
-			{
-				Result.HNS >>= Shift;
-			}
-			else
-			{
-				Result.SetToPositiveInfinity();
-			}
+			Result.HNS >>= Shift;
 		}
 		return Result;
 	}
@@ -429,16 +396,9 @@ public:
 	inline FTimeValue operator * (int32 Scale) const
 	{
 		FTimeValue Result(*this);
-		if (bIsValid)
+		if (bIsValid && !bIsInfinity)
 		{
-			if (!bIsInfinity)
-			{
-				Result.HNS *= Scale;
-			}
-			else
-			{
-				Result.SetToPositiveInfinity();
-			}
+			Result.HNS *= Scale;
 		}
 		return Result;
 	}
@@ -446,11 +406,21 @@ public:
 	inline FTimeValue operator / (int32 Scale) const
 	{
 		FTimeValue Result(*this);
-		Result.HNS /= Scale;
-		return Result;
+		if (bIsValid && !bIsInfinity)
+		{
+			Result.HNS /= Scale;
+		}
+		return(Result);
 	}
 
 private:
+	explicit FTimeValue(int64 InHNS) : HNS(InHNS), bIsValid(true), bIsInfinity(false)
+	{
+	}
+	explicit FTimeValue(double Seconds)
+	{
+		SetFromSeconds(Seconds);
+	}
 
 	int64	HNS;
 	bool	bIsValid;
@@ -506,12 +476,6 @@ public:
 	{
 	}
 
-	FTimeFraction(const FTimeValue& tv)
-	{
-		SetFromTimeValue(tv);
-	}
-
-
 	FTimeFraction& operator=(const FTimeFraction& rhs)
 	{
 		Numerator   = rhs.Numerator;
@@ -556,35 +520,7 @@ public:
 		return *this;
 	}
 
-	FTimeFraction& SetFromTimeValue(const FTimeValue& tv)
-	{
-		if (tv.IsValid())
-		{
-			Numerator = tv.GetAsHNS();
-			Denominator = tv.IsInfinity() ? 0 : 10000000;
-			bIsValid = true;
-		}
-		else
-		{
-			Numerator = 0;
-			Denominator = 0;
-			bIsValid = false;
-		}
-		return *this;
-	}
-
 	FTimeFraction& SetFromFloatString(const FString& In);
-
-
-	bool operator == (const FTimeFraction& rhs) const
-	{
-		return bIsValid == rhs.bIsValid && Numerator == rhs.Numerator && Denominator == rhs.Denominator;
-	}
-
-	bool operator != (const FTimeFraction& rhs) const
-	{
-		return !(*this == rhs);
-	}
 
 private:
 	int64	Numerator;
@@ -605,7 +541,7 @@ class MEDIAutcTime
 public:
 	static Electra::FTimeValue Current()
 	{
-		return Electra::FTimeValue(Electra::FTimeValue::MillisecondsToHNS(CurrentMSec()));
+		return Electra::FTimeValue().SetFromMilliseconds(CurrentMSec());
 	}
 	static int64 CurrentMSec();
 };

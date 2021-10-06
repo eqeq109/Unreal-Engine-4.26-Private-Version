@@ -16,10 +16,6 @@ FBoneContainer::FBoneContainer()
 , AssetSkeletalMesh(nullptr)
 , AssetSkeleton(nullptr)
 , RefSkeleton(nullptr)
-, UIDToArrayIndexLUTValidCount(0)
-#if DO_CHECK
-, CalculatedForLOD(INDEX_NONE)
-#endif
 , bDisableRetargeting(false)
 , bUseRAWData(false)
 , bUseSourceData(false)
@@ -36,10 +32,6 @@ FBoneContainer::FBoneContainer(const TArray<FBoneIndexType>& InRequiredBoneIndex
 , AssetSkeletalMesh(nullptr)
 , AssetSkeleton(nullptr)
 , RefSkeleton(nullptr)
-, UIDToArrayIndexLUTValidCount(0)
-#if DO_CHECK
-, CalculatedForLOD(INDEX_NONE)
-#endif
 , bDisableRetargeting(false)
 , bUseRAWData(false)
 , bUseSourceData(false)
@@ -67,14 +59,10 @@ void FBoneContainer::Initialize(const FCurveEvaluationOption& CurveEvalOption)
 	USkeletalMesh* AssetSkeletalMeshObj = Cast<USkeletalMesh>(AssetObj);
 	USkeleton* AssetSkeletonObj = nullptr;
 
-#if DO_CHECK
-	CalculatedForLOD = CurveEvalOption.LODIndex;
-#endif
-	
 	if (AssetSkeletalMeshObj)
 	{
-		RefSkeleton = &AssetSkeletalMeshObj->GetRefSkeleton();
-		AssetSkeletonObj = AssetSkeletalMeshObj->GetSkeleton();
+		RefSkeleton = &AssetSkeletalMeshObj->RefSkeleton;
+		AssetSkeletonObj = AssetSkeletalMeshObj->Skeleton;
 	}
 	else
 	{
@@ -210,7 +198,6 @@ void FBoneContainer::CacheRequiredAnimCurveUids(const FCurveEvaluationOption& Cu
 		if (Mapping != nullptr)
 		{
 			UIDToArrayIndexLUT.Reset();
-			UIDToArrayIndexLUTValidCount = 0;
 			
 			const SmartName::UID_Type MaxUID = Mapping->GetMaxUID();
 
@@ -296,33 +283,25 @@ void FBoneContainer::CacheRequiredAnimCurveUids(const FCurveEvaluationOption& Cu
 						UIDToArrayIndexLUT[CurveNameIndex] = NumAvailableUIDs++;
 					}
 				}
-				UIDToArrayIndexLUTValidCount = NumAvailableUIDs;
 			}
 		}
 	}
 	else
 	{
 		UIDToArrayIndexLUT.Reset();
-		UIDToArrayIndexLUTValidCount = 0;
 	}
 }
 
 const FRetargetSourceCachedData& FBoneContainer::GetRetargetSourceCachedData(const FName& InRetargetSourceName) const
 {
-	const TArray<FTransform>& RetargetTransforms = AssetSkeleton->GetRefLocalPoses(InRetargetSourceName);
-	return GetRetargetSourceCachedData(InRetargetSourceName, RetargetTransforms);
-}
-
-const FRetargetSourceCachedData& FBoneContainer::GetRetargetSourceCachedData(const FName& InSourceName, const TArray<FTransform>& InRetargetTransforms) const
-{
-	FRetargetSourceCachedData* RetargetSourceCachedData = RetargetSourceCachedDataLUT.Find(InSourceName);
+	FRetargetSourceCachedData* RetargetSourceCachedData = RetargetSourceCachedDataLUT.Find(InRetargetSourceName);
 	if (!RetargetSourceCachedData)
 	{
-		RetargetSourceCachedData = &RetargetSourceCachedDataLUT.Add(InSourceName);
+		RetargetSourceCachedData = &RetargetSourceCachedDataLUT.Add(InRetargetSourceName);
 
 		// Build Cached Data for OrientAndScale retargeting.
 
-		const TArray<FTransform>& AuthoredOnRefSkeleton = InRetargetTransforms;
+		const TArray<FTransform>& AuthoredOnRefSkeleton = AssetSkeleton->GetRefLocalPoses(InRetargetSourceName);
 		const TArray<FTransform>& PlayingOnRefSkeleton = GetRefPoseCompactArray();
 		const int32 CompactPoseNumBones = GetCompactPoseNumBones();
 

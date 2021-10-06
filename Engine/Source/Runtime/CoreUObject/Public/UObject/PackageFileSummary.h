@@ -149,7 +149,6 @@ public:
 	/**
 	* Current id for this package
 	*/
-	UE_DEPRECATED(4.27, "UPackage::Guid has not been used by the engine for a long time and FPackageFileSummary::Guid will be removed.")
 	FGuid	Guid;
 
 #if WITH_EDITORONLY_DATA
@@ -217,14 +216,6 @@ public:
 
 	/** Constructor */
 	COREUOBJECT_API FPackageFileSummary();
-
-	// Workaround for clang deprecation warnings for deprecated Guid member in implicit constructors
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	FPackageFileSummary(FPackageFileSummary&&) = default;
-	FPackageFileSummary(const FPackageFileSummary&) = default;
-	FPackageFileSummary& operator=(FPackageFileSummary&&) = default;
-	FPackageFileSummary& operator=(const FPackageFileSummary&) = default;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	int32 GetFileVersionUE4() const
 	{

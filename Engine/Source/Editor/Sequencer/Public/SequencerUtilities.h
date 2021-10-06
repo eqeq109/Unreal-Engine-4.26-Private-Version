@@ -11,7 +11,6 @@ class UMovieSceneTrack;
 class UMovieSceneSection;
 class ISequencer;
 class FMenuBuilder;
-class ULevelSequence;
 
 struct SEQUENCER_API FSequencerUtilities
 {
@@ -22,8 +21,6 @@ struct SEQUENCER_API FSequencerUtilities
 	static void PopulateMenu_SetBlendType(FMenuBuilder& MenuBuilder, UMovieSceneSection* Section, TWeakPtr<ISequencer> InSequencer);
 
 	static void PopulateMenu_SetBlendType(FMenuBuilder& MenuBuilder, const TArray<TWeakObjectPtr<UMovieSceneSection>>& InSections, TWeakPtr<ISequencer> InSequencer);
-
-	static TArray<FString> GetAssociatedMapPackages(const ULevelSequence* InSequence);
 
 	/** 
 	 * Generates a unique FName from a candidate name given a set of already existing names.  

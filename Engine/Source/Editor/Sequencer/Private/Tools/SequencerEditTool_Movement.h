@@ -47,7 +47,6 @@ private:
 
 	bool GetHotspotTime(FFrameTime& HotspotTime) const;
 	FFrameTime GetHotspotOffsetTime(FFrameTime CurrentTime) const;
-	void UpdateCursorDecorator(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
 
 	struct FDelayedDrag_Hotspot : FDelayedDrag
 	{
@@ -72,7 +71,4 @@ private:
 
 	/** The hotspot's time before dragging started. */
 	FFrameTime OriginalHotspotTime;
-
-	/** Software cursor decorator brush */
-	const FSlateBrush* CursorDecorator;
 };

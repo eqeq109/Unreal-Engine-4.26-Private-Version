@@ -47,14 +47,5 @@ void SNiagaraGraphNode::UpdateGraphNode()
 	LastSyncedNodeChangeId = NiagaraNode->GetChangeId();
 }
 
-void SNiagaraGraphNode::CreateInputSideAddButton(TSharedPtr<SVerticalBox> InputBox)
-{
-	NiagaraNode->AddWidgetsToInputBox(InputBox);
-}
-
-void SNiagaraGraphNode::CreateOutputSideAddButton(TSharedPtr<SVerticalBox> OutputBox)
-{
-	NiagaraNode->AddWidgetsToOutputBox(OutputBox);
-}
 
 #undef LOCTEXT_NAMESPACE

@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Cluster/DisplayClusterClusterManager.h"
-#include "Cluster/DisplayClusterClusterEvent.h"
 #include "Cluster/DisplayClusterClusterEventHandler.h"
 
 #include "Cluster/IDisplayClusterClusterSyncObject.h"
@@ -12,6 +11,8 @@
 
 #include "Config/IPDisplayClusterConfigManager.h"
 #include "DisplayClusterConfigurationTypes.h"
+
+#include "Input/IPDisplayClusterInputManager.h"
 
 #include "Dom/JsonObject.h"
 
@@ -37,12 +38,12 @@ FDisplayClusterClusterManager::FDisplayClusterClusterManager()
 	// Set internal system events handler
 	OnClusterEventJson.Add(FDisplayClusterClusterEventHandler::Get().GetJsonListenerDelegate());
 
-	NativeInputDataAvailableEvent = FPlatformProcess::GetSynchEventFromPool(true);
+	NativeInputDataAvailableEvent = FPlatformProcess::CreateSynchEvent(true);
 }
 
 FDisplayClusterClusterManager::~FDisplayClusterClusterManager()
 {
-	FPlatformProcess::ReturnSynchEventToPool(NativeInputDataAvailableEvent);
+	delete NativeInputDataAvailableEvent;
 }
 
 
@@ -52,6 +53,7 @@ FDisplayClusterClusterManager::~FDisplayClusterClusterManager()
 bool FDisplayClusterClusterManager::Init(EDisplayClusterOperationMode OperationMode)
 {
 	CurrentOperationMode = OperationMode;
+	
 	return true;
 }
 
@@ -59,7 +61,7 @@ void FDisplayClusterClusterManager::Release()
 {
 }
 
-bool FDisplayClusterClusterManager::StartSession(UDisplayClusterConfigurationData* InConfigData, const FString& InNodeId)
+bool FDisplayClusterClusterManager::StartSession(const UDisplayClusterConfigurationData* InConfigData, const FString& InNodeId)
 {
 	ClusterNodeId = InNodeId;
 
@@ -86,8 +88,8 @@ bool FDisplayClusterClusterManager::StartSession(UDisplayClusterConfigurationDat
 		return false;
 	}
 
-	// Save node IDs
-	ConfigData->Cluster->Nodes.GenerateKeyArray(ClusterNodeIds);
+	// Save nodes amount
+	NodesAmount = ConfigData->Cluster->Nodes.Num();
 
 	// Instantiate node controller
 	Controller = CreateController();
@@ -121,7 +123,7 @@ void FDisplayClusterClusterManager::EndSession()
 		}
 	}
 
-	ClusterNodeIds.Reset();
+	NodesAmount = 0;
 	ClusterNodeId.Empty();
 }
 
@@ -172,11 +174,11 @@ void FDisplayClusterClusterManager::PreTick(float DeltaSeconds)
 		FScopeLock Lock(&ClusterEventsJsonCritSec);
 
 		ClusterEventsJsonPoolOut.Reset();
-		ClusterEventsJsonPoolOut = ClusterEventsJsonPoolMain;
+		ClusterEventsJsonPoolOut = MoveTemp(ClusterEventsJsonPoolMain);
 		ClusterEventsJsonPoolMain.Reset();
 
 		ClusterEventsJsonNonDiscardedPoolOut.Reset();
-		ClusterEventsJsonNonDiscardedPoolOut = ClusterEventsJsonNonDiscardedPoolMain;
+		ClusterEventsJsonNonDiscardedPoolOut = MoveTemp(ClusterEventsJsonNonDiscardedPoolMain);
 		ClusterEventsJsonNonDiscardedPoolMain.Reset();
 	}
 
@@ -185,13 +187,16 @@ void FDisplayClusterClusterManager::PreTick(float DeltaSeconds)
 		FScopeLock Lock(&ClusterEventsBinaryCritSec);
 
 		ClusterEventsBinaryPoolOut.Reset();
-		ClusterEventsBinaryPoolOut = ClusterEventsBinaryPoolMain;
+		ClusterEventsBinaryPoolOut = MoveTemp(ClusterEventsBinaryPoolMain);
 		ClusterEventsBinaryPoolMain.Reset();
 
 		ClusterEventsBinaryNonDiscardedPoolOut.Reset();
-		ClusterEventsBinaryNonDiscardedPoolOut = ClusterEventsBinaryNonDiscardedPoolMain;
+		ClusterEventsBinaryNonDiscardedPoolOut = MoveTemp(ClusterEventsBinaryNonDiscardedPoolMain);
 		ClusterEventsBinaryNonDiscardedPoolMain.Reset();
 	}
+
+	// Update input state in the cluster
+	SyncInput();
 
 	// Sync cluster objects (PreTick)
 	SyncObjects(EDisplayClusterSyncGroup::PreTick);
@@ -224,32 +229,12 @@ IDisplayClusterNodeController* FDisplayClusterClusterManager::GetController() co
 
 bool FDisplayClusterClusterManager::IsMaster() const
 {
-	FScopeLock Lock(&InternalsSyncScope);
-	return Controller ? Controller->GetClusterRole() == EDisplayClusterNodeRole::Master : false;
+	return Controller ? Controller->IsMaster() : false;
 }
 
 bool FDisplayClusterClusterManager::IsSlave() const
 {
-	FScopeLock Lock(&InternalsSyncScope);
-	return Controller ? Controller->GetClusterRole() == EDisplayClusterNodeRole::Slave : false;
-}
-
-bool FDisplayClusterClusterManager::IsBackup() const
-{
-	FScopeLock Lock(&InternalsSyncScope);
-	return Controller ? Controller->GetClusterRole() == EDisplayClusterNodeRole::Backup : false;
-}
-
-EDisplayClusterNodeRole FDisplayClusterClusterManager::GetClusterRole() const
-{
-	FScopeLock Lock(&InternalsSyncScope);
-	return Controller ? Controller->GetClusterRole() : EDisplayClusterNodeRole::None;
-}
-
-void FDisplayClusterClusterManager::GetNodeIds(TArray<FString>& OutNodeIds) const
-{
-	FScopeLock Lock(&InternalsSyncScope);
-	OutNodeIds = ClusterNodeIds;
+	return Controller ? Controller->IsSlave() : false;
 }
 
 void FDisplayClusterClusterManager::RegisterSyncObject(IDisplayClusterClusterSyncObject* SyncObj, EDisplayClusterSyncGroup SyncGroup)
@@ -281,10 +266,7 @@ void FDisplayClusterClusterManager::UnregisterSyncObject(IDisplayClusterClusterS
 void FDisplayClusterClusterManager::AddClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
 {
 	FScopeLock Lock(&ClusterEventListenersCritSec);
-	if (Listener.GetObject() && !Listener.GetObject()->IsPendingKillOrUnreachable())
-	{
-		ClusterEventListeners.Add(Listener);
-	}
+	ClusterEventListeners.Add(Listener);
 }
 
 void FDisplayClusterClusterManager::RemoveClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
@@ -389,33 +371,6 @@ void FDisplayClusterClusterManager::EmitClusterEventBinary(const FDisplayCluster
 	}
 }
 
-void FDisplayClusterClusterManager::SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventJson& Event, bool bMasterOnly)
-{
-	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster || CurrentOperationMode == EDisplayClusterOperationMode::Editor)
-	{
-		if (Controller)
-		{
-			if (IsMaster() || !bMasterOnly)
-			{
-				Controller->SendClusterEventTo(Address, Port, Event, bMasterOnly);
-			}
-		}
-	}
-}
-
-void FDisplayClusterClusterManager::SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly)
-{
-	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster || CurrentOperationMode == EDisplayClusterOperationMode::Editor)
-	{
-		if (Controller)
-		{
-			if (IsMaster() || !bMasterOnly)
-			{
-				Controller->SendClusterEventTo(Address, Port, Event, bMasterOnly);
-			}
-		}
-	}
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IPDisplayClusterClusterManager
@@ -484,32 +439,32 @@ void FDisplayClusterClusterManager::ExportEventsData(TArray<TSharedPtr<FDisplayC
 	{
 		FScopeLock Lock(&ClusterEventsJsonCritSec);
 
-		// Export all system and non-system json events that have 'discard on repeat' flag
-		for (const auto& it : ClusterEventsJsonPoolOut)
-		{
+	// Export all system and non-system json events that have 'discard on repeat' flag
+	for (const auto& it : ClusterEventsJsonPoolOut)
+	{
 			TArray<TSharedPtr<FDisplayClusterClusterEventJson, ESPMode::ThreadSafe>> JsonEventsToExport;
-			it.Value.GenerateValueArray(JsonEventsToExport);
-			JsonEvents.Append(JsonEventsToExport);
-		}
+		it.Value.GenerateValueArray(JsonEventsToExport);
+		JsonEvents.Append(JsonEventsToExport);
+	}
 
-		// Export all json events that don't have 'discard on repeat' flag
-		JsonEvents.Append(ClusterEventsJsonNonDiscardedPoolOut);
+	// Export all json events that don't have 'discard on repeat' flag
+	JsonEvents.Append(ClusterEventsJsonNonDiscardedPoolOut);
 	}
 
 	// Export binary events
 	{
 		FScopeLock Lock(&ClusterEventsBinaryCritSec);
 
-		// Export all binary events that have 'discard on repeat' flag
-		for (const auto& it : ClusterEventsBinaryPoolOut)
-		{
+	// Export all binary events that have 'discard on repeat' flag
+	for (const auto& it : ClusterEventsBinaryPoolOut)
+	{
 			TArray<TSharedPtr<FDisplayClusterClusterEventBinary, ESPMode::ThreadSafe>> BinaryEventsToExport;
-			it.Value.GenerateValueArray(BinaryEventsToExport);
-			BinaryEvents.Append(BinaryEventsToExport);
-		}
+		it.Value.GenerateValueArray(BinaryEventsToExport);
+		BinaryEvents.Append(BinaryEventsToExport);
+	}
 
-		// Export all binary events that don't have 'discard on repeat' flag
-		BinaryEvents.Append(ClusterEventsBinaryNonDiscardedPoolOut);
+	// Export all binary events that don't have 'discard on repeat' flag
+	BinaryEvents.Append(ClusterEventsBinaryNonDiscardedPoolOut);
 	}
 }
 
@@ -559,6 +514,26 @@ void FDisplayClusterClusterManager::SyncObjects(EDisplayClusterSyncGroup SyncGro
 		{
 			// Perform data load (objects state update)
 			ImportSyncData(SyncData, SyncGroup);
+		}
+	}
+}
+
+void FDisplayClusterClusterManager::SyncInput()
+{
+	if (Controller)
+	{
+		TMap<FString, FString> InputData;
+
+		// Get input data from a provider
+		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (input)..."));
+		Controller->GetInputData(InputData);
+		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (input)."), InputData.Num());
+
+		// We don't have to import data here unless input data provider is located on master node
+		if (IsSlave())
+		{
+			// Perform data load (objects state update)
+			GDisplayCluster->GetPrivateInputMgr()->ImportInputData(InputData);
 		}
 	}
 }
@@ -655,46 +630,17 @@ TUniquePtr<IDisplayClusterNodeController> FDisplayClusterClusterManager::CreateC
 void FDisplayClusterClusterManager::OnClusterEventJsonHandler(const FDisplayClusterClusterEventJson& Event)
 {
 	FScopeLock Lock(&ClusterEventListenersCritSec);
-
-	decltype(ClusterEventListeners) InvalidListeners;
-
 	for (auto Listener : ClusterEventListeners)
 	{
-		if (!Listener.GetObject() || Listener.GetObject()->IsPendingKillOrUnreachable()) // Note: .GetInterface() is always returning null when intefrace is added to class in the Blueprint.
-		{
-			UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Will remove invalid cluster event listener"));
-			InvalidListeners.Add(Listener);
-			continue;
-		}
 		Listener->Execute_OnClusterEventJson(Listener.GetObject(), Event);
-	}
-
-	for (auto& InvalidListener : InvalidListeners)
-	{
-		ClusterEventListeners.Remove(InvalidListener);
 	}
 }
 
 void FDisplayClusterClusterManager::OnClusterEventBinaryHandler(const FDisplayClusterClusterEventBinary& Event)
 {
 	FScopeLock Lock(&ClusterEventListenersCritSec);
-
-	decltype(ClusterEventListeners) InvalidListeners;
-
 	for (auto Listener : ClusterEventListeners)
 	{
-		if (!Listener.GetObject() || Listener.GetObject()->IsPendingKillOrUnreachable()) // Note: .GetInterface() is always returning null when intefrace is added to class in the Blueprint.
-		{
-			UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Will remove invalid cluster event listener"));
-			InvalidListeners.Add(Listener);
-			continue;
-		}
-
 		Listener->Execute_OnClusterEventBinary(Listener.GetObject(), Event);
-	}
-
-	for (auto& InvalidListener : InvalidListeners)
-	{
-		ClusterEventListeners.Remove(InvalidListener);
 	}
 }

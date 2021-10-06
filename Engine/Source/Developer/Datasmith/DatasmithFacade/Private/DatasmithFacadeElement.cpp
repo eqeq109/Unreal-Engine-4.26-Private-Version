@@ -8,9 +8,7 @@ FDatasmithFacadeElement::ECoordinateSystemType FDatasmithFacadeElement::WorldCoo
 float FDatasmithFacadeElement::WorldUnitScale = 1.0;
 
 FDatasmithFacadeElement::ConvertVertexMethod FDatasmithFacadeElement::ConvertPosition  = nullptr;
-FDatasmithFacadeElement::ConvertVectorMethod FDatasmithFacadeElement::ConvertBackPosition = nullptr;
 FDatasmithFacadeElement::ConvertVertexMethod FDatasmithFacadeElement::ConvertDirection = nullptr;
-FDatasmithFacadeElement::ConvertVectorMethod FDatasmithFacadeElement::ConvertBackDirection = nullptr;
 
 void FDatasmithFacadeElement::SetCoordinateSystemType(
 	ECoordinateSystemType InWorldCoordinateSystemType
@@ -22,26 +20,20 @@ void FDatasmithFacadeElement::SetCoordinateSystemType(
 	{
 		case ECoordinateSystemType::LeftHandedYup:
 		{
-			ConvertPosition  = ConvertFromPositionLeftHandedYup;
-			ConvertBackPosition = ConvertToPositionLeftHandedYup;
-			ConvertDirection = ConvertFromDirectionLeftHandedYup;
-			ConvertBackDirection = ConvertToDirectionLeftHandedYup;
+			ConvertPosition  = ConvertPositionLeftHandedYup;
+			ConvertDirection = ConvertDirectionLeftHandedYup;
 			break;
 		}
 		case ECoordinateSystemType::LeftHandedZup:
 		{
-			ConvertPosition  = ConvertFromPositionLeftHandedZup;
-			ConvertBackPosition = ConvertToPositionLeftHandedZup;
-			ConvertDirection = ConvertFromDirectionLeftHandedZup;
-			ConvertBackDirection = ConvertToDirectionLeftHandedZup;
+			ConvertPosition  = ConvertPositionLeftHandedZup;
+			ConvertDirection = ConvertDirectionLeftHandedZup;
 			break;
 		}
 		case ECoordinateSystemType::RightHandedZup:
 		{
-			ConvertPosition  = ConvertFromPositionRightHandedZup;
-			ConvertBackPosition = ConvertToPositionRightHandedZup;
-			ConvertDirection = ConvertFromDirectionRightHandedZup;
-			ConvertBackDirection = ConvertToDirectionRightHandedZup;
+			ConvertPosition  = ConvertPositionRightHandedZup;
+			ConvertDirection = ConvertDirectionRightHandedZup;
 			break;
 		}
 	}
@@ -104,7 +96,7 @@ void FDatasmithFacadeElement::ExportAsset(
 	// By default, there is no Datasmith scene element asset to build and export.
 }
 
-FVector FDatasmithFacadeElement::ConvertFromPositionLeftHandedYup(
+FVector FDatasmithFacadeElement::ConvertPositionLeftHandedYup(
 	float InX,
 	float InY,
 	float InZ
@@ -113,15 +105,7 @@ FVector FDatasmithFacadeElement::ConvertFromPositionLeftHandedYup(
 	return FVector(InX * WorldUnitScale, -InZ * WorldUnitScale, InY * WorldUnitScale);
 }
 
-FVector FDatasmithFacadeElement::ConvertToPositionLeftHandedYup(
-	const FVector& InVector
-)
-{
-	float Scale = 1.f / WorldUnitScale;
-	return FVector(InVector.X * Scale, InVector.Z * Scale, -InVector.Y * Scale);
-}
-
-FVector FDatasmithFacadeElement::ConvertFromPositionLeftHandedZup(
+FVector FDatasmithFacadeElement::ConvertPositionLeftHandedZup(
 	float InX,
 	float InY,
 	float InZ
@@ -130,14 +114,7 @@ FVector FDatasmithFacadeElement::ConvertFromPositionLeftHandedZup(
 	return FVector(InX * WorldUnitScale, InY * WorldUnitScale, InZ * WorldUnitScale);
 }
 
-FVector FDatasmithFacadeElement::ConvertToPositionLeftHandedZup(
-	const FVector& InVector
-)
-{
-	return InVector / WorldUnitScale;
-}
-
-FVector FDatasmithFacadeElement::ConvertFromPositionRightHandedZup(
+FVector FDatasmithFacadeElement::ConvertPositionRightHandedZup(
 	float InX,
 	float InY,
 	float InZ
@@ -148,17 +125,7 @@ FVector FDatasmithFacadeElement::ConvertFromPositionRightHandedZup(
 	return FVector(InX * WorldUnitScale, -InY * WorldUnitScale, InZ * WorldUnitScale);
 }
 
-FVector FDatasmithFacadeElement::ConvertToPositionRightHandedZup(
-	const FVector& InVector
-)
-{
-	// Convert the position from the source right-hand Z-up coordinate system to the Unreal left-hand Z-up coordinate system.
-	// To avoid perturbating X, which is forward in Unreal, the handedness conversion is done by flipping the side vector Y.
-	float Scale = 1.f / WorldUnitScale;
-	return FVector(InVector.X * Scale, -InVector.Y * Scale, InVector.Z * Scale);
-}
-
-FVector FDatasmithFacadeElement::ConvertFromDirectionLeftHandedYup(
+FVector FDatasmithFacadeElement::ConvertDirectionLeftHandedYup(
 	float InX,
 	float InY,
 	float InZ
@@ -167,14 +134,7 @@ FVector FDatasmithFacadeElement::ConvertFromDirectionLeftHandedYup(
 	return FVector(InX, -InZ, InY);
 }
 
-FVector FDatasmithFacadeElement::ConvertToDirectionLeftHandedYup(
-	const FVector& InVector
-)
-{
-	return FVector(InVector.X, InVector.Z, -InVector.Y);
-}
-
-FVector FDatasmithFacadeElement::ConvertFromDirectionLeftHandedZup(
+FVector FDatasmithFacadeElement::ConvertDirectionLeftHandedZup(
 	float InX,
 	float InY,
 	float InZ
@@ -183,14 +143,7 @@ FVector FDatasmithFacadeElement::ConvertFromDirectionLeftHandedZup(
 	return FVector(InX, InY, InZ);
 }
 
-FVector FDatasmithFacadeElement::ConvertToDirectionLeftHandedZup(
-	const FVector& InVector
-)
-{
-	return InVector;
-}
-
-FVector FDatasmithFacadeElement::ConvertFromDirectionRightHandedZup(
+FVector FDatasmithFacadeElement::ConvertDirectionRightHandedZup(
 	float InX,
 	float InY,
 	float InZ
@@ -199,13 +152,4 @@ FVector FDatasmithFacadeElement::ConvertFromDirectionRightHandedZup(
 	// Convert the direction from the source right-hand Z-up coordinate system to the Unreal left-hand Z-up coordinate system.
 	// To avoid perturbating X, which is forward in Unreal, the handedness conversion is done by flipping the side vector Y.
 	return FVector(InX, -InY, InZ);
-}
-
-FVector FDatasmithFacadeElement::ConvertToDirectionRightHandedZup(
-	const FVector& InVector
-)
-{
-	// Convert the direction from the source right-hand Z-up coordinate system to the Unreal left-hand Z-up coordinate system.
-	// To avoid perturbating X, which is forward in Unreal, the handedness conversion is done by flipping the side vector Y.
-	return FVector(InVector.X, -InVector.Y, InVector.Z);
 }

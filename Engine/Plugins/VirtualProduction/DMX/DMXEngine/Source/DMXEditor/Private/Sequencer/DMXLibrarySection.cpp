@@ -55,16 +55,15 @@ void FDMXLibrarySection::BuildSectionContextMenu(FMenuBuilder& MenuBuilder, cons
 				}),
 				FCanExecuteAction::CreateLambda([=]
 				{
-					UDMXEntityFixtureType* FixtureType = Patch->GetFixtureType();
-					if (!IsValid(Patch) || 
-						!IsValid(FixtureType) ||
-						!FixtureType->IsValidLowLevelFast() ||
-						InModeIndex >= FixtureType->Modes.Num())
+					if (Patch == nullptr || !Patch->IsValidLowLevelFast()
+						|| Patch->ParentFixtureTypeTemplate == nullptr
+						|| !Patch->ParentFixtureTypeTemplate->IsValidLowLevelFast()
+						|| InModeIndex >= Patch->ParentFixtureTypeTemplate->Modes.Num())
 					{
 						return false;
 					}
 
-					return FixtureType->Modes[InModeIndex].Functions.Num() > 0;
+					return Patch->ParentFixtureTypeTemplate->Modes[InModeIndex].Functions.Num() > 0;
 				}),
 				FIsActionChecked::CreateLambda([=]
 				{
@@ -100,8 +99,8 @@ void FDMXLibrarySection::BuildSectionContextMenu(FMenuBuilder& MenuBuilder, cons
 		};
 
 		// For each Patch added to the track, create a sub menu if its FixtureType is valid
-		UDMXEntityFixtureType* FixtureType = Patch->GetFixtureType();
-		if (!IsValid(FixtureType))
+		UDMXEntityFixtureType* FixtureType = Patch->ParentFixtureTypeTemplate;
+		if (FixtureType == nullptr || !FixtureType->IsValidLowLevelFast())
 		{
 			continue;
 		}

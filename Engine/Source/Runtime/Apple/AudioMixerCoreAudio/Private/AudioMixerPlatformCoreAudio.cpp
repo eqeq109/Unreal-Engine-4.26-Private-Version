@@ -93,7 +93,7 @@ namespace Audio
 
 		if(Status != 0)
 		{
-			UE_LOG(LogAudioMixerAudioUnit, Warning, TEXT("Error querying Audio Device ID: %i"), Status);
+			UE_LOG(LogAudioMixerAudioUnit, Display, TEXT("ERROR setting sample rate to %f"), GraphSampleRate);
 		}
 
 		Status = AudioObjectGetPropertyData(DeviceAudioObjectID, &DevicePropertyAddress, 0, nullptr, &AudioDeviceQuerySize, &GraphSampleRate);
@@ -101,10 +101,6 @@ namespace Audio
 		if(Status == 0)
 		{
 			UE_LOG(LogAudioMixerAudioUnit, Display, TEXT("Sample Rate: %f"), GraphSampleRate);
-		}
-		else
-		{
-			UE_LOG(LogAudioMixerAudioUnit, Warning, TEXT("Error querying Sample Rate: %i"), Status);
 		}
 
 
@@ -174,7 +170,7 @@ namespace Audio
 		Status = AudioObjectSetPropertyData(DeviceAudioObjectID, &DevicePropertyAddress, 0, nullptr, AudioDeviceQuerySize, &AUBufferSize);
 		if(Status != 0)
 		{
-			HandleError(TEXT("Failed to set buffer size!"), true);
+			HandleError(TEXT("Failed to set output format!"), true);
 			return false;
 		}
 

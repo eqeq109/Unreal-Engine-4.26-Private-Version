@@ -4,56 +4,39 @@
 #include "NiagaraMessageManager.h"
 #include "NiagaraMessages.h"
 #include "NiagaraMessageUtilities.h"
-#include "NiagaraScriptVariable.h"
-#include "NiagaraScriptSource.h"
-#include "NiagaraParameterDefinitions.h"
-
 
 FNiagaraStandaloneScriptViewModel::FNiagaraStandaloneScriptViewModel(
 	FText DisplayName,
 	ENiagaraParameterEditMode InParameterEditMode,
 	TSharedPtr<FNiagaraMessageLogViewModel> InNiagaraMessageLogViewModel,
-	const FGuid& InSourceScriptObjKey,
-	bool bInIsForDataProcessingOnly
+	const FGuid& InSourceScriptObjKey
 )
-	: FNiagaraScriptViewModel(DisplayName, InParameterEditMode, bInIsForDataProcessingOnly)
+	: FNiagaraScriptViewModel(DisplayName, InParameterEditMode)
 	, NiagaraMessageLogViewModel(InNiagaraMessageLogViewModel)
 	, ScriptMessageLogGuidKey(InSourceScriptObjKey)
 {
 }
 
-void FNiagaraStandaloneScriptViewModel::Initialize(FVersionedNiagaraScript& InScript, const FVersionedNiagaraScript& InSourceScript)
+void FNiagaraStandaloneScriptViewModel::Initialize(UNiagaraScript* InScript, UNiagaraScript* InSourceScript)
 {
 	SetScript(InScript);
 	SourceScript = InSourceScript;
-
 	SendLastCompileMessages(SourceScript);
 }
 
-FVersionedNiagaraScript FNiagaraStandaloneScriptViewModel::GetStandaloneScript()
+UNiagaraScript* FNiagaraStandaloneScriptViewModel::GetStandaloneScript()
 {
 	checkf(Scripts.Num() == 1, TEXT("StandaloneScriptViewModel did not have exactly one script!"));
-	return Scripts[0].Pin();
+	return Scripts[0].Get();
 }
 
-const FVersionedNiagaraScript FNiagaraStandaloneScriptViewModel::GetStandaloneScript() const
+void FNiagaraStandaloneScriptViewModel::OnVMScriptCompiled(UNiagaraScript* InScript)
 {
-	return const_cast<FNiagaraStandaloneScriptViewModel*>(this)->GetStandaloneScript();
+	FNiagaraScriptViewModel::OnVMScriptCompiled(InScript);
+	SendLastCompileMessages(InScript);
 }
 
-INiagaraParameterDefinitionsSubscriber* FNiagaraStandaloneScriptViewModel::GetParameterDefinitionsSubscriber()
-{
-	checkf(Scripts.Num() == 1, TEXT("StandaloneScriptViewModel did not have exactly one script!"));
-	return &Scripts[0];
-}
-
-void FNiagaraStandaloneScriptViewModel::OnVMScriptCompiled(UNiagaraScript* InScript, const FGuid& ScriptVersion)
-{
-	FNiagaraScriptViewModel::OnVMScriptCompiled(InScript, ScriptVersion);
-	SendLastCompileMessages(FVersionedNiagaraScript(InScript, ScriptVersion));
-}
-
-void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const FVersionedNiagaraScript& InScript)
+void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const UNiagaraScript* InScript)
 {
 	FNiagaraMessageManager* MessageManager = FNiagaraMessageManager::Get();
 	MessageManager->ClearAssetMessagesForTopic(ScriptMessageLogGuidKey, FNiagaraMessageTopics::CompilerTopicName);
@@ -61,7 +44,7 @@ void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const FVersioned
 	int32 ErrorCount = 0;
 	int32 WarningCount = 0;
 
-	const TArray<FNiagaraCompileEvent>& CurrentCompileEvents = InScript.Script->GetVMExecutableData().LastCompileEvents;
+	const TArray<FNiagaraCompileEvent>& CurrentCompileEvents = InScript->GetVMExecutableData().LastCompileEvents;
 
 	// Iterate from back to front to avoid reordering the events when they are queued
 	for (int i = CurrentCompileEvents.Num() - 1; i >= 0; --i)
@@ -76,7 +59,7 @@ void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const FVersioned
 			WarningCount++;
 		}
 
-		MessageManager->AddMessageJob(MakeUnique<FNiagaraMessageJobCompileEvent>(CompileEvent, TWeakObjectPtr<const UNiagaraScript>(InScript.Script), InScript.Version, TOptional<const FString>(), SourceScript.Script->GetPathName()), ScriptMessageLogGuidKey);
+		MessageManager->AddMessageJob(MakeUnique<FNiagaraMessageJobCompileEvent>(CompileEvent, TWeakObjectPtr<const UNiagaraScript>(InScript), TOptional<const FString>(), SourceScript->GetPathName()), ScriptMessageLogGuidKey);
 	}
 
 	const FText PostCompileSummaryText = FNiagaraMessageUtilities::MakePostCompileSummaryText(FText::FromString("Script"), GetLatestCompileStatus(), WarningCount, ErrorCount);

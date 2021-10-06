@@ -1,25 +1,25 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
-
-#include "AssetToolsModule.h"
-#include "EdGraphSchema_Niagara.h"
-#include "IAssetTypeActions.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Modules/ModuleManager.h"
 #include "NiagaraCommon.h"
 #include "NiagaraEditorModule.h"
-#include "NiagaraEditorSettings.h"
+#include "NiagaraScript.h"
+#include "EdGraph/EdGraph.h"
 #include "NiagaraGraph.h"
-#include "NiagaraNodeInput.h"
+#include "NiagaraScriptSource.h"
+#include "NiagaraScriptFactoryNew.h"
 #include "NiagaraNodeOutput.h"
+#include "NiagaraNodeInput.h"
 #include "NiagaraNodeParameterMapGet.h"
 #include "NiagaraNodeParameterMapSet.h"
-#include "NiagaraScript.h"
-#include "NiagaraScriptFactoryNew.h"
-#include "NiagaraScriptSource.h"
-#include "AssetTypeActions/AssetTypeActions_NiagaraScript.h"
-#include "EdGraph/EdGraph.h"
-#include "Modules/ModuleManager.h"
+#include "EdGraphSchema_Niagara.h"
+#include "NiagaraEditorSettings.h"
+#include "IAssetTypeActions.h"
+#include "AssetToolsModule.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
+#include "AssetTypeActions/AssetTypeActions_NiagaraScript.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraScriptFactory"
 
@@ -209,10 +209,10 @@ void UNiagaraScriptFactoryNew::InitializeScript(UNiagaraScript* NewScript)
 
 			FNiagaraStackGraphUtilities::RelayoutGraph(*CreatedGraph);
 			// Set pointer in script to source
-			NewScript->SetLatestSource(Source);
+			NewScript->SetSource(Source);
 
 
-			NewScript->RequestCompile(FGuid());
+			NewScript->RequestCompile();
 		}
 	}
 }

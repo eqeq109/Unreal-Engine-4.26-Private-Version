@@ -63,8 +63,7 @@ namespace XGEControllerVariables
 
 FXGEControllerModule::FXGEControllerModule()
 	: bSupported(false)
-	, bModuleInitialized(false)
-	, bControllerInitialized(false)
+	, bInitialized(false)
 	, ControlWorkerDirectory(FPaths::ConvertRelativePathToFull(GetControlWorkerBinariesPath()))
 	, RootWorkingDirectory(FString::Printf(TEXT("%sUnrealXGEWorkingDir/"), FPlatformProcess::UserTempDir()))
 	, WorkingDirectory(RootWorkingDirectory + FGuid::NewGuid().ToString(EGuidFormats::Digits))
@@ -93,10 +92,8 @@ FXGEControllerModule::~FXGEControllerModule()
 
 bool FXGEControllerModule::IsSupported()
 {
-	if (bControllerInitialized)
-	{
+	if (bInitialized)
 		return bSupported;
-	}
 
 #if PLATFORM_WINDOWS
 
@@ -214,12 +211,6 @@ bool FXGEControllerModule::IsSupported()
 				UE_LOG(LogXGEController, Warning, TEXT("XGE version 8.01 (build 1867) or higher is required for XGE shader compilation with the interception interface."));
 				XGEControllerVariables::Enabled = 0;
 			}
-
-			if (!PlatformFile.FileExists(*GetControlWorkerExePath()))
-			{
-				UE_LOG(LogXGEController, Warning, TEXT("XGEControlWorker.exe does not exist, XGE may be disabled in your Build Configuration, cannot use XGE."));
-				XGEControllerVariables::Enabled = 0;
-			}
 		}
 	}
 
@@ -246,33 +237,37 @@ void FXGEControllerModule::CleanWorkingDirectory()
 
 void FXGEControllerModule::StartupModule()
 {
-	check(!bModuleInitialized);
+	check(!bInitialized);
 
 	IModularFeatures::Get().RegisterModularFeature(GetModularFeatureType(), this);
 	
-	bModuleInitialized = true;
+	CleanWorkingDirectory();
+
+	bShutdown = false;
+	if (IsSupported())
+	{
+		WriteOutThreadFuture = Async(EAsyncExecution::Thread, [this]() { WriteOutThreadProc(); });
+	}
+
+	bInitialized = true;
 }
 
 void FXGEControllerModule::ShutdownModule()
 {
-	check(bModuleInitialized);
+	check(bInitialized);
 
 	IModularFeatures::Get().UnregisterModularFeature(GetModularFeatureType(), this);
 
-	if (IsSupported())
+	if (bSupported)
 	{
 		bShutdown = true;
-		
-		if (bControllerInitialized)
-		{
-			WriteOutThreadEvent->Trigger();
+		WriteOutThreadEvent->Trigger();
 
-			// Wait for worker threads to exit
-			if (WriteOutThreadFuture.IsValid())
-			{
-				WriteOutThreadFuture.Wait();
-				WriteOutThreadFuture = TFuture<void>();
-			}
+		// Wait for worker threads to exit
+		if (WriteOutThreadFuture.IsValid())
+		{
+			WriteOutThreadFuture.Wait();
+			WriteOutThreadFuture = TFuture<void>();
 		}
 
 		// Cancel any remaining tasks
@@ -302,23 +297,7 @@ void FXGEControllerModule::ShutdownModule()
 	}
 
 	CleanWorkingDirectory();
-	bModuleInitialized = false;
-	bControllerInitialized = false;
-}
-
-void FXGEControllerModule::InitializeController()
-{
-	if (ensureAlwaysMsgf(!bControllerInitialized, TEXT("Multiple initialization of the XGE controller!")))
-	{
-		CleanWorkingDirectory();
-		bShutdown = false;
-		// The actual initialization happens in IsSupported() when it is called with bControllerInitialized being false
-		if (IsSupported())
-		{
-			WriteOutThreadFuture = Async(EAsyncExecution::Thread, [this]() { WriteOutThreadProc(); });
-			bControllerInitialized = true;
-		}
-	}
+	bInitialized = false;
 }
 
 void FXGEControllerModule::WriteOutThreadProc()

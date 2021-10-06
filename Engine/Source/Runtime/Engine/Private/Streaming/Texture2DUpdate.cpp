@@ -154,7 +154,6 @@ void FTexture2DUpdate::DoFinishUpdate(const FContext& Context)
 		if (!IsCancelled())
 		{
 			Context.Resource->FinalizeStreaming(IntermediateTextureRHI);
-			MarkAsSuccessfullyFinished();
 		}
 		IntermediateTextureRHI.SafeRelease();
 

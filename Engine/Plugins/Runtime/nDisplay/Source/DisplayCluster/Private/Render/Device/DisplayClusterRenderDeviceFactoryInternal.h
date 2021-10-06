@@ -12,8 +12,8 @@ class FDisplayClusterRenderDeviceFactoryInternal
 	: public IDisplayClusterRenderDeviceFactory
 {
 public:
-	FDisplayClusterRenderDeviceFactoryInternal() = default;
-	virtual ~FDisplayClusterRenderDeviceFactoryInternal() = default;
+	FDisplayClusterRenderDeviceFactoryInternal();
+	virtual ~FDisplayClusterRenderDeviceFactoryInternal();
 
 public:
 	virtual TSharedPtr<IDisplayClusterRenderDevice, ESPMode::ThreadSafe> Create(const FString& InDeviceType, const FString& InRHIName) override;

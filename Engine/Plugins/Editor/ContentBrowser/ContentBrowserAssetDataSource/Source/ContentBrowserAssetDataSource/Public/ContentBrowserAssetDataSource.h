@@ -35,7 +35,7 @@ public:
 	FBlacklistPaths PackagePathsToExclude;
 	FBlacklistPaths PathBlacklist;
 	TSet<FName> ExcludedPackagePaths;
-	TSet<FString> PathsToScanOnDemand;
+	FString PathToScanOnDemandStr;
 	// Cached filtering
 	TSet<FName> CachedSubPaths;
 
@@ -151,9 +151,6 @@ public:
 	virtual bool Legacy_TryConvertPackagePathToVirtualPath(const FName InPackagePath, FName& OutPath) override;
 
 	virtual bool Legacy_TryConvertAssetDataToVirtualPath(const FAssetData& InAssetData, const bool InUseFolderPaths, FName& OutPath) override;
-
-protected:
-	virtual void EnumerateRootPaths(const FContentBrowserDataFilter& InFilter, TFunctionRef<void(FName)> InCallback) override;
 
 private:
 	bool IsKnownContentPath(const FName InPackagePath) const;

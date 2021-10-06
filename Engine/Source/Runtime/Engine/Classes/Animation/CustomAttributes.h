@@ -48,7 +48,7 @@ struct ENGINE_API FCustomAttribute
 
 	/** (FVariant) type contained by Values array */
 	UPROPERTY(VisibleAnywhere, Category = CustomAttribute)
-	int32 VariantType = 0;
+	int32 VariantType;
 
 	/** Time keys (should match number of Value entries) */
 	UPROPERTY(VisibleAnywhere, Category = CustomAttributeBoneData)
@@ -85,7 +85,7 @@ struct ENGINE_API FCustomAttributePerBoneData
 	GENERATED_BODY()
 
 	UPROPERTY(VisibleAnywhere, Category = CustomAttributeBoneData)
-	int32 BoneTreeIndex = 0;
+	int32 BoneTreeIndex;
 
 	UPROPERTY(VisibleAnywhere, EditFixedSize, Category = CustomAttributeBoneData)
 	TArray<FCustomAttribute> Attributes;
@@ -137,7 +137,7 @@ struct FBakedCustomAttributePerBoneData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 BoneTreeIndex = 0;
+	int32 BoneTreeIndex;
 
 	UPROPERTY(VisibleAnywhere, EditFixedSize, Category = CustomAttributeBoneData)
 	TArray<FBakedStringCustomAttribute> StringAttributes;

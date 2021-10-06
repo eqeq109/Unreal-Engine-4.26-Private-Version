@@ -141,11 +141,6 @@ public:
 		{
 			// mapping is 1:1 by default; sparsely re-mapped below
 			MapE[ID] = ID;
-			// remap all parents
-			if (ParentVertices[ID] >= 0)
-			{
-				ParentVertices[ID] = CompactMaps.GetVertex(ParentVertices[ID]);
-			}
 		}
 
 		TDynamicVector<short>& ERef = ElementsRefCounts.GetRawRefCountsUnsafe();
@@ -155,7 +150,15 @@ public:
 			// remap the element data
 			GetElement(iLastE, Data);
 			SetElement(iCurE, Data);
-			ParentVertices[iCurE] = ParentVertices[iLastE];
+			int OrigParent = ParentVertices[iLastE];
+			if (OrigParent == IndexConstants::InvalidID)
+			{
+				ParentVertices[iCurE] = IndexConstants::InvalidID;
+			}
+			else 
+			{
+				ParentVertices[iCurE] = CompactMaps.GetVertex(OrigParent);
+			}
 			ERef[iCurE] = ERef[iLastE];
 			ERef[iLastE] = FRefCountVector::INVALID_REF_COUNT;
 			MapE[iLastE] = iCurE;
@@ -387,8 +390,6 @@ public:
 
 	/** Returns true if the parent-mesh edge is a "Seam" in this overlay */
 	bool IsSeamEdge(int EdgeID) const;
-	/** Returns true if the parent-mesh edge is a "Seam End" in this overlay, meaning the adjacent element triangles share one element, not two */
-	bool IsSeamEndEdge(int EdgeID) const;
 	/** Returns true if the parent-mesh vertex is connected to any seam edges */
 	bool IsSeamVertex(int VertexID, bool bBoundaryIsSeam = true) const;
 

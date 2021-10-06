@@ -5,6 +5,7 @@
 #include "ILoginFlowManager.h"
 #include "Interfaces/OnlineExternalUIInterface.h"
 
+class FUniqueNetId;
 class FOnlineSubsystemMcp;
 class SWidget;
 struct FLoginFlowProperties;

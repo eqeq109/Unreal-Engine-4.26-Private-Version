@@ -11,6 +11,8 @@ void UClothingSimulationInteractorNv::PhysicsAssetUpdated()
 	{
 		InSimulation->RefreshPhysicsAsset();
 	}));
+
+	MarkDirty();
 #endif
 }
 
@@ -21,6 +23,8 @@ void UClothingSimulationInteractorNv::ClothConfigUpdated()
 	{
 		InSimulation->RefreshClothConfig();
 	}));
+
+	MarkDirty();
 #endif
 }
 
@@ -38,9 +42,6 @@ void UClothingSimulationInteractorNv::Sync(IClothingSimulation* InSimulation, IC
 		Command.Execute(NvSim, NvContext);
 	}
 	Commands.Reset();
-
-	// Call base class' sync 
-	UClothingSimulationInteractor::Sync(InSimulation, InContext);
 #endif
 }
 
@@ -54,6 +55,8 @@ void UClothingSimulationInteractorNv::SetAnimDriveSpringStiffness(float InStiffn
 			Actor.CurrentAnimDriveSpringStiffness = InStiffness;
 		});
 	}));
+
+	MarkDirty();
 #endif
 }
 
@@ -67,6 +70,8 @@ void UClothingSimulationInteractorNv::SetAnimDriveDamperStiffness(float InStiffn
 			Actor.CurrentAnimDriveDamperStiffness = InStiffness;
 		});
 	}));
+
+	MarkDirty();
 #endif
 }
 void UClothingSimulationInteractorNv::EnableGravityOverride(const FVector& InVector)
@@ -80,6 +85,8 @@ void UClothingSimulationInteractorNv::EnableGravityOverride(const FVector& InVec
 			Actor.GravityOverride = InVector;
 		});
 	}));
+
+	MarkDirty();
 #endif
 }
 
@@ -94,6 +101,8 @@ void UClothingSimulationInteractorNv::DisableGravityOverride()
 			Actor.GravityOverride = FVector(0.0f, 0.0f, 0.0f);
 		});
 	}));
+
+	MarkDirty();
 #endif
 }
 

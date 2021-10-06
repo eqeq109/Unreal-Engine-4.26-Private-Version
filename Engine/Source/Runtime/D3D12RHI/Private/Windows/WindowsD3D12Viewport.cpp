@@ -333,7 +333,7 @@ void FD3D12Viewport::ResizeInternal()
 		for (uint32 i = 0; i < NumBackBuffers; ++i)
 		{
 			// When BackbufferMultiGPUBinding == INDEX_NONE, cycle through each GPU (for AFR or debugging).
-			const uint32 BackBufferGPUIndex = BackbufferMultiGPUBinding >= 0 ? (uint32)BackbufferMultiGPUBinding : (i % GNumAlternateFrameRenderingGroups);
+			const uint32 BackBufferGPUIndex = BackbufferMultiGPUBinding >= 0 ? (uint32)BackbufferMultiGPUBinding : (i % GNumExplicitGPUsForRendering);
 			BackBufferGPUIndices.Add(BackBufferGPUIndex);
 		}
 
@@ -622,13 +622,5 @@ void FD3D12Viewport::SetHDRTVMode(bool bEnableHDR, EDisplayGamut DisplayGamut, f
 		}
 	}
 }
-
-
-void FD3D12Viewport::OnResumeRendering()
-{}
-
-
-void FD3D12Viewport::OnSuspendRendering()
-{}
 
 #include "Windows/HideWindowsPlatformTypes.h"

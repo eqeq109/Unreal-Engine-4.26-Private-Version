@@ -6,7 +6,6 @@
 #include "EntitySystem/MovieSceneComponentAccessors.h"
 #include "EntitySystem/MovieSceneEntitySystemTypes.h"
 #include "EntitySystem/MovieScenePropertySystemTypes.h"
-#include "EntitySystem/MovieScenePropertyRegistry.h"
 
 
 class UMovieSceneEntitySystemLinker;
@@ -17,46 +16,51 @@ namespace UE
 namespace MovieScene
 {
 
-template<typename CompositeType>
-FORCEINLINE void PatchComposite(uint8* OutValueBase, const CompositeType* Composite, uint16 PtrOffset)
+struct FComponentMask;
+
+template<typename InComponentType, typename ProjectionType>
+struct TPartialProjection
 {
-	if (Composite)
-	{
-		*reinterpret_cast<CompositeType*>(OutValueBase + PtrOffset) = *Composite;
-	}
-}
+	using ComponentType = InComponentType;
 
-template<typename... CompositeTypes, int ...CompositeIndices>
-FORCEINLINE void PatchCompositeValueImpl(const TIntegerSequence<int, CompositeIndices...>&, TArrayView<const FPropertyCompositeDefinition> CompositeDefinitions, uint8* OutValueBase, const CompositeTypes*... Composites)
+	ProjectionType Projection;
+	TComponentTypeID<ComponentType> ComponentTypeID;
+};
+
+
+template<typename InIntermediateType, typename... ProjectionTypes>
+struct TPartialProjections
 {
-	int Tmp[] = {
-		( PatchComposite(OutValueBase, Composites, CompositeDefinitions[CompositeIndices].CompositeOffset), 0 )..., 0
-	};
-	(void)Tmp;
-}
+	using IntermediateType = InIntermediateType;
 
-template<typename... CompositeTypes>
-void PatchCompositeValue(TArrayView<const FPropertyCompositeDefinition> CompositeDefinitions, void* OutValueAddress, const CompositeTypes*... Composites)
+	void Patch(IntermediateType* Properties, const FEntityAllocation* Allocation, int32 Num) const;
+
+	TTuple< ProjectionTypes... > Composites;
+};
+
+
+template<typename InIntermediateType, typename ProjectionType, int NumCompositeTypes>
+struct THomogenousPartialProjections
 {
-	uint8* ValueBase = static_cast<uint8*>(OutValueAddress);
-	PatchCompositeValueImpl(TMakeIntegerSequence<int, sizeof...(CompositeTypes)>(), CompositeDefinitions, ValueBase, Composites...);
-}
+	using IntermediateType = InIntermediateType;
+
+	void Patch(IntermediateType* Properties, const FEntityAllocation* Allocation, int32 Num) const;
+
+	ProjectionType Composites[NumCompositeTypes];
+};
 
 
-template<typename PropertyTraits, typename MetaDataType, typename CompositeIntegers, typename ...CompositeTypes>
-struct TSetPartialPropertyValuesImpl;
-
-template<typename PropertyTraits, typename ...MetaDataTypes, int ...CompositeIndices, typename ...CompositeTypes>
-struct TSetPartialPropertyValuesImpl<PropertyTraits, TPropertyMetaData<MetaDataTypes...>, TIntegerSequence<int, CompositeIndices...>, CompositeTypes...>
+template<typename PropertyType, typename ProjectionType>
+struct TSetPartialPropertyValues
 {
-	using StorageType = typename PropertyTraits::StorageType;
+	using IntermediateType = typename ProjectionType::IntermediateType;
 
-	using FThreeWayAccessor  = TMultiReadOptional<FCustomPropertyIndex, uint16, TSharedPtr<FTrackInstancePropertyBindings>>;
-	using FTwoWayAccessor    = TMultiReadOptional<uint16, TSharedPtr<FTrackInstancePropertyBindings>>;
+	using FThreeWayAccessor  = TReadOneOf< FCustomPropertyIndex, uint16, TSharedPtr<FTrackInstancePropertyBindings> >;
+	using FTwoWayAccessor    = TReadOneOf< uint16, TSharedPtr<FTrackInstancePropertyBindings> >;
 
-	explicit TSetPartialPropertyValuesImpl(ICustomPropertyRegistration* InCustomProperties, TArrayView<const FPropertyCompositeDefinition> InCompositeDefinitions)
+	explicit TSetPartialPropertyValues(ICustomPropertyRegistration* InCustomProperties, const ProjectionType& InProjections)
 		: CustomProperties(InCustomProperties)
-		, CompositeDefinitions(InCompositeDefinitions)
+		, Projections(InProjections)
 	{}
 
 	/**
@@ -70,26 +74,27 @@ struct TSetPartialPropertyValuesImpl<PropertyTraits, TPropertyMetaData<MetaDataT
 		}
 	}
 
-	void ForEachAllocation(const FEntityAllocation* Allocation, TRead<UObject*> BoundObjectComponents, FThreeWayAccessor PropertyBindingComponents, TRead<MetaDataTypes>... InMetaData, TReadOptional<CompositeTypes>... InCompositeComponents);
-	void ForEachAllocation(const FEntityAllocation* Allocation, TRead<UObject*> BoundObjectComponents, FTwoWayAccessor PropertyBindingComponents, TRead<MetaDataTypes>... InMetaData, TReadOptional<CompositeTypes>... InCompositeComponents);
+	TSetPartialPropertyValues(ProjectionType&& InProjections);
+	TSetPartialPropertyValues(const ProjectionType& InProjections);
+
+	void ForEachAllocation(const FEntityAllocation* Allocation, TRead<UObject*> BoundObjectComponents, FThreeWayAccessor PropertyBindingComponents);
+	void ForEachAllocation(const FEntityAllocation* Allocation, TRead<UObject*> BoundObjectComponents, FTwoWayAccessor PropertyBindingComponents);
 
 private:
 
-	void ForEachCustom(const FEntityAllocation* Allocation, UObject* const* Objects, const FCustomPropertyIndex* Custom, const MetaDataTypes*... InMetaData, const CompositeTypes*... InCompositeComponents);
+	void ForEachCustom(const FEntityAllocation* Allocation, TArrayView<UObject* const> Objects, TArrayView<const FCustomPropertyIndex> Custom);
 
-	void ForEachFast(const FEntityAllocation* Allocation, UObject* const* Objects, const uint16* Fast, const MetaDataTypes*... InMetaData, const CompositeTypes*... InCompositeComponents);
+	void ForEachFast(const FEntityAllocation* Allocation, TArrayView<UObject* const> Objects, TArrayView<const uint16> Fast);
 
-	void ForEachSlow(const FEntityAllocation* Allocation, UObject* const* Objects, const TSharedPtr<FTrackInstancePropertyBindings>* Slow, const MetaDataTypes*... InMetaData, const CompositeTypes*... InCompositeComponents);
+	void ForEachSlow(const FEntityAllocation* Allocation, TArrayView<UObject* const> Objects, TArrayView<const TSharedPtr<FTrackInstancePropertyBindings>> Slow);
 
 private:
 
 	ICustomPropertyRegistration* CustomProperties;
 	FCustomAccessorView CustomAccessors;
-	TArrayView<const FPropertyCompositeDefinition> CompositeDefinitions;
+	TArray<IntermediateType> IntermediateValues;
+	ProjectionType Projections;
 };
-
-template<typename PropertyTraits, typename ...CompositeTypes>
-using TSetPartialPropertyValues = TSetPartialPropertyValuesImpl<PropertyTraits, typename PropertyTraits::MetaDataType, TMakeIntegerSequence<int, sizeof...(CompositeTypes)>, CompositeTypes...>;
 
 
 } // namespace MovieScene

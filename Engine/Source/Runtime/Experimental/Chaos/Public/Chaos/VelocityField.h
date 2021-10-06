@@ -8,27 +8,24 @@ namespace Chaos
 {
 	// Velocity field basic implementation
 	// TODO: Add lift
-	class CHAOS_API FVelocityField
+	template<class T, int d>
+	class CHAOS_API TVelocityField
 	{
 	public:
-		static constexpr FReal DefaultDragCoefficient = (FReal)0.5;
-		static constexpr FReal DefaultLiftCoefficient = (FReal)0.1;
-		static constexpr FReal DefaultFluidDensity = (FReal)1.225e-6;
-
 		// Construct an uninitialized field. Mesh, properties, and velocity will have to be set for this field to be valid.
-		FVelocityField()
+		TVelocityField()
 			: Range(-1)
 		{
-			SetCoefficients((FReal)0., (FReal)0.);
+			SetCoefficients((T)0., (T)0.);
 		}
 
 		// Construct a uniform field.
-		FVelocityField(
-			const FTriangleMesh& TriangleMesh,
-			const FVec3& InVelocity,
-			const FReal InDragCoefficient = DefaultDragCoefficient,
-			const FReal InLiftCoefficient = DefaultLiftCoefficient,
-			const FReal InFluidDensity = DefaultFluidDensity)
+		TVelocityField(
+			const TTriangleMesh<T>& TriangleMesh,
+			const TVector<T, d>& InVelocity,
+			const T InDragCoefficient = (T)0.5,
+			const T InLiftCoefficient = (T)0.1,
+			const T InFluidDensity = (T)1.225e-6)
 			: PointToTriangleMap(TriangleMesh.GetPointToTriangleMap())
 			, Elements(TriangleMesh.GetElements())
 			, Velocity(InVelocity)
@@ -40,15 +37,15 @@ namespace Chaos
 		}
 
 		// Construct a vector field.
-		FVelocityField(
-			const FTriangleMesh& TriangleMesh,
-			TFunction<FVec3(const FVec3&)> InGetVelocity,
-			const FReal InDragCoefficient = DefaultDragCoefficient,
-			const FReal InLiftCoefficient = DefaultLiftCoefficient,
-			const FReal InFluidDensity = DefaultFluidDensity)
+		TVelocityField(
+			const TTriangleMesh<T>& TriangleMesh,
+			TFunction<TVector<T, d>(const TVector<T, d>&)> InGetVelocity,
+			const T InDragCoefficient = (T)0.5,
+			const T InLiftCoefficient = (T)0.1,
+			const T InFluidDensity = (T)1.225e-6)
 			: PointToTriangleMap(TriangleMesh.GetPointToTriangleMap())
 			, Elements(TriangleMesh.GetElements())
-			, Velocity((FReal)0.)
+			, Velocity((T)0.)
 			, GetVelocity(InGetVelocity)
 			, Range(TriangleMesh.GetVertexRange())
 		{
@@ -57,11 +54,11 @@ namespace Chaos
 			SetFluidDensity(InFluidDensity);
 		}
 
-		virtual ~FVelocityField() {}
+		virtual ~TVelocityField() {}
 
-		void UpdateForces(const FPBDParticles& InParticles, const FReal /*Dt*/);
+		void UpdateForces(const TPBDParticles<T, d>& InParticles, const T /*Dt*/);
 
-		inline void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 Index) const
+		inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 Index) const
 		{
 			checkSlow(Index >= Range[0] && Index <= Range[1]);  // The index should always match the original triangle mesh range
 
@@ -72,12 +69,12 @@ namespace Chaos
 			}
 		}
 
-		void SetFluidDensity(const FReal InFluidDensity)
+		void SetFluidDensity(const T InFluidDensity)
 		{
-			QuarterRho = (FReal)0.25 * InFluidDensity;
+			QuarterRho = (T)0.25 * InFluidDensity;
 		}
 
-		void SetCoefficients(const FReal InDragCoefficient, const FReal InLiftCoefficient)
+		void SetCoefficients(const T InDragCoefficient, const T InLiftCoefficient)
 		{
 			Cd = InDragCoefficient;
 			Cl = InLiftCoefficient;
@@ -85,10 +82,10 @@ namespace Chaos
 
 		bool IsActive() const
 		{
-			return Cd > (FReal)0. || Cl > (FReal)0.;
+			return Cd > (T)0. || Cl > (T)0.;
 		}
 
-		void SetGeometry(const FTriangleMesh* TriangleMesh)
+		void SetGeometry(const TTriangleMesh<T>* TriangleMesh)
 		{
 			if (TriangleMesh)
 			{
@@ -106,57 +103,57 @@ namespace Chaos
 			}
 		}
 
-		void SetVelocity(const FVec3& InVelocity)
+		void SetVelocity(const TVector<T, d>& InVelocity)
 		{
 			Velocity = InVelocity;
-			GetVelocity = TFunction<FVec3(const FVec3&)>();
+			GetVelocity = TFunction<TVector<T, d>(const TVector<T, d>&)>();
 		}
 
-		void SetVelocity(TFunction<FVec3(const FVec3&)> InGetVelocity)
+		void SetVelocity(TFunction<TVector<T, d>(const TVector<T, d>&)> InGetVelocity)
 		{
 			GetVelocity = InGetVelocity;
 		}
 
 		const TConstArrayView<TVector<int32, 3>>& GetElements() const { return Elements; }
-		TConstArrayView<FVec3> GetForces() const { return TConstArrayView<FVec3>(Forces); }
+		TConstArrayView<TVector<T, d>> GetForces() const { return TConstArrayView<TVector<T, d>>(Forces); }
 
 	private:
-		inline void UpdateField(const FPBDParticles& InParticles, int32 ElementIndex, const FVec3& InVelocity)
+		inline void UpdateField(const TPBDParticles<T, d>& InParticles, int32 ElementIndex, const TVector<T, d>& InVelocity)
 		{
-			const TVec3<int32>& Element = Elements[ElementIndex];
+			const TVector<int32, 3>& Element = Elements[ElementIndex];
 
 			// Calculate the normal and the area of the surface exposed to the flow
-			FVec3 N = FVec3::CrossProduct(
+			TVector<T, d> N = TVector<T, d>::CrossProduct(
 				InParticles.X(Element[1]) - InParticles.X(Element[0]),
 				InParticles.X(Element[2]) - InParticles.X(Element[0]));
-			const FReal DoubleArea = N.SafeNormalize();
+			const T DoubleArea = N.SafeNormalize();
 
 			// Calculate the direction and the relative velocity of the triangle to the flow
-			const FVec3& SurfaceVelocity = (FReal)(1. / 3.) * (
+			const TVector<T, d>& SurfaceVelocity = (T)(1. / 3.) * (
 				InParticles.V(Element[0]) +
 				InParticles.V(Element[1]) +
 				InParticles.V(Element[2]));
-			const FVec3 V = InVelocity - SurfaceVelocity;
+			const TVector<T, d> V = InVelocity - SurfaceVelocity;
 
 			// Set the aerodynamic forces
-			const FReal VDotN = FVec3::DotProduct(V, N);
-			const FReal VSquare = FVec3::DotProduct(V, V);
+			const T VDotN = TVector<T, d>::DotProduct(V, N);
+			const T VSquare = TVector<T, d>::DotProduct(V, V);
 
-			Forces[ElementIndex] = QuarterRho * DoubleArea * (VDotN >= (FReal)0. ?  // The flow can hit either side of the triangle, so the normal might need to be reversed
+			Forces[ElementIndex] = QuarterRho * DoubleArea * (VDotN >= (T)0. ?  // The flow can hit either side of the triangle, so the normal might need to be reversed
 				(Cd - Cl) * VDotN * V + Cl * VSquare * N :
 				(Cl - Cd) * VDotN * V - Cl * VSquare * N);
 		}
 
 	private:
 		TConstArrayView<TArray<int32>> PointToTriangleMap;
-		TConstArrayView<TVec3<int32>> Elements;
-		FVec3 Velocity;
-		TFunction<FVec3(const FVec3&)> GetVelocity;
-		TArray<FVec3> Forces;
-		FReal QuarterRho;
-		FReal Cd;
-		FReal Cl;
-		TVec2<int32> Range;  // TODO: Remove? It is used by the check only
+		TConstArrayView<TVector<int32, 3>> Elements;
+		TVector<T, d> Velocity;
+		TFunction<TVector<T, d>(const TVector<T, d>&)> GetVelocity;
+		TArray<TVector<T, 3>> Forces;
+		float QuarterRho;
+		float Cd;
+		float Cl;
+		TVector<int32, 2> Range;  // TODO: Remove? It is used by the check only
 	};
 }
 

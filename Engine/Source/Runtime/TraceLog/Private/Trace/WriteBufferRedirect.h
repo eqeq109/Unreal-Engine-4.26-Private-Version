@@ -15,7 +15,6 @@ class TWriteBufferRedirect
 public:
 					TWriteBufferRedirect();
 					~TWriteBufferRedirect();
-	void			Close();
 	uint8*			GetData();
 	uint32			GetSize() const;
 	uint32			GetCapacity() const;
@@ -40,20 +39,7 @@ inline TWriteBufferRedirect<BufferSize>::TWriteBufferRedirect()
 template <int BufferSize>
 inline TWriteBufferRedirect<BufferSize>::~TWriteBufferRedirect()
 {
-	Close();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-template <int BufferSize>
-inline void TWriteBufferRedirect<BufferSize>::Close()
-{
-	if (PrevBuffer == nullptr)
-	{
-		return;
-	}
-
 	GTlsWriteBuffer = PrevBuffer;
-	PrevBuffer = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

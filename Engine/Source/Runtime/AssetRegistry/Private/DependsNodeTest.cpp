@@ -1114,27 +1114,25 @@ bool FDependsNodeTest::RunTest(const FString& Parameters)
 					return nullptr;
 				};
 
+				TArray<uint8> Bytes;
+				{
+					FMemoryWriter Writer(Bytes);
+					A.SerializeSave(Writer, GetSerializeIndexFromNode, SaveScratch);
+					if (KeepNode2 == EKeepNode2::KeepAlways || KeepNode2 == EKeepNode2::KeepSaveButNotLoad)
+					{
+						B.SerializeSave(Writer, GetSerializeIndexFromNode, SaveScratch);
+					}
+				}
 				FAssetRegistrySerializationOptions Options;
 				Options.ModifyForDevelopment();
 				Options.bSerializeSearchableNameDependencies = bKeepNameDependencies;
 				Options.bSerializeManageDependencies = bKeepManageDependencies;
-
-				TArray<uint8> Bytes;
-				{
-					FMemoryWriter Writer(Bytes);
-					A.SerializeSave(Writer, GetSerializeIndexFromNode, SaveScratch, Options);
-					if (KeepNode2 == EKeepNode2::KeepAlways || KeepNode2 == EKeepNode2::KeepSaveButNotLoad)
-					{
-						B.SerializeSave(Writer, GetSerializeIndexFromNode, SaveScratch, Options);
-					}
-				}
-
 				{
 					FMemoryReader Reader(Bytes);
-					LoadedA.SerializeLoad(Reader, GetNodeFromSerializeIndex, LoadScratch);
+					LoadedA.SerializeLoad(Reader, GetNodeFromSerializeIndex, LoadScratch, Options);
 					if (KeepNode2 == EKeepNode2::KeepAlways)
 					{
-						LoadedB.SerializeLoad(Reader, GetNodeFromSerializeIndex, LoadScratch);
+						LoadedB.SerializeLoad(Reader, GetNodeFromSerializeIndex, LoadScratch, Options);
 					}
 				}
 

@@ -5,15 +5,14 @@
 #include "CoreMinimal.h"
 #include "UObject/GCObject.h"
 #include "Toolkits/IToolkitHost.h"
+
 #include "Toolkits/AssetEditorToolkit.h"
-#include "EditorUndoClient.h"
 
 #include "ISequencer.h"
 #include "ISequencerTrackEditor.h"
 
 #include "NiagaraScript.h"
-#include "Widgets/SItemSelector.h"
-#include "ViewModels/NiagaraSystemGraphSelectionViewModel.h"
+#include "ContentBrowserDelegates.h"
 
 class FNiagaraSystemInstance;
 class FNiagaraSystemViewModel;
@@ -30,13 +29,10 @@ class FMenuBuilder;
 class ISequencer;
 class FNiagaraMessageLogViewModel;
 class FNiagaraSystemToolkitParameterPanelViewModel;
-class FNiagaraSystemToolkitParameterDefinitionsPanelViewModel;
-class FNiagaraScriptStatsViewModel;
-class FNiagaraBakerViewModel;
 
 /** Viewer/editor for a NiagaraSystem
 */
-class FNiagaraSystemToolkit : public FAssetEditorToolkit, public FGCObject, public FEditorUndoClient
+class FNiagaraSystemToolkit : public FAssetEditorToolkit, public FGCObject
 {
 	enum class ESystemToolkitMode
 	{
@@ -64,12 +60,6 @@ public:
 	virtual FLinearColor GetWorldCentricTabColorScale() const override;
 	//~ End IToolkit Interface
 
-		//~ Begin FEditorUndoClient Interface
-	virtual bool MatchesContext(const FTransactionContext& InContext, const TArray<TPair<UObject*, FTransactionObjectEvent>>& TransactionObjects) const override;
-	virtual void PostUndo(bool bSuccess) override;
-	virtual void PostRedo(bool bSuccess) override { PostUndo(bSuccess); }
-	// End of FEditorUndoClient
-
 	//~ FGCObject interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 
@@ -82,13 +72,12 @@ public:
 	TSharedPtr<FNiagaraSystemViewModel> GetSystemViewModel();
 
 public:
-	FRefreshItemSelectorDelegate RefreshItemSelector;
+	FRefreshAssetViewDelegate RefreshAssetView;
 
 protected:
 	void OnToggleBounds();
 	bool IsToggleBoundsChecked() const;
-	void OnToggleBoundsSetFixedBounds_Emitters();
-	void OnToggleBoundsSetFixedBounds_System();
+	void OnToggleBoundsSetFixedBounds();
 
 	void ClearStatPerformance();
 	void ToggleStatPerformance();
@@ -107,10 +96,6 @@ protected:
 	void ToggleDrawOption(int32 Element);
 	bool IsDrawOptionEnabled(int32 Element) const;
 
-	void OpenDebugHUD();
-	void OpenDebugOutliner();
-	void OpenAttributeSpreadsheet();
-
 	//~ FAssetEditorToolkit interface
 	virtual void GetSaveableObjects(TArray<UObject*>& OutObjects) const override;
 	virtual void SaveAsset_Execute() override;
@@ -128,8 +113,7 @@ private:
 	TSharedRef<SDockTab> SpawnTab_Sequencer(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_SystemScript(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_SystemParameters(const FSpawnTabArgs& Args);
-	TSharedRef<SDockTab> SpawnTab_SystemParameters2(const FSpawnTabArgs& Args); //@todo(ng) cleanup
-	TSharedRef<SDockTab> SpawnTab_SystemParameterDefinitions(const FSpawnTabArgs& Args);
+	TSharedRef<SDockTab> SpawnTab_SystemParameters2(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_SelectedEmitterStack(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_SelectedEmitterGraph(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_DebugSpreadsheet(const FSpawnTabArgs& Args);
@@ -138,8 +122,6 @@ private:
 	TSharedRef<SDockTab> SpawnTab_MessageLog(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_SystemOverview(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_ScratchPad(const FSpawnTabArgs& Args);
-	TSharedRef<SDockTab> SpawnTab_ScriptStats(const FSpawnTabArgs& Args);
-	TSharedRef<SDockTab> SpawnTab_Baker(const FSpawnTabArgs& Args);
 
 	/** Builds the toolbar widget */
 	void ExtendToolbar();	
@@ -149,6 +131,11 @@ private:
 
 	void GetSequencerAddMenuContent(FMenuBuilder& MenuBuilder, TSharedRef<ISequencer> Sequencer);
 	TSharedRef<SWidget> CreateAddEmitterMenuContent();
+	void LibraryCheckBoxStateChanged(ECheckBoxState InCheckbox);
+	ECheckBoxState GetLibraryCheckBoxState() const;
+	void TemplateCheckBoxStateChanged(ECheckBoxState InCheckbox);
+	ECheckBoxState GetTemplateCheckBoxState() const;
+	bool ShouldFilterEmitter(const FAssetData& AssetData);
 	TSharedRef<SWidget> GenerateCompileMenuContent();
 
 	void EmitterAssetSelected(const FAssetData& AssetData);
@@ -159,15 +146,10 @@ private:
 	void OnApply();
 	bool OnApplyEnabled() const;
 
-	void OnApplyScratchPadChanges();
-	bool OnApplyScratchPadChangesEnabled() const;
-
 	void OnPinnedCurvesChanged();
 	void RefreshParameters();
 	void OnSystemSelectionChanged();
 	void OnViewModelRequestFocusTab(FName TabName);
-
-	void RenderBaker();
 
 	TSharedRef<SWidget> GenerateBoundsMenuContent(TSharedRef<FUICommandList> InCommandList);
 	TSharedRef<SWidget> GenerateStatConfigMenuContent(TSharedRef<FUICommandList> InCommandList);
@@ -186,9 +168,6 @@ private:
 	/** The value of the emitter change id from the last time it was in sync with the original emitter. */
 	FGuid LastSyncedEmitterChangeId;
 
-	/** The graphs being undone/redone currently so we only mark for compile the right ones */
-	mutable TArray<TWeakObjectPtr<UNiagaraGraph>> LastUndoGraphs;
-
 	/** Whether or not the emitter thumbnail has been updated.  The is needed because after the first update the
 		screenshot uobject is reused, so a pointer comparison doesn't work to checking if the images has been updated. */
 	bool bEmitterThumbnailUpdated;
@@ -200,26 +179,16 @@ private:
 	/* The view model for the System being edited */
 	TSharedPtr<FNiagaraSystemViewModel> SystemViewModel;
 
-	/* The view model for the selected Emitter Script graphs of the System being edited. */
-	TSharedPtr<FNiagaraSystemGraphSelectionViewModel> SystemGraphSelectionViewModel;
-
 	/** Message log, with the log listing that it reflects */
 	TSharedPtr<FNiagaraMessageLogViewModel> NiagaraMessageLogViewModel;
 	TSharedPtr<class SWidget> NiagaraMessageLog;
 
-	/** Display for script stats on selected platforms */
-	TSharedPtr<FNiagaraScriptStatsViewModel> ScriptStats;
-
-	/** Baker preview */
-	TSharedPtr<FNiagaraBakerViewModel> BakerViewModel;
-
 	/** The command list for this editor */
 	TSharedPtr<FUICommandList> EditorCommands;
 
-	TSharedPtr<class SNiagaraParameterMapView> ParameterMapView;
+	TSharedPtr<class SNiagaraParameterMapView> ParameterMapView; //@todo(ng) cleanup
 
 	TSharedPtr<FNiagaraSystemToolkitParameterPanelViewModel> ParameterPanelViewModel;
-	TSharedPtr<FNiagaraSystemToolkitParameterDefinitionsPanelViewModel> ParameterDefinitionsPanelViewModel;
 	TSharedPtr<class SNiagaraParameterPanel> ParameterPanel;
 
 	TSharedPtr<FNiagaraObjectSelection> ObjectSelectionForParameterMapView;
@@ -239,7 +208,6 @@ public:
 	static const FName SystemDetailsTabID;
 	static const FName SystemParametersTabID;
 	static const FName SystemParametersTabID2;
-	static const FName SystemParameterDefinitionsTabID;
 	static const FName SelectedEmitterStackTabID;
 	static const FName SelectedEmitterGraphTabID;
 	static const FName DebugSpreadsheetTabID;
@@ -248,6 +216,8 @@ public:
 	static const FName MessageLogTabID;
 	static const FName SystemOverviewTabID;
 	static const FName ScratchPadTabID;
-	static const FName ScriptStatsTabID;
-	static const FName BakerTabID;
+
+private:
+	static bool bShowLibraryOnly;
+	static bool bShowTemplateOnly;
 };

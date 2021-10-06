@@ -4,9 +4,7 @@
 #include "GroomAsset.h"
 
 #include "EditorFramework/AssetImportData.h"
-#include "HairStrandsCore.h"
 #include "HairStrandsRendering.h"
-#include "GeometryCache.h"
 #include "GroomAssetImportData.h"
 #include "GroomBuilder.h"
 #include "GroomImportOptions.h"
@@ -245,32 +243,16 @@ void FGroomActions::ExecuteCreateBindingAsset(TArray<TWeakObjectPtr<UGroomAsset>
 			{
 				continue;
 			}
-			else if (GroomAsset.Get() && CurrentOptions && 
-				    ((CurrentOptions->GroomBindingType == EGroomBindingMeshType::SkeletalMesh && CurrentOptions->TargetSkeletalMesh) ||
-					(CurrentOptions->GroomBindingType == EGroomBindingMeshType::GeometryCache && CurrentOptions->TargetGeometryCache)))
+			else if (GroomAsset.Get() && CurrentOptions && CurrentOptions->TargetSkeletalMesh)
 			{
 				GroomAsset->ConditionalPostLoad();
-
-				UGroomBindingAsset* BindingAsset = nullptr;
-				if (CurrentOptions->GroomBindingType == EGroomBindingMeshType::SkeletalMesh)
+				if (CurrentOptions->SourceSkeletalMesh)
 				{
-					CurrentOptions->TargetSkeletalMesh->ConditionalPostLoad();
-					if (CurrentOptions->SourceSkeletalMesh)
-					{
-						CurrentOptions->SourceSkeletalMesh->ConditionalPostLoad();
-					}
-					BindingAsset = FHairStrandsCore::CreateGroomBindingAsset(CurrentOptions->GroomBindingType, GroomAsset.Get(), CurrentOptions->SourceSkeletalMesh, CurrentOptions->TargetSkeletalMesh, CurrentOptions->NumInterpolationPoints, CurrentOptions->MatchingSection);
+					CurrentOptions->SourceSkeletalMesh->ConditionalPostLoad();
 				}
-				else
-				{
-					CurrentOptions->TargetGeometryCache->ConditionalPostLoad();
-					if (CurrentOptions->SourceGeometryCache)
-					{
-						CurrentOptions->SourceGeometryCache->ConditionalPostLoad();
-					}
-					BindingAsset = FHairStrandsCore::CreateGroomBindingAsset(CurrentOptions->GroomBindingType, GroomAsset.Get(), CurrentOptions->SourceGeometryCache, CurrentOptions->TargetGeometryCache, CurrentOptions->NumInterpolationPoints, CurrentOptions->MatchingSection);
-				}
+				CurrentOptions->TargetSkeletalMesh->ConditionalPostLoad();
 
+				UGroomBindingAsset* BindingAsset = CreateGroomBindinAsset(GroomAsset.Get(), CurrentOptions->SourceSkeletalMesh, CurrentOptions->TargetSkeletalMesh, CurrentOptions->NumInterpolationPoints, CurrentOptions->MatchingSection);
 				if (BindingAsset)
 				{
 					BindingAsset->Build();

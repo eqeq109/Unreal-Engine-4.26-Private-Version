@@ -3,11 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MIDIDeviceControllerBase.h"
+#include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "UObject/WeakObjectPtr.h"
-
-
 #include "MIDIDeviceController.generated.h"
 
 
@@ -15,7 +13,7 @@ UENUM(BlueprintType)
 enum class EMIDIEventType : uint8
 {
 	/** Unrecognized MIDI event type.  You can look at Raw Event Type to see what it is. */
-	Unknown			UMETA(Hidden),
+	Unknown,
 
 	/** Note is released.  Velocity will contain the key pressure for devices that support that. */
 	NoteOff = 8,
@@ -46,7 +44,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_SevenParams(FOnMIDIEvent, class UMIDIDeviceCo
 
 
 UCLASS(BlueprintType)
-class MIDIDEVICE_API UMIDIDeviceController : public UMIDIDeviceControllerBase
+class MIDIDEVICE_API UMIDIDeviceController : public UObject
 {
 	GENERATED_BODY()
 
@@ -60,21 +58,17 @@ public:
 	FOnMIDIEvent OnMIDIEvent;
 
 	/** Called from UMIDIDeviceManager after the controller is created to get it ready to use.  Don't call this directly. */
-	virtual void StartupDevice(const int32 InitDeviceID, const int32 InitMIDIBufferSize, bool& bOutWasSuccessful) override;
+	void StartupDevice(const int32 InitDeviceID, const int32 InitMIDIBufferSize, bool& bOutWasSuccessful);
 
 	/** Called every frame by UMIDIDeviceManager to poll for new MIDI events and broadcast them out to subscribers of OnMIDIEvent.  Don't call this directly. */
-	virtual void ProcessIncomingMIDIEvents() override;
+	void ProcessIncomingMIDIEvents();
 
 	/** Called during destruction to clean up this device.  Don't call this directly. */
-	virtual void ShutdownDevice() override;
+	void ShutdownDevice();
 
-	/** The name of this device.  This name comes from the MIDI hardware, any might not be unique */
-    virtual FString GetDeviceName() const override { return DeviceName; }
-
-    /** Size of the MIDI buffer in bytes */
-    virtual int32 GetMIDIBufferSize() const override { return MIDIBufferSize; }
 
 protected:
+
 	/** The unique ID of this device */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Controller")
 	int32 DeviceID;

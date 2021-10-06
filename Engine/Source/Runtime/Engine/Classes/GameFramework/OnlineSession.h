@@ -37,7 +37,11 @@ public:
 	virtual void EndOnlineSession(FName SessionName) {};
 
 	/** Called when a user accepts an invite */
-	virtual void OnSessionUserInviteAccepted(const bool bWasSuccess, const int32 ControllerId, FUniqueNetIdPtr UserId, const FOnlineSessionSearchResult & InviteResult) {};
+	virtual void OnSessionUserInviteAccepted(const bool bWasSuccess, const int32 ControllerId, TSharedPtr< const FUniqueNetId > UserId, const FOnlineSessionSearchResult & InviteResult) {};
+
+	/** Called when the play together system event is received on PS4 */
+	UE_DEPRECATED(4.26, "PlayTogether will no longer be supported and should be removed.")
+	virtual void OnPlayTogetherEventReceived(int32 UserIndex, TArray<TSharedPtr<const FUniqueNetId>> UserIdList) {};
 };
 
 

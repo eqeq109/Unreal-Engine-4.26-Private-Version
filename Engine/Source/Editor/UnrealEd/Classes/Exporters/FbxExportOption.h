@@ -24,7 +24,7 @@ enum class EFbxExportCompatibility : uint8
 	FBX_2020,
 };
 
-UCLASS(config = EditorPerProjectUserSettings, MinimalAPI, BlueprintType)
+UCLASS(config = EditorPerProjectUserSettings, MinimalAPI)
 class UFbxExportOption : public UObject
 {
 	GENERATED_UCLASS_BODY()

@@ -6,7 +6,6 @@
 
 #include "SkyPassRendering.h"
 #include "BasePassRendering.h"
-#include "MobileBasePassRendering.h"
 #include "DeferredShadingRenderer.h"
 #include "ScenePrivate.h"
 #include "SceneRendering.h"
@@ -46,101 +45,55 @@ void FSkyPassMeshProcessor::Process(
 	ERasterizerFillMode MeshFillMode,
 	ERasterizerCullMode MeshCullMode)
 {
-	typedef FUniformLightMapPolicy LightMapPolicyType;
 	FUniformLightMapPolicy NoLightmapPolicy(LMP_NO_LIGHTMAP);
+	typedef FUniformLightMapPolicy LightMapPolicyType;
+	TMeshProcessorShaders<
+		TBasePassVertexShaderPolicyParamType<LightMapPolicyType>,
+		FBaseHS,
+		FBaseDS,
+		TBasePassPixelShaderPolicyParamType<LightMapPolicyType>> SkyPassShaders;
+
 	const FVertexFactory* VertexFactory = MeshBatch.VertexFactory;
-
-	if (Scene->GetShadingPath()==EShadingPath::Deferred)
-	{
-		TMeshProcessorShaders<
-			TBasePassVertexShaderPolicyParamType<LightMapPolicyType>,
-			FBaseHS,
-			FBaseDS,
-			TBasePassPixelShaderPolicyParamType<LightMapPolicyType>> SkyPassShaders;
-
-		const bool bRenderSkylight = false;
-		const bool bRenderAtmosphericFog = false;
-		GetBasePassShaders<LightMapPolicyType>(
-			MaterialResource,
-			VertexFactory->GetType(),
-			NoLightmapPolicy,
-			FeatureLevel,
-			bRenderAtmosphericFog,
-			bRenderSkylight,
-			false,
-			SkyPassShaders.HullShader,
-			SkyPassShaders.DomainShader,
-			SkyPassShaders.VertexShader,
-			SkyPassShaders.PixelShader
-			);
-
-		TBasePassShaderElementData<LightMapPolicyType> ShaderElementData(nullptr);
-		ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, false);
-
-		const FMeshDrawCommandSortKey SortKey = CalculateMeshStaticSortKey(SkyPassShaders.VertexShader, SkyPassShaders.PixelShader);
-
-		BuildMeshDrawCommands(
-			MeshBatch,
-			BatchElementMask,
-			PrimitiveSceneProxy,
-			MaterialRenderProxy,
-			MaterialResource,
-			PassDrawRenderState,
-			SkyPassShaders,
-			MeshFillMode,
-			MeshCullMode,
-			SortKey,
-			EMeshPassFeatures::Default,
-			ShaderElementData);
-	}
-	else
-	{
-		TMeshProcessorShaders<
-			TMobileBasePassVSPolicyParamType<LightMapPolicyType>,
-			FBaseHS,
-			FBaseDS,
-			TMobileBasePassPSPolicyParamType<LightMapPolicyType>> SkyPassShaders;
-
-		MobileBasePass::GetShaders(
-			LMP_NO_LIGHTMAP,
-			0,
-			MaterialResource,
-			VertexFactory->GetType(),
-			false,
-			SkyPassShaders.VertexShader,
-			SkyPassShaders.PixelShader
+	const bool bRenderSkylight = false;
+	const bool bRenderAtmosphericFog = false;
+	GetBasePassShaders<LightMapPolicyType>(
+		MaterialResource,
+		VertexFactory->GetType(),
+		NoLightmapPolicy,
+		FeatureLevel,
+		bRenderAtmosphericFog,
+		bRenderSkylight,
+		false,
+		SkyPassShaders.HullShader,
+		SkyPassShaders.DomainShader,
+		SkyPassShaders.VertexShader,
+		SkyPassShaders.PixelShader
 		);
 
-		TMobileBasePassShaderElementData<LightMapPolicyType> ShaderElementData(nullptr);
-		ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, false);
+	TBasePassShaderElementData<LightMapPolicyType> ShaderElementData(nullptr);
+	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, false);
 
-		const FMeshDrawCommandSortKey SortKey = CalculateMeshStaticSortKey(SkyPassShaders.VertexShader, SkyPassShaders.PixelShader);
+	const FMeshDrawCommandSortKey SortKey = CalculateMeshStaticSortKey(SkyPassShaders.VertexShader, SkyPassShaders.PixelShader);
 
-		BuildMeshDrawCommands(
-			MeshBatch,
-			BatchElementMask,
-			PrimitiveSceneProxy,
-			MaterialRenderProxy,
-			MaterialResource,
-			PassDrawRenderState,
-			SkyPassShaders,
-			MeshFillMode,
-			MeshCullMode,
-			SortKey,
-			EMeshPassFeatures::Default,
-			ShaderElementData);
-	}
+	BuildMeshDrawCommands(
+		MeshBatch,
+		BatchElementMask,
+		PrimitiveSceneProxy,
+		MaterialRenderProxy,
+		MaterialResource,
+		PassDrawRenderState,
+		SkyPassShaders,
+		MeshFillMode,
+		MeshCullMode,
+		SortKey,
+		EMeshPassFeatures::Default,
+		ShaderElementData);
 }
 
 FMeshPassProcessor* CreateSkyPassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)
 {
 	FMeshPassProcessorRenderState DrawRenderState(Scene->UniformBuffers.ViewUniformBuffer);
 	DrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
-
-	if (Scene->GetShadingPath() == EShadingPath::Mobile)
-	{
-		DrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.MobileOpaqueBasePassUniformBuffer);
-	}
 
 	FExclusiveDepthStencil::Type BasePassDepthStencilAccess_NoDepthWrite = FExclusiveDepthStencil::Type(Scene->DefaultBasePassDepthStencilAccess & ~FExclusiveDepthStencil::DepthWrite);
 	SetupBasePassState(BasePassDepthStencilAccess_NoDepthWrite, false, DrawRenderState);
@@ -149,5 +102,4 @@ FMeshPassProcessor* CreateSkyPassProcessor(const FScene* Scene, const FSceneView
 }
 
 FRegisterPassProcessorCreateFunction RegisterSkyPass(&CreateSkyPassProcessor, EShadingPath::Deferred, EMeshPass::SkyPass, EMeshPassFlags::MainView);
-// Mobile skypass is only active if mobile has a full depth pass
-FRegisterPassProcessorCreateFunction RegisterMobileSkyPass(&CreateSkyPassProcessor, EShadingPath::Mobile, EMeshPass::SkyPass, EMeshPassFlags::MainView);
+// No processor on mobile: sky meshes can be rendered as part of the base pass. The aerial perspective is removed when using shader #define.

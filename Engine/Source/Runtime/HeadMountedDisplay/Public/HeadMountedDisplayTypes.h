@@ -7,8 +7,6 @@
 #include "IMotionController.h"
 #include "RHI.h"
 #include "RHIResources.h"
-#include "InputCoreTypes.h"
-#include "Kismet/BlueprintFunctionLibrary.h"
 #include "HeadMountedDisplayTypes.generated.h"
 
 struct FFilterVertex;
@@ -65,7 +63,8 @@ namespace EHMDTrackingOrigin
 	{
 		Floor UMETA(DisplayName = "Floor Level"),
 		Eye UMETA(DisplayName = "Eye Level"),
-		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)")
+		Stage UMETA(DisplayName = "Stage (Centered Around Play Area)"),
+		Unbounded UMETA(DisplayName = "Unbounded (Centered Around Viewer)")
 	};
 }
 
@@ -270,22 +269,6 @@ enum class EHandKeypoint : uint8
 
 const int32 EHandKeypointCount = static_cast<int32>(EHandKeypoint::LittleTip) + 1;
 
-UCLASS()
-class HEADMOUNTEDDISPLAY_API UHandKeypointConversion : public UBlueprintFunctionLibrary
-{
-	GENERATED_BODY()
-
-public:
-	// Convert EHandKeypoint to int to use directly as indices in FXRMotionControllerData arrays.
-
-	/** Interpret a HandKeypoint as an int input */
-	UFUNCTION(BlueprintPure, BlueprintInternalUseOnly, meta = (CompactNodeTitle = "->", BlueprintAutocast))
-	static int32 Conv_HandKeypointToInt32(EHandKeypoint input)
-	{
-		return static_cast<int32>(input);
-	}
-};
-
 UENUM(BlueprintType)
 enum class EXRVisualType : uint8
 {
@@ -299,7 +282,7 @@ struct HEADMOUNTEDDISPLAY_API FXRHMDData
 	GENERATED_USTRUCT_BODY();
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	bool bValid = false;
+	bool bValid;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FName DeviceName;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
@@ -309,9 +292,9 @@ struct HEADMOUNTEDDISPLAY_API FXRHMDData
 	ETrackingStatus TrackingStatus = ETrackingStatus::NotTracked;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FVector Position = FVector(0.0f);;
+	FVector Position;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FQuat Rotation = FQuat(EForceInit::ForceInitToZero);
+	FQuat Rotation;
 };
 
 USTRUCT(BlueprintType)
@@ -326,24 +309,24 @@ struct HEADMOUNTEDDISPLAY_API FXRMotionControllerData
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	FGuid ApplicationInstanceID;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	EXRVisualType DeviceVisualType = EXRVisualType::Controller;
+	EXRVisualType DeviceVisualType;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	EControllerHand HandIndex = EControllerHand::Left;
+	EControllerHand HandIndex;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	ETrackingStatus TrackingStatus = ETrackingStatus::NotTracked;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FVector GripPosition = FVector(0.0f);
+	FVector GripPosition;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FQuat GripRotation = FQuat(EForceInit::ForceInitToZero);
+	FQuat GripRotation;
 
 	//for hand controllers, provides a more steady vector based on the elbow
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FVector AimPosition = FVector(0.0f);;
+	FVector AimPosition;
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
-	FQuat AimRotation = FQuat(EForceInit::ForceInitToZero);
+	FQuat AimRotation;
 
 	UPROPERTY(BlueprintReadOnly, Category = "XR")
 	TArray<struct FVector> HandKeyPositions;

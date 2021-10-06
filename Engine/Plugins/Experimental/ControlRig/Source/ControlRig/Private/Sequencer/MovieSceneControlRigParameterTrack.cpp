@@ -37,7 +37,7 @@ bool UMovieSceneControlRigParameterTrack::SupportsType(TSubclassOf<UMovieSceneSe
 UMovieSceneSection* UMovieSceneControlRigParameterTrack::CreateNewSection()
 {
 	UMovieSceneControlRigParameterSection* NewSection = NewObject<UMovieSceneControlRigParameterSection>(this, NAME_None, RF_Transactional);
-	NewSection->SetControlRig(ControlRig);
+	NewSection->ControlRig = ControlRig;
 	bool bSetDefault = false;
 	if (Sections.Num() == 0)
 	{
@@ -71,16 +71,11 @@ void UMovieSceneControlRigParameterTrack::AddSection(UMovieSceneSection& Section
 	Sections.Add(&Section);
 	if (UMovieSceneControlRigParameterSection* CRSection = Cast<UMovieSceneControlRigParameterSection>(&Section))
 	{
-		if (CRSection->GetControlRig() != ControlRig)
+		if (CRSection->ControlRig != ControlRig)
 		{
-			CRSection->SetControlRig(ControlRig);
+			CRSection->ControlRig = ControlRig;
 		}
 		CRSection->ReconstructChannelProxy(true);
-	}
-
-	if (Sections.Num() > 1)
-	{
-		SetSectionToKey(&Section);
 	}
 }
 
@@ -321,8 +316,9 @@ UMovieSceneSection* UMovieSceneControlRigParameterTrack::GetSectionToKey() const
 	return SectionToKey;
 }
 
-void UMovieSceneControlRigParameterTrack::ReconstructControlRig()
+void UMovieSceneControlRigParameterTrack::PostLoad()
 {
+	Super::PostLoad();
 	if (ControlRig && !ControlRig->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedInitialization))
 	{
 		ControlRig->ConditionalPostLoad();
@@ -339,20 +335,6 @@ void UMovieSceneControlRigParameterTrack::ReconstructControlRig()
 			}
 		}
 	}
-}
-
-void UMovieSceneControlRigParameterTrack::PostLoad()
-{
-	Super::PostLoad();
-
-	ReconstructControlRig();
-}
-
-void UMovieSceneControlRigParameterTrack::PostEditImport()
-{
-	Super::PostEditImport();
-
-	ReconstructControlRig();
 }
 
 CONTROLRIG_API void UMovieSceneControlRigParameterTrack::ReplaceControlRig(UControlRig* NewControlRig, bool RecreateChannels)
@@ -372,7 +354,7 @@ CONTROLRIG_API void UMovieSceneControlRigParameterTrack::ReplaceControlRig(UCont
 			}
 			else
 			{
-				CRSection->SetControlRig(NewControlRig);
+				CRSection->ControlRig = NewControlRig;
 			}
 		}	
 	}

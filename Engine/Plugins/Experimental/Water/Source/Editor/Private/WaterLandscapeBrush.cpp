@@ -23,18 +23,12 @@
 #include "Misc/UObjectToken.h"
 #include "Logging/MessageLog.h"
 #include "Logging/TokenizedMessage.h"
-#include "WaterIconHelper.h"
-#include "Components/BillboardComponent.h"
-#include "Modules/ModuleManager.h"
-#include "WaterModule.h"
 
 #define LOCTEXT_NAMESPACE "WaterLandscapeBrush"
 
 AWaterLandscapeBrush::AWaterLandscapeBrush(const FObjectInitializer& ObjectInitializer)
 {
 	SetAffectsHeightmap(true);
-
-	ActorIcon = FWaterIconHelper::EnsureSpriteComponentCreated(this, TEXT("/Water/Icons/WaterLandscapeBrushSprite"));
 }
 
 void AWaterLandscapeBrush::AddActorInternal(AActor* Actor, const UWorld* ThisWorld, UObject* InCache, bool bTriggerEvent, bool bModify)
@@ -53,7 +47,7 @@ void AWaterLandscapeBrush::AddActorInternal(AActor* Actor, const UWorld* ThisWor
 		}
 
 		IWaterBrushActorInterface* WaterBrushActor = CastChecked<IWaterBrushActorInterface>(Actor);
-		ActorsAffectingLandscape.Add(TWeakInterfacePtr<IWaterBrushActorInterface>(WaterBrushActor));
+		ActorsAffectingLandscape.Add(TWeakInterfacePtr<IWaterBrushActorInterface>(*WaterBrushActor));
 
 		if (InCache)
 		{
@@ -74,7 +68,7 @@ void AWaterLandscapeBrush::RemoveActorInternal(AActor* Actor)
 
 	const bool bMarkPackageDirty = false;
 	Modify(bMarkPackageDirty);
-	int32 Index = ActorsAffectingLandscape.IndexOfByKey(TWeakInterfacePtr<IWaterBrushActorInterface>(WaterBrushActor));
+	int32 Index = ActorsAffectingLandscape.IndexOfByKey(TWeakInterfacePtr<IWaterBrushActorInterface>(*WaterBrushActor));
 	if (Index != INDEX_NONE)
 	{
 		ActorsAffectingLandscape.RemoveAt(Index);
@@ -167,7 +161,7 @@ void AWaterLandscapeBrush::OnActorChanged(AActor* Actor, bool bWeightmapSettings
 {
 	bool bAffectsLandscape = IsActorAffectingLandscape(Actor);
 	IWaterBrushActorInterface* WaterBrushActor = CastChecked<IWaterBrushActorInterface>(Actor);
-	int32 ActorIndex = ActorsAffectingLandscape.IndexOfByKey(TWeakInterfacePtr<IWaterBrushActorInterface>(WaterBrushActor));
+	int32 ActorIndex = ActorsAffectingLandscape.IndexOfByKey(TWeakInterfacePtr<IWaterBrushActorInterface>(*WaterBrushActor));
 	// if the actor went from affecting landscape to non-affecting landscape (and vice versa), update the brush
 	bool bForceUpdateBrush = false;
 	if (bAffectsLandscape != (ActorIndex != INDEX_NONE))
@@ -303,13 +297,6 @@ void AWaterLandscapeBrush::PostInitProperties()
 
 	// If we are loading do not trigger events
 	UpdateActors(!GIsEditorLoadingPackage);
-}
-
-void AWaterLandscapeBrush::OnConstruction(const FTransform& Transform)
-{
-	Super::OnConstruction(Transform);
-
-	UpdateActorIcon();
 }
 
 void AWaterLandscapeBrush::ClearActors()
@@ -449,10 +436,6 @@ void AWaterLandscapeBrush::SetTargetLandscape(ALandscape* InTargetLandscape)
 			InTargetLandscape->AddBrushToLayer(ExistingWaterLayerIndex, this);
 		}
 	}
-
-#if WITH_EDITOR
-	UpdateActorIcon();
-#endif // WITH_EDITOR
 }
 
 void AWaterLandscapeBrush::OnFullHeightmapRenderDone(UTextureRenderTarget2D* InHeightmapRenderTarget)
@@ -525,64 +508,22 @@ void AWaterLandscapeBrush::ForceWaterTextureUpdate()
 
 #if WITH_EDITOR
 
-AWaterLandscapeBrush::EWaterBrushStatus AWaterLandscapeBrush::CheckWaterBrushStatus()
-{
-	if (GetWorld() && !IsTemplate())
-	{
-		ALandscape* Landscape = GetOwningLandscape();
-		if (Landscape == nullptr || !Landscape->CanHaveLayersContent())
-		{
-			return EWaterBrushStatus::MissingLandscapeWithEditLayers;
-		}
-
-		if (Landscape->GetBrushLayer(this) == INDEX_NONE)
-		{
-			return EWaterBrushStatus::MissingFromLandscapeEditLayers;
-		}
-	}
-
-	return EWaterBrushStatus::Valid;
-}
-
 void AWaterLandscapeBrush::CheckForErrors()
 {
 	Super::CheckForErrors();
 
-	switch (CheckWaterBrushStatus())
+	if (GetWorld() && !IsTemplate())
 	{
-	case EWaterBrushStatus::MissingLandscapeWithEditLayers:
-		FMessageLog("MapCheck").Error()
-			->AddToken(FUObjectToken::Create(this))
-			->AddToken(FTextToken::Create(LOCTEXT("MapCheck_Message_NonEditLayersLandscape", "The water brush requires a Landscape with Edit Layers enabled.")))
-			->AddToken(FMapErrorToken::Create(TEXT("WaterBrushNonEditLayersLandscape")));
-	case EWaterBrushStatus::MissingFromLandscapeEditLayers:
-		FMessageLog("MapCheck").Error()
-			->AddToken(FUObjectToken::Create(this))
-			->AddToken(FTextToken::Create(LOCTEXT("MapCheck_Message_MissingFromLandscapeEditLayers", "The water brush is missing from the owning landscape edit layers.")))
-			->AddToken(FMapErrorToken::Create(TEXT("WaterBrushMissingFromLandscapeEditLayers")));
-		break;
-	}
-}
-
-void AWaterLandscapeBrush::UpdateActorIcon()
-{
-	if (ActorIcon && !bIsEditorPreviewActor)
-	{
-		UTexture2D* IconTexture = ActorIcon->Sprite;
-		IWaterModuleInterface& WaterModule = FModuleManager::GetModuleChecked<IWaterModuleInterface>("Water");
-		if (const IWaterEditorServices* WaterEditorServices = WaterModule.GetWaterEditorServices())
+		if (ALandscape* Landscape = GetOwningLandscape())
 		{
-			if (CheckWaterBrushStatus() != EWaterBrushStatus::Valid)
+			if (!Landscape->CanHaveLayersContent())
 			{
-				IconTexture = WaterEditorServices->GetErrorSprite();
-			}
-			else
-			{
-				IconTexture = WaterEditorServices->GetWaterActorSprite(GetClass());
+				FMessageLog("MapCheck").Error()
+					->AddToken(FUObjectToken::Create(this))
+					->AddToken(FTextToken::Create(LOCTEXT("MapCheck_Message_NonEditLayersLandscape", "The water brush requires a Landscape with Edit Layers enabled. Otherwise, it will erase the existing landscape anytime a water body is modified. Please enable Edit Layers on the landscape. ")))
+					->AddToken(FMapErrorToken::Create(TEXT("WaterBrushNonEditLayersLandscape")));
 			}
 		}
-
-		FWaterIconHelper::UpdateSpriteComponent(this, IconTexture);
 	}
 }
 

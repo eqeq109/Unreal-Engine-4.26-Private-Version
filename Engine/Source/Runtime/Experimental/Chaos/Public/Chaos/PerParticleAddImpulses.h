@@ -7,25 +7,26 @@
 
 namespace Chaos
 {
-	class FPerParticleAddImpulses : public FPerParticleRule
+	template<class T, int d>
+	class TPerParticleAddImpulses : public TPerParticleRule<T, d>
 	{
 	public:
-		FPerParticleAddImpulses() {}
-		virtual ~FPerParticleAddImpulses() {}
+		TPerParticleAddImpulses() {}
+		virtual ~TPerParticleAddImpulses() {}
 
 		template<class T_PARTICLES>
-		inline void ApplyHelper(T_PARTICLES& InParticles, const FReal Dt, const int32 Index) const
+		inline void ApplyHelper(T_PARTICLES& InParticles, const T Dt, const int32 Index) const
 		{
 			InParticles.V(Index) += InParticles.LinearImpulse(Index) * InParticles.InvM(Index);
 		}
 
-		inline void Apply(FDynamicParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+		inline void Apply(TDynamicParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 		{
 			// @todo(mlentine): Is this something we want to support?
 			ensure(false);
 		}
 
-		inline void Apply(TRigidParticles<FReal, 3>& InParticles, const FReal Dt, const int32 Index) const override //-V762
+		inline void Apply(TRigidParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 		{
 			if (InParticles.InvM(Index) == 0 || InParticles.Disabled(Index) || InParticles.Sleeping(Index))
 				return;
@@ -45,11 +46,11 @@ namespace Chaos
 #endif
 
 			InParticles.W(Index) += WorldInvI * InParticles.AngularImpulse(Index);
-			InParticles.LinearImpulse(Index) = FVec3(0);
-			InParticles.AngularImpulse(Index) = FVec3(0);
+			InParticles.LinearImpulse(Index) = TVector<T, 3>(0);
+			InParticles.AngularImpulse(Index) = TVector<T, 3>(0);
 		}
 
-		inline void Apply(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal Dt) const override //-V762
+		inline void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 		{
 			Particle.V() += Particle.LinearImpulse() * Particle.InvM();
 #if CHAOS_PARTICLE_ACTORTRANSFORM
@@ -58,11 +59,8 @@ namespace Chaos
 			const FMatrix33 WorldInvI = Utilities::ComputeWorldSpaceInertia(Particle.R(), Particle.InvI());
 #endif
 			Particle.W() += WorldInvI * Particle.AngularImpulse();
-			Particle.LinearImpulse() = FVec3(0);
-			Particle.AngularImpulse() = FVec3(0);
+			Particle.LinearImpulse() = TVector<T, 3>(0);
+			Particle.AngularImpulse() = TVector<T, 3>(0);
 		}
 	};
-
-	template<class T, int d>
-	using TPerParticleAddImpulses UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticleAddImpulses instead") = FPerParticleAddImpulses;
 }

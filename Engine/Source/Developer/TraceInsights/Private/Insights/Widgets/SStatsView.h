@@ -23,7 +23,6 @@
 
 class FMenuBuilder;
 class FTimingGraphTrack;
-class FUICommandList;
 
 namespace Trace
 {
@@ -88,11 +87,7 @@ public:
 	FStatsNodePtr GetCounterNode(uint32 CounterId) const;
 	void SelectCounterNode(uint32 CounterId);
 
-	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
-
 private:
-	void InitCommandList();
-
 	void UpdateTree();
 
 	void UpdateNode(FStatsNodePtr NodePtr);
@@ -117,9 +112,6 @@ private:
 	TSharedPtr<SWidget> TreeView_GetMenuContent();
 	void TreeView_BuildSortByMenu(FMenuBuilder& MenuBuilder);
 	void TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder);
-
-	bool ContextMenu_CopySelectedToClipboard_CanExecute() const;
-	void ContextMenu_CopySelectedToClipboard_Execute();
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Tree View - Columns' Header
@@ -171,13 +163,9 @@ private:
 	void FilterOutZeroCountStats_OnCheckStateChanged(ECheckBoxState NewRadioState);
 	ECheckBoxState FilterOutZeroCountStats_IsChecked() const;
 
-	TSharedRef<SWidget> GetToggleButtonForNodeType(const EStatsNodeType InNodeType);
+	TSharedRef<SWidget> GetToggleButtonForStatsType(const EStatsNodeType InNodeType);
 	void FilterByStatsType_OnCheckStateChanged(ECheckBoxState NewRadioState, const EStatsNodeType InNodeType);
 	ECheckBoxState FilterByStatsType_IsChecked(const EStatsNodeType InNodeType) const;
-
-	TSharedRef<SWidget> GetToggleButtonForDataType(const EStatsNodeDataType InDataType);
-	void FilterByStatsDataType_OnCheckStateChanged(ECheckBoxState NewRadioState, const EStatsNodeDataType InDataType);
-	ECheckBoxState FilterByStatsDataType_IsChecked(const EStatsNodeDataType InDataType) const;
 
 	bool SearchBox_IsEnabled() const;
 	void SearchBox_OnTextChanged(const FText& InFilterText);
@@ -276,8 +264,6 @@ private:
 	/** A weak pointer to the profiler session used to populate this widget. */
 	TSharedPtr<const Trace::IAnalysisSession>/*Weak*/ Session;
 
-	TSharedPtr<FUICommandList> CommandList;
-
 	//////////////////////////////////////////////////
 	// Tree View, Columns
 
@@ -335,11 +321,8 @@ private:
 	/** The filter collection. */
 	TSharedPtr<FStatsNodeFilterCollection> Filters;
 
-	/** The on/off filter flag for each node type. */
-	bool FilterByNodeType[static_cast<int>(EStatsNodeType::InvalidOrMax)];
-
-	/** The on/off filter flag for each data type. */
-	bool FilterByDataType[static_cast<int>(EStatsNodeDataType::InvalidOrMax)];
+	/** Holds the visibility of each counter type. */
+	bool bStatsNodeIsVisible[static_cast<int>(EStatsNodeType::InvalidOrMax)];
 
 	/** Filter out the counters having zero total instance count (aggregated stats). */
 	bool bFilterOutZeroCountStats;

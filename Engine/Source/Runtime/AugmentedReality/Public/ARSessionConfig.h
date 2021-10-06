@@ -12,177 +12,160 @@
 
 class UMaterialInterface;
 
-/** Options for how the scene’s coordinate system is constructed. This feature is used by ARKit. */
 UENUM(BlueprintType, Category="AR AugmentedReality", meta=(Experimental))
 enum class EARWorldAlignment : uint8
 {
-	/** The coordinate system is aligned with gravity, defined by the vector (0, -1, 0). Origin is the initial position of the device. */
+	/** Aligns the world with gravity that is defined by vector (0, -1, 0) */
 	Gravity,
 
 	/**
-	 * The coordinate system is aligned with gravity, defined by the vector (0, -1, 0),
-	 * and compass heading based on True North, defined by the vector (0, 0, -1). Origin is the initial position of the device.
+	 * Aligns the world with gravity that is defined by the vector (0, -1, 0)
+	 * and heading (w.r.t. True North) that is given by the vector (0, 0, -1)
 	 */
 	GravityAndHeading,
 
-	/** The coordinate system matches the camera's orientation. This option is recommended for Face AR. */
+	/** Aligns the world with the camera's orientation, which is best for Face AR */
 	Camera
 };
 
-/** Options for the tracking type of the session. All AR platforms use this structure but only some session tracking are supported on each platform. The options are mutually exclusive.  */
 UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental))
 enum class EARSessionType : uint8
 {
-	/** No tracking in the session. */
+	/** AR tracking is not supported */
 	None,
 
-	/** A session where only the orientation of the device is tracked. ARKit supports this type of tracking.*/
+	/** AR session used to track orientation of the device only */
 	Orientation,
 
-	/** A session where the position and orientation of the device is tracked relative to objects in the environment. All platforms support this type of tracking. */
+	/** AR meant to overlay onto the world with tracking */
 	World,
 
-	/** A session where only faces are tracked. ARKit and ARCore support this type of tracking using the front-facing camera.*/
+	/** AR meant to overlay onto a face */
 	Face,
 
-	/** A session where only images supplied by the app are tracked. There is no world tracking. ARKit supports this type of tracking. */
+    /** Tracking of images supplied by the app. No world tracking, just images */
     Image,
 
-	/** A session where objects are scanned for object detection in a later World Tracking session. ARKit supports this type of tracking. */
+	/** A session used to scan objects for object detection in a world tracking session */
 	ObjectScanning,
 	
-	/** A session where human poses in 3D are tracked. ARKit supports this type of tracking using the rear-facing camera. */
+	/** A session used to track human pose in 3D */
 	PoseTracking,
 	
-	/** A session where geographic locations are tracked. ARKit supports this type of tracking. */
+	/** A session used to track geographic locations */
 	GeoTracking,
 };
 
-/** Options for how flat surfaces are detected. This feature is used by ARCore and ARKit. */
 UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental, Bitflags))
 enum class EARPlaneDetectionMode : uint8
 {
-	/** Disables plane detection. */
 	None = 0,
 	
-	/* Detects horizontal, flat surfaces. */
+	/* Detect Horizontal Surfaces */
 	HorizontalPlaneDetection = 1,
 
-	/* Detects vertical, flat surfaces. */
+	/* Detects Vertical Surfaces */
 	VerticalPlaneDetection = 2
 };
 ENUM_CLASS_FLAGS(EARPlaneDetectionMode);
 
-/** Options for how light is estimated based on the camera capture. This feature is used by ARCore and ARKit. */
 UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental))
 enum class EARLightEstimationMode : uint8
 {
-	/** Disables light estimation. */
+	/** Light estimation disabled. */
 	None = 0,
-
-	/** Estimates an ambient light. */
+	/** Enable light estimation for ambient intensity; returned as a UARBasicLightEstimate */
 	AmbientLightEstimate = 1,
-
 	/**
-	* Estimates a directional light of the environment with an additional key light.
+	* Enable directional light estimation of environment with an additional key light.
 	* Currently not supported.
 	*/
 	DirectionalLightEstimate = 2
 };
 
-/** Options for how the Unreal frame synchronizes with camera image updates. This feature is used by ARCore. */
 UENUM(BlueprintType, Category = "AR AugmentedReality", meta = (Experimental))
 enum class EARFrameSyncMode : uint8
 {
 	/** Unreal tick will be synced with the camera image update rate. */
 	SyncTickWithCameraImage = 0,
-
 	/** Unreal tick will not related to the camera image update rate. */
 	SyncTickWithoutCameraImage = 1,
 };
 
 /**
- * Options for how environment textures are generated. This feature is used by ARKit.
+ * Tells the AR system what type of environmental texture capturing to perform
  */
 UENUM(BlueprintType)
 enum class EAREnvironmentCaptureProbeType : uint8
 {
-	/** Disables environment texture generation. */
+	/** No capturing will happen */
 	None,
-
-	/** The app specifies where the environment capture probes are located and their size. */
+	/** Capturing will be manual with the app specifying where the probes are and their size */
 	Manual,
-
-	/** The AR system automatically creates and places the environment capture probes. */
+	/** Capturing will be automatic with probes placed by the AR system */
 	Automatic
 };
 
 /**
- * Options for the kind of data to update during Face Tracking. This feature is used by ARKit.
+ * Tells the AR system how much of the face work to perform
  */
-
 UENUM(BlueprintType)
 enum class EARFaceTrackingUpdate : uint8
 {
-	/** Both curves and geometry are updated. This is useful for mesh visualization. */
+	/** Curves and geometry will be updated (only needed for mesh visualization) */
 	CurvesAndGeo,
-
-	/** Only the curve data is updated. */
+	/** Only the curve data is updated */
 	CurvesOnly
 };
 
 /**
- * Options for more tracking features to be enabled for the session, in addition to what is already defined in the project’s @EARSessionType.
+ * Additional tracking features to be enabled if the device supports it
  */
-
 UENUM(BlueprintType)
 enum class EARSessionTrackingFeature : uint8
 {
-	/** No additional features are enabled. */
+	/** None of the session feature is enabled */
 	None,
 	
-	/** Adds tracking for 2D human poses to the session. This feature is used by ARKit. */
+	/** 2D pose detection is enabled */
 	PoseDetection2D,
 	
-	/** Uses person segmentation for occlusion in the session. This feature is used by ARKit. */
+	/** Person segmentation is enabled */
 	PersonSegmentation,
 	
-	/** Uses person segmentation with depth information for occlusion in the session. This feature is used by ARKit. */
+	/** Person segmentation with depth info is enabled */
 	PersonSegmentationWithDepth,
 	
-	/** Uses scene depth for occlusion while tracking in the session. This feature is used by ARCore and ARKit. */
+	/** Accessing scene depth info is enabled */
 	SceneDepth,
 	
-	/** Uses smoothed scene depth for occlusion while tracking in the session. This feature is used by ARKit. */
+	/** Accessing smoothed scene depth info is enabled */
 	SmoothedSceneDepth,
 };
 
 /**
- * Options for how the scene should be reconstructed. This feature is used by ARKit.
+ * Possible scene reconstruction methods
  */
 UENUM(BlueprintType)
 enum class EARSceneReconstruction : uint8
 {
-	/** Disables scene reconstruction*/
+	/** Scene reconstruction is disabled */
 	None,
 	
-	/** Creates a mesh approximation of the environment. */
+	/** A mesh approximation of the environment is constructed */
 	MeshOnly,
 	
-	/** Creates a mesh approximation of the environment and classifies the objects constructed. */
+	/** A mesh approximation of the environment, including classification of the objects is constructed */
 	MeshWithClassification,
 };
 
-/**
- * An Unreal Data Asset that defines what features are used in the AR session.
- */
 UCLASS(BlueprintType, Category="AR Settings")
 class AUGMENTEDREALITY_API UARSessionConfig : public UDataAsset
 {
 	GENERATED_BODY()
 
 public:
-	/** The constructor for the AR Session Config Data Asset. */
+
 	UARSessionConfig();
 	
 public:
@@ -308,80 +291,64 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AR Settings")
 	void SetSceneReconstructionMethod(EARSceneReconstruction InSceneReconstructionMethod);
 
-	/** @see bHorizontalPlaneDetection */
 	bool ShouldDoHorizontalPlaneDetection() const { return bHorizontalPlaneDetection; }
-	/** @see bVerticalPlaneDetection */
 	bool ShouldDoVerticalPlaneDetection() const { return bVerticalPlaneDetection; }
 	
-	/** @see  SerializedARCandidateImageDatabase */
 	const TArray<uint8>& GetSerializedARCandidateImageDatabase() const;
 
-	/** @see PlaneComponentClass */
 	UClass* GetPlaneComponentClass(void) const;
-	/** @see PointComponentClass */
 	UClass* GetPointComponentClass(void) const;
-	/** @see FaceComponentClass */
 	UClass* GetFaceComponentClass(void) const;
-	/** @see ImageComponentClass */
 	UClass* GetImageComponentClass(void) const;
-	/** @see QRCodeComponentClass */
 	UClass* GetQRCodeComponentClass(void) const;
-	/** @see PoseComponentClass */
 	UClass* GetPoseComponentClass(void) const;
-	/** @see EnvironmentProbeComponentClass */
 	UClass* GetEnvironmentProbeComponentClass(void) const;
-	/** @see ObjectComponentClass */
 	UClass* GetObjectComponentClass(void) const;
-	/** @see MeshComponentClass */
 	UClass* GetMeshComponentClass(void) const;
-	/** @see GeoAnchorComponentClass */
 	UClass* GetGeoAnchorComponentClass(void) const;
 	
-	/** @see DefaultMeshMaterial */
 	UMaterialInterface* GetDefaultMeshMaterial() const { return DefaultMeshMaterial; }
-	/** @see DefaultWireframeMeshMaterial */
 	UMaterialInterface* GetDefaultWireframeMeshMaterial() const { return DefaultWireframeMeshMaterial; }
 	
-	/** @see MaxNumberOfTrackedFaces */
 	int32 GetMaxNumberOfTrackedFaces() const { return MaxNumberOfTrackedFaces; }
 	
-	/** Boolean to determine whether the AR system should generate mesh data that can be used for rendering, collision, NavMesh, and more. This feature is used by OpenXR, Windows Mixed Reality, and Magic Leap. */
+	/** Whether the AR system should generate mesh data that can be rendered, collided against, nav mesh generated on, etc. */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bGenerateMeshDataFromTrackedGeometry;
 
-	/** Boolean to determine whether the AR system should generate collision data from the mesh data. */
+	/** Whether the AR system should generate collision data from the mesh data or not */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bGenerateCollisionForMeshData;
 
-	/** Boolean to determine whether the AR system should generate collision data from the mesh data. */
+	/** Whether the AR system should generate navigation mesh data from the mesh data or not */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bGenerateNavMeshForMeshData;
 
-	/** Boolean to determine whether the AR system should render the mesh data as occlusion meshes. */
+	/** Whether the AR system render the mesh data as occlusion meshes or not */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bUseMeshDataForOcclusion;
 
-	/** Boolean to determine whether the AR system should render the mesh data as wireframe.  It is reccomended to simply set the DefaultMeshMaterial to whatever is desired, including a wireframe material and ignore this setting (there is no good reason for this to exist as a special case).*/
+	/** Whether the AR system should render the mesh data in wireframe or not */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bRenderMeshDataInWireframe;
 
-	/** Boolean to determine whether the AR system should track scene objects: @see EARObjectClassification::SceneObject. */
+	/** Whether the AR system should report scene objects (@see EARObjectClassification::SceneObject) */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	bool bTrackSceneObjects;
 	
-	/** Boolean to determine whether to use the person segmentation results for occluding virtual content. This feature is used by ARKit. */
+	/** Whether to occlude the virtual content with the result from person segmentation */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
 	bool bUsePersonSegmentationForOcclusion = true;
 	
-	/** Boolean to determine whether to use the scene depth information for occluding virtual content. This feature is used by ARCore and ARKit. */
+	/** Whether to occlude the virtual content with the scene depth information */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Occlusion")
 	bool bUseSceneDepthForOcclusion = false;
 	
-	/** Boolean to determine whether to automatically estimate and set the scale of a detected, or tracked, image. This feature is used by ARKit. */
+	/** Whether to automatically estimate and set the scale of a detected or tracked image. */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | Image Tracking")
 	bool bUseAutomaticImageScaleEstimation = true;
 	
-	/** Boolean to determine whether to use the standard onboarding UX, if the system supports it. This feature is used by ARKit. */
+	/** Whether to use the standard onboarding UX, if the system supports it. */
 	UPROPERTY(EditAnywhere, Category = "AR Settings")
 	bool bUseStandardOnboardingUX = false;
 	
@@ -406,15 +373,15 @@ protected:
 	UPROPERTY()
 	EARPlaneDetectionMode PlaneDetectionMode_DEPRECATED;
 	
-	/** Boolean to determine whether flat, horizontal surfaces are detected. This feature is used by ARCore and ARKit. */
+	/** Should we detect flat horizontal surfaces: e.g. table tops, windows sills */
 	UPROPERTY(EditAnywhere, Category = "AR Settings")
 	bool bHorizontalPlaneDetection;
 	
-	/** Boolean to determine whether flat, vertical surfaces are detected. This feature is used by ARCore and ARKit. */
+	/** Should we detect flat vertical surfaces: e.g. paintings, monitors, book cases */
 	UPROPERTY(EditAnywhere, Category = "AR Settings")
 	bool bVerticalPlaneDetection;
 
-	/** Boolean to determine whether the camera should autofocus. Autofocus can cause subtle shifts in position for small objects at further camera distance. This feature is used by ARCore and ARKit. */
+	/** Whether the camera should use autofocus or not (can cause subtle shifts in position for small objects at macro camera distance) */
 	UPROPERTY(EditAnywhere, Category = "AR Settings")
 	bool bEnableAutoFocus;
 
@@ -426,122 +393,113 @@ protected:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "AR Settings")
 	EARFrameSyncMode FrameSyncMode;
 
-	/** Boolean to determine whether the AR camera feed should be drawn as an overlay. Defaults to true. This feature is used by ARCore and ARKit. */
+	/** Whether the AR camera feed should be drawn as an overlay or not. Defaults to true. */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	bool bEnableAutomaticCameraOverlay;
 
-	/** Boolean to determine whether the virtual camera should track the device movement. Defaults to true. This feature is used by ARCore and ARKit. */
+	/** Whether the game camera should track the device movement or not. Defaults to true. */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	bool bEnableAutomaticCameraTracking;
 
-	/** Boolean to determine whether the AR system should reset camera tracking, such as its origin and transforms, when a new AR session starts. Defaults to true. This feature is used by ARKit. */
+	/** Whether the AR system should reset camera tracking (origin, transform) or not. Defaults to true. */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	bool bResetCameraTracking;
 	
-	/** Boolean to determine whether the AR system should remove any tracked objects when a new AR session starts. Defaults to true. This feature is used by ARKit. */
+	/** Whether the AR system should remove any tracked objects or not. Defaults to true. */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	bool bResetTrackedObjects;
 	
-	/** The list of candidate images to detect within the AR camera view. This feature is used by ARKit. */
+	/** The list of candidate images to detect within the AR camera view */
 	UPROPERTY(EditAnywhere, Category="AR Settings | Image Tracking")
 	TArray<UARCandidateImage*> CandidateImages;
 
-	/** The maximum number of images to track at the same time. Defaults to 1. This feature is used by ARKit. */
+    /** The maximum number of images to track at the same time. Defaults to 1 */
     UPROPERTY(EditAnywhere, Category="AR Settings | Image Tracking")
     int32 MaxNumSimultaneousImagesTracked;
 	
-	/** @see EAREnvironmentCaptureProbeType */
+	/** How the AR system should handle texture probe capturing */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	EAREnvironmentCaptureProbeType EnvironmentCaptureProbeType;
 
-	/** A previously saved world that will be loaded when the session starts. This feature is used by ARKit. */
+	/** A previously saved world that is to be loaded when the session starts */
 	UPROPERTY(VisibleAnywhere, Category="AR Settings | World Mapping")
 	TArray<uint8> WorldMapData;
 
-	/** The list of candidate objects to search for in the scene. This feature is used by ARKit. */
+	/** A list of candidate objects to search for in the scene */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	TArray<UARCandidateObject*> CandidateObjects;
 
 	/**
-	 * The desired video format (or the default, if not supported) that this session should use if the camera is enabled.
-	 * Use GetSupportedVideoFormats to get a list of device-supported formats.
+	 * The desired video format (or the default if not supported) that this session should use if the camera is enabled
+	 * Note: Call GetSupportedVideoFormats to get a list of device supported formats
 	 */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	FARVideoFormat DesiredVideoFormat;
 	
-	/** Boolean to determine whether to automatically pick the video format that best matches the device screen size */
+	/** Whether to automatically pick the video format that best matches the device screen size */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	bool bUseOptimalVideoFormat = true;
 	
-	/** @see EARFaceTrackingDirection */
+	/** Whether to track the face as if you are looking out of the device or as a mirror */
 	UPROPERTY(EditAnywhere, Category="Face AR Settings")
 	EARFaceTrackingDirection FaceTrackingDirection;
 
-	/** @see EARFaceTrackingUpdate */
+	/** Whether to track the face as if you are looking out of the device or as a mirror */
 	UPROPERTY(EditAnywhere, Category="Face AR Settings")
 	EARFaceTrackingUpdate FaceTrackingUpdate;
 	
-	/** The maximum number of faces to track simultaneously. This feature is used by ARKit. */
+	/** The maximum number of faces to track simultaneously. */
 	UPROPERTY(EditAnywhere, Category="Face AR Settings")
 	int32 MaxNumberOfTrackedFaces = 1;
 	
-	/** Data array for storing the cooked image database. This feature is used by ARCore. */
+	/** Data array for storing the cooked image database */
 	UPROPERTY()
 	TArray<uint8> SerializedARCandidateImageDatabase;
 	
-	/** @see EARSessionTrackingFeature */
+	/** A list of session features  to enable */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	EARSessionTrackingFeature EnabledSessionTrackingFeature = EARSessionTrackingFeature::None;
 	
-	/** @see EARSceneReconstruction */
+	/** Which scene reconstruction method to use */
 	UPROPERTY(EditAnywhere, Category="AR Settings")
 	EARSceneReconstruction SceneReconstructionMethod = EARSceneReconstruction::None;
 
-	/** @see UARPlaneComponent */
+	/** Class binding for to facilitate networking */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARPlaneComponent> PlaneComponentClass;
 
-	/** @see UARPointComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARPointComponent> PointComponentClass;
 
-	/** @see UARFaceComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARFaceComponent> FaceComponentClass;
 
-	/** @see UARImageComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARImageComponent> ImageComponentClass;
 
-	/** @see UARQRCodeComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARQRCodeComponent> QRCodeComponentClass;
 
-	/** @see UARPoseComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARPoseComponent> PoseComponentClass;
 
-	/** @see UAREnvironmentProbeComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UAREnvironmentProbeComponent> EnvironmentProbeComponentClass;
 
-	/** @see UARObjectComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARObjectComponent> ObjectComponentClass;
 
-	/** @see UARMeshComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARMeshComponent> MeshComponentClass;
 	
-	/** @see UARGeoAnchorComponent */
 	UPROPERTY(EditAnywhere, Category = "AR Gameplay")
 	TSubclassOf<UARGeoAnchorComponent> GeoAnchorComponentClass;
 	
-	/** The default mesh material used by the generated mesh component. */
+	/** The default mesh material used by the generated mesh component */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	UMaterialInterface* DefaultMeshMaterial;
 
-	/** The default mesh material used by the wireframe setting of the generated mesh component.  Note: It is recommended to ignore this wireframe feature and use a wireframe material for the DefaultMeshMaterial instead. */
+	/** The default mesh material used by the wireframe setting of the generated mesh component.  Note: It is reccomended to ignore this 'wireframe' feature and use a wirefraem material in the DefaultMeshMaterial if you want wireframe. */
 	UPROPERTY(EditAnywhere, Category = "AR Settings | World Mapping")
 	UMaterialInterface* DefaultWireframeMeshMaterial;
 };

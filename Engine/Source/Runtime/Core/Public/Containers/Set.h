@@ -20,7 +20,6 @@
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/MemoryImageWriter.h"
 #include "ContainersFwd.h"
-#include "Templates/RetainedRef.h"
 
 /**
  * The base KeyFuncs type with some useful definitions for all KeyFuncs; meant to be derived from instead of used directly.
@@ -1467,26 +1466,19 @@ private:
 	};
 
 	/** The base type of whole set iterators. */
-	template <bool bConst>
+	template<bool bConst>
 	class TBaseKeyIterator
 	{
 	private:
 		typedef typename TChooseClass<bConst,const TSet,TSet>::Result SetType;
 		typedef typename TChooseClass<bConst,const ElementType,ElementType>::Result ItElementType;
-		typedef typename TTypeTraits<typename KeyFuncs::KeyType>::ConstPointerType ReferenceOrValueType;
 
 	public:
-		using KeyArgumentType =
-			std::conditional_t<
-				std::is_reference<ReferenceOrValueType>::value,
-				TRetainedRef<std::remove_reference_t<ReferenceOrValueType>>,
-				KeyInitType
-			>;
-
 		/** Initialization constructor. */
-		FORCEINLINE TBaseKeyIterator(SetType& InSet, KeyArgumentType InKey)
-			: Set(InSet)
-			, Key(InKey)
+		FORCEINLINE TBaseKeyIterator(SetType& InSet,KeyInitType InKey)
+		:	Set(InSet)
+		,	Key(InKey)
+		,	Id()
 		{
 			// The set's hash needs to be initialized to find the elements with the specified key.
 			Set.ConditionalRehash(Set.Elements.Num());
@@ -1540,7 +1532,7 @@ private:
 
 	protected:
 		SetType& Set;
-		ReferenceOrValueType Key;
+		typename TTypeTraits<typename KeyFuncs::KeyType>::ConstPointerType Key;
 		FSetElementId Id;
 		FSetElementId NextId;
 	};
@@ -1587,38 +1579,29 @@ public:
 	/** Used to iterate over the elements of a const TSet. */
 	class TConstKeyIterator : public TBaseKeyIterator<true>
 	{
-	private:
-		using Super = TBaseKeyIterator<true>;
-
 	public:
-		using KeyArgumentType = typename Super::KeyArgumentType;
-
-		FORCEINLINE TConstKeyIterator(const TSet& InSet, KeyArgumentType InKey)
-			: Super(InSet, InKey)
-		{
-		}
+		FORCEINLINE TConstKeyIterator(const TSet& InSet,KeyInitType InKey):
+			TBaseKeyIterator<true>(InSet,InKey)
+		{}
 	};
 
 	/** Used to iterate over the elements of a TSet. */
 	class TKeyIterator : public TBaseKeyIterator<false>
 	{
-	private:
-		using Super = TBaseKeyIterator<false>;
-
 	public:
-		using KeyArgumentType = typename Super::KeyArgumentType;
-
-		FORCEINLINE TKeyIterator(TSet& InSet, KeyArgumentType InKey)
-			: Super(InSet, InKey)
-		{
-		}
+		FORCEINLINE TKeyIterator(TSet& InSet,KeyInitType InKey)
+		:	TBaseKeyIterator<false>(InSet,InKey)
+		,	Set(InSet)
+		{}
 
 		/** Removes the current element from the set. */
 		FORCEINLINE void RemoveCurrent()
 		{
-			this->Set.Remove(TBaseKeyIterator<false>::Id);
+			Set.Remove(TBaseKeyIterator<false>::Id);
 			TBaseKeyIterator<false>::Id = FSetElementId();
 		}
+	private:
+		TSet& Set;
 	};
 
 	/** Creates an iterator for the contents of this set */

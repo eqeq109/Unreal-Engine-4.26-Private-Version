@@ -15,9 +15,9 @@ public:
 	{
 		// Kills current process. No resource cleaning performed.
 		KillImmediately,
-		// UE based soft exit (game thread). Full resource cleaning.
+		// UE4 based soft exit (game thread). Full resource cleaning.
 		NormalSoft,
-		// UE game termination. Error window and dump file should appear after exit.
+		// UE4 game termination. Error window and dump file should appear after exit.
 		NormalForce
 	};
 

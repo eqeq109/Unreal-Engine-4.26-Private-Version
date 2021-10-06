@@ -98,12 +98,17 @@ namespace Chaos
 		return ConstraintContainer->GetConstraintSettings(ConstraintIndex);
 	}
 
+	FPBDJointSettings& FPBDJointConstraintHandle::GetSettings()
+	{
+		return ConstraintContainer->GetConstraintSettings(ConstraintIndex);
+	}
+
 	void FPBDJointConstraintHandle::SetSettings(const FPBDJointSettings& Settings)
 	{
 		ConstraintContainer->SetConstraintSettings(ConstraintIndex, Settings);
 	}
 
-	TVector<FGeometryParticleHandle*, 2> FPBDJointConstraintHandle::GetConstrainedParticles() const 
+	TVector<TGeometryParticleHandle<float,3>*, 2> FPBDJointConstraintHandle::GetConstrainedParticles() const 
 	{ 
 		return ConstraintContainer->GetConstrainedParticles(ConstraintIndex); 
 	}
@@ -166,12 +171,10 @@ namespace Chaos
 		, AngularDriveStiffness(0)
 		, AngularDriveDamping(0)
 		, LinearBreakForce(FLT_MAX)
-		, LinearPlasticityLimit(FLT_MAX)
 		, AngularBreakTorque(FLT_MAX)
-		, AngularPlasticityLimit(FLT_MAX)
 		, UserData(nullptr)
 	{
-		if (bRealTypeCompatibleWithISPC && bChaos_Joint_ISPC_Enabled)
+		if (bChaos_Joint_ISPC_Enabled)
 		{
 #if INTEL_ISPC
 			check(sizeof(FJointSolverJointState) == ispc::SizeofFJointSolverJointState());
@@ -294,27 +297,22 @@ namespace Chaos
 		, AngleTolerance(0)
 		, MinParentMassRatio(0)
 		, MaxInertiaRatio(0)
-		, MinSolverStiffness(1)
-		, MaxSolverStiffness(1)
-		, NumIterationsAtMaxSolverStiffness(1)
 		, bEnableTwistLimits(true)
 		, bEnableSwingLimits(true)
 		, bEnableDrives(true)
-		, LinearStiffnessOverride(-1)
-		, TwistStiffnessOverride(-1)
-		, SwingStiffnessOverride(-1)
-		, LinearProjectionOverride(-1)
-		, AngularProjectionOverride(-1)
-		, LinearDriveStiffnessOverride(-1)
-		, LinearDriveDampingOverride(-1)
-		, AngularDriveStiffnessOverride(-1)
-		, AngularDriveDampingOverride(-1)
-		, SoftLinearStiffnessOverride(-1)
-		, SoftLinearDampingOverride(-1)
-		, SoftTwistStiffnessOverride(-1)
-		, SoftTwistDampingOverride(-1)
-		, SoftSwingStiffnessOverride(-1)
-		, SoftSwingDampingOverride(-1)
+		, LinearProjection(-1)
+		, AngularProjection(-1)
+		, Stiffness(0)
+		, LinearDriveStiffness(0)
+		, LinearDriveDamping(0)
+		, AngularDriveStiffness(0)
+		, AngularDriveDamping(0)
+		, SoftLinearStiffness(0)
+		, SoftLinearDamping(0)
+		, SoftTwistStiffness(0)
+		, SoftTwistDamping(0)
+		, SoftSwingStiffness(0)
+		, SoftSwingDamping(0)
 	{
 	}
 
@@ -328,7 +326,6 @@ namespace Chaos
 		: Settings(InSettings)
 		, bJointsDirty(false)
 		, bIsBatched(false)
-		, bUpdateVelocityInApplyConstraints(false)
 		, PreApplyCallback(nullptr)
 		, PostApplyCallback(nullptr)
 	{
@@ -361,7 +358,6 @@ namespace Chaos
 	{
 		// In solvers we need Particle0 to be the parent particle but ConstraintInstance has Particle1 as the parent, so by default
 		// we need to flip the indices before we pass them to the solver. 
-
 		Index0 = 1;
 		Index1 = 0;
 	}
@@ -394,12 +390,9 @@ namespace Chaos
 		int ConstraintIndex = Handles.Num();
 		Handles.Add(HandleAllocator.AllocHandle(this, ConstraintIndex));
 		ConstraintParticles.Add(InConstrainedParticles);
+		ConstraintSettings.Add(InConstraintSettings);
 		ConstraintFrames.Add(InConstraintFrames);
 		ConstraintStates.Add(FPBDJointState());
-
-		ConstraintSettings.AddDefaulted();
-		SetConstraintSettings(ConstraintIndex, InConstraintSettings);
-
 		return Handles.Last();
 	}
 
@@ -535,6 +528,7 @@ namespace Chaos
 		}
 	}
 
+
 	void FPBDJointConstraints::FixConstraints(int32 ConstraintIndex)
 	{
 		SetConstraintEnabled(ConstraintIndex, true);
@@ -612,11 +606,15 @@ namespace Chaos
 		return ConstraintSettings[ConstraintIndex];
 	}
 
+	FPBDJointSettings& FPBDJointConstraints::GetConstraintSettings(int32 ConstraintIndex)
+	{
+		return ConstraintSettings[ConstraintIndex];
+	}
+
 
 	void FPBDJointConstraints::SetConstraintSettings(int32 ConstraintIndex, const FPBDJointSettings& InConstraintSettings)
 	{
 		ConstraintSettings[ConstraintIndex] = InConstraintSettings;
-		ConstraintSettings[ConstraintIndex].Sanitize();
 	}
 
 
@@ -721,8 +719,8 @@ namespace Chaos
 				const FTransformPair& JointFrames = ConstraintFrames[JointIndex];
 				int32 Index0, Index1;
 				GetConstrainedParticleIndices(JointIndex, Index0, Index1);
-				FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index0]);
-				FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index1]);
+				TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index0]);
+				TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index1]);
 
 				JointState.Init(
 					Settings,
@@ -752,8 +750,8 @@ namespace Chaos
 
 				int32 Index0, Index1;
 				GetConstrainedParticleIndices(JointIndex, Index0, Index1);
-				FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index0]);
-				FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index1]);
+				TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index0]);
+				TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index1]);
 
 				Solver.Init(
 					Dt,
@@ -816,8 +814,8 @@ namespace Chaos
 	{
 		int32 Index0, Index1;
 		GetConstrainedParticleIndices(ConstraintIndex, Index0, Index1);
-		FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index0]);
-		FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index1]);
+		TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index0]);
+		TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index1]);
 		const FVec3 P0 = FParticleUtilities::GetCoMWorldPosition(Particle0);
 		const FRotation3 Q0 = FParticleUtilities::GetCoMWorldRotation(Particle0);
 		const FVec3 P1 = FParticleUtilities::GetCoMWorldPosition(Particle1);
@@ -1062,8 +1060,8 @@ namespace Chaos
 
 		int32 Index0, Index1;
 		GetConstrainedParticleIndices(JointIndex, Index0, Index1);
-		FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index0]);
-		FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[JointIndex][Index1]);
+		TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index0]);
+		TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[JointIndex][Index1]);
 
 		JointState.Update(
 			FParticleUtilities::GetCoMWorldPosition(Particle0),
@@ -1080,21 +1078,9 @@ namespace Chaos
 		TPBDRigidParticleHandle<FReal, 3>* Particle1 = ConstraintParticles[JointIndex][Index1]->CastToRigidParticle();
 
 		FJointSolverJointState& JointState = SolverConstraintStates[JointIndex];
-		UpdateParticleState(Particle0, Dt, JointState.PrevPs[Index0], JointState.PrevQs[Index0], JointState.Ps[Index0], JointState.Qs[Index0], bUpdateVelocityInApplyConstraints);
-		UpdateParticleState(Particle1, Dt, JointState.PrevPs[Index1], JointState.PrevQs[Index1], JointState.Ps[Index1], JointState.Qs[Index1], bUpdateVelocityInApplyConstraints);
-	}
-
-	FReal FPBDJointConstraints::CalculateIterationStiffness(int32 It, int32 NumIts) const
-	{
-		// Linearly interpolate betwwen MinStiffness and MaxStiffness over the first few iterations,
-		// then clamp at MaxStiffness for the final NumIterationsAtMaxStiffness
-		FReal IterationStiffness = Settings.MaxSolverStiffness;
-		if (NumIts > Settings.NumIterationsAtMaxSolverStiffness)
-		{
-			const FReal Interpolant = FMath::Clamp((FReal)It / (FReal)(NumIts - Settings.NumIterationsAtMaxSolverStiffness), 0.0f, 1.0f);
-			IterationStiffness = FMath::Lerp(Settings.MinSolverStiffness, Settings.MaxSolverStiffness, Interpolant);
-		}
-		return FMath::Clamp(IterationStiffness, 0.0f, 1.0f);
+		bool bUpdateVelocity = false;	// Position-based collision solver does not need V() and W()
+		UpdateParticleState(Particle0, Dt, JointState.PrevPs[Index0], JointState.PrevQs[Index0], JointState.Ps[Index0], JointState.Qs[Index0], bUpdateVelocity);
+		UpdateParticleState(Particle1, Dt, JointState.PrevPs[Index1], JointState.PrevQs[Index1], JointState.Ps[Index1], JointState.Qs[Index1], bUpdateVelocity);
 	}
 
 	bool FPBDJointConstraints::ApplyBatch(const FReal Dt, const int32 BatchIndex, const int32 NumPairIts, const int32 It, const int32 NumIts)
@@ -1120,7 +1106,7 @@ namespace Chaos
 			UE_LOG(LogChaosJoint, VeryVerbose, TEXT("  Pair Iteration %d / %d"), PairIt, NumPairIts);
 
 			// Reset accumulators and update derived state
-			if (bRealTypeCompatibleWithISPC && bChaos_Joint_ISPC_Enabled)
+			if (bChaos_Joint_ISPC_Enabled)
 			{
 #if INTEL_ISPC
 				ispc::BatchUpdateDerivedState(
@@ -1150,7 +1136,7 @@ namespace Chaos
 			// Solve and apply the position constraints for all Joints in the batch
 			const int32 LinearRowIndexBegin = SolverConstraints[JointIndexBegin].GetLinearRowIndexBegin();
 			const int32 LinearRowIndexEnd = SolverConstraints[JointIndexEnd - 1].GetLinearRowIndexEnd();
-			if (bRealTypeCompatibleWithISPC && bChaos_Joint_ISPC_Enabled)
+			if (bChaos_Joint_ISPC_Enabled)
 			{
 #if INTEL_ISPC
 				ispc::BatchApplyPositionConstraints(
@@ -1178,7 +1164,7 @@ namespace Chaos
 			}
 
 			// Reset accumulators and update derived state
-			if (bRealTypeCompatibleWithISPC && bChaos_Joint_ISPC_Enabled)
+			if (bChaos_Joint_ISPC_Enabled)
 			{
 #if INTEL_ISPC
 				ispc::BatchUpdateDerivedState(
@@ -1208,7 +1194,7 @@ namespace Chaos
 			// Solve and apply the rotation constraints for all Joints in the batch
 			const int32 AngularRowIndexBegin = SolverConstraints[JointIndexBegin].GetAngularRowIndexBegin();
 			const int32 AngularRowIndexEnd = SolverConstraints[JointIndexEnd - 1].GetAngularRowIndexEnd();
-			if (bRealTypeCompatibleWithISPC && bChaos_Joint_ISPC_Enabled)
+			if (bChaos_Joint_ISPC_Enabled)
 			{
 #if INTEL_ISPC
 				ispc::BatchApplyRotationConstraints(
@@ -1255,6 +1241,7 @@ namespace Chaos
 			return false;
 		}
 
+
 		const TVector<TGeometryParticleHandle<FReal, 3>*, 2>& Constraint = ConstraintParticles[ConstraintIndex];
 		UE_LOG(LogChaosJoint, VeryVerbose, TEXT("Solve Joint Constraint %d %s %s (dt = %f; it = %d / %d)"), ConstraintIndex, *Constraint[0]->ToString(), *Constraint[1]->ToString(), Dt, It, NumIts);
 
@@ -1263,8 +1250,8 @@ namespace Chaos
 
 		int32 Index0, Index1;
 		GetConstrainedParticleIndices(ConstraintIndex, Index0, Index1);
-		FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index0]);
-		FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index1]);
+		TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index0]);
+		TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index1]);
 
 		if ((Particle0->Sleeping() && Particle1->Sleeping())
 			|| (Particle0->IsKinematic() && Particle1->Sleeping()) 
@@ -1274,6 +1261,7 @@ namespace Chaos
 			return false;
 		}
 
+
 		const FVec3 P0 = FParticleUtilities::GetCoMWorldPosition(Particle0);
 		const FRotation3 Q0 = FParticleUtilities::GetCoMWorldRotation(Particle0);
 		const FVec3 P1 = FParticleUtilities::GetCoMWorldPosition(Particle1);
@@ -1281,11 +1269,8 @@ namespace Chaos
 
 		const bool bWasActive = Solver.GetIsActive();
 
-		const FReal IterationStiffness = CalculateIterationStiffness(It, NumIts);
-
 		Solver.Update(
 			Dt,
-			IterationStiffness,
 			Settings,
 			JointSettings,
 			P0,
@@ -1315,18 +1300,14 @@ namespace Chaos
 			}
 		}
 
-		UpdateParticleState(Particle0->CastToRigidParticle(), Dt, Solver.GetInitP(0), Solver.GetInitQ(0), Solver.GetP(0), Solver.GetQ(0), bUpdateVelocityInApplyConstraints);
-		UpdateParticleState(Particle1->CastToRigidParticle(), Dt, Solver.GetInitP(1), Solver.GetInitQ(1), Solver.GetP(1), Solver.GetQ(1), bUpdateVelocityInApplyConstraints);
+		bool bUpdateVelocity = false;	// Position-based collision solver does not need V() and W()
+		UpdateParticleState(Particle0->CastToRigidParticle(), Dt, Solver.GetInitP(0), Solver.GetInitQ(0), Solver.GetP(0), Solver.GetQ(0), bUpdateVelocity);
+		UpdateParticleState(Particle1->CastToRigidParticle(), Dt, Solver.GetInitP(1), Solver.GetInitQ(1), Solver.GetP(1), Solver.GetQ(1), bUpdateVelocity);
 
 		// @todo(ccaulfield): The break limit should really be applied to the impulse in the solver to prevent 1-frame impulses larger than the threshold
 		if ((JointSettings.LinearBreakForce!=FLT_MAX) || (JointSettings.AngularBreakTorque!=FLT_MAX))
 		{
 			ApplyBreakThreshold(Dt, ConstraintIndex, Solver.GetNetLinearImpulse(), Solver.GetNetAngularImpulse());
-		}
-
-		if ((JointSettings.LinearPlasticityLimit != FLT_MAX) || (JointSettings.AngularPlasticityLimit != FLT_MAX))
-		{
-			ApplyPlasticityLimits(Dt, ConstraintIndex, Particle1->X() - Particle0->X(), Particle0->R().Inverse() * Particle1->R());
 		}
 
 		return Solver.GetIsActive() || !bChaos_Joint_EarlyOut_Enabled;
@@ -1347,8 +1328,8 @@ namespace Chaos
 
 		int32 Index0, Index1;
 		GetConstrainedParticleIndices(ConstraintIndex, Index0, Index1);
-		FGenericParticleHandle Particle0 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index0]);
-		FGenericParticleHandle Particle1 = FGenericParticleHandle(ConstraintParticles[ConstraintIndex][Index1]);
+		TGenericParticleHandle<FReal, 3> Particle0 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index0]);
+		TGenericParticleHandle<FReal, 3> Particle1 = TGenericParticleHandle<FReal, 3>(ConstraintParticles[ConstraintIndex][Index1]);
 
 		if ((Particle0->Sleeping() && Particle1->Sleeping())
 			|| (Particle0->IsKinematic() && Particle1->Sleeping())
@@ -1365,11 +1346,8 @@ namespace Chaos
 
 		const bool bWasActive = Solver.GetIsActive();
 
-		const FReal IterationStiffness = CalculateIterationStiffness(It, NumIts);
-
 		Solver.Update(
 			Dt,
-			IterationStiffness,
 			Settings,
 			JointSettings,
 			P0,
@@ -1438,38 +1416,6 @@ namespace Chaos
 	}
 
 
-	void FPBDJointConstraints::ApplyPlasticityLimits(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearDisplacement, const FRotation3& AngularDisplacement)
-	{
-		FPBDJointSettings& JointSettings = ConstraintSettings[ConstraintIndex];
-		FTransformPair& ConstraintFrame = ConstraintFrames[ConstraintIndex];
-
-		if (!FMath::IsNearlyEqual(JointSettings.LinearPlasticityLimit,FLT_MAX))
-		{
-			FTransform JointTransform = ConstraintFrame[0].GetRelativeTransform(ConstraintFrame[1]);
-			const FReal Delta = LinearDisplacement.Size();
-			const FReal TargetDelta = JointTransform.GetTranslation().Size();
-			if (!FMath::IsNearlyZero(TargetDelta) && !FMath::IsNearlyZero(Delta) )
-			{
-				FReal Ratio = Delta / TargetDelta;
-				if( (1.f-Ratio) > JointSettings.LinearPlasticityLimit)
-				{
-					JointTransform.ScaleTranslation(Ratio);
-					ConstraintFrame[1] = JointTransform.GetRelativeTransformReverse(ConstraintFrame[0]);
-				}
-			}
-		}
-
-
-		if (!FMath::IsNearlyEqual(JointSettings.AngularPlasticityLimit, FLT_MAX))
-		{
-			const FReal AngleDeg = JointSettings.AngularDrivePositionTarget.AngularDistance(AngularDisplacement);
-			if (AngleDeg > JointSettings.AngularPlasticityLimit)
-			{
-				JointSettings.AngularDrivePositionTarget = AngularDisplacement;
-			}
-		}
-	}
-
 	// Assign an Island, Level and Color to each constraint. Constraints must be processed in Level order, but
 	// constraints of the same color are independent and can be processed in parallel (SIMD or Task)
 	// NOTE: Constraints are the Vertices, and Edges connect constraints sharing a Particle
@@ -1487,16 +1433,14 @@ namespace Chaos
 
 			TPBDRigidParticleHandle<FReal, 3>* Particle0 = ConstraintParticles[ConstraintIndex][0]->CastToRigidParticle();
 			TPBDRigidParticleHandle<FReal, 3>* Particle1 = ConstraintParticles[ConstraintIndex][1]->CastToRigidParticle();
-			bool IsParticle0Dynamic = (Particle0 != nullptr) && (Particle0->ObjectState() == EObjectStateType::Dynamic || Particle0->ObjectState() == EObjectStateType::Sleeping);
-			bool IsParticle1Dynamic = (Particle1 != nullptr) && (Particle1->ObjectState() == EObjectStateType::Dynamic || Particle1->ObjectState() == EObjectStateType::Sleeping);
 
-			bool bContainsDynamic = IsParticle0Dynamic || IsParticle1Dynamic;
+			bool bContainsDynamic = (Particle0 != nullptr) || (Particle1 != nullptr);
 			if (bContainsDynamic)
 			{
 				ConstraintVertices[ConstraintIndex] = Graph.AddVertex();
 
 				// Set kinematic-connected constraints to level 0 to initialize level calculation
-				bool bContainsKinematic = !IsParticle0Dynamic || !IsParticle1Dynamic;
+				bool bContainsKinematic = (Particle0 == nullptr) || (Particle1 == nullptr);
 				if (bContainsKinematic)
 				{
 					Graph.SetVertexLevel(ConstraintVertices[ConstraintIndex], 0);
@@ -1537,18 +1481,10 @@ namespace Chaos
 			{
 				int32 ConstraintIndex0 = ParticleConstraintIndices[ParticleConstraintIndex0];
 				int32 VertexIndex0 = ConstraintVertices[ConstraintIndex0];
-				if(VertexIndex0 == INDEX_NONE)
-				{
-					continue;
-				}
 				for (int32 ParticleConstraintIndex1 = ParticleConstraintIndex0 + 1; ParticleConstraintIndex1 < NumParticleConstraintIndices; ++ParticleConstraintIndex1)
 				{
 					int32 ConstraintIndex1 = ParticleConstraintIndices[ParticleConstraintIndex1];
 					int32 VertexIndex1 = ConstraintVertices[ConstraintIndex1];
-					if(VertexIndex1 == INDEX_NONE)
-					{
-						continue;
-					}
 					Graph.AddEdge(VertexIndex0, VertexIndex1);
 				}
 			}

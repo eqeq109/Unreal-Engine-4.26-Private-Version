@@ -10,11 +10,9 @@
 #include "LevelEditorViewport.h"
 #include "Modules/ModuleManager.h"
 #include "OpenColorIODisplayManager.h"
-#include "OpenColorIOConfiguration.h"
 #include "OpenColorIOEditorSettings.h"
 #include "OpenColorIOColorSpaceConversionCustomization.h"
 #include "OpenColorIOColorSpaceCustomization.h"
-#include "OpenColorIOConfigurationCustomization.h"
 #include "OpenColorIOColorTransform.h"
 #include "PropertyEditorModule.h"
 #include "SLevelViewport.h"
@@ -73,9 +71,8 @@ void FOpenColorIOEditorModule::ShutdownModule()
 void FOpenColorIOEditorModule::RegisterCustomizations()
 {
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	PropertyModule.RegisterCustomPropertyTypeLayout(FOpenColorIOColorConversionSettings::StaticStruct()->GetFName(), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FOpenColorIOColorConversionSettingsCustomization::MakeInstance));
+	PropertyModule.RegisterCustomPropertyTypeLayout(FOpenColorIOColorConversionSettings::StaticStruct()->GetFName(), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FOpenColorIOColorSpaceConversionCustomization::MakeInstance));
 	PropertyModule.RegisterCustomPropertyTypeLayout(FOpenColorIOColorSpace::StaticStruct()->GetFName(), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FOpenColorIOColorSpaceCustomization::MakeInstance));
-	PropertyModule.RegisterCustomClassLayout(UOpenColorIOConfiguration::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FOpenColorIOConfigurationCustomization::MakeInstance));
 }
 
 void FOpenColorIOEditorModule::UnregisterCustomizations()
@@ -83,7 +80,6 @@ void FOpenColorIOEditorModule::UnregisterCustomizations()
 	if (UObjectInitialized() == true)
 	{
 		FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-		PropertyModule.UnregisterCustomPropertyTypeLayout(UOpenColorIOConfiguration::StaticClass()->GetFName());
 		PropertyModule.UnregisterCustomPropertyTypeLayout(FOpenColorIOColorSpace::StaticStruct()->GetFName());
 		PropertyModule.UnregisterCustomPropertyTypeLayout(FOpenColorIOColorConversionSettings::StaticStruct()->GetFName());
 	}
@@ -212,7 +208,6 @@ void FOpenColorIOEditorModule::OnDisplayConfigurationChanged(const FOpenColorIOD
 	FViewport* CurrentViewport = GEditor->GetActiveViewport();
 	FOpenColorIODisplayConfiguration& Configuration = IOpenColorIOModule::Get().GetDisplayManager().FindOrAddDisplayConfiguration(CurrentViewport->GetClient());
 	Configuration = NewConfiguration;
-	CurrentViewport->Invalidate();
 }
 
 void FOpenColorIOEditorModule::OnLevelViewportClientListChanged()

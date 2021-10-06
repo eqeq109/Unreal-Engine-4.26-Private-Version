@@ -15,6 +15,7 @@ DEFINE_LOG_CATEGORY_STATIC(GCTCR_Log, Verbose, All);
 namespace GeometryCollectionTest
 {
 
+	template<class T>
 	void CheckIncrementMask()
 	{
 		{
@@ -39,7 +40,9 @@ namespace GeometryCollectionTest
 			EXPECT_EQ(Mask[4], 2);
 		}
 	}
+	template void CheckIncrementMask<float>();
 
+	template<class T>
 	void Creation()
 	{
 		TSharedPtr<FGeometryCollection> Collection(new FGeometryCollection());
@@ -77,7 +80,9 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void Creation<float>();
 
+	template<class T>
 	void Empty()
 	{
 		// Set up Collection, empty it, then set it back up again.
@@ -135,7 +140,9 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 
 	}
+	template void Empty<float>();
 
+	template<class T>
 	void AppendTransformHierarchy()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform(FQuat::MakeFromEuler(FVector(0, 0, 90.)), FVector(0, 10, 0)), FVector(1.0));
@@ -282,7 +289,9 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 		EXPECT_TRUE(GeometryCollectionAlgo::HasValidGeometryReferences(Collection.Get()));
 	}
+	template void AppendTransformHierarchy<float>();
 
+	template<class T>
 	void ContiguousElementsTest()
 	{
 		{
@@ -303,7 +312,9 @@ namespace GeometryCollectionTest
 			EXPECT_TRUE(Collection->HasContiguousVertices());
 		}
 	}
+	template void ContiguousElementsTest<float>();
 
+	template<class T>
 	void DeleteFromEnd()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -416,7 +427,10 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteFromEnd<float>();
 
+
+	template<class T>
 	void DeleteFromStart()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -529,7 +543,9 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteFromStart<float>();
 
+	template<class T>
 	void DeleteFromMiddle()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -642,7 +658,10 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteFromMiddle<float>();
 
+
+	template<class T>
 	void DeleteBranch()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -783,7 +802,10 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteBranch<float>();
 
+
+	template<class T>
 	void DeleteRootLeafMiddle()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -989,7 +1011,10 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteRootLeafMiddle<float>();
 
+
+	template<class T>
 	void DeleteEverything()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -1061,7 +1086,10 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Collection->HasContiguousVertices());
 		EXPECT_TRUE(Collection->HasContiguousRenderFaces());
 	}
+	template void DeleteEverything<float>();
 
+
+	template<class T>
 	void ParentTransformTest()
 	{
 		FGeometryCollection* Collection = new FGeometryCollection();
@@ -1150,7 +1178,9 @@ namespace GeometryCollectionTest
 
 		delete Collection;
 	}
+	template void ParentTransformTest<float>();
 
+	template<class T>
 	void ReindexMaterialsTest()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -1198,7 +1228,9 @@ namespace GeometryCollectionTest
 		EXPECT_EQ((Collection->Sections)[1].MaterialID, 1);
 		EXPECT_EQ((Collection->Sections)[1].NumTriangles, 12);
 	}
+	template void ReindexMaterialsTest<float>();
 
+	template<class T>
 	void AttributeTransferTest()
 	{
 		TSharedPtr<FGeometryCollection> Collection1 = GeometryCollection::MakeCubeElement(FTransform::Identity, FVector(1.0));
@@ -1221,7 +1253,9 @@ namespace GeometryCollectionTest
 			EXPECT_TRUE((Collection2->Color)[i].Equals(FColor(1, 0, 1, 1)));
 		}
 	}
+	template void AttributeTransferTest<float>();
 
+	template<class T>
 	void AttributeDependencyTest()
 	{
 		FGeometryCollection* Collection = new FGeometryCollection();
@@ -1256,4 +1290,6 @@ namespace GeometryCollectionTest
 
 		delete Collection;
 	}
+	template void AttributeDependencyTest<float>();
+
 }

@@ -3,15 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "MIDIDeviceController.h"
-#include "MIDIDeviceControllerBase.h"
+#include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-
+#include "UObject/WeakObjectPtr.h"
+#include "MIDIDeviceController.h"
 #include "MIDIDeviceOutputController.generated.h"
 
 UCLASS(BlueprintType)
-class MIDIDEVICE_API UMIDIDeviceOutputController : public UMIDIDeviceControllerBase
+class MIDIDEVICE_API UMIDIDeviceOutputController : public UObject
 {
 	GENERATED_BODY()
 
@@ -100,16 +99,11 @@ public:
 
 
 	/** Called from UMIDIDeviceManager after the controller is created to get it ready to use.  Don't call this directly. */
-	virtual void StartupDevice(const int32 InitDeviceID, const int32 InitMIDIBufferSize, bool& bOutWasSuccessful) override;
+	void StartupDevice(const int32 InitDeviceID, bool& bOutWasSuccessful);
 
 	/** Called during destruction to clean up this device.  Don't call this directly. */
-	virtual void ShutdownDevice() override;
+	void ShutdownDevice();
 
-	/** The name of this device.  This name comes from the MIDI hardware, any might not be unique */
-	virtual FString GetDeviceName() const override { return DeviceName; }
-
-	/** Size of the MIDI buffer in bytes */
-	virtual int32 GetMIDIBufferSize() const override { return 0; }
 
 protected:
 

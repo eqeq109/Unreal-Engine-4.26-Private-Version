@@ -13,13 +13,13 @@ struct FRigUnit_BinaryVectorOp : public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta=(Input))
-	FVector Argument0 = FVector(0.f);
+	FVector Argument0;
 
 	UPROPERTY(meta=(Input))
-	FVector Argument1 = FVector(0.f);
+	FVector Argument1;
 
 	UPROPERTY(meta=(Output))
-	FVector Result = FVector(0.f);
+	FVector Result;
 };
 
 USTRUCT(meta=(DisplayName="Multiply(Vector)", Category="Math|Vector", Deprecated="4.23.0"))
@@ -64,13 +64,13 @@ struct FRigUnit_Distance_VectorVector : public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta=(Input))
-	FVector Argument0 = FVector(0.f);
+	FVector Argument0;
 
 	UPROPERTY(meta=(Input))
-	FVector Argument1 = FVector(0.f);
+	FVector Argument1;
 
 	UPROPERTY(meta=(Output))
-	float Result = 0.f;
+	float Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;

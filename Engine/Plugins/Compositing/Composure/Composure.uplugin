@@ -34,10 +34,6 @@
 	],
 	"Plugins": [
 		{
-			"Name": "CameraCalibrationCore",
-			"Enabled": true
-		},
-		{
 			"Name": "LensDistortion",
 			"Enabled": true
 		},

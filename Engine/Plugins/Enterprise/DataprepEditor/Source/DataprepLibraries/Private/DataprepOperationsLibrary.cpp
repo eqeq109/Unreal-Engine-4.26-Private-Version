@@ -6,7 +6,6 @@
 #include "DataprepCoreUtils.h"
 #include "DataprepContentConsumer.h"
 #include "DatasmithAssetUserData.h"
-#include "DatasmithAreaLightActor.h"
 
 #include "ActorEditorUtils.h"
 #include "AssetDeleteModel.h"
@@ -30,7 +29,6 @@
 #include "Math/Vector2D.h"
 #include "Misc/FileHelper.h"
 #include "ObjectTools.h"
-#include "PhysicsEngine/BodySetup.h"
 #include "StaticMeshAttributes.h"
 #include "StaticMeshOperations.h"
 #include "TessellationRendering.h"
@@ -184,24 +182,12 @@ void UDataprepOperationsLibrary::SubstituteMaterial(const TArray<UObject*>& Sele
 					}
 				}
 			}
-			else if (UMeshComponent* MeshComponent = Cast< UMeshComponent >(Object))
-			{
-				int32 MaterialCount = FMath::Max( MeshComponent->GetNumOverrideMaterials(), MeshComponent->GetNumMaterials() );
-
-				for (int32 Index = 0; Index < MaterialCount; ++Index)
-				{
-					if (MeshComponent->GetMaterial(Index) == MaterialToReplace)
-					{
-						MeshComponent->SetMaterial(Index, MaterialSubstitute);
-					}
-				}
-			}
 			else if (UStaticMesh* StaticMesh = Cast< UStaticMesh >(Object))
 			{
 				DataprepOperationsLibraryUtil::FScopedStaticMeshEdit StaticMeshEdit( StaticMesh );
 
-				TArray<FStaticMaterial>& StaticMaterials = StaticMesh->GetStaticMaterials();
-				for (int32 Index = 0; Index < StaticMesh->GetStaticMaterials().Num(); ++Index)
+				TArray<FStaticMaterial>& StaticMaterials = StaticMesh->StaticMaterials;
+				for (int32 Index = 0; Index < StaticMesh->StaticMaterials.Num(); ++Index)
 				{
 					if (StaticMesh->GetMaterial(Index) == MaterialToReplace)
 					{
@@ -219,20 +205,12 @@ void UDataprepOperationsLibrary::SetMobility( const TArray< UObject* >& Selected
 	{
 		if (AActor* Actor = Cast< AActor >(Object))
 		{
+			// Find the materials by iterating over every mesh component.
 			TInlineComponentArray<USceneComponent*> SceneComponents(Actor);
 			for (USceneComponent* SceneComponent : SceneComponents)
 			{
 				SceneComponent->SetMobility(MobilityType);
 			}
-
-			if (ADatasmithAreaLightActor* DatasmithAreaLightActor = Cast<ADatasmithAreaLightActor>(Actor))
-			{
-				DatasmithAreaLightActor->Mobility = MobilityType;
-			}
-		}
-		else if (USceneComponent* SceneComponent = Cast< USceneComponent >(Object))
-		{
-			SceneComponent->SetMobility(MobilityType);
 		}
 	}
 }
@@ -259,18 +237,9 @@ void UDataprepOperationsLibrary::SetMaterial( const TArray< UObject* >& Selected
 		{
 			DataprepOperationsLibraryUtil::FScopedStaticMeshEdit StaticMeshEdit( StaticMesh );
 
-			for (int32 Index = 0; Index < StaticMesh->GetStaticMaterials().Num(); ++Index)
+			for (int32 Index = 0; Index < StaticMesh->StaticMaterials.Num(); ++Index)
 			{
 				DataprepOperationsLibraryUtil::SetMaterial( StaticMesh, Index, MaterialSubstitute );
-			}
-		}
-		else if (UMeshComponent* MeshComponent = Cast< UMeshComponent >(Object))
-		{
-			int32 MaterialCount = FMath::Max( MeshComponent->GetNumOverrideMaterials(), MeshComponent->GetNumMaterials() );
-
-			for (int32 Index = 0; Index < MaterialCount; ++Index)
-			{
-				MeshComponent->SetMaterial(Index, MaterialSubstitute);
 			}
 		}
 	}
@@ -312,10 +281,6 @@ void UDataprepOperationsLibrary::SetMesh(const TArray<UObject*>& SelectedObjects
 					MeshComponent->SetStaticMesh( MeshSubstitute );
 				}
 			}
-		}
-		else if (UStaticMeshComponent* MeshComponent = Cast< UStaticMeshComponent >( Object ))
-		{
-			MeshComponent->SetStaticMesh( MeshSubstitute );
 		}
 	}
 }
@@ -363,26 +328,17 @@ void UDataprepOperationsLibrary::SubstituteMesh(const TArray<UObject*>& Selected
 
 void UDataprepOperationsLibrary::AddTags(const TArray< UObject* >& SelectedObjects, const TArray<FName>& InTags)
 {
-	TFunction<void(TArray<FName>&)> AddNewTags = [&InTags](TArray<FName>& InExistingTags)
-	{
-		for (int TagIndex = 0; TagIndex < InTags.Num(); ++TagIndex)
-		{
-			if (!InTags[TagIndex].IsNone() && (INDEX_NONE == InExistingTags.Find(InTags[TagIndex])))
-			{
-				InExistingTags.Add(InTags[TagIndex]);
-			}
-		}
-	};
-
 	for (UObject* Object : SelectedObjects)
 	{
 		if (AActor* Actor = Cast< AActor >(Object))
 		{
-			AddNewTags(Actor->Tags);
-		}
-		else if (UActorComponent* Comp = Cast< UActorComponent >(Object))
-		{
-			AddNewTags(Comp->ComponentTags);
+			for (int TagIndex = 0; TagIndex < InTags.Num(); ++TagIndex)
+			{
+				if (!InTags[TagIndex].IsNone() && (INDEX_NONE == Actor->Tags.Find(InTags[TagIndex])))
+				{
+					Actor->Tags.Add(InTags[TagIndex]);
+				}
+			}
 		}
 	}
 }
@@ -708,49 +664,6 @@ void UDataprepOperationsLibrary::AddToLayer(const TArray<UObject*>& SelectedObje
 				Actor->Layers.AddUnique(LayerName);
 			}
 		}
-	}
-}
-
-void UDataprepOperationsLibrary::SetCollisionComplexity(const TArray<UObject*>& InSelectedObjects, const ECollisionTraceFlag InCollisionTraceFlag, TArray<UObject*>& InModifiedObjects)
-{
-	TSet<UStaticMesh*> SelectedMeshes = DataprepOperationsLibraryUtil::GetSelectedMeshes(InSelectedObjects);
-
-	DataprepOperationsLibraryUtil::FStaticMeshBuilder StaticMeshBuilder( SelectedMeshes );
-
-	for (UStaticMesh* StaticMesh : SelectedMeshes)
-	{
-		if (StaticMesh)
-		{
-			DataprepOperationsLibraryUtil::FScopedStaticMeshEdit StaticMeshEdit( StaticMesh );
-
-			if (UBodySetup* BodySetup = StaticMesh->GetBodySetup())
-			{
-				BodySetup->CollisionTraceFlag = InCollisionTraceFlag;
-				InModifiedObjects.Add( StaticMesh );
-			}
-		}
-	}
-}
-
-void UDataprepOperationsLibrary::ResizeTextures(const TArray<UTexture2D*>& InTextures, int32 InMaxSize)
-{
-	static const FName MaxTextureSizeName = GET_MEMBER_NAME_CHECKED(UTexture, MaxTextureSize);
-	FProperty* MaxTextureSizeProperty = FindFProperty<FProperty>( UTexture::StaticClass(), MaxTextureSizeName );
-	FPropertyChangedEvent PropertyChangedEvent(MaxTextureSizeProperty);
-
-	for (UTexture2D* Texture : InTextures)
-	{
-		Texture->PreEditChange(MaxTextureSizeProperty);
-
-		const int32 TextureWidth = Texture->GetSizeX();
-		const int32 TextureHeight = Texture->GetSizeY();
-		if (!FMath::IsPowerOfTwo(TextureWidth) || !FMath::IsPowerOfTwo(TextureHeight))
-		{
-			// Need to specify power of two mode for non-pot textures
-			Texture->PowerOfTwoMode = ETexturePowerOfTwoSetting::PadToPowerOfTwo;
-		}
-		Texture->MaxTextureSize = InMaxSize;
-		Texture->PostEditChangeProperty(PropertyChangedEvent);
 	}
 }
 

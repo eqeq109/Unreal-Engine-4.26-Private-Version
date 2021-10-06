@@ -326,7 +326,7 @@ namespace Gauntlet
 			return Platform == UnrealTargetPlatform.Android;
 		}
 
-		public ITargetDevice CreateDevice(string InRef, string InCachePath, string InParam = null)
+		public ITargetDevice CreateDevice(string InRef, string InParam)
 		{
 			AndroidDeviceData DeviceData = null;
 
@@ -335,7 +335,7 @@ namespace Gauntlet
 				DeviceData = fastJSON.JSON.Instance.ToObject<AndroidDeviceData>(InParam);
 			}
 
-			return new TargetDeviceAndroid(InRef, DeviceData, InCachePath);
+			return new TargetDeviceAndroid(InRef, DeviceData);
 		}
 	}
 
@@ -421,15 +421,14 @@ namespace Gauntlet
         }
         public bool IsConnected { get	{ return IsAvailable; }	}
 
-		protected bool IsExistingDevice = false;
+		protected bool IsExistingDevice = false;		
 
 		/// <summary>
 		/// Constructor
 		/// </summary>
-		/// <param name="InDeviceName"></param>
-		/// <param name="DeviceData"></param>
-		/// <param name="InCachePath"></param>
-		public TargetDeviceAndroid(string InDeviceName = "", AndroidDeviceData DeviceData = null, string InCachePath = null)
+		/// <param name="InReferenceName"></param>
+		/// <param name="InRemoveOnDestruction"></param>
+		public TargetDeviceAndroid(string InDeviceName = "", AndroidDeviceData DeviceData = null)
 		{
 			DeviceName = InDeviceName;
 
@@ -502,7 +501,7 @@ namespace Gauntlet
 			Name = DeviceName.Replace(":", "_");
 
 			// Path we use for artifacts, we'll create it later when we need it
-			LocalCachePath = InCachePath ?? Path.Combine(Globals.TempDir, "AndroidDevice_" + Name);
+			LocalCachePath = Path.Combine(Globals.TempDir, "AndroidDevice_" + Name);
 
 			ConnectedDevices = GetAllConnectedDevices();
 
@@ -1182,18 +1181,6 @@ namespace Gauntlet
 				Log.Warning("Platform directory mappings have not been populated for this platform! This should be done within InstallApplication()");
 			}
 			return LocalDirectoryMappings;
-		}
-
-		public bool IsOSOutOfDate()
-		{
-			//TODO: not yet implemented
-			return false;
-		}
-
-		public bool UpdateOS()
-		{
-			//TODO: not yet implemented
-			return true;
 		}
 	}
 

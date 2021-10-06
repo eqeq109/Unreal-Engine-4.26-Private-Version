@@ -5,15 +5,25 @@
 
 #include "DisplayClusterProjectionLog.h"
 
-#include "DisplayClusterConfigurationTypes.h"
+
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolicyFactory::GetPolicyInstance(const FString& ViewportId)
+{
+	if (PolicyInstances.Contains(ViewportId))
+	{
+		return PolicyInstances[ViewportId];
+	}
+
+	return nullptr;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe> FDisplayClusterProjectionCameraPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
 {
-	check(InConfigurationProjectionPolicy != nullptr);
-
-	//UE_LOG(LogDisplayClusterProjectionCamera, Log, TEXT("Instantiating projection policy <%s> id='%s'"), *InConfigurationProjectionPolicy->Type, *ProjectionPolicyId);
-	return  MakeShared<FDisplayClusterProjectionCameraPolicy, ESPMode::ThreadSafe>(ProjectionPolicyId, InConfigurationProjectionPolicy);
+	UE_LOG(LogDisplayClusterProjectionCamera, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
+	TSharedPtr<IDisplayClusterProjectionPolicy> NewPolicy = MakeShared<FDisplayClusterProjectionCameraPolicy>(ViewportId, Parameters);
+	PolicyInstances.Emplace(ViewportId, NewPolicy);
+	return NewPolicy;
 }

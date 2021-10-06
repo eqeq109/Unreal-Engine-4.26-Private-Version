@@ -8,12 +8,11 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
 class FDisplayClusterConfiguratorOutputMappingViewportSlot;
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 class IDisplayClusterConfiguratorTreeItem;
 class SImage;
 class UDisplayClusterConfigurationViewport;
 class UDisplayClusterConfiguratorViewportNode;
-class UTexture;
 
 class SDisplayClusterConfiguratorViewportNode
 	: public SDisplayClusterConfiguratorBaseNode
@@ -22,43 +21,44 @@ public:
 	SLATE_BEGIN_ARGS(SDisplayClusterConfiguratorViewportNode)
 	{}
 	SLATE_END_ARGS()
-	
+
 	void Construct(const FArguments& InArgs,
 		UDisplayClusterConfiguratorViewportNode* InViewportNode,
-		const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit);
+		const TSharedRef<FDisplayClusterConfiguratorOutputMappingViewportSlot>& InViewportSlot,
+		const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit);
 
 	//~ Begin SGraphNode interface
 	virtual void UpdateGraphNode() override;
-	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
-	virtual void MoveTo(const FVector2D& NewPosition, FNodeSet& NodeFilter, bool bMarkDirty = true) override;
 	//~ End of SGraphNode interface
 
 	//~ Begin SDisplayClusterConfiguratorBaseNode interface
-	virtual bool IsNodeVisible() const override;
-	virtual bool CanNodeBeSnapAligned() const override { return true; }
-	virtual bool CanNodeBeResized() const { return !IsViewportLocked(); }
-	virtual float GetNodeMinimumSize() const override;
-	virtual float GetNodeMaximumSize() const override;
-	virtual bool IsAspectRatioFixed() const override;
+	virtual UObject* GetEditingObject() const override;
+	virtual void SetNodePositionOffset(const FVector2D InLocalOffset) override;
+	virtual void SetNodeSize(const FVector2D InLocalSize) override;
+	virtual void OnSelectedItemSet(const TSharedRef<IDisplayClusterConfiguratorTreeItem>& InTreeItem) override;
+
+	virtual void SetBackgroundDefaultBrush() override;
+
+	virtual void SetBackgroundBrushFromTexture(UTexture* InTexture) override;
 	//~ End of SDisplayClusterConfiguratorBaseNode interface
 
 private:
-	FSlateColor GetBackgroundColor() const;
-	const FSlateBrush* GetBackgroundBrush() const;
-	const FSlateBrush* GetNodeShadowBrush() const;
-	const FSlateBrush* GetBorderBrush() const;
-	FSlateColor GetTextBoxColor() const;
-	FText GetPositionAndSizeText() const;
-	FMargin GetBackgroundPosition() const;
-	FMargin GetAreaResizeHandlePosition() const;
-	bool IsViewportLocked() const;
-	EVisibility GetLockIconVisibility() const;
+	FSlateColor GetDefaultBackgroundColor() const;
+	FSlateColor GetImageBackgroundColor() const;
 
-	void UpdatePreviewTexture();
+	const FSlateBrush* GetBorderBrush() const;
+	FText GetPositionAndSizeText() const;
+
+	FMargin GetAreaResizeHandlePosition() const;
 
 private:
-	FSlateBrush BackgroundActiveBrush;
-	TSharedPtr<SImage> BackgroundImage;
+	TWeakObjectPtr<UDisplayClusterConfiguratorViewportNode> ViewportNodePtr;
 
-	UTexture* CachedTexture;
+	TWeakPtr<FDisplayClusterConfiguratorOutputMappingViewportSlot> ViewportSlotPtr;
+
+	TWeakObjectPtr<UDisplayClusterConfigurationViewport> CfgViewportPtr;
+
+	FSlateBrush BackgroundActiveBrush;
+
+	TSharedPtr<SImage> BackgroundImage;
 };

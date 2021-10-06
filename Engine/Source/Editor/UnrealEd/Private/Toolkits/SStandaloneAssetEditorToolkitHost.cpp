@@ -20,7 +20,6 @@
 void SStandaloneAssetEditorToolkitHost::Construct( const SStandaloneAssetEditorToolkitHost::FArguments& InArgs, const TSharedPtr<FTabManager>& InTabManager, const FName InitAppName )
 {
 	EditorCloseRequest = InArgs._OnRequestClose;
-	EditorClosing = InArgs._OnClose;
 	AppName = InitAppName;
 
 	MyTabManager = InTabManager;
@@ -378,7 +377,6 @@ void SStandaloneAssetEditorToolkitHost::OnTabClosed(TSharedRef<SDockTab> TabClos
 {
 	check(TabClosed == HostTabPtr.Pin());
 
-	EditorClosing.ExecuteIfBound();
 	MyTabManager->SetMenuMultiBox(nullptr);
 	
 	if(HostedAssetEditorToolkit.IsValid())

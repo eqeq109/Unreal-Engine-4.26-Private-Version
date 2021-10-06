@@ -43,10 +43,11 @@ namespace Chaos
 		FVec3 GetLinearImpulse() const;
 		FVec3 GetAngularImpulse() const;
 
+		FPBDJointSettings& GetSettings();
 		const FPBDJointSettings& GetSettings() const;
 
 		void SetSettings(const FPBDJointSettings& Settings);
-		TVec2<FGeometryParticleHandle*> GetConstrainedParticles() const;
+		TVector<TGeometryParticleHandle<float, 3>*, 2> GetConstrainedParticles() const;
 
 	protected:
 		using Base::ConstraintIndex;
@@ -140,11 +141,6 @@ namespace Chaos
 		 */
 		void FixConstraints(int32 ConstraintIndex);
 
-		/*
-		* Enable or disable velocity update in apply constraints
-		*/
-		void SetUpdateVelocityInApplyConstraints(bool bEnabled) { bUpdateVelocityInApplyConstraints = bEnabled; }
-
 		void SetPreApplyCallback(const FJointPostApplyCallback& Callback);
 		void ClearPreApplyCallback();
 
@@ -177,6 +173,7 @@ namespace Chaos
 		 */
 		const FParticlePair& GetConstrainedParticles(int32 ConstraintIndex) const;
 
+		FPBDJointSettings& GetConstraintSettings(int32 ConstraintIndex);
 		const FPBDJointSettings& GetConstraintSettings(int32 ConstraintIndex) const;
 
 		void SetConstraintSettings(int32 ConstraintIndex, const FPBDJointSettings& InConstraintSettings);
@@ -225,8 +222,6 @@ namespace Chaos
 	private:
 		friend class FPBDJointConstraintHandle;
 
-		FReal CalculateIterationStiffness(int32 It, int32 NumIts) const;
-
 		void GetConstrainedParticleIndices(const int32 ConstraintIndex, int32& Index0, int32& Index1) const;
 		void CalculateConstraintSpace(int32 ConstraintIndex, FVec3& OutX0, FMatrix33& OutR0, FVec3& OutX1, FMatrix33& OutR1) const;
 		void UpdateParticleState(TPBDRigidParticleHandle<FReal, 3>* Rigid, const FReal Dt, const FVec3& PrevP, const FRotation3& PrevQ, const FVec3& P, const FRotation3& Q, const bool bUpdateVelocity = true);
@@ -246,7 +241,6 @@ namespace Chaos
 		bool ApplySingle(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
 		bool ApplyPushOutSingle(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
 		void ApplyBreakThreshold(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearImpulse, const FVec3& AngularImpulse);
-		void ApplyPlasticityLimits(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearDisplacement, const FRotation3& AngularDisplacement);
 
 		FPBDJointSolverSettings Settings;
 
@@ -259,7 +253,6 @@ namespace Chaos
 		FConstraintHandleAllocator HandleAllocator;
 		bool bJointsDirty;
 		bool bIsBatched;
-		bool bUpdateVelocityInApplyConstraints;
 
 		FJointPreApplyCallback PreApplyCallback;
 		FJointPostApplyCallback PostApplyCallback;

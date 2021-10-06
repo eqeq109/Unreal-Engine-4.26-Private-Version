@@ -206,7 +206,7 @@ void FNiagaraDataInterfaceSkeletalMeshDetails::GenerateRegionsArray(TArray<TShar
 		USkeletalMeshComponent* FoundSkelComp = nullptr;
 		if (USkeletalMesh* Mesh = Interface->GetSkeletalMesh(SystemInstance, SceneComponent, FoundSkelComp))
 		{
-			for (const FMeshBoneInfo& Bone : Mesh->GetRefSkeleton().GetRefBoneInfo())
+			for (const FMeshBoneInfo& Bone : Mesh->RefSkeleton.GetRefBoneInfo())
 			{
 				SourceArray.Add(MakeShared<FName>(Bone.Name));
 			}

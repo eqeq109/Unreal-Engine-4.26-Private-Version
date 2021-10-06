@@ -19,15 +19,11 @@ namespace UnrealBuildTool.Rules
 					"GeometricObjects",
 					"MeshConversion",
 					"MeshDescription",
-					"MeshMergeUtilities",
 					"MeshModelingTools",
-					"MeshUtilitiesCommon",
-					"MeshProcessingLibrary",
 					"ModelingOperators",
 					"ModelingOperatorsEditorOnly",
 					"MeshReductionInterface",
 					"StaticMeshDescription",
-					"StaticMeshEditorExtension",
 					"UnrealEd",
 				}
 			);

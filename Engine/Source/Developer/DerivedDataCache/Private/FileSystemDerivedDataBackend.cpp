@@ -417,19 +417,19 @@ public:
 	}
 
 	/** return true if the cache is usable **/
-	bool IsUsable() const
+	bool IsUsable()
 	{
 		return !bDisabled;
 	}
 
 	/** return true if this cache is writable **/
-	virtual bool IsWritable() const override
+	virtual bool IsWritable() override
 	{
 		return !bReadOnly && !bDisabled;
 	}
 
 	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() const override
+	virtual ESpeedClass GetSpeedClass() override
 	{
 		return SpeedClass;
 	}
@@ -740,12 +740,9 @@ public:
 		}
 	}
 
-	virtual TSharedRef<FDerivedDataCacheStatsNode> GatherUsageStats() const override
+	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override
 	{
-		TSharedRef<FDerivedDataCacheStatsNode> Usage = MakeShared<FDerivedDataCacheStatsNode>(this, FString::Printf(TEXT("%s.%s"), TEXT("FileSystem"), *CachePath));
-		Usage->Stats.Add(TEXT(""), UsageStats);
-
-		return Usage;
+		COOK_STAT(UsageStatsMap.Add(FString::Printf(TEXT("%s: %s.%s"), *GraphPath, TEXT("FileSystem"), *CachePath), UsageStats));
 	}
 
 	bool TryToPrefetch(const TCHAR* CacheKey) override

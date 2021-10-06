@@ -18,7 +18,7 @@ class MOVIERENDERPIPELINECORE_API UMoviePipelineFCPXMLExporter : public UMoviePi
 	GENERATED_BODY()
 public:
 	UMoviePipelineFCPXMLExporter()
-		: DataSource(FCPXMLExportDataSource::SequenceData)
+		: FileNameFormat(TEXT("{sequence_name}"))
 		, bHasFinishedExporting(false)
 	{}
 
@@ -27,15 +27,15 @@ public:
 	virtual FText GetDisplayText() const override { return NSLOCTEXT("MovieRenderPipeline", "FCPXMLExporterDisplayName", "Final Cut Pro XML"); }
 #endif
 protected:
-	virtual bool HasFinishedExportingImpl() { return bHasFinishedExporting; }
+	virtual bool HasFinishedExportingImpl() const { return bHasFinishedExporting; }
 	virtual void BeginExportImpl() override;
 
 	bool EnsureWritableFile();
 	bool bOverwriteFile;
 public:
-	/** File name format string override. If specified it will override the FileNameFormat from the Output setting. Can include folder prefixes, and format string tags ({sequence_name}, etc.) */
+	/** What format string should the final files use? Can include folder prefixes, and format string ({sequence_name}, etc.) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File Output")
-	FString FileNameFormatOverride;
+	FString FileNameFormat;
 	
 	/** Whether to build the FCPXML from sequence data directly (for reimporting) or from actual frame output data (for post processing) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File Output")

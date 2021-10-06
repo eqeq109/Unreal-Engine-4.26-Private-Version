@@ -6,8 +6,6 @@
 
 #include "GLTFImportFactory.generated.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogGLTF, Log, All);
-
 class IGLTFImporterModule;
 
 UCLASS(transient)
@@ -20,7 +18,6 @@ public:
 	                                   const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled) override;
 
 	virtual void CleanUp() override;
-	virtual bool FactoryCanImport(const FString& Filename) override;
 
 private:
 	void UpdateMeshes() const;

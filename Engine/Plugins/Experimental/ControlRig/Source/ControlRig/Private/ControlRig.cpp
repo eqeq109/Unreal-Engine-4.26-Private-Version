@@ -164,7 +164,6 @@ void UControlRig::InitializeFromCDO()
 void UControlRig::Evaluate_AnyThread()
 {
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_FUNC()
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_ControlRig_Evaluate);
 
 	for (const FName& EventName : EventQueue)
 	{
@@ -1154,20 +1153,17 @@ FRigControlValue UControlRig::GetControlValueFromGlobalTransform(const FName& In
 
 	if (FRigControl* Control = FindControl(InControlName))
 	{
-		// ParentTransform should include both the global transform of the parent rig element and the offset transform
 		FTransform ParentTransform = FTransform::Identity;
 		if ((Control->ParentIndex != INDEX_NONE || Control->SpaceIndex != INDEX_NONE) && Control->bIsTransientControl)
 		{
 			if (Control->ParentIndex != INDEX_NONE)
 			{
 				ParentTransform = Hierarchy.BoneHierarchy.GetGlobalTransform(Control->ParentIndex);
-				ParentTransform = Control->OffsetTransform * ParentTransform;
 			}
 		}
 		else if(Control->Index != INDEX_NONE)
 		{
-			// Offset transform is considered within GetParentTransform(index, true)
-			ParentTransform = Hierarchy.ControlHierarchy.GetParentTransform(Control->Index, true);
+			ParentTransform = Hierarchy.ControlHierarchy.GetParentTransform(Control->Index);
 		}
 
 		FTransform Transform = InGlobalTransform.GetRelativeTransform(ParentTransform);
@@ -1288,7 +1284,7 @@ void UControlRig::UpdateAvailableControls()
 	AvailableControlsOverride.Append(TransientControls);
 }
 
-FName UControlRig::AddTransientControl(URigVMPin* InPin, FRigElementKey SpaceKey, FTransform OffsetTransform)
+FName UControlRig::AddTransientControl(URigVMPin* InPin, FRigElementKey SpaceKey)
 {
 	if (InPin == nullptr)
 	{
@@ -1330,9 +1326,7 @@ FName UControlRig::AddTransientControl(URigVMPin* InPin, FRigElementKey SpaceKey
 		}
 	}
 
-	NewControl.OffsetTransform = OffsetTransform; 
-	
-	TransientControls.Add(NewControl); 
+	TransientControls.Add(NewControl);
 
 	SetTransientControlValue(InPin);
 	UpdateAvailableControls();
@@ -2070,7 +2064,7 @@ FRigVMExternalVariable UControlRig::GetExternalVariableFromDescription(const FBP
 void UControlRig::SetBoneInitialTransformsFromSkeletalMesh(USkeletalMesh* InSkeletalMesh)
 {
 	check(InSkeletalMesh);
-	SetBoneInitialTransformsFromRefSkeleton(InSkeletalMesh->GetRefSkeleton());
+	SetBoneInitialTransformsFromRefSkeleton(InSkeletalMesh->RefSkeleton);
 }
 
 void UControlRig::SetBoneInitialTransformsFromRefSkeleton(const FReferenceSkeleton& InReferenceSkeleton)

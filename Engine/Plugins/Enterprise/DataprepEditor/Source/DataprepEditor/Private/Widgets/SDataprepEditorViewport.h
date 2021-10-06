@@ -185,11 +185,6 @@ public:
 	/** Load the settings affecting the viewport, i.e. environment map */
 	static void LoadDefaultSettings();
 
-	int32 GetDrawCallsAverage() const
-	{
-		return AverageDrawCalls;
-	}
-
 protected:
 	/** SEditorViewport interface */
 	virtual TSharedRef<FEditorViewportClient> MakeEditorViewportClient() override;
@@ -258,7 +253,7 @@ private:
 	 * Applies the selection material on all selected mesh components.
 	 * If none is selected, applies current rendering material
 	 */
-	void UpdateSelection(bool bNotify = true);
+	void UpdateSelection();
 
 	/** Initialize the materials used for the different rendering options */
 	void InitializeDefaultMaterials();
@@ -290,7 +285,7 @@ private:
 
 	void UpdateOverlayText();
 
-	void UpdatePerfStats();
+	void UpdateScreenSizeText( FText Text );
 
 #ifdef VIEWPORT_EXPERIMENTAL
 	void ToggleShowOrientedBox();
@@ -379,14 +374,7 @@ private:
 
 	/** Pointer to the vertical box into which the overlay text items are added */
 	TSharedPtr<SVerticalBox> OverlayTextVerticalBox;
-	TSharedPtr<STextBlock> FPSText;
-	TSharedPtr<STextBlock> DrawCallsText;
-
-	// Draw calls smoothing
-	const int32 DrawCallsUpdateInterval = 20; // Number of frames to average
-	int32 DrawCallsAccumulator = 0;
-	int32 CurrentDrawCalls = 0;
-	int32 AverageDrawCalls = 0;
+	TSharedPtr<STextBlock> ScreenSizeText;
 
 	/** Index of the profile to use in the preview scene */
 	static int32 AssetViewerProfileIndex;

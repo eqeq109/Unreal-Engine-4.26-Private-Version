@@ -95,7 +95,6 @@ public:
 	{
 		// supported platforms
 		SupportedPlatforms.Add(TEXT("Windows"));
-		SupportedPlatforms.Add(TEXT("Linux"));
 
 		// supported schemes
 		SupportedUriSchemes.Add(NAME_Protocol.ToString());

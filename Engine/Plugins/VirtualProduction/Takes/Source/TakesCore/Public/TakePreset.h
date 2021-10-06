@@ -57,10 +57,6 @@ public:
 	 */
 	void RemoveOnLevelSequenceChanged(FDelegateHandle DelegateHandle);
 
-	/**
-	 * Allocate the transient preset used by the take recorder.
-	 */
-	static UTakePreset* AllocateTransientPreset(UTakePreset* TemplatePreset);
 private:
 
 	virtual void PostTransacted(const FTransactionObjectEvent& TransactionEvent) override;

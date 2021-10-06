@@ -17,7 +17,7 @@ struct ENHANCEDINPUT_API FBlueprintEnhancedInputActionBinding
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	const UInputAction* InputAction = nullptr;
+	const UInputAction* InputAction;
 
 	UPROPERTY()
 	ETriggerEvent TriggerEvent = ETriggerEvent::None;

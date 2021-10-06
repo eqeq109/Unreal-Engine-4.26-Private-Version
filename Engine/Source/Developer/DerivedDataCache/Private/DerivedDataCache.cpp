@@ -2,7 +2,6 @@
 
 
 #include "CoreMinimal.h"
-#include "Algo/AllOf.h"
 #include "Misc/CommandLine.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Misc/ScopeLock.h"
@@ -15,7 +14,6 @@
 #include "Modules/ModuleManager.h"
 
 #include "DerivedDataCacheInterface.h"
-#include "DerivedDataCacheUsageStats.h"
 #include "DerivedDataBackendInterface.h"
 #include "DerivedDataPluginInterface.h"
 #include "DDCCleanup.h"
@@ -51,10 +49,8 @@ namespace DerivedDataCacheCookStats
 	// See https://developercommunity.visualstudio.com/content/problem/576913/c6244-regression-in-new-lambda-processorpermissive.html
 	static void AddCookStats(FCookStatsManager::AddStatFuncRef AddStat)
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		TSharedRef<FDerivedDataCacheStatsNode> DDCUsage = GetDerivedDataCacheRef().GatherUsageStats();
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		TMap<FString, FDerivedDataCacheUsageStats> DDCStats = DDCUsage->ToLegacyUsageMap();
+		TMap<FString, FDerivedDataCacheUsageStats> DDCStats;
+		GetDerivedDataCacheRef().GatherUsageStats(DDCStats);
 		{
 			const FString StatName(TEXT("DDC.Usage"));
 			for (const auto& UsageStatPair : DDCStats)
@@ -136,8 +132,6 @@ namespace DerivedDataCacheCookStats
 
 /** Whether we want to verify the DDC (pass in -VerifyDDC on the command line)*/
 bool GVerifyDDC = false;
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 /**
  * Implementation of the derived data cache
@@ -447,7 +441,6 @@ public:
 	{
 		DDC_SCOPE_CYCLE_COUNTER(DDC_GetSynchronous_Data);
 		UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("GetSynchronous %s from '%.*s'"), CacheKey, DataContext.Len(), DataContext.GetData());
-		ValidateCacheKey(CacheKey);
 		FAsyncTask<FBuildAsyncWorker> PendingTask((FDerivedDataPluginInterface*)NULL, CacheKey, true);
 		AddToAsyncCompletionCounter(1);
 		PendingTask.StartSynchronousTask();
@@ -461,7 +454,6 @@ public:
 		FScopeLock ScopeLock(&SynchronizationObject);
 		const uint32 Handle = NextHandle();
 		UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("GetAsynchronous %s from '%.*s', Handle %d"), CacheKey, DataContext.Len(), DataContext.GetData(), Handle);
-		ValidateCacheKey(CacheKey);
 		FAsyncTask<FBuildAsyncWorker>* AsyncTask = new FAsyncTask<FBuildAsyncWorker>((FDerivedDataPluginInterface*)NULL, CacheKey, false);
 		check(!PendingTasks.Contains(Handle));
 		PendingTasks.Add(Handle, AsyncTask);
@@ -474,7 +466,6 @@ public:
 	{
 		DDC_SCOPE_CYCLE_COUNTER(DDC_Put);
 		UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("Put %s from '%.*s'"), CacheKey, DataContext.Len(), DataContext.GetData());
-		ValidateCacheKey(CacheKey);
 		STAT(double ThisTime = 0);
 		{
 			SCOPE_SECONDS_COUNTER(ThisTime);
@@ -486,14 +477,12 @@ public:
 
 	virtual void MarkTransient(const TCHAR* CacheKey) override
 	{
-		ValidateCacheKey(CacheKey);
 		FDerivedDataBackend::Get().GetRoot().RemoveCachedData(CacheKey, /*bTransient=*/ true);
 	}
 
 	virtual bool CachedDataProbablyExists(const TCHAR* CacheKey) override
 	{
 		DDC_SCOPE_CYCLE_COUNTER(DDC_CachedDataProbablyExists);
-		ValidateCacheKey(CacheKey);
 		bool bResult;
 		INC_DWORD_STAT(STAT_DDC_NumExist);
 		STAT(double ThisTime = 0);
@@ -516,11 +505,6 @@ public:
 		FDerivedDataBackend::Get().AddToAsyncCompletionCounter(Addend);
 	}
 
-	bool AnyAsyncRequestsRemaining() const override
-	{
-		return FDerivedDataBackend::Get().AnyAsyncRequestsRemaining();
-	}
-
 	void WaitForQuiescence(bool bShutdown) override
 	{
 		DDC_SCOPE_CYCLE_COUNTER(DDC_WaitForQuiescence);
@@ -538,24 +522,14 @@ public:
 		return FDerivedDataBackend::Get().GetGraphName();
 	}
 
-	virtual const TCHAR* GetDefaultGraphName() const override
-	{
-		return FDerivedDataBackend::Get().GetDefaultGraphName();
-	}
-
 	void GetDirectories(TArray<FString>& OutResults) override
 	{
 		FDerivedDataBackend::Get().GetDirectories(OutResults);
 	}
 
-	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStats) override
+	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap) override
 	{
-		GatherUsageStats()->GatherLegacyUsageStats(UsageStats, TEXT(" 0"));
-	}
-
-	virtual TSharedRef<FDerivedDataCacheStatsNode> GatherUsageStats() const override
-	{
-		return FDerivedDataBackend::Get().GatherUsageStats();
+		FDerivedDataBackend::Get().GatherUsageStats(UsageStatsMap);
 	}
 
 	/** Get event delegate for data cache notifications */
@@ -584,11 +558,6 @@ private:
 		return Result;
 	}
 
-	static void ValidateCacheKey(const TCHAR* CacheKey)
-	{
-		checkf(Algo::AllOf(FStringView(CacheKey), [](TCHAR C) { return FChar::IsAlnum(C) || FChar::IsUnderscore(C) || C == TEXT('$'); }),
-			TEXT("Invalid characters in cache key %s. Use SanitizeCacheKey or BuildCacheKey to create valid keys."), CacheKey);
-	}
 
 	/** Counter used to produce unique handles **/
 	FThreadSafeCounter			CurrentHandle;
@@ -601,42 +570,27 @@ private:
 	FOnDDCNotification DDCNotificationEvent;
 };
 
-static FDerivedDataCacheInterface* GDerivedDataCacheInstance;
-
 /**
  * Module for the DDC
  */
-class FDerivedDataCacheModule final : public IDerivedDataCacheModule
+class FDerivedDataCacheModule : public IDerivedDataCacheModule
 {
 public:
-	FDerivedDataCacheInterface& GetDDC() final
+	virtual FDerivedDataCacheInterface& GetDDC() override
 	{
-		return **CreateOrGetCache();
+		static FDerivedDataCache SingletonInstance;
+		return SingletonInstance;
 	}
 
-	FDerivedDataCacheInterface* const* CreateOrGetCache() final
+	virtual void StartupModule() override
 	{
-		FScopeLock Lock(&CreateLock);
-		if (!GDerivedDataCacheInstance)
-		{
-			GDerivedDataCacheInstance = new FDerivedDataCache();
-			check(GDerivedDataCacheInstance);
-		}
-		return &GDerivedDataCacheInstance;
+		GetDDC();
 	}
 
-	void ShutdownModule() final
+	virtual void ShutdownModule() override
 	{
 		FDDCCleanup::Shutdown();
-
-		delete GDerivedDataCacheInstance;
-		GDerivedDataCacheInstance = nullptr;
 	}
-
-private:
-	FCriticalSection CreateLock;
 };
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-IMPLEMENT_MODULE(FDerivedDataCacheModule, DerivedDataCache);
+IMPLEMENT_MODULE( FDerivedDataCacheModule, DerivedDataCache);

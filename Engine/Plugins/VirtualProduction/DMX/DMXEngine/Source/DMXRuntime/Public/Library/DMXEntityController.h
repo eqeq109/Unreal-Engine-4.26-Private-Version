@@ -2,51 +2,32 @@
 
 #pragma once
 
-#include "DMXProtocolTypes.h"
 #include "Library/DMXEntity.h"
-
 #include "DMXEntityController.generated.h"
 
 struct FDMXBuffer;
 
-
-
-// DEPRECATED 4.27, can't be flagged as such to retain upgrade path, some nodes could not be compiled anymore. All members are deprecated.
-UCLASS()
-class DMXRUNTIME_API UDMXEntityUniverseManaged
-	: public UDMXEntity
-{
-	GENERATED_BODY()
-public:
-
-	UE_DEPRECATED(4.27, "UDMXEntityUniverseManaged is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
-	FDMXProtocolName DeviceProtocol;
-};
-
-
-// DEPRECATED 4.27, can't be flagged as such to retain upgrade path, some nodes could not be compiled anymore. All members are deprecated.
-UCLASS()
+UCLASS(meta = (DisplayName = "DMX Controller"))
 class DMXRUNTIME_API UDMXEntityController
 	: public UDMXEntityUniverseManaged
 {
 	GENERATED_BODY()
 
 public:
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
-	EDMXCommunicationType CommunicationMode;
+	/**  Defines where DMX data is sent to. */
+	UPROPERTY(EditAnywhere, Category = "DMX") // Hidden. For now it has just a single value. More values will be added in the future.
+	EDMXCommunicationTypes CommunicationMode;
 	
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	/**  First Universe ID on this Controller's range. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Universe Properties", meta = (DisplayName = "Universe Start", DisplayPriority = 1, ClampMin = 1))
 	int32 UniverseLocalStart;
 
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	/**  Number of Universe IDs on this Controller's range, starting from Universe Start value. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Universe Properties", meta = (DisplayName = "Amount of Universes", DisplayPriority = 2, ClampMin = 1))
 	int32 UniverseLocalNum;
 
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	/**  Last Universe ID on this Controller's range, calculated from Universe Start and Amount of Universes. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Universe Properties", meta = (DisplayName = "Universe End", DisplayPriority = 3))
 	int32 UniverseLocalEnd;
 
 	/**
@@ -57,27 +38,49 @@ public:
 	 * This allows the user to change all Universe IDs used by the Fixture Patches and
 	 * avoid conflicts with other devices by updating only the Controller's Remote Offset.
 	 */
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	UPROPERTY()
 	int32 RemoteOffset;
 
 	/**
 	 * First Universe ID on this Controller's range that is sent over the network.
 	 * Universe Start + Remote Offset
 	 */
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Universe Properties", meta = (DisplayName = "Remote Universe Range Start", DisplayPriority = 21))
 	int32 UniverseRemoteStart;
 
 	/**
 	 * Last Universe ID in this Controller's range that is sent over the network.
 	 * Universe End + Remote Offset
 	 */
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Universe Properties", meta = (DisplayName = "Remote Universe Range End", DisplayPriority = 22))
 	int32 UniverseRemoteEnd;
 
-	UE_DEPRECATED(4.27, "UDMXEntityController is deprecated. Use Ports instead.")
-	UPROPERTY(Meta = (DeprecatedProperty, DeprecationMessage = "Controllers are no longer in use. Use Ports instead."))
+	UPROPERTY(EditAnywhere, Category = "DMX")
 	TArray<FString> AdditionalUnicastIPs;
+
+public:
+	UDMXEntityController()
+		: UniverseLocalStart(1)
+		, UniverseLocalNum(1)
+		, UniverseLocalEnd(1)
+		, RemoteOffset(0)
+		, UniverseRemoteStart(1)
+		, UniverseRemoteEnd(1)
+	{}
+
+	/** Returns the currently assigned protocol for this controller */
+	UFUNCTION(BlueprintPure, Category = "DMX")
+	const FName& GetProtocol() const { return DeviceProtocol.Name; }
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual void PostLoad() override;
+#endif // WITH_EDITOR
+	virtual void PostInitProperties() override;
+
+protected:
+	/** Keep range valid */
+	void ValidateRangeValues();
+	void UpdateUniversesFromRange();
 };

@@ -22,10 +22,10 @@ FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultUseMaterialSleepThreshold
 int32 ChaosSolverCollisionDefaultSleepCounterThresholdCVar = 20; 
 FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultSleepCounterThreshold(TEXT("p.ChaosSolverCollisionDefaultSleepCounterThreshold"), ChaosSolverCollisionDefaultSleepCounterThresholdCVar, TEXT("Default counter threshold for sleeping.[def:20]"));
 
-Chaos::FRealSingle ChaosSolverCollisionDefaultLinearSleepThresholdCVar = 0.001f; // .001 unit mass cm
+float ChaosSolverCollisionDefaultLinearSleepThresholdCVar = 0.001f; // .001 unit mass cm
 FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultLinearSleepThreshold(TEXT("p.ChaosSolverCollisionDefaultLinearSleepThreshold"), ChaosSolverCollisionDefaultLinearSleepThresholdCVar, TEXT("Default linear threshold for sleeping.[def:0.001]"));
 
-Chaos::FRealSingle ChaosSolverCollisionDefaultAngularSleepThresholdCVar = 0.0087f;  //~1/2 unit mass degree
+float ChaosSolverCollisionDefaultAngularSleepThresholdCVar = 0.0087f;  //~1/2 unit mass degree
 FAutoConsoleVariableRef CVarChaosSolverCollisionDefaultAngularSleepThreshold(TEXT("p.ChaosSolverCollisionDefaultAngularSleepThreshold"), ChaosSolverCollisionDefaultAngularSleepThresholdCVar, TEXT("Default angular threshold for sleeping.[def:0.0087]"));
 
 FPBDConstraintGraph::FPBDConstraintGraph() : VisitToken(0)
@@ -33,7 +33,7 @@ FPBDConstraintGraph::FPBDConstraintGraph() : VisitToken(0)
 }
 
 
-FPBDConstraintGraph::FPBDConstraintGraph(const TParticleView<FGeometryParticles>& Particles) : VisitToken(0)
+FPBDConstraintGraph::FPBDConstraintGraph(const TParticleView<TGeometryParticles<FReal, 3>>& Particles) : VisitToken(0)
 {
 	InitializeGraph(Particles);
 }
@@ -66,7 +66,7 @@ int32 FPBDConstraintGraph::ReserveParticles(const int32 Num)
  * Adds new Node to Nodes array when a new particle is created
  */
 
-void FPBDConstraintGraph::ParticleAdd(FGeometryParticleHandle* AddedParticle)
+void FPBDConstraintGraph::ParticleAdd(TGeometryParticleHandle<FReal, 3>* AddedParticle)
 {
 	// GC Code creates particle then enables particle so end up calling this twice triggering ensure
 	if (/*ensure*/ (!ParticleToNodeIndex.Contains(AddedParticle)))
@@ -94,7 +94,7 @@ void FPBDConstraintGraph::ParticleAdd(FGeometryParticleHandle* AddedParticle)
  * Removes Node from Nodes array - marking it an unused, also clears ParticleToNodeIndex
  */
 
-void FPBDConstraintGraph::ParticleRemove(FGeometryParticleHandle* RemovedParticle)
+void FPBDConstraintGraph::ParticleRemove(TGeometryParticleHandle<FReal, 3>* RemovedParticle)
 {
 	if (ParticleToNodeIndex.Contains(RemovedParticle))
 	{
@@ -108,7 +108,6 @@ void FPBDConstraintGraph::ParticleRemove(FGeometryParticleHandle* RemovedParticl
 
 		Visited[NodeIdx]=0;
 		ParticleToNodeIndex.Remove(RemovedParticle);
-		UpdatedNodes.RemoveSwap(NodeIdx, false);
 	}
 }
 
@@ -138,7 +137,7 @@ int32 FPBDConstraintGraph::GetNextNodeIndex()
  * It is still setting up nodes that don't have a constraint so wasted effort iterating over all nodes, better to iterate over constraints or don't fill out Nodes if they don't have a constraint
  */
 
-void FPBDConstraintGraph::InitializeGraph(const TParticleView<FGeometryParticles>& Particles)
+void FPBDConstraintGraph::InitializeGraph(const TParticleView<TGeometryParticles<FReal, 3>>& Particles)
 {
 	const int32 NumNonDisabledParticles = Particles.Num();
 
@@ -166,7 +165,7 @@ void FPBDConstraintGraph::InitializeGraph(const TParticleView<FGeometryParticles
 	}
 	else
 	{
-		if (!(NumNonDisabledParticles <= Nodes.Num())) 
+		if (!CHAOS_ENSURE(NumNonDisabledParticles <= Nodes.Num()))
 		{
 			for (auto& Particle : Particles)
 			{
@@ -189,7 +188,7 @@ void FPBDConstraintGraph::InitializeGraph(const TParticleView<FGeometryParticles
 				    if (CHAOS_ENSURE(Particle))
 				    {
 						// This does NOT check if particle is actually dynamic. TODO confirm that this should happen to all nonDisabledParticles, not just dynamics.
-						FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
+						TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 						if(PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 					    {
 						    PBDRigid->Island() = INDEX_NONE;
@@ -211,7 +210,7 @@ void FPBDConstraintGraph::InitializeGraph(const TParticleView<FGeometryParticles
 }
 
 
-void FPBDConstraintGraph::ResetIslands(const TParticleView<FPBDRigidParticles>& PBDRigids)
+void FPBDConstraintGraph::ResetIslands(const TParticleView<TPBDRigidParticles<FReal, 3>>& PBDRigids)
 {
 	//@todo(ocohen): Should we reset more than just the edges? What about bIsIslandPersistant?
 	for (TArray<int32>& IslandConstraintList : IslandToConstraints)
@@ -241,7 +240,7 @@ void FPBDConstraintGraph::ReserveConstraints(const int32 NumConstraints)
 }
 
 
-void FPBDConstraintGraph::AddConstraint(const uint32 InContainerId, FConstraintHandle* InConstraintHandle, const TVec2<FGeometryParticleHandle*>& ConstrainedParticles)
+void FPBDConstraintGraph::AddConstraint(const uint32 InContainerId, FConstraintHandle* InConstraintHandle, const TVector<TGeometryParticleHandle<FReal, 3>*, 2>& ConstrainedParticles)
 {
 	// Must have at least one constrained particle
 	check((ConstrainedParticles[0]) || (ConstrainedParticles[1]));
@@ -283,7 +282,7 @@ void FPBDConstraintGraph::AddConstraint(const uint32 InContainerId, FConstraintH
 }
 
 
-void FPBDConstraintGraph::RemoveConstraint(const uint32 InContainerId, FConstraintHandle* InConstraintHandle, const TVector<FGeometryParticleHandle*, 2>& ConstrainedParticles)
+void FPBDConstraintGraph::RemoveConstraint(const uint32 InContainerId, FConstraintHandle* InConstraintHandle, const TVector<TGeometryParticleHandle<FReal, 3>*, 2>& ConstrainedParticles)
 {
 	check(InConstraintHandle);
 
@@ -318,7 +317,7 @@ const typename FPBDConstraintGraph::FConstraintData& FPBDConstraintGraph::GetCon
 }
 
 
-void FPBDConstraintGraph::UpdateIslands(const TParticleView<FPBDRigidParticles>& PBDRigids, FPBDRigidsSOAs& Particles)
+void FPBDConstraintGraph::UpdateIslands(const TParticleView<TPBDRigidParticles<FReal, 3>>& PBDRigids, TPBDRigidsSOAs<FReal, 3>& Particles)
 {
 	// Maybe expose a memset style function for this instead of iterating
 	for (auto& PBDRigid : PBDRigids)
@@ -338,12 +337,12 @@ void FPBDConstraintGraph::UpdateIslands(const TParticleView<FPBDRigidParticles>&
 DECLARE_CYCLE_STAT(TEXT("IslandGeneration2"), STAT_IslandGeneration2, STATGROUP_Chaos);
 
 
-void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>& PBDRigids, FPBDRigidsSOAs& Particles)
+void FPBDConstraintGraph::ComputeIslands(const TParticleView<TPBDRigidParticles<FReal, 3>>& PBDRigids, TPBDRigidsSOAs<FReal, 3>& Particles)
 {
 	SCOPE_CYCLE_COUNTER(STAT_IslandGeneration2);
 
 	int32 NextIsland = 0;
-	TArray<TSet<FGeometryParticleHandle*>> NewIslandParticles;
+	TArray<TSet<TGeometryParticleHandle<FReal, 3>*>> NewIslandParticles;
 	TArray<int32> NewIslandToSleepCount;
 
 	VisitToken++;
@@ -382,7 +381,7 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 			continue;
 		}
 
-		TSet<FGeometryParticleHandle*> SingleIslandParticles;
+		TSet<TGeometryParticleHandle<FReal, 3>*> SingleIslandParticles;
 		const bool bNeedsResim = ComputeIsland(Idx, NextIsland, SingleIslandParticles);
 
 		if (SingleIslandParticles.Num())
@@ -423,9 +422,9 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 		{
 			NewIslandToSleepCount[Island] = 0;
 			const bool bNeedsResim = IslandToData[Island].bNeedsResim;
-			for (FGeometryParticleHandle* Particle : NewIslandParticles[Island])
+			for (TGeometryParticleHandle<FReal, 3>* Particle : NewIslandParticles[Island])
 			{
-				FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
+				TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 				if (PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 				{
 					PBDRigid->Island() = Island;
@@ -448,43 +447,37 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 				IslandToData[Island].bIsIslandPersistant = true;
 				bool bSleepState = true;
 
-				for (FGeometryParticleHandle* Particle : NewIslandParticles[Island])
+				for (TGeometryParticleHandle<FReal, 3>* Particle : NewIslandParticles[Island])
 				{
-					if (Particle->ObjectState() != EObjectStateType::Static && !Particle->Sleeping())
+					if (!Particle->Sleeping())
 					{
 						bSleepState = false;
 						break;
 					}
 				}
 
-				for (FGeometryParticleHandle* Particle : NewIslandParticles[Island])
+				for (TGeometryParticleHandle<FReal, 3>* Particle : NewIslandParticles[Island])
 				{
-					if (Particle->Sleeping() && !bSleepState)
+					//@todo(DEMO_HACK) : Need to fix, remove the !InParticles.Disabled(Index)
+					if (Particle->Sleeping() && !bSleepState/* && !Particle->Disabled()*/)
 					{
 						Particles.ActivateParticle(Particle); 	//todo: record state change for array reorder
 					}
 
-					FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
-					if(PBDRigid)
+					TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
+					if(PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 					{
-						const EObjectStateType CurrState = PBDRigid->ObjectState();
-						if(CurrState == EObjectStateType::Kinematic || CurrState == EObjectStateType::Static)
-						{
-							// Statics and kinematics can't have sleeping states so don't attempt to set one.
-							break;
-						}
-
 						if (!Particle->Sleeping() && bSleepState)
 						{
 							Particles.DeactivateParticle(Particle); 	//todo: record state change for array reorder
-							PBDRigid->V() = FVec3(0);
-							PBDRigid->W() = FVec3(0);
+							PBDRigid->V() = TVector<FReal, 3>(0);
+							PBDRigid->W() = TVector<FReal, 3>(0);
 						}
 
 						PBDRigid->SetSleeping(bSleepState);
 					}
 
-					if (Particle->Sleeping())
+					if ((Particle->Sleeping() /*|| Particle->Disabled()*/))
 					{
 						Particles.DeactivateParticle(Particle);	//todo: record state change for array reorder (function could return true/false)
 					}
@@ -496,29 +489,16 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 		{
 			bool bIsSameIsland = true;
 
-			// Non-kinematic particles were removed from the island
+			// Objects were removed from the island
 			int32 OtherIsland = -1;
 
-			for (FGeometryParticleHandle* Particle : IslandToParticles[Island])
+			for (TGeometryParticleHandle<FReal, 3>* Particle : IslandToParticles[Island])
 			{
 				if (CHAOS_ENSURE(Particle))
 				{
-					FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
-
-					if (PBDRigid && PBDRigid->ObjectState() == EObjectStateType::Kinematic && PBDRigid->V().SizeSquared() > 0)
-					{
-						bIsSameIsland = false;
-						break;
-					}
+					TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 
 					const bool bIsDynamic = PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic;
-
-					if (bIsDynamic && PBDRigid->PreObjectState() == EObjectStateType::Kinematic)
-					{
-						bIsSameIsland = false;
-						break;
-					}
-					
 					int32 TmpIsland = bIsDynamic ? PBDRigid->Island() : INDEX_NONE; //question: should we even store non dynamics in this array?
 
 					if (OtherIsland == INDEX_NONE && TmpIsland >= 0)
@@ -528,25 +508,6 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 					else
 					{
 						if (TmpIsland >= 0 && OtherIsland != TmpIsland)
-						{
-							bIsSameIsland = false;
-							break;
-						}
-					}
-				}
-			}
-
-			// Kinematic particles were removed from the island. This needs to be called after OtherIsland is available.
-			if (bIsSameIsland && OtherIsland >= 0)
-			{
-				for (FGeometryParticleHandle* Particle : IslandToParticles[Island])
-				{
-					if (CHAOS_ENSURE(Particle))
-					{
-						FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
-
-						// If an island has many kinematic particles, this could be slow.
-						if (PBDRigid && PBDRigid->ObjectState() == EObjectStateType::Kinematic && !NewIslandParticles[OtherIsland].Contains(PBDRigid))
 						{
 							bIsSameIsland = false;
 							break;
@@ -568,6 +529,21 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 			}
 			else
 			{
+				int32 NumRigidsInNewIsland = 0;
+				if (NewIslandParticles.IsValidIndex(OtherIsland))
+				{
+					for (TGeometryParticleHandle<FReal, 3>* Particle : NewIslandParticles[OtherIsland])
+					{
+						if (Particle)
+						{
+							if (TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle())
+							{
+								NumRigidsInNewIsland++;
+							}
+						}
+					}
+				}
+
 				for (TGeometryParticleHandle<FReal, 3>* Particle : IslandToParticles[Island])
 				{
 					if (CHAOS_ENSURE(Particle))
@@ -575,7 +551,13 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 						TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 						if (PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 						{
-							Particles.ActivateParticle(Particle);
+							// this hack is necessary for particles in islands that have been put to sleep to continue sleeping. Without it, once the island is put to
+							// sleep, an optimization made in ProduceParticleOverlaps ignores sleeping-sleeping cases for generating constraints, so each
+							// sleeping particle goes into its own island, then immediately wakes up here.
+							if (!(NumRigidsInNewIsland == 1 && PBDRigid->Sleeping()))
+							{
+								Particles.ActivateParticle(Particle);
+							}
 						}
 					}
 				}
@@ -605,7 +587,7 @@ void FPBDConstraintGraph::ComputeIslands(const TParticleView<FPBDRigidParticles>
 }
 
 
-bool FPBDConstraintGraph::ComputeIsland(const int32 InNode, const int32 Island, TSet<FGeometryParticleHandle *>& ParticlesInIsland)
+bool FPBDConstraintGraph::ComputeIsland(const int32 InNode, const int32 Island, TSet<TGeometryParticleHandle<FReal, 3> *>& ParticlesInIsland)
 {
 	TQueue<int32> NodeQueue;
 	NodeQueue.Enqueue(InNode);
@@ -629,7 +611,7 @@ bool FPBDConstraintGraph::ComputeIsland(const int32 InNode, const int32 Island, 
 			bIslandNeedsToResim = Node.Particle->SyncState() != ESyncState::InSync;
 		}
 
-		FPBDRigidParticleHandle* RigidHandle = Node.Particle->CastToRigidParticle();
+		TPBDRigidParticleHandle<FReal, 3>* RigidHandle = Node.Particle->CastToRigidParticle();
 		const bool isRigidDynamic = RigidHandle && RigidHandle->ObjectState() != EObjectStateType::Kinematic;  //??
 
 		ParticlesInIsland.Add(Node.Particle);
@@ -680,7 +662,7 @@ bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollecti
 	FReal AngularSleepingThreshold = FLT_MAX;
 	int32 SleepCounterThreshold = 0;
 
-	const TArray<FGeometryParticleHandle*>& IslandParticles = GetIslandParticles(Island);
+	const TArray<TGeometryParticleHandle<FReal, 3>*>& IslandParticles = GetIslandParticles(Island);
 	check(IslandParticles.Num());
 
 	if (!IslandToData[Island].bIsIslandPersistant)
@@ -694,9 +676,9 @@ bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollecti
 	FReal MaxAngularSpeed2 = 0.f;
 	int32 NumDynamicParticles = 0;
 
-	for (FGeometryParticleHandle* Particle : IslandParticles)
+	for (TGeometryParticleHandle<FReal, 3>* Particle : IslandParticles)
 	{
-		if (FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle())
+		if (TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle())
 		{
 			if (PBDRigid->ObjectState() == EObjectStateType::Dynamic)
 			{
@@ -773,13 +755,13 @@ bool FPBDConstraintGraph::SleepInactive(const int32 Island, const TArrayCollecti
 }
 
 
-void FPBDConstraintGraph::WakeIsland(FPBDRigidsSOAs& Particles, const int32 Island)
+void FPBDConstraintGraph::WakeIsland(TPBDRigidsSOAs<FReal, 3>& Particles, const int32 Island)
 {
 	if (Island < IslandToParticles.Num())
 	{
-		for (FGeometryParticleHandle * Particle : IslandToParticles[Island])
+		for (TGeometryParticleHandle<FReal, 3> * Particle : IslandToParticles[Island])
 		{
-			FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
+			TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 			if (PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 			{
 				if (PBDRigid->Sleeping())
@@ -801,7 +783,7 @@ void FPBDConstraintGraph::ReconcileIslands()
 	{
 		bool IsSleeping = true;
 		bool IsSet = false;
-		for (FGeometryParticleHandle* Particle : IslandToParticles[Island])
+		for (TGeometryParticleHandle<FReal, 3>* Particle : IslandToParticles[Island])
 		{
 			if (Particle->ObjectState() == EObjectStateType::Static)
 			{
@@ -822,16 +804,16 @@ void FPBDConstraintGraph::ReconcileIslands()
 }
 */
 
-void FPBDConstraintGraph::EnableParticle(FGeometryParticleHandle* Particle, const FGeometryParticleHandle* ParentParticle)
+void FPBDConstraintGraph::EnableParticle(TGeometryParticleHandle<FReal, 3>* Particle, const TGeometryParticleHandle<FReal, 3>* ParentParticle)
 {
 	if (ParentParticle)
 	{
-		const FPBDRigidParticleHandle* ParentPBDRigid = ParentParticle->CastToRigidParticle();
+		const TPBDRigidParticleHandle<FReal, 3>* ParentPBDRigid = ParentParticle->CastToRigidParticle();
 		if(ParentPBDRigid && ParentPBDRigid->ObjectState() == EObjectStateType::Dynamic)
 		{
 			ParticleAdd(Particle);
 
-			FPBDRigidParticleHandle* ChildPBDRigid = Particle->CastToRigidParticle();
+			TPBDRigidParticleHandle<FReal, 3>* ChildPBDRigid = Particle->CastToRigidParticle();
 			if(ChildPBDRigid && ChildPBDRigid->ObjectState() == EObjectStateType::Dynamic)
 			{
 				const int32 Island = ParentPBDRigid->Island();
@@ -855,9 +837,9 @@ void FPBDConstraintGraph::EnableParticle(FGeometryParticleHandle* Particle, cons
 }
 
 
-void FPBDConstraintGraph::DisableParticle(FGeometryParticleHandle* Particle)
+void FPBDConstraintGraph::DisableParticle(TGeometryParticleHandle<FReal, 3>* Particle)
 {
-	FPBDRigidParticleHandle* PBDRigid = Particle->CastToRigidParticle();
+	TPBDRigidParticleHandle<FReal, 3>* PBDRigid = Particle->CastToRigidParticle();
 	if(PBDRigid && PBDRigid->ObjectState() != EObjectStateType::Kinematic)
 	{
 		const int32 Island = PBDRigid->Island();
@@ -879,7 +861,7 @@ void FPBDConstraintGraph::DisableParticle(FGeometryParticleHandle* Particle)
 	{
 		// Kinematic & Static particles are included in IslandToParticles, however we cannot use islands to look them up.
 		// TODO find faster removal method?
-		for (TArray<FGeometryParticleHandle*>& IslandParticles : IslandToParticles)
+		for (TArray<TGeometryParticleHandle<FReal, 3>*>& IslandParticles : IslandToParticles)
 		{
 			IslandParticles.RemoveSingleSwap(Particle);
 		}
@@ -889,32 +871,32 @@ void FPBDConstraintGraph::DisableParticle(FGeometryParticleHandle* Particle)
 }
 
 
-void FPBDConstraintGraph::DisableParticles(const TSet<FGeometryParticleHandle *>& Particles)
+void FPBDConstraintGraph::DisableParticles(const TSet<TGeometryParticleHandle<FReal, 3> *>& Particles)
 {
 	// @todo(ccaulfield): optimize
-	for (FGeometryParticleHandle* Particle : Particles)
+	for (TGeometryParticleHandle<FReal, 3>* Particle : Particles)
 	{
 		DisableParticle(Particle);
 	}
 }
 
 
-bool FPBDConstraintGraph::CheckIslands(const TArray<FGeometryParticleHandle *>& Particles)
+bool FPBDConstraintGraph::CheckIslands(const TArray<TGeometryParticleHandle<FReal, 3> *>& Particles)
 {
 	bool bIsValid = true;
 
 	// Check that no particles are in multiple islands
-	TSet<FGeometryParticleHandle*> IslandParticlesUnionSet;
+	TSet<TGeometryParticleHandle<FReal, 3>*> IslandParticlesUnionSet;
 	IslandParticlesUnionSet.Reserve(Particles.Num());
 	for (int32 Island = 0; Island < IslandToParticles.Num(); ++Island)
 	{
-		TSet<FGeometryParticleHandle*> IslandParticlesSet = TSet<FGeometryParticleHandle*>(IslandToParticles[Island]);
-		TSet<FGeometryParticleHandle*> IslandParticlesIntersectSet = IslandParticlesUnionSet.Intersect(IslandParticlesSet);
+		TSet<TGeometryParticleHandle<FReal, 3>*> IslandParticlesSet = TSet<TGeometryParticleHandle<FReal, 3>*>(IslandToParticles[Island]);
+		TSet<TGeometryParticleHandle<FReal, 3>*> IslandParticlesIntersectSet = IslandParticlesUnionSet.Intersect(IslandParticlesSet);
 		if (IslandParticlesIntersectSet.Num() > 0)
 		{
 			// This islands contains particles that were in a previous island.
 			// This is ok only if those particles are static
-			for (FGeometryParticleHandle* Particle : IslandParticlesIntersectSet)
+			for (TGeometryParticleHandle<FReal, 3>* Particle : IslandParticlesIntersectSet)
 			{
 				if (Particle->CastToRigidParticle() && Particle->ObjectState() == EObjectStateType::Dynamic)
 				{

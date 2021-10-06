@@ -4,7 +4,6 @@
 
 #include "MaterialExporterUSDOptions.h"
 #include "UnrealUSDWrapper.h"
-#include "USDConversionUtils.h"
 #include "USDMemory.h"
 #include "USDShadeConversion.h"
 
@@ -64,7 +63,7 @@ bool UMaterialExporterUsd::ExportBinary( UObject* Object, const TCHAR* Type, FAr
 			ExportOptions->TexturesDir.Path = FPaths::Combine( FPaths::GetPath( UExporter::CurrentFilename ), TEXT( "Textures" ) );
 		}
 
-		if ( !ExportTask || !ExportTask->bAutomated )
+		if ( !ExportTask || ( ExportTask && !ExportTask->bAutomated ) )
 		{
 			// Use the baking module's options window because it has some useful customizations for FPropertyEntry properties.
 			IMaterialBakingModule& Module = FModuleManager::Get().LoadModuleChecked<IMaterialBakingModule>( TEXT( "MaterialBaking" ) );
@@ -92,7 +91,7 @@ bool UMaterialExporterUsd::ExportBinary( UObject* Object, const TCHAR* Type, FAr
 		return false;
 	}
 
-	FString RootPrimPath = ( TEXT( "/" ) + UsdUtils::SanitizeUsdIdentifier( *Material->GetName() ) );
+	FString RootPrimPath = ( TEXT( "/" ) + Material->GetName() );
 
 	UE::FUsdPrim RootPrim = UsdStage.DefinePrim( UE::FSdfPath( *RootPrimPath ), TEXT( "Material" ) );
 	if ( !RootPrim )

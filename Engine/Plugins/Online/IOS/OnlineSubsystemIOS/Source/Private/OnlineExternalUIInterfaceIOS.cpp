@@ -111,11 +111,11 @@ void FOnlineExternalUIIOS::OnLoginComplete(int ControllerIndex, bool bWasSuccess
 	Error.SetFromErrorCode(ErrorString);
 
     FOnlineIdentityIOS* IdentityInterface = static_cast<FOnlineIdentityIOS*>(Subsystem->GetIdentityInterface().Get());
-    FUniqueNetIdIOSPtr UniqueNetId;
+    TSharedPtr<FUniqueNetIdIOS> UniqueNetId;
     if (bWasSuccessful)
     {
 		const FString PlayerId(FOnlineSubsystemIOS::GetPlayerId(IdentityInterface->GetLocalGameCenterUser()));
-        UniqueNetId = FUniqueNetIdIOS::Create(PlayerId);
+	    UniqueNetId = MakeShareable(new FUniqueNetIdIOS(PlayerId));
     }
     CopiedDelegate.ExecuteIfBound(UniqueNetId, ControllerIndex, Error);
 

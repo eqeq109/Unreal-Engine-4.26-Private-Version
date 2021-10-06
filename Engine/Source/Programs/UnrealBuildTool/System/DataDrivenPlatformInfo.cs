@@ -30,11 +30,6 @@ namespace UnrealBuildTool
 			public string[] AdditionalRestrictedFolders = null;
 
 			/// <summary>
-			/// the compression format that this platform wants; overrides game unless bForceUseProjectCompressionFormat
-			/// </summary>
-			public string HardwareCompressionFormat;
-
-			/// <summary>
 			/// Entire ini parent chain, ending with this platform
 			/// </summary>
 			public string[] IniParentChain = null;
@@ -51,8 +46,8 @@ namespace UnrealBuildTool
 			// need to init?
 			if (PlatformInfos == null)
 			{
-				PlatformInfos = new Dictionary<string, ConfigDataDrivenPlatformInfo>(StringComparer.OrdinalIgnoreCase);
-				Dictionary<string, string> IniParents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+				PlatformInfos = new Dictionary<string, ConfigDataDrivenPlatformInfo>();
+				Dictionary<string, string> IniParents = new Dictionary<string, string>();
 
 				// find all platform directories (skipping NFL/NoRedist)
 				foreach (DirectoryReference EngineConfigDir in UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory, "Config", bIncludeRestrictedDirectories:false))
@@ -98,11 +93,6 @@ namespace UnrealBuildTool
 							if (ParsedSection.TryGetValue("bIsConfidential", out Temp) == false || ConfigHierarchy.TryParse(Temp, out NewInfo.bIsConfidential) == false)
 							{
 								NewInfo.bIsConfidential = false;
-							}
-
-							if (ParsedSection.TryGetValue("HardwareCompressionFormat", out NewInfo.HardwareCompressionFormat) == false)
-							{
-								NewInfo.HardwareCompressionFormat = null;
 							}
 
 							// get a list of additional restricted folders
@@ -156,24 +146,13 @@ namespace UnrealBuildTool
 		/// <returns></returns>
 		public static ConfigDataDrivenPlatformInfo GetDataDrivenInfoForPlatform(string PlatformName)
 		{
+
 			// lookup the platform name (which is not guaranteed to be there)
-			ConfigDataDrivenPlatformInfo Info;
+			ConfigDataDrivenPlatformInfo Info = null;
 			GetAllPlatformInfos().TryGetValue(PlatformName, out Info);
 
 			// return what we found of null if nothing
 			return Info;
-		}
-
-		/// <summary>
-		/// Return the data driven info for the given UnrealTargetPlatform
-		/// </summary>
-		/// <param name="TargetPlatform"></param>
-		/// <returns></returns>
-		public static ConfigDataDrivenPlatformInfo GetDataDrivenInfoForPlatform(UnrealTargetPlatform TargetPlatform)
-		{
-			string PlatformName = ConfigHierarchy.GetIniPlatformName(TargetPlatform);
-
-			return GetDataDrivenInfoForPlatform(PlatformName);
 		}
 	}
 }

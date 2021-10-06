@@ -6,15 +6,6 @@
 
 NIAGARAEDITOR_API DECLARE_LOG_CATEGORY_EXTERN(LogNiagaraEditor, Log, All);
 
-/** Common Strings */
-namespace FNiagaraEditorStrings
-{ 
-	extern const FName DefaultValueCustomRowName;
-	extern const FName DefaultModeCustomRowName;
-
-	extern const FName FNiagaraParameterActionId;
-}
-
 /** Information about a Niagara operation. */
 class FNiagaraOpInfo
 {
@@ -141,35 +132,57 @@ private:
 	const TSharedPtr<INiagaraScriptGraphFocusInfo> ScriptGraphFocusInfo;
 };
 
-/** Defines different flags to use in conjunction with OnStructureChanged delegates for stack entries and related classes. */
-enum ENiagaraStructureChangedFlags
+/** Convenience wrapper for generating entries for scope enum combo boxes in SNiagaraParameterNameView. */
+struct FScopeIsEnabledAndTooltip
 {
-	/** The actual stack structure changed - used to invalidate or refresh previous state, like search results */
-	StructureChanged = 1 << 0,
-	/** Only filtering changed; we don't need to invalidate or refresh as much state */
-	FilteringChanged = 1 << 1
-	// add more flags here if needed
+	FScopeIsEnabledAndTooltip()
+		: bEnabled(true)
+		, Tooltip()
+	{};
+
+	FScopeIsEnabledAndTooltip(bool bInEnabled, FText InTooltip)
+		: bEnabled(bInEnabled)
+		, Tooltip(InTooltip)
+	{};
+
+	bool bEnabled;
+	FText Tooltip;
 };
 
-/** Defines different types of changes to data objects within a niagara system. */
-enum class ENiagaraDataObjectChange
+/** Helper struct for passing along info on parameters and how to display them in SNiagaraParameterNameView */
+struct FNiagaraScriptVariableAndViewInfo
 {
-	/** An object was added somewhere in the system. */
-	Added,
-	/** An object was changed somewhere in the system. */
-	Changed,
-	/** An object ws removed somewhere in the system. */
-	Removed,
-	/** It's now known how the data object was changed. */
-	Unknown
-};
+	FNiagaraScriptVariableAndViewInfo() {}
+	FNiagaraScriptVariableAndViewInfo(const FNiagaraVariable& InScriptVariable, const FNiagaraVariableMetaData& InScriptVariableMetaData)
+		: bIsSelectionRelevant(false)
+	{
+		ScriptVariable = InScriptVariable;
+		MetaData = InScriptVariableMetaData;
+	};
 
-/** Defines a relationship of an FNiagaraVariable to a set of FNiagaraVariable parameter definitions. */
-enum class EParameterDefinitionMatchState : uint8
-{
-	NoMatchingDefinitions = 0,
-	MatchingMoreThanOneDefinition,
-	MatchingOneDefinition,
-	MatchingDefinitionNameButNotType,
-};
+	FNiagaraScriptVariableAndViewInfo(const FNiagaraVariable& InScriptVariable, const FNiagaraVariableMetaData& InMetaData, const TStaticArray<FScopeIsEnabledAndTooltip, (int32)ENiagaraParameterScope::Num>& InParameterScopeToDisplayInfo)
+		: ParameterScopeToDisplayInfo(InParameterScopeToDisplayInfo)
+		, bIsSelectionRelevant(false)
+	{
+		ScriptVariable = InScriptVariable;
+		MetaData = InMetaData;
+	};
 
+	FNiagaraScriptVariableAndViewInfo(const FNiagaraScriptVariableAndViewInfo& Other)
+		: ScriptVariable(Other.ScriptVariable)
+		, MetaData(Other.MetaData)
+		, ParameterScopeToDisplayInfo(Other.ParameterScopeToDisplayInfo)
+		, bIsSelectionRelevant(Other.bIsSelectionRelevant)
+	{};
+
+	bool operator== (const FNiagaraScriptVariableAndViewInfo& Other) const;
+
+	FNiagaraVariable ScriptVariable;
+	FNiagaraVariableMetaData MetaData;
+
+	// Array indexed by ENiagaraParameterScope value containing info on how to present each scope in a ComboBox.
+	TStaticArray<FScopeIsEnabledAndTooltip, (int32)ENiagaraParameterScope::Num> ParameterScopeToDisplayInfo;
+
+	// Whether this entry is related to the current selection state, e.g. if a module is selected in the Stack, mark this entry if ScriptVariable is a member of that module.
+	bool bIsSelectionRelevant;
+};

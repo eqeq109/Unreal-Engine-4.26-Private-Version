@@ -10,7 +10,6 @@
 #include "ActorRecordingSettings.h"
 #include "Misc/ScopedSlowTask.h"
 #include "SequenceRecorderUtils.h"
-#include "TakeRecorderSource.h"
 #include "TakeRecorderSources.h"
 #include "TakeRecorderSourcesUtils.h"
 #include "Recorder/TakeRecorderParameters.h"
@@ -179,8 +178,6 @@ UTakeRecorderActorSource::UTakeRecorderActorSource(const FObjectInitializer& Obj
 	bReduceKeys = true;
 	bRecordParentHierarchy = true;
 
-	TargetSequenceID = MovieSceneSequenceID::Invalid;
-
 	// Build the property map on initialization so that sources created at runtime have a default map
 	RebuildRecordedPropertyMap();
 }
@@ -191,7 +188,7 @@ bool UTakeRecorderActorSource::IsValid() const
 }
 
 
-TArray<UTakeRecorderSource*> UTakeRecorderActorSource::PreRecording(ULevelSequence* InSequence, FMovieSceneSequenceID InSequenceID, ULevelSequence* InMasterSequence, FManifestSerializer* InManifestSerializer)
+TArray<UTakeRecorderSource*> UTakeRecorderActorSource::PreRecording(class ULevelSequence* InSequence, class ULevelSequence* InMasterSequence, FManifestSerializer* InManifestSerializer)
 {
 	// Don't bother doing anything if we don't have a valid actor to record.
 	if (!Target.IsValid())
@@ -205,7 +202,7 @@ TArray<UTakeRecorderSource*> UTakeRecorderActorSource::PreRecording(ULevelSequen
 	AActor* ActorToRecord = Target.Get();
 	TargetLevelSequence = InSequence;
 	MasterLevelSequence = InMasterSequence;
-	TargetSequenceID = InSequenceID;
+	SequenceID.Reset(); 
 
 	FString ObjectBindingName = ActorToRecord->GetName();
 
@@ -288,8 +285,7 @@ TArray<UTakeRecorderSource*> UTakeRecorderActorSource::PreRecording(ULevelSequen
 	}
 	// Now we need to create the section recorders for each of the enabled properties based on the property map.
 	// Any components spawned at runtime will get picked up on Tick and have section recorders created for them mid-recording.
-	TArray<UObject*> TraversedObjects;
-	CreateSectionRecordersRecursive(ActorToRecord, RecordedProperties, TraversedObjects);
+	CreateSectionRecordersRecursive(ActorToRecord, RecordedProperties);
 
 	// Update our cached list of components so that we don't detect them all as new components on the first Tick
 	GetAllComponents(CachedComponentList, false);
@@ -351,15 +347,8 @@ void UTakeRecorderActorSource::StartRecording(const FTimecode& InSectionStartTim
 	}
 }
 
-void UTakeRecorderActorSource::CreateSectionRecordersRecursive(UObject* ObjectToRecord, UActorRecorderPropertyMap* PropertyMap, TArray<UObject*>& TraversedObjects)
+void UTakeRecorderActorSource::CreateSectionRecordersRecursive(UObject* ObjectToRecord, UActorRecorderPropertyMap* PropertyMap)
 {
-	if (TraversedObjects.Contains(ObjectToRecord))
-	{
-		return;
-	}
-
-	TraversedObjects.Add(ObjectToRecord);
-
 	FGuid Guid = CachedObjectBindingGuid;
 	if (ObjectToRecord->IsA<UActorComponent>())
 	{
@@ -515,7 +504,7 @@ void UTakeRecorderActorSource::CreateSectionRecordersRecursive(UObject* ObjectTo
 		UObject* ChildObject = Child->RecordedObject.Get();
 		if (ChildObject)
 		{
-			CreateSectionRecordersRecursive(ChildObject, Child, TraversedObjects);
+			CreateSectionRecordersRecursive(ChildObject, Child);
 		}
 		else
 		{
@@ -554,7 +543,6 @@ void UTakeRecorderActorSource::TickRecording(const FQualifiedFrameTime& CurrentS
 		}
 	}
 
-	TArray<UObject*> TraversedObjects;
 	for (UActorComponent* AddedComponent : NewComponentsAdded)
 	{
 		if (Target.IsValid())
@@ -578,7 +566,7 @@ void UTakeRecorderActorSource::TickRecording(const FQualifiedFrameTime& CurrentS
 			RebuildRecordedPropertyMapRecursive(AddedComponent, ComponentPropertyMap);
 
 			// Create the Section Recorders required
-			CreateSectionRecordersRecursive(AddedComponent, ComponentPropertyMap, TraversedObjects);
+			CreateSectionRecordersRecursive(AddedComponent, ComponentPropertyMap);
 
 			// Update our numbers on the display
 			UpdateCachedNumberOfRecordedProperties();
@@ -1001,7 +989,8 @@ void UTakeRecorderActorSource::PostEditChangeProperty(FPropertyChangedEvent& Pro
 {
 	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UTakeRecorderActorSource, Target))
 	{
-		TrackTint = FColor(67, 148, 135);
+		
+		TrackTint = FColor(67, 148, 135); 
 		AActor* TargetActor = Target.Get();
 		if (TargetActor && TargetActor->GetComponentByClass(UCameraComponent::StaticClass()))
 		{
@@ -1014,6 +1003,22 @@ void UTakeRecorderActorSource::PostEditChangeProperty(FPropertyChangedEvent& Pro
 	}
 }
 
+void UTakeRecorderActorSource::PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent)
+{
+	if (PropertyChangedEvent.PropertyChain.Num() > 0)
+	{
+		FProperty* MemberProperty = PropertyChangedEvent.PropertyChain.GetTail()->GetValue();
+		if (MemberProperty != NULL)
+		{
+			if (MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(FActorRecordedProperty, bEnabled))
+			{
+				// They've toggled the enable state of a property so we need to update the counts that are displayed in the UI.
+				UpdateCachedNumberOfRecordedProperties();
+			}
+		}
+	}
+}
+
 void UTakeRecorderActorSource::PostDuplicate(bool bDuplicateForPIE)
 {
 	Super::PostDuplicate(bDuplicateForPIE);
@@ -1021,12 +1026,6 @@ void UTakeRecorderActorSource::PostDuplicate(bool bDuplicateForPIE)
 	// When we get deserialized from being duplicated we need to update our numbers.
 	// This has to be done after the constructor as the Property Map hasn't been deserialized
 	// by that point.
-	UpdateCachedNumberOfRecordedProperties();
-}
-
-void UTakeRecorderActorSource::PostEditUndo()
-{
-	Super::PostEditUndo();
 	UpdateCachedNumberOfRecordedProperties();
 }
 
@@ -1215,9 +1214,31 @@ void UTakeRecorderActorSource::RebuildRecordedPropertyMapRecursive(const FFieldV
 
 void UTakeRecorderActorSource::UpdateCachedNumberOfRecordedProperties()
 {
-	if (RecordedProperties)
+	// Iterate through our properties and components and record the number of them that are getting recorded.
+	// This allows us to show in the UI for the actor to give users an idea of how much data is getting saved.
+	CachedNumberOfRecordedProperties = 0;
+	CachedNumberOfRecordedComponents = 0;
+
+	UpdateCachedNumberOfRecordedPropertiesRecursive(RecordedProperties, CachedNumberOfRecordedProperties, CachedNumberOfRecordedComponents);
+}
+
+void UTakeRecorderActorSource::UpdateCachedNumberOfRecordedPropertiesRecursive(UActorRecorderPropertyMap* PropertyMap, int32& NumRecordedProperties, int32& NumRecordedComponents)
+{
+	if (PropertyMap != nullptr)
 	{
-		RecordedProperties->UpdateCachedValues();
+		for (FActorRecordedProperty& Property : PropertyMap->Properties)
+		{
+			if (Property.bEnabled)
+			{
+				NumRecordedProperties++;
+			}
+		}
+
+		for (UActorRecorderPropertyMap* Child : PropertyMap->Children)
+		{
+			NumRecordedComponents++;
+			UpdateCachedNumberOfRecordedPropertiesRecursive(Child, NumRecordedProperties, NumRecordedComponents);
+		}
 	}
 }
 
@@ -1259,12 +1280,7 @@ FText UTakeRecorderActorSource::GetDescriptionTextImpl() const
 {
 	if (Target.IsValid())
 	{
-		UActorRecorderPropertyMap::Cache CachedValues;
-		if (RecordedProperties)
-		{
-			CachedValues = RecordedProperties->CachedPropertyComponentCount();
-		}
-		return FText::Format(LOCTEXT("ActorDescriptionFormat", "{0} Properties {1} Components"), CachedValues.Properties, CachedValues.Components);
+		return FText::Format(LOCTEXT("ActorDescriptionFormat", "{0} Properties {1} Components"), CachedNumberOfRecordedProperties, CachedNumberOfRecordedComponents);
 	}
 	else
 	{
@@ -1564,6 +1580,14 @@ void UTakeRecorderActorSource::CreateNewActorSourceForReferencedActors()
 		ActorSource->PostEditChangeProperty(PropertyChangedEvent);
 	}
 	NewReferencedActors.Reset();
+
+	// If this actor reference was added at runtime we need to immediately start recording it. If this was added during PreRecording
+	// we don't want to call StartRecordingSource as the UTakeRecorderSources will do that automatically.
+	const bool bStartRecordingImmediately = false;
+	if (bStartRecordingImmediately)
+	{
+		SourcesList->StartRecordingSource(NewSources,TimecodeSource);
+	}
 }
 
 bool UTakeRecorderActorSource::IsOtherActorBeingRecorded(AActor* OtherActor) const
@@ -1588,22 +1612,16 @@ FMovieSceneSequenceID UTakeRecorderActorSource::GetLevelSequenceID(class AActor*
 
 FTrackRecorderSettings UTakeRecorderActorSource::GetTrackRecorderSettings() const
 {
-	FTrackRecorderSettings TrackRecorderSettings;
-
-	UTakeRecorderSources* Sources = GetTypedOuter<UTakeRecorderSources>();
-	if (!Sources)
-	{
-		return TrackRecorderSettings;
-	}
-			
 	FTakeRecorderParameters Parameters;
 	Parameters.User = GetDefault<UTakeRecorderUserSettings>()->Settings;
 	Parameters.Project = GetDefault<UTakeRecorderProjectSettings>()->Settings;
 
+	FTrackRecorderSettings TrackRecorderSettings;
+
 	TrackRecorderSettings.bRecordToPossessable = GetRecordToPossessable();
 	TrackRecorderSettings.bReduceKeys = bReduceKeys;
 	TrackRecorderSettings.bRemoveRedundantTracks = Parameters.User.bRemoveRedundantTracks;
-	TrackRecorderSettings.bSaveRecordedAssets = Sources->GetSettings().bSaveRecordedAssets || GEditor == nullptr;
+	TrackRecorderSettings.bSaveRecordedAssets = Parameters.User.bSaveRecordedAssets || GEditor == nullptr;
 	TrackRecorderSettings.ReduceKeysTolerance = Parameters.User.ReduceKeysTolerance;
 
 	TrackRecorderSettings.DefaultTracks = Parameters.Project.DefaultTracks;
@@ -1624,10 +1642,7 @@ bool UTakeRecorderActorSource::GetRecordToPossessable() const
 {
 	if (RecordType == ETakeRecorderActorRecordType::ProjectDefault)
 	{
-		if (UTakeRecorderSources* Sources = GetTypedOuter<UTakeRecorderSources>())
-		{
-			return Sources->GetSettings().bRecordToPossessable;
-		}
+		return GetDefault<UTakeRecorderProjectSettings>()->Settings.bRecordToPossessable;
 	}
 
 	return RecordType == ETakeRecorderActorRecordType::Possessable;

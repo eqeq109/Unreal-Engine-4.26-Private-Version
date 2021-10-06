@@ -313,18 +313,16 @@ void FWaterMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*
 					}
 
 					TRACE_CPUPROFILER_EVENT_SCOPE(DensityBucket);
+					bMaterialDrawn = true;
 
-					FMaterialRenderProxy* MaterialRenderProxy = (WireframeMaterialInstance != nullptr) ? WireframeMaterialInstance : WaterQuadTree.GetWaterMaterials()[MaterialIndex];
-					check (MaterialRenderProxy != nullptr);
-					const FMaterial* BucketMaterial = MaterialRenderProxy->GetMaterialNoFallback(GetScene().GetFeatureLevel());
+					UMaterialInterface* BucketMaterial = WaterQuadTree.GetWaterMaterials()[MaterialIndex];
+					FMaterialRenderProxy* MaterialRenderProxy = BucketMaterial->GetRenderProxy();
 
-					// If the material is not ready for render, just skip :
-					if (BucketMaterial == nullptr)
+					if (WireframeMaterialInstance)
 					{
-						continue;
+						MaterialRenderProxy = WireframeMaterialInstance;
 					}
 
-					bMaterialDrawn = true;
 					for (EWaterMeshRenderGroupType RenderGroup : BatchRenderGroups)
 					{
 						// Set up mesh batch

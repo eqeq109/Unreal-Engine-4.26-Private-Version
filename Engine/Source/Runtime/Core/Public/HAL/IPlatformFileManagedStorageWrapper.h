@@ -586,11 +586,6 @@ public:
 		return false;
 	}
 
-	virtual void ShrinkBuffers() override
-	{
-		FileHandle->ShrinkBuffers();
-	}
-
 private:
 	TUniquePtr<IFileHandle>	FileHandle;
 	int64					FileSize;

@@ -5,10 +5,8 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/GCObject.h"
-#include "Recorder/TakeRecorderParameters.h"
 
 enum class ECheckBoxState : uint8;
-enum class ETakeRecordMode : uint8;
 
 struct FFrameRate;
 class ULevelSequence;
@@ -30,8 +28,6 @@ public:
 		{}
 
 		SLATE_ATTRIBUTE(ULevelSequence*, LevelSequence)
-
-		SLATE_ATTRIBUTE(ETakeRecorderMode, TakeRecorderMode)
 
 	SLATE_END_ARGS()
 
@@ -56,7 +52,7 @@ public:
 
 	TSharedRef<SWidget> MakeLockButton();
 
-	bool CanStartRecording(FText& OutErrorText) const;
+	bool CanStartRecording(FText* OutErrorText) const;
 
 	void StartRecording();
 
@@ -149,8 +145,6 @@ private:
 	int32 TransactionIndex;
 
 	TAttribute<ULevelSequence*> LevelSequenceAttribute;
-
-	TAttribute<ETakeRecorderMode> TakeRecorderModeAttribute;
 
 	/** Text that describes why the user cannot record with the current settings */
 	FText RecordErrorText;

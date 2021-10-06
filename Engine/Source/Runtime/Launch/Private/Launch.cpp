@@ -57,7 +57,7 @@ int32 EngineInit()
 /** 
  * Ticks the engine loop 
  */
-LAUNCH_API void EngineTick( void )
+void EngineTick( void )
 {
 	GEngineLoop.Tick();
 }
@@ -65,7 +65,7 @@ LAUNCH_API void EngineTick( void )
 /**
  * Shuts down the engine
  */
-LAUNCH_API void EngineExit( void )
+void EngineExit( void )
 {
 	// Make sure this is set
 	RequestEngineExit(TEXT("EngineExit() was called"));
@@ -110,12 +110,7 @@ int32 GuardedMain( const TCHAR* CmdLine )
 	{ 
 		~EngineLoopCleanupGuard()
 		{
-			// Don't shut down the engine on scope exit when we are running embedded
-			// because the outer application will take care of that.
-			if (!GUELibraryOverrideSettings.bIsEmbedded)
-			{
-				EngineExit();
-			}
+			EngineExit();
 		}
 	} CleanupGuard;
 
@@ -171,14 +166,9 @@ int32 GuardedMain( const TCHAR* CmdLine )
 	BootTimingPoint("Tick loop starting");
 	DumpBootTiming();
 
-	// Don't tick if we're running an embedded engine - we rely on the outer
-	// application ticking us instead.
-	if (!GUELibraryOverrideSettings.bIsEmbedded)
+	while( !IsEngineExitRequested() )
 	{
-		while( !IsEngineExitRequested() )
-		{
-			EngineTick();
-		}
+		EngineTick();
 	}
 
 	TRACE_BOOKMARK(TEXT("Tick loop end"));

@@ -163,7 +163,6 @@
 
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/Formatters/JsonArchiveInputFormatter.h"
-#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogEditorServer, Log, All);
 
@@ -2224,7 +2223,7 @@ bool UEditorEngine::ShouldAbortBecauseOfUnsavedWorld()
 /**
  * Prompts the user to save the current map if necessary, then creates a new (blank) map.
  */
-void UEditorEngine::CreateNewMapForEditing(bool bPromptUserToSave)
+void UEditorEngine::CreateNewMapForEditing()
 {
 	// If a PIE world exists, warn the user that the PIE session will be terminated.
 	// Abort if the user refuses to terminate the PIE session.
@@ -2234,9 +2233,9 @@ void UEditorEngine::CreateNewMapForEditing(bool bPromptUserToSave)
 	}
 
 	// If there are any unsaved changes to the current level, see if the user wants to save those first.
+	bool bPromptUserToSave = true;
 	bool bSaveMapPackages = true;
 	bool bSaveContentPackages = false;
-
 	if( FEditorFileUtils::SaveDirtyPackages(bPromptUserToSave, bSaveMapPackages, bSaveContentPackages) == false )
 	{
 		// something went wrong or the user pressed cancel.  Return to the editor so the user doesn't lose their changes		
@@ -2247,7 +2246,7 @@ void UEditorEngine::CreateNewMapForEditing(bool bPromptUserToSave)
 	{
 		return;
 	}
-
+	
 	const FScopedBusyCursor BusyCursor;
 
 	// Change out of Matinee when opening new map, so we avoid editing data in the old one.
@@ -2437,8 +2436,6 @@ bool UEditorEngine::PackageIsAMapFile( const TCHAR* PackageFilename, FText& OutN
 
 bool UEditorEngine::Map_Load(const TCHAR* Str, FOutputDevice& Ar)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UEditorEngine::Map_Load)
-
 	auto FindWorldInPackageOrFollowRedirector = [](UPackage*& InOutPackage)
 	{
 		UWorld* RetVal = nullptr;
@@ -2532,7 +2529,7 @@ bool UEditorEngine::Map_Load(const TCHAR* Str, FOutputDevice& Ar)
 				}
 				
 				// Don't show progress dialogs when loading one of our startup maps. They should load rather quickly.
-				FScopedSlowTask SlowTask(100, LocalizedLoadingMap, bShowProgress != 0);
+				FScopedSlowTask SlowTask(100, FText::Format( NSLOCTEXT("UnrealEd", "LoadingMapStatus_Loading", "Loading {0}"), LocalizedLoadingMap ), bShowProgress != 0);
 				SlowTask.MakeDialog();
 
 				SlowTask.EnterProgressFrame(10, FText::Format( NSLOCTEXT("UnrealEd", "LoadingMapStatus_CleaningUp", "{0} (Clearing existing world)"), LocalizedLoadingMap ));
@@ -2567,7 +2564,7 @@ bool UEditorEngine::Map_Load(const TCHAR* Str, FOutputDevice& Ar)
 					// If we are loading the same world again (reloading) then we must not specify that we want to keep this world in memory.
 					// Otherwise, try to keep the existing world in memory since there is not reason to reload it.
 					UWorld* NewWorld = nullptr;
-					if (!bIsLoadingMapTemplate && ExistingWorld != nullptr && Context.World() != ExistingWorld)
+					if (ExistingWorld != nullptr && Context.World() != ExistingWorld)
 					{
 						NewWorld = ExistingWorld;
 					}
@@ -4606,10 +4603,8 @@ bool UEditorEngine::Exec_Obj( const TCHAR* Str, FOutputDevice& Ar )
 		&&	FParse::Value( Str, TEXT("FILE="), TempFname )
 		&&	ParseObject( Str, TEXT("NAME="), Type, Res, ANY_PACKAGE ) )
 		{
-			for (FThreadSafeObjectIterator It; It; ++It)
-			{
+			for( FObjectIterator It; It; ++It )
 				It->UnMark(EObjectMark(OBJECTMARK_TagImp | OBJECTMARK_TagExp));
-			}
 			UExporter* Exporter = UExporter::FindExporter( Res, *FPaths::GetExtension(TempFname) );
 			if( Exporter )
 			{
@@ -4824,8 +4819,7 @@ void UEditorEngine::MoveViewportCamerasToActor(const TArray<AActor*> &Actors, co
 				}
 				else
 				{
-					const bool bIncludeFromChildActors = true;
-					TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents(Actor, bIncludeFromChildActors);
+					TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents(Actor);
 
 					for(int32 ComponentIndex = 0; ComponentIndex < PrimitiveComponents.Num(); ++ComponentIndex)
 					{
@@ -6373,7 +6367,7 @@ bool UEditorEngine::HandleSelectNameCommand( const TCHAR* Str, FOutputDevice& Ar
 
 bool UEditorEngine::HandleDumpPublicCommand( const TCHAR* Str, FOutputDevice& Ar )
 {
-	for( FThreadSafeObjectIterator It; It; ++It )
+	for( FObjectIterator It; It; ++It )
 	{
 		UObject* Obj = *It;
 		if(Obj && IsInALevel(Obj) && Obj->HasAnyFlags(RF_Public))
@@ -6467,7 +6461,7 @@ bool UEditorEngine::HandleTagSoundsCommand( const TCHAR* Str, FOutputDevice& Ar 
 {
 	int32 NumObjects = 0;
 	int32 TotalSize = 0;
-	for( FThreadSafeObjectIterator It(USoundWave::StaticClass()); It; ++It )
+	for( FObjectIterator It(USoundWave::StaticClass()); It; ++It )
 	{
 		++NumObjects;
 		DebugSoundAnnotation.Set(*It);
@@ -6483,7 +6477,7 @@ bool UEditorEngine::HandleTagSoundsCommand( const TCHAR* Str, FOutputDevice& Ar 
 bool UEditorEngine::HandlecheckSoundsCommand( const TCHAR* Str, FOutputDevice& Ar )
 {
 	TArray<USoundWave*> WaveList;
-		for( FThreadSafeObjectIterator It(USoundWave::StaticClass()); It; ++It )
+		for( FObjectIterator It(USoundWave::StaticClass()); It; ++It )
 		{
 			USoundWave* Wave = static_cast<USoundWave*>(*It);
 			if ( !DebugSoundAnnotation.Get(Wave))
@@ -6814,7 +6808,7 @@ bool IsComponentMergable(UStaticMeshComponent* Component)
 	}
 
 	// we need a static mesh to work
-	if (Component->GetStaticMesh() == NULL || Component->GetStaticMesh()->GetRenderData() == NULL)
+	if (Component->GetStaticMesh() == NULL || Component->GetStaticMesh()->RenderData == NULL)
 	{
 		return false;
 	}

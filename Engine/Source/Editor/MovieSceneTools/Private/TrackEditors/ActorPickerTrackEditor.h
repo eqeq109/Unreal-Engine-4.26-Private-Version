@@ -11,7 +11,6 @@ class AActor;
 class FMenuBuilder;
 class USceneComponent;
 class FTrackEditorBindingIDPicker;
-
 struct FMovieSceneObjectBindingID;
 
 /**
@@ -23,7 +22,7 @@ public:
 
 	struct FActorPickerID
 	{
-		FActorPickerID(AActor* InActorPicked, const FMovieSceneObjectBindingID& InExistingBindingID) : ActorPicked(InActorPicked), ExistingBindingID(InExistingBindingID) {}
+		FActorPickerID(AActor* InActorPicked, FMovieSceneObjectBindingID InExistingBindingID) : ActorPicked(InActorPicked), ExistingBindingID(InExistingBindingID) {}
 
 		TWeakObjectPtr<AActor> ActorPicked;
 		FMovieSceneObjectBindingID ExistingBindingID;

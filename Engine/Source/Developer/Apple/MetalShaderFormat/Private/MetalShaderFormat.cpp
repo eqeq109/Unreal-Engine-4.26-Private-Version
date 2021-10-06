@@ -15,7 +15,6 @@
 #include "Misc/ConfigCacheIni.h"
 #include "MetalBackend.h"
 #include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
 #include "FileUtilities/ZipArchiveWriter.h"
 #include "MetalDerivedData.h"
 
@@ -387,11 +386,9 @@ static FMetalCompilerToolchain::EMetalToolchainStatus ParseCompilerVersionAndTar
 		int32 Major = 0, Minor = 0, Patch = 0;
 		int32 NumResults = 0;
 #if !PLATFORM_WINDOWS
-		char AppleToolName[PATH_MAX] = { '\0' };
-		NumResults = sscanf(TCHAR_TO_ANSI(*Version), "Apple %s version %d.%d.%d", AppleToolName, &Major, &Minor, &Patch);
+		NumResults = sscanf(TCHAR_TO_ANSI(*Version), "Apple LLVM version %d.%d.%d", &Major, &Minor, &Patch);
 #else
-		TCHAR AppleToolName[WINDOWS_MAX_PATH] = { '\0' };
-		NumResults = swscanf_s(*Version, TEXT("Apple %ls version %d.%d.%d"), AppleToolName, WINDOWS_MAX_PATH, &Major, &Minor, &Patch);
+		NumResults = swscanf_s(*Version, TEXT("Apple LLVM version %d.%d.%d"), &Major, &Minor, &Patch);
 #endif
 		PackedVersionNumber.Major = Major;
 		PackedVersionNumber.Minor = Minor;
@@ -584,15 +581,13 @@ void FMetalCompilerToolchain::Init()
 	{
 		check(IsCompilerAvailable());
 		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Metal toolchain setup complete."));
+#if PLATFORM_WINDOWS
 		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Using Local Metal compiler"));
-		if (!MetalFrontendBinaryCommand[AppleSDKMac].IsEmpty())
-		{
-			UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mac metalfe found at %s"), *MetalFrontendBinaryCommand[AppleSDKMac]);
-		}
-		if (!MetalFrontendBinaryCommand[AppleSDKMobile].IsEmpty())
-		{
-			UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mobile metalfe found at %s"), *MetalFrontendBinaryCommand[AppleSDKMobile]);
-		}
+		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mac metalfe found at %s"), *MetalFrontendBinaryCommand[AppleSDKMac]);
+		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mobile metalfe found at %s"), *MetalFrontendBinaryCommand[AppleSDKMobile]);
+#else
+		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Using Local Metal compiler"));
+#endif
 		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mac metalfe version %s"), *MetalCompilerVersionString[AppleSDKMac]);
 		UE_LOG(LogMetalCompilerSetup, Log, TEXT("Mobile metalfe version %s"), *MetalCompilerVersionString[AppleSDKMobile]);
 	}
@@ -631,7 +626,7 @@ FMetalCompilerToolchain::EMetalToolchainStatus FMetalCompilerToolchain::FetchCom
 		FString StdOut;
 		// metal -v writes its output to stderr
 		// But the underlying (windows) implementation of CreateProc puts everything into one pipe, which is written to StdOut.
-		bool bResult = this->ExecMetalFrontend(AppleSDKMac, TEXT("-v --target=air64-apple-darwin18.7.0"), &ReturnCode, &StdOut, &StdOut);
+		bool bResult = this->ExecMetalFrontend(AppleSDKMac, TEXT("-v"), &ReturnCode, &StdOut, &StdOut);
 		check(bResult);
 		
 		Result = ParseCompilerVersionAndTarget(StdOut, this->MetalCompilerVersionString[AppleSDKMac], this->MetalCompilerVersion[AppleSDKMac], this->MetalTargetVersion[AppleSDKMac]);
@@ -646,7 +641,7 @@ FMetalCompilerToolchain::EMetalToolchainStatus FMetalCompilerToolchain::FetchCom
 		int32 ReturnCode = 0;
 		FString StdOut;
 		// metal -v writes its output to stderr
-		bool bResult = this->ExecMetalFrontend(AppleSDKMobile, TEXT("-v --target=air64-apple-darwin18.7.0"), &ReturnCode, &StdOut, &StdOut);
+		bool bResult = this->ExecMetalFrontend(AppleSDKMobile, TEXT("-v"), &ReturnCode, &StdOut, &StdOut);
 		check(bResult);
 		
 		Result = ParseCompilerVersionAndTarget(StdOut, this->MetalCompilerVersionString[AppleSDKMobile], this->MetalCompilerVersion[AppleSDKMobile], this->MetalTargetVersion[AppleSDKMobile]);
@@ -691,43 +686,6 @@ FMetalCompilerToolchain::EMetalToolchainStatus FMetalCompilerToolchain::FetchMet
 #if PLATFORM_MAC
 FMetalCompilerToolchain::EMetalToolchainStatus FMetalCompilerToolchain::DoMacNativeSetup()
 {
-	FString ToolchainBase;
-	if (FParse::Value(FCommandLine::Get(), TEXT("-MetalToolchainOverride="), ToolchainBase))
-	{
-		const bool bUseOverride = (!ToolchainBase.IsEmpty() && FPaths::DirectoryExists(ToolchainBase));
-		if (bUseOverride)
-		{
-			MetalFrontendBinaryCommand[AppleSDKMac] = ToolchainBase / TEXT("macos") / TEXT("bin") / MetalFrontendBinary;
-			MetalFrontendBinaryCommand[AppleSDKMobile] = ToolchainBase / TEXT("ios") / TEXT("bin") / MetalFrontendBinary;
-
-			const bool bIsFrontendPresent = FPaths::FileExists(*MetalFrontendBinaryCommand[AppleSDKMac]) && FPaths::FileExists(*MetalFrontendBinaryCommand[AppleSDKMobile]);
-			if (!bIsFrontendPresent)
-			{
-				UE_LOG(LogMetalCompilerSetup, Warning, TEXT("Missing Metal frontend in %s."), *ToolchainBase);
-				return EMetalToolchainStatus::ToolchainNotFound;
-			}
-
-			MetalArBinaryCommand[AppleSDKMac] = ToolchainBase / TEXT("macos") / TEXT("bin") / MetalArBinary;
-			MetalArBinaryCommand[AppleSDKMobile] = ToolchainBase / TEXT("ios") / TEXT("bin") / MetalArBinary;
-
-			MetalLibBinaryCommand[AppleSDKMac] = ToolchainBase / TEXT("macos") / TEXT("bin") / MetalLibraryBinary;
-			MetalLibBinaryCommand[AppleSDKMobile] = ToolchainBase / TEXT("ios") / TEXT("bin") / MetalLibraryBinary;
-
-			if (!FPaths::FileExists(*MetalArBinaryCommand[AppleSDKMac]) ||
-				!FPaths::FileExists(*MetalArBinaryCommand[AppleSDKMobile]) ||
-				!FPaths::FileExists(*MetalLibBinaryCommand[AppleSDKMac]) ||
-				!FPaths::FileExists(*MetalLibBinaryCommand[AppleSDKMobile]))
-			{
-				UE_LOG(LogMetalCompilerSetup, Warning, TEXT("Missing toolchain binaries in %s."), *ToolchainBase);
-				return EMetalToolchainStatus::ToolchainNotFound;
-			}
-
-			this->bToolchainBinariesPresent = true;
-
-			return EMetalToolchainStatus::Success;
-		}
-	}
-
 	int32 ReturnCode = 0;
 	FString StdOut, StdErr;
 	bool bSuccess = this->ExecGenericCommand(*XcrunPath, *FString::Printf(TEXT("-sdk %s --find %s"), *this->MetalMacSDK, *this->MetalFrontendBinary), &ReturnCode, &StdOut, &StdErr);
@@ -800,28 +758,22 @@ bool FMetalCompilerToolchain::ExecMetalFrontend(EAppleSDKType SDK, const TCHAR* 
 {
 	check(this->bToolchainBinariesPresent);
 #if PLATFORM_MAC
-	if (this->MetalFrontendBinaryCommand[SDK].IsEmpty())
-	{
-		FString BuiltParams = FString::Printf(TEXT("--sdk %s %s %s"), *SDKToString(SDK), *this->MetalFrontendBinary, Parameters);
-		return ExecGenericCommand(*XcrunPath, *BuiltParams, OutReturnCode, OutStdOut, OutStdErr);
-	}
-	else
-#endif
+	FString BuiltParams = FString::Printf(TEXT("-sdk %s %s %s"), *SDKToString(SDK), *this->MetalFrontendBinary, Parameters);
+	return ExecGenericCommand(*XcrunPath, *BuiltParams, OutReturnCode, OutStdOut, OutStdErr);
+#else
 	return ExecGenericCommand(*this->MetalFrontendBinaryCommand[SDK], Parameters, OutReturnCode, OutStdOut, OutStdErr);
+#endif
 }
 
 bool FMetalCompilerToolchain::ExecMetalLib(EAppleSDKType SDK, const TCHAR* Parameters, int32* OutReturnCode, FString* OutStdOut, FString* OutStdErr) const
 {
 	check(this->bToolchainBinariesPresent);
 #if PLATFORM_MAC
-	if (this->MetalLibBinaryCommand[SDK].IsEmpty())
-	{
-		FString BuiltParams = FString::Printf(TEXT("--sdk %s %s %s"), *SDKToString(SDK), *this->MetalLibraryBinary, Parameters);
-		return ExecGenericCommand(*XcrunPath, *BuiltParams, OutReturnCode, OutStdOut, OutStdErr);
-	}
-	else
-#endif
+	FString BuiltParams = FString::Printf(TEXT("-sdk %s %s %s"), *SDKToString(SDK), *this->MetalLibraryBinary, Parameters);
+	return ExecGenericCommand(*XcrunPath, *BuiltParams, OutReturnCode, OutStdOut, OutStdErr);
+#else
 	return ExecGenericCommand(*this->MetalLibBinaryCommand[SDK], Parameters, OutReturnCode, OutStdOut, OutStdErr);
+#endif
 }
 
 bool FMetalCompilerToolchain::ExecMetalAr(EAppleSDKType SDK, const TCHAR* ScriptFile, int32* OutReturnCode, FString* OutStdOut, FString* OutStdErr) const
@@ -833,15 +785,7 @@ bool FMetalCompilerToolchain::ExecMetalAr(EAppleSDKType SDK, const TCHAR* Script
 	// Unfortunately ar reads its script from stdin (when the -M arg is present) instead of being provided a file
 	// So on windows we'll spawn cmd.exe and pipe the script file into metal-ar.exe -M
 #if PLATFORM_MAC
-	FString Command;
-	if (this->MetalArBinaryCommand[SDK].IsEmpty())
-	{
-		Command = FString::Printf(TEXT("-c \"%s -sdk %s '%s' -M < '%s'\""), *XcrunPath, *SDKToString(SDK), *this->MetalArBinary, ScriptFile);
-	}
-	else
-	{
-		Command = FString::Printf(TEXT("-c \"'%s' -M < '%s'\""), *this->MetalArBinaryCommand[SDK], ScriptFile);
-	}
+	FString Command = FString::Printf(TEXT("-c \"%s -sdk %s '%s' -M < '%s'\""), *XcrunPath, *SDKToString(SDK), *this->MetalArBinary, ScriptFile);
 	bool bSuccess = ExecGenericCommand(TEXT("/bin/sh"), *Command, OutReturnCode, OutStdOut, OutStdErr);
 #else
 	FString Command = FString::Printf(TEXT("/C type \"%s\" | \"%s\" -M"), ScriptFile, *this->MetalArBinaryCommand[SDK]);

@@ -94,7 +94,9 @@ public:
 	virtual FSlateShaderResource* GetViewportRenderTargetTexture() const override;
 	virtual bool RequiresVsync() const override;
 
-	/** Destroy the texture on the next tick */
+private:
+
+	/** Destroy the texture */
 	void DestroyTexture();
 
 public:

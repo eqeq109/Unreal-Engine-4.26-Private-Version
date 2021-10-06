@@ -49,12 +49,10 @@ public:
 		_PhaseCount = 1;
 		_RenderOnPhase = true;
 		_RenderOnInvalidation = false;
-		_RenderWithLocalTransform = true;
 	}
 	SLATE_DEFAULT_SLOT(FArguments, Content)
 		SLATE_ARGUMENT(bool, RenderOnPhase)
 		SLATE_ARGUMENT(bool, RenderOnInvalidation)
-		SLATE_ARGUMENT(bool, RenderWithLocalTransform)
 		SLATE_ARGUMENT(int32, Phase)
 		SLATE_ARGUMENT(int32, PhaseCount)
 		SLATE_ARGUMENT(FName, StatId)
@@ -95,11 +93,9 @@ protected:
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 	virtual FVector2D ComputeDesiredSize(float Scale) const override;
 	virtual bool Advanced_IsInvalidationRoot() const { return bEnableRetainedRendering; }
-	virtual const FSlateInvalidationRoot* Advanced_AsInvalidationRoot() const override { return bEnableRetainedRendering ? this : nullptr; }
 	virtual bool CustomPrepass(float LayoutScaleMultiplier) override;
 
-	//~ Begin FSlateInvalidationRoot interface
-	virtual TSharedRef<SWidget> GetRootWidget() override;
+	/** FSlateInvalidationRoot interface */
 	virtual int32 PaintSlowPath(const FSlateInvalidationContext& Context) override;
 
 	enum class EPaintRetainedContentResult
@@ -110,7 +106,6 @@ protected:
 		InvalidSize,
 	};
 	EPaintRetainedContentResult PaintRetainedContentImpl(const FSlateInvalidationContext& Context, const FGeometry& AllottedGeometry);
-	//~ End FSlateInvalidationRoot interface
 
 	void RefreshRenderingMode();
 	bool ShouldBeRenderingOffscreen() const;
@@ -128,11 +123,7 @@ private:
 
 	mutable FSlateBrush SurfaceBrush;
 
-	FVector2D PreviousRenderSize;
-	FGeometry PreviousAllottedGeometry;
-	FVector2D PreviousClipRectSize;
-	TOptional<FSlateClippingState> PreviousClippingState;
-	FLinearColor PreviousColorAndOpacity;
+	mutable FVector2D PreviousRenderSize;
 
 	void UpdateWidgetRenderer();
 
@@ -146,7 +137,6 @@ private:
 
 	bool bEnableRetainedRenderingDesire;
 	bool bEnableRetainedRendering;
-	bool bEnableRenderWithLocalTransform;
 
 	bool RenderOnPhase;
 	bool RenderOnInvalidation;

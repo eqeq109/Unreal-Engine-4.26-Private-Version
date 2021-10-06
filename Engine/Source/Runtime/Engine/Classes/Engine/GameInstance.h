@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/CoreOnlineFwd.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/ScriptMacros.h"
 #include "UObject/Object.h"
@@ -25,6 +24,7 @@ class AGameModeBase;
 class APlayerController;
 class FOnlineSessionSearchResult;
 class FTimerManager;
+class FUniqueNetId;
 class ULocalPlayer;
 class UOnlineSession;
 struct FLatentActionManager;
@@ -320,7 +320,7 @@ public:
 	ULocalPlayer*			GetLocalPlayerByIndex(const int32 Index) const;
 	APlayerController*		GetFirstLocalPlayerController(const UWorld* World = nullptr) const;
 	ULocalPlayer*			FindLocalPlayerFromControllerId(const int32 ControllerId) const;
-	ULocalPlayer*			FindLocalPlayerFromUniqueNetId(FUniqueNetIdPtr UniqueNetId) const;
+	ULocalPlayer*			FindLocalPlayerFromUniqueNetId(TSharedPtr<const FUniqueNetId> UniqueNetId) const;
 	ULocalPlayer*			FindLocalPlayerFromUniqueNetId(const FUniqueNetId& UniqueNetId) const;
 	ULocalPlayer*			GetFirstGamePlayer() const;
 
@@ -339,7 +339,7 @@ public:
 	 *
 	 * @return the unique id of the primary player on this machine
 	 */
-	FUniqueNetIdPtr GetPrimaryPlayerUniqueId() const;
+	TSharedPtr<const FUniqueNetId> GetPrimaryPlayerUniqueId() const;
 
 	void CleanupGameViewport();
 
@@ -521,9 +521,6 @@ public:
 	virtual void UnregisterReferencedObject(UObject* ObjectToReference);
 
 protected:
-	/** Non-virtual dispatch for OnStart, also calls the associated global OnStartGameInstance. */
-	void BroadcastOnStart();
-
 	/** Called when the game instance is started either normally or through PIE. */
 	virtual void OnStart();
 

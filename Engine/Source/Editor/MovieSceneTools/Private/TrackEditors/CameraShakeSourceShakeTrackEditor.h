@@ -11,7 +11,7 @@
 #include "ISequencerSection.h"
 #include "ISequencerTrackEditor.h"
 #include "MovieSceneTrackEditor.h"
-#include "Camera/CameraShakeBase.h"
+#include "Camera/CameraShake.h"
 
 struct FAssetData;
 class FMenuBuilder;

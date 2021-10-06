@@ -11,7 +11,6 @@
 #include "LevelSequencePlayer.h"
 #include "MovieSceneBindingOwnerInterface.h"
 #include "MovieSceneBindingOverrides.h"
-#include "MovieSceneSequenceTickManager.h"
 #include "LevelSequenceActor.generated.h"
 
 class ULevelSequenceBurnIn;
@@ -62,7 +61,6 @@ protected:
 UCLASS(hideCategories=(Rendering, Physics, LOD, Activation, Input))
 class LEVELSEQUENCE_API ALevelSequenceActor
 	: public AActor
-	, public IMovieSceneSequenceActor
 	, public IMovieScenePlaybackClient
 	, public IMovieSceneBindingOwnerInterface
 {
@@ -80,7 +78,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Playback", meta=(ShowOnlyInnerProperties))
 	FMovieSceneSequencePlaybackSettings PlaybackSettings;
 
-	UPROPERTY(Instanced, transient, replicated, BlueprintReadOnly, BlueprintGetter=GetSequencePlayer, Category="Playback", meta=(ExposeFunctionCategories="Sequencer|Player"))
+	UPROPERTY(Instanced, transient, replicated, BlueprintReadOnly, BlueprintGetter=GetSequencePlayer, Category="Playback", meta=(ExposeFunctionCategories="Game|Cinematic"))
 	ULevelSequencePlayer* SequencePlayer;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="General", meta=(AllowedClasses="LevelSequence"))
@@ -119,7 +117,7 @@ public:
 	 * @return Level sequence, or nullptr if not assigned or if it cannot be loaded.
 	 * @see SetSequence
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	ULevelSequence* GetSequence() const;
 
 	/**
@@ -128,7 +126,7 @@ public:
 	 * @return Level sequence, or nullptr if not assigned or if it cannot be loaded.
 	 * @see SetSequence
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	ULevelSequence* LoadSequence() const;
 
 	/**
@@ -137,7 +135,7 @@ public:
 	 * @param InSequence The sequence object to set.
 	 * @see GetSequence
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void SetSequence(ULevelSequence* InSequence);
 
 	/**
@@ -153,11 +151,11 @@ public:
 	ULevelSequencePlayer* GetSequencePlayer() const;
 
 	/* Hide burnin */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic")
 	void HideBurnin();
 
 	/* Show burnin */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic")
 	void ShowBurnin();
 
 	/** Refresh this actor's burn in */
@@ -172,7 +170,7 @@ public:
 	 * @param Actors Actors to bind
 	 * @param bAllowBindingsFromAsset Allow bindings from the level sequence asset
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void SetBinding(FMovieSceneObjectBindingID Binding, const TArray<AActor*>& Actors, bool bAllowBindingsFromAsset = false);
 
 	/**
@@ -182,7 +180,7 @@ public:
 	 * @param Actors       The actors to assign to all the tagged bindings
 	 * @param bAllowBindingsFromAsset Whether to continue to allow bindings from the level sequence asset (true) or not (false)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void SetBindingByTag(FName BindingTag, const TArray<AActor*>& Actors, bool bAllowBindingsFromAsset = false);
 
 	/**
@@ -192,7 +190,7 @@ public:
 	 * @param Actor Actor to bind
 	 * @param bAllowBindingsFromAsset Allow bindings from the level sequence asset
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void AddBinding(FMovieSceneObjectBindingID Binding, AActor* Actor, bool bAllowBindingsFromAsset = false);
 
 	/**
@@ -202,37 +200,37 @@ public:
 	 * @param Actor        The actor to assign to all the tagged bindings
 	 * @param bAllowBindingsFromAsset Whether to continue to allow bindings from the level sequence asset (true) or not (false)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void AddBindingByTag(FName BindingTag, AActor* Actor, bool bAllowBindingsFromAsset = false);
 
 	/**
 	 * Removes the specified actor from the specified binding's actor array
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void RemoveBinding(FMovieSceneObjectBindingID Binding, AActor* Actor);
 
 	/**
 	 * Removes the specified actor from the specified binding's actor array
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void RemoveBindingByTag(FName Tag, AActor* Actor);
 
 	/**
 	 * Resets the specified binding back to the defaults defined by the Level Sequence asset
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void ResetBinding(FMovieSceneObjectBindingID Binding);
 
 	/**
 	 * Resets all overridden bindings back to the defaults defined by the Level Sequence asset
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic|Bindings")
 	void ResetBindings();
 
 	/**
 	 * Retrieve the first object binding that has been tagged with the specified name
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings", DisplayName="Find Binding by Tag")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic|Bindings", DisplayName="Find Binding by Tag")
 	FMovieSceneObjectBindingID FindNamedBinding(FName Tag) const;
 
 	/**
@@ -241,19 +239,14 @@ public:
 	 * @param Tag  The unique tag name to lookup bindings with. Object Bindings can be tagged within the sequence UI by RMB -> Tags... on the object binding in the tree.
 	 * @return An array containing all the bindings that are tagged with this name, potentially empty.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player|Bindings", DisplayName="Find Bindings by Tag")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic|Bindings", DisplayName="Find Bindings by Tag")
 	const TArray<FMovieSceneObjectBindingID>& FindNamedBindings(FName Tag) const;
 
 protected:
 
-	//~ Begin IMovieSceneSequenceActor interface
-	virtual void TickFromSequenceTickManager(float DeltaSeconds) override;
-	//~ End IMovieSceneSequenceActor interface
-
 	//~ Begin IMovieScenePlaybackClient interface
 	virtual bool RetrieveBindingOverrides(const FGuid& InBindingId, FMovieSceneSequenceID InSequenceID, TArray<UObject*, TInlineAllocator<1>>& OutObjects) const override;
 	virtual UObject* GetInstanceData() const override;
-	virtual TOptional<EAspectRatioAxisConstraint> GetAspectRatioAxisConstraint() const override;
 	//~ End IMovieScenePlaybackClient interface
 
 	//~ Begin UObject interface
@@ -263,6 +256,7 @@ protected:
 	//~ End UObject interface
 
 	//~ Begin AActor interface
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -309,7 +303,7 @@ struct FBoundActorProxy
 
 	/** Specifies the actor to override the binding with */
 	UPROPERTY(EditInstanceOnly, AdvancedDisplay, Category="General")
-	AActor* BoundActor = nullptr;
+	AActor* BoundActor;
 
 	void Initialize(TSharedPtr<IPropertyHandle> InPropertyHandle);
 

@@ -69,11 +69,6 @@ protected:
 	void OnSetColorFromColorPicker(FLinearColor NewColor);
 	
 	/**
-	 * Called to reset all colors to before the color picker spawned
-	 */
-	void ResetColors();
-
-	/**
 	 * Called when the user clicks cancel in the color picker
 	 * The values are reset to their original state when this happens
 	 *
@@ -153,9 +148,6 @@ protected:
 
 	/** True if the user is performing an interactive color change */
 	bool bIsInteractive;
-
-	/** Last color set from color picker as string*/
-	FString LastPickerColorString;
 
 	/** Cached widget for the color picker to use as a parent */
 	TSharedPtr<SWidget> ColorPickerParentWidget;

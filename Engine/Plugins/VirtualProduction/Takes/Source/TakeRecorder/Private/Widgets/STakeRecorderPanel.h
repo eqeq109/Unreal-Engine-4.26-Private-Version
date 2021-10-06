@@ -5,10 +5,8 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/GCObject.h"
-#include "Recorder/TakeRecorderParameters.h"
 
 enum class ECheckBoxState : uint8;
-enum class ETakeRecorderMode : uint8;
 
 struct FAssetData;
 struct ITakeRecorderSourceTreeItem;
@@ -36,7 +34,6 @@ public:
 	SLATE_BEGIN_ARGS(STakeRecorderPanel)
 		: _BasePreset(nullptr)
 		, _BaseSequence(nullptr)
-		, _RecordIntoSequence(nullptr)
 		, _SequenceToView(nullptr)
 		{}
 
@@ -48,9 +45,6 @@ public:
 		/** A level sequence asset to base the recording off */
 		SLATE_ARGUMENT(ULevelSequence*, BaseSequence)
 
-		/** A level sequence asset to record into */
-		SLATE_ARGUMENT(ULevelSequence*, RecordIntoSequence)
-
 		/** A sequence that should be shown directly on the take recorder UI */
 		SLATE_ARGUMENT(ULevelSequence*, SequenceToView)
 		/*-------------------------------------------------*/
@@ -60,10 +54,6 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	ULevelSequence* GetLevelSequence() const;
-
-	ULevelSequence* GetLastRecordedLevelSequence() const;
-
-	ETakeRecorderMode GetTakeRecorderMode() const;
 
 	UTakeMetaData* GetTakeMetaData() const;
 
@@ -110,10 +100,6 @@ private:
 
 	FReply OnReviewLastRecording();
 
-	TSharedRef<SWidget> OnOpenSequenceToRecordIntoMenu();
-
-	void OnOpenSequenceToRecordInto(const FAssetData& InAsset);
-
 	ECheckBoxState GetSettingsCheckState() const;
 	void ToggleSettings(ECheckBoxState CheckState);
 
@@ -123,7 +109,6 @@ private:
 	void ToggleTakeBrowserCheckState(ECheckBoxState CheckState);
 
 private:
-	void ReconfigureExternalSettings(UObject* InExternalObject, bool bIsAdd);
 
 	void OnRecordingInitialized(UTakeRecorder* Recorder);
 
@@ -133,16 +118,12 @@ private:
 
 	TSharedRef<SWidget> MakeToolBar();
 
-	void SetRecordIntoLevelSequence(ULevelSequence* LevelSequence);
-
 private:
 
 	/** The transient preset that we use to - kept alive by AddReferencedObjects */
 	UTakePreset* TransientPreset;
 
 	ULevelSequence* SuppliedLevelSequence;
-
-	ULevelSequence* RecordIntoLevelSequence;
 
 	ULevelSequence* RecordingLevelSequence;
 
@@ -155,7 +136,6 @@ private:
 	/** Scoped panel that handles opening and closing the sequencer pane for this preset */
 	TSharedPtr<FScopedSequencerPanel> SequencerPanel;
 
-	FDelegateHandle OnWidgetExternalObjectChangedHandle;
 	FDelegateHandle OnLevelSequenceChangedHandle;
 
 	FDelegateHandle OnRecordingInitializedHandle, OnRecordingFinishedHandle, OnRecordingCancelledHandle;

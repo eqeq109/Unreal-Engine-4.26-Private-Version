@@ -82,13 +82,15 @@ void UDataprepAsset::PostLoad()
 			bMarkDirty = true;
 		}
 
+		// Mark the asset as dirty to indicate asset's properties have changed
 		if(bMarkDirty)
 		{
-			// Inform user asset has changed and needs to be saved
 			const FText AssetName = FText::FromString( GetName() );
 			const FText WarningMessage = FText::Format( LOCTEXT( "DataprepAssetOldVersion", "{0} is from an old version and has been updated. Please save asset to complete update."), AssetName );
 			const FText NotificationText = FText::Format( LOCTEXT( "DataprepAssetOldVersionNotif", "{0} is from an old version and has been updated."), AssetName );
 			DataprepCorePrivateUtils::LogMessage( EMessageSeverity::Warning, WarningMessage, NotificationText );
+
+			GetOutermost()->SetDirtyFlag(true);
 		}
 	}
 }
@@ -107,45 +109,6 @@ bool UDataprepAsset::Rename(const TCHAR* NewName/* =nullptr */, UObject* NewOute
 	return bWasRename;
 }
 
-FString UDataprepAsset::HashActionsAppearance() const
-{
-	TArray<UDataprepActionAsset*> TempArrayActions(ActionAssets);
-	Algo::Sort(TempArrayActions);
-
-	TArray<int32> TempArrayGroups;
-	TArray<bool> TempArrayGroupsEnabled;
-	TempArrayGroups.Reserve(TempArrayActions.Num());
-	TempArrayGroupsEnabled.Reserve(TempArrayActions.Num());
-	for (UDataprepActionAsset* Action : TempArrayActions)
-	{
-		UDataprepActionAppearance* Appearance = Action->GetAppearance();
-		TempArrayGroups.Add(Appearance->GroupId);
-		TempArrayGroupsEnabled.Add(Appearance->bGroupIsEnabled);
-	}
-	TArray<FVector2D> TempArrayNodeSizes;
-	TempArrayNodeSizes.Reserve(TempArrayActions.Num());
-	for (UDataprepActionAsset* Action : TempArrayActions)
-	{
-		TempArrayNodeSizes.Add(Action->GetAppearance()->NodeSize);
-	}
-
-	uint8 Digest[16];
-
-	FMD5 AppearanceHash;
-	AppearanceHash.Update((uint8*)TempArrayGroups.GetData(), TempArrayGroups.Num() * sizeof(int32));
-	AppearanceHash.Update((uint8*)TempArrayGroupsEnabled.GetData(), TempArrayGroupsEnabled.Num() * sizeof(bool));
-	AppearanceHash.Update((uint8*)TempArrayNodeSizes.GetData(), TempArrayNodeSizes.Num() * sizeof(FVector2D));
-	AppearanceHash.Final(Digest);
-
-	FString Result;
-	for (int32 i = 0; i < 16; i++)
-	{
-		Result += FString::Printf(TEXT("%02x"), Digest[i]);
-	}
-	
-	return Result;
-}
-
 void UDataprepAsset::PreEditUndo()
 {
 	UDataprepAssetInterface::PreEditUndo();
@@ -155,8 +118,6 @@ void UDataprepAsset::PreEditUndo()
 	Algo::Sort(TempArray);
 
 	SignatureBeforeUndoRedo = FMD5::HashBytes((uint8*)TempArray.GetData(), TempArray.Num() * sizeof(UDataprepActionAsset*));
-
-	AppearanceSignatureBeforeUndoRedo = HashActionsAppearance();
 }
 
 void UDataprepAsset::PostEditUndo()
@@ -167,20 +128,11 @@ void UDataprepAsset::PostEditUndo()
 	TArray<UDataprepActionAsset*> TempArray(ActionAssets);
 	Algo::Sort(TempArray);
 
-	const FString SignatureAfterUndoRedo = FMD5::HashBytes((uint8*)TempArray.GetData(), TempArray.Num() * sizeof(UDataprepActionAsset*));
-	const FString AppearanceSignatureAfterUndoRedo = HashActionsAppearance();
+	FString SignatureAfterUndoRedo = FMD5::HashBytes((uint8*)TempArray.GetData(), TempArray.Num() * sizeof(UDataprepActionAsset*));
 
 	if(!SignatureBeforeUndoRedo.IsEmpty())
 	{
-		if (SignatureAfterUndoRedo != SignatureBeforeUndoRedo)
-		{
-			OnActionChanged.Broadcast(nullptr, FDataprepAssetChangeType::ActionRemoved);
-		}
-		else
-		{
-			// Moved or appearance changed (includes grouping)
-			OnActionChanged.Broadcast(nullptr, (AppearanceSignatureBeforeUndoRedo != AppearanceSignatureAfterUndoRedo) ? FDataprepAssetChangeType::ActionAppearanceModified : FDataprepAssetChangeType::ActionMoved);
-		}
+		OnActionChanged.Broadcast(nullptr, (SignatureAfterUndoRedo == SignatureBeforeUndoRedo) ? FDataprepAssetChangeType::ActionMoved : FDataprepAssetChangeType::ActionRemoved);
 	}
 	else
 	{
@@ -188,19 +140,15 @@ void UDataprepAsset::PostEditUndo()
 	}
 
 	SignatureBeforeUndoRedo.Reset(0);
-	AppearanceSignatureBeforeUndoRedo.Reset(0);
 }
 
 void UDataprepAsset::PostDuplicate(EDuplicateMode::Type DuplicateMode)
 {
 	UDataprepAssetInterface::PostDuplicate(DuplicateMode);
 
-	if (Output)
-	{
-		// Make sure the output level does not override the one from the original
-		FText OutReason;
-		Output->SetLevelName(GetName() + "_MAP", OutReason);
-	}
+	// Make sure the output level does not override the one from the original
+	FText OutReason;
+	Output->SetLevelName(GetName() + "_MAP", OutReason);
 }
 
 const UDataprepActionAsset* UDataprepAsset::GetAction(int32 Index) const
@@ -357,36 +305,7 @@ int32 UDataprepAsset::AddActions(const TArray<const UDataprepActionAsset*>& InAc
 				Action->SetFlags(EObjectFlags::RF_Transactional);
 				Action->SetLabel( InAction->GetLabel() );
 
-				if( Action->GetAppearance()->GroupId != INDEX_NONE )
-				{
-					int32 InsertIndex = INDEX_NONE;
-
-					// Maintain the correct grouping (actions with the same group need to be tightly packed)
-					for( int32 ActionIndex = 0; ActionIndex < ActionAssets.Num(); ++ActionIndex )
-					{
-						if( ActionAssets[ActionIndex]->GetAppearance()->GroupId == Action->GetAppearance()->GroupId )
-						{
-							InsertIndex = ActionIndex + 1;
-						}
-						else if( InsertIndex != INDEX_NONE )
-						{
-							break;
-						}
-					}
-
-					if( InsertIndex != INDEX_NONE )
-					{
-						ActionAssets.Insert( Action, InsertIndex );
-					}
-					else
-					{
-						ActionAssets.Add( Action );
-					}
-				}
-				else
-				{
-					ActionAssets.Add( Action );
-				}
+				ActionAssets.Add( Action );
 			}
 		}
 
@@ -589,47 +508,6 @@ bool UDataprepAsset::MoveAction(int32 SourceIndex, int32 DestinationIndex)
 	return false;
 }
 
-bool UDataprepAsset::MoveActions(int32 FirstIndex, int32 Count, int32 MovePositions)
-{
-	if ( MovePositions == 0 )
-	{
-		UE_LOG( LogDataprepCore, Error, TEXT("UDataprepAsset::MoveAction: Nothing done. Moving to current location") );
-		return true;
-	}
-
-	if ( !ActionAssets.IsValidIndex( FirstIndex ) || !ActionAssets.IsValidIndex( FirstIndex + Count - 1 ) )
-	{
-		UE_LOG( LogDataprepCore, Error, TEXT("UDataprepAsset::MoveAction: The source index is out of range") );
-		return false;
-	}
-	else if ( ( MovePositions > 0 && !ActionAssets.IsValidIndex( FirstIndex + Count - 1 + MovePositions ) ) || !ActionAssets.IsValidIndex( FirstIndex + MovePositions ) )
-	{
-		UE_LOG( LogDataprepCore, Error, TEXT("UDataprepAsset::MoveAction: The destination index is out of range") );
-		return false;
-	}
-
-	Modify();
-
-	if (MovePositions > 0)
-	{
-		for (int SourceIndex = FirstIndex + Count - 1; SourceIndex >= FirstIndex; --SourceIndex)
-		{
-			DataprepCorePrivateUtils::MoveArrayElement( ActionAssets, SourceIndex, SourceIndex + MovePositions );
-		}
-	}
-	else
-	{
-		for (int SourceIndex = FirstIndex; SourceIndex < FirstIndex + Count; ++SourceIndex)
-		{
-			DataprepCorePrivateUtils::MoveArrayElement( ActionAssets, SourceIndex, SourceIndex + MovePositions );
-		}
-	}
-	
-	OnActionChanged.Broadcast(ActionAssets[FirstIndex + MovePositions], FDataprepAssetChangeType::ActionMoved);
-
-	return true;
-}
-
 bool UDataprepAsset::SwapActions(int32 FirstActionIndex, int32 SecondActionIndex)
 {
 	if ( FirstActionIndex == SecondActionIndex )
@@ -663,14 +541,14 @@ bool UDataprepAsset::SwapActions(int32 FirstActionIndex, int32 SecondActionIndex
 	return true;
 }
 
-bool UDataprepAsset::RemoveAction(int32 Index, bool bDiscardParametrization)
+bool UDataprepAsset::RemoveAction(int32 Index)
 {
 	if ( ActionAssets.IsValidIndex( Index ) )
 	{
 		Modify();
 
 		UDataprepActionAsset* ActionAsset = ActionAssets[Index];
-		if(ActionAsset && bDiscardParametrization)
+		if(ActionAsset)
 		{
 			ActionAsset->NotifyDataprepSystemsOfRemoval();
 		}
@@ -688,7 +566,7 @@ bool UDataprepAsset::RemoveAction(int32 Index, bool bDiscardParametrization)
 	return false;
 }
 
-bool UDataprepAsset::RemoveActions(const TArray<int32>& Indices, bool bDiscardParametrization)
+bool UDataprepAsset::RemoveActions(const TArray<int32>& Indices)
 {
 	bool bHasValidIndices = false;
 	for(int32 Index : Indices)
@@ -717,7 +595,7 @@ bool UDataprepAsset::RemoveActions(const TArray<int32>& Indices, bool bDiscardPa
 			if(ActionAssets.IsValidIndex( Index ))
 			{
 				ActionAsset = ActionAssets[Index];
-				if(ActionAsset && bDiscardParametrization)
+				if(ActionAsset)
 				{
 					ActionAsset->NotifyDataprepSystemsOfRemoval();
 				}

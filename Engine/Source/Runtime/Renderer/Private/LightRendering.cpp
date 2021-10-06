@@ -64,7 +64,7 @@ static TAutoConsoleVariable<int32> CVarRayTracingOcclusion(
 	TEXT("1: use ray tracing shadows (default)"),
 	ECVF_RenderThreadSafe);
 
-static int32 GShadowRayTracingSamplesPerPixel = -1;
+static int32 GShadowRayTracingSamplesPerPixel = 1;
 static FAutoConsoleVariableRef CVarShadowRayTracingSamplesPerPixel(
 	TEXT("r.RayTracing.Shadow.SamplesPerPixel"),
 	GShadowRayTracingSamplesPerPixel,
@@ -231,30 +231,6 @@ FDeferredLightUniformStruct GetDeferredLightParameters(const FSceneView& View, c
 	Parameters.LightingChannelMask = LightSceneInfo.Proxy->GetLightingChannelMask();
 
 	return Parameters;
-}
-
-void SetupSimpleDeferredLightParameters(
-	const FSimpleLightEntry& SimpleLight,
-	const FSimpleLightPerViewEntry &SimpleLightPerViewData,
-	FDeferredLightUniformStruct& DeferredLightUniformsValue)
-{
-	DeferredLightUniformsValue.LightParameters.Position = SimpleLightPerViewData.Position;
-	DeferredLightUniformsValue.LightParameters.InvRadius = 1.0f / FMath::Max(SimpleLight.Radius, KINDA_SMALL_NUMBER);
-	DeferredLightUniformsValue.LightParameters.Color = SimpleLight.Color;
-	DeferredLightUniformsValue.LightParameters.FalloffExponent = SimpleLight.Exponent;
-	DeferredLightUniformsValue.LightParameters.Direction = FVector(1, 0, 0);
-	DeferredLightUniformsValue.LightParameters.Tangent = FVector(1, 0, 0);
-	DeferredLightUniformsValue.LightParameters.SpotAngles = FVector2D(-2, 1);
-	DeferredLightUniformsValue.LightParameters.SpecularScale = 1.0f;
-	DeferredLightUniformsValue.LightParameters.SourceRadius = 0.0f;
-	DeferredLightUniformsValue.LightParameters.SoftSourceRadius = 0.0f;
-	DeferredLightUniformsValue.LightParameters.SourceLength = 0.0f;
-	DeferredLightUniformsValue.LightParameters.SourceTexture = GWhiteTexture->TextureRHI;
-	DeferredLightUniformsValue.ContactShadowLength = 0.0f;
-	DeferredLightUniformsValue.DistanceFadeMAD = FVector2D(0, 0);
-	DeferredLightUniformsValue.ShadowMapChannelMask = FVector4(0, 0, 0, 0);
-	DeferredLightUniformsValue.ShadowedBits = 0;
-	DeferredLightUniformsValue.LightingChannelMask = 0;
 }
 
 FLightOcclusionType GetLightOcclusionType(const FLightSceneProxy& Proxy)
@@ -505,7 +481,9 @@ class FDeferredLightPS : public FGlobalShader
 				return false;
 			}
 
-			if (!FDataDrivenShaderPlatformInfo::GetSupportsAnisotropicMaterials(Parameters.Platform))
+			static const auto SupportAnisotropicMaterials = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.SupportAnisotropicMaterials"));
+			static const bool bSupportAnisotropicMaterials = SupportAnisotropicMaterials->GetValueOnAnyThread() != 0;
+			if (!bSupportAnisotropicMaterials || !IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5))
 			{
 				return false;
 			}
@@ -514,12 +492,6 @@ class FDeferredLightPS : public FGlobalShader
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("USE_HAIR_COMPLEX_TRANSMITTANCE"), IsHairStrandsSupported(EHairStrandsShaderType::All, Parameters.Platform) ? 1u : 0u);
-	}
-	
 	FDeferredLightPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 	:	FGlobalShader(Initializer)
 	{
@@ -1493,12 +1465,6 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 
 			const bool bDirectLighting = ViewFamily.EngineShowFlags.DirectLighting;
 
-			const FIntPoint SceneTextureExtent = SceneDepthTexture->Desc.Extent;
-			const FRDGTextureDesc SharedScreenShadowMaskTextureDesc(FRDGTextureDesc::Create2D(SceneTextureExtent, PF_B8G8R8A8, FClearValueBinding::White, TexCreate_RenderTargetable | TexCreate_ShaderResource | GFastVRamConfig.ScreenSpaceShadowMask));
-
-			FRDGTextureRef SharedScreenShadowMaskTexture = nullptr;
-			FRDGTextureRef SharedScreenShadowMaskSubPixelTexture = nullptr;
-
 			// Draw shadowed and light function lights
 			for (int32 LightIndex = AttenuationLightStart; LightIndex < SortedLights.Num(); LightIndex++)
 			{
@@ -1523,17 +1489,13 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 
 				if (bDrawShadows || bDrawLightFunction || bDrawPreviewIndicator)
 				{
-					if (!SharedScreenShadowMaskTexture)
+					const FIntPoint SceneTextureExtent = SceneDepthTexture->Desc.Extent;
+					const FRDGTextureDesc Desc(FRDGTextureDesc::Create2D(SceneTextureExtent, PF_B8G8R8A8, FClearValueBinding::White, TexCreate_RenderTargetable | TexCreate_ShaderResource | GFastVRamConfig.ScreenSpaceShadowMask));
+					ScreenShadowMaskTexture = GraphBuilder.CreateTexture(Desc, TEXT("ShadowMaskTexture"));
+					if (bUseHairLighting)
 					{
-						SharedScreenShadowMaskTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskTexture"));
-
-						if (bUseHairLighting)
-						{
-							SharedScreenShadowMaskSubPixelTexture = GraphBuilder.CreateTexture(SharedScreenShadowMaskTextureDesc, TEXT("ShadowMaskSubPixelTexture"));
-						}
+						ScreenShadowMaskSubPixelTexture = GraphBuilder.CreateTexture(Desc, TEXT("ShadowMaskSubPixelTexture"));
 					}
-					ScreenShadowMaskTexture = SharedScreenShadowMaskTexture;
-					ScreenShadowMaskSubPixelTexture = SharedScreenShadowMaskSubPixelTexture;
 				}
 
 				FString LightNameWithLevel;
@@ -1553,7 +1515,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 						FViewInfo& View = Views[ViewIndex];
 
 						IScreenSpaceDenoiser::FShadowRayTracingConfig RayTracingConfig;
-						RayTracingConfig.RayCountPerPixel = GShadowRayTracingSamplesPerPixel > -1? GShadowRayTracingSamplesPerPixel : LightSceneProxy.GetSamplesPerPixel();
+						RayTracingConfig.RayCountPerPixel = LightSceneProxy.GetSamplesPerPixel();
 
 						const bool bDenoiserCompatible = !LightRequiresDenosier(LightSceneInfo) || IScreenSpaceDenoiser::EShadowRequirements::PenumbraAndClosestOccluder == DenoiserToUse->GetShadowRequirements(View, LightSceneInfo, RayTracingConfig);
 
@@ -1634,7 +1596,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 								const bool bRequiresDenoiser = LightRequiresDenosier(BatchLightSceneInfo) && DenoiserMode > 0;
 
 								IScreenSpaceDenoiser::FShadowRayTracingConfig BatchRayTracingConfig;
-								BatchRayTracingConfig.RayCountPerPixel = GShadowRayTracingSamplesPerPixel > -1 ? GShadowRayTracingSamplesPerPixel : BatchLightSceneInfo.Proxy->GetSamplesPerPixel();
+								BatchRayTracingConfig.RayCountPerPixel = BatchLightSceneInfo.Proxy->GetSamplesPerPixel();
 
 								IScreenSpaceDenoiser::EShadowRequirements DenoiserRequirements = bRequiresDenoiser ?
 									DenoiserToUse->GetShadowRequirements(View, BatchLightSceneInfo, BatchRayTracingConfig) :
@@ -1843,7 +1805,7 @@ FRDGTextureRef FDeferredShadingSceneRenderer::RenderLights(
 							RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
 							IScreenSpaceDenoiser::FShadowRayTracingConfig RayTracingConfig;
-							RayTracingConfig.RayCountPerPixel = GShadowRayTracingSamplesPerPixel > -1 ? GShadowRayTracingSamplesPerPixel : LightSceneProxy.GetSamplesPerPixel();
+							RayTracingConfig.RayCountPerPixel = LightSceneProxy.GetSamplesPerPixel();
 
 							IScreenSpaceDenoiser::EShadowRequirements DenoiserRequirements = IScreenSpaceDenoiser::EShadowRequirements::Bailout;
 							if (DenoiserMode != 0 && LightRequiresDenosier(LightSceneInfo))
@@ -2262,11 +2224,10 @@ void FDeferredShadingSceneRenderer::RenderLight(
 		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 
 		FRenderLightParams RenderLightParams;
-		const int32 HairViewIndex = 0; // HAIR_TODO multiview support
-		const bool bHairLighting = InHairVisibilityViews && HairViewIndex < InHairVisibilityViews->HairDatas.Num() && InHairVisibilityViews->HairDatas[HairViewIndex].CategorizationTexture != nullptr;
+		const bool bHairLighting = InHairVisibilityViews && ViewIndex < InHairVisibilityViews->HairDatas.Num() && InHairVisibilityViews->HairDatas[ViewIndex].CategorizationTexture != nullptr;
 		if (bHairLighting)
 		{
-			RenderLightParams.HairCategorizationTexture = InHairVisibilityViews->HairDatas[HairViewIndex].CategorizationTexture->GetPooledRenderTarget();
+			RenderLightParams.HairCategorizationTexture = InHairVisibilityViews->HairDatas[ViewIndex].CategorizationTexture->GetPooledRenderTarget();
 		}
 		if (LightSceneInfo->Proxy->GetLightType() == LightType_Directional)
 		{
@@ -2302,14 +2263,14 @@ void FDeferredShadingSceneRenderer::RenderLight(
 				if (bLight0CloudPerPixelTransmittance)
 				{
 					RenderLightParams.Cloud_ShadowmapTexture = View.VolumetricCloudShadowRenderTarget[0];
-					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[0].X;
+					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[0];
 					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapWorldToLightClipMatrix[0];
 					RenderLightParams.Cloud_ShadowmapStrength = AtmosphereLight0Proxy->GetCloudShadowOnSurfaceStrength();
 				}
 				else if(bLight1CloudPerPixelTransmittance)
 				{
 					RenderLightParams.Cloud_ShadowmapTexture = View.VolumetricCloudShadowRenderTarget[1];
-					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[1].X;
+					RenderLightParams.Cloud_ShadowmapFarDepthKm = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapFarDepthKm[1];
 					RenderLightParams.Cloud_WorldToLightClipShadowMatrix = CloudInfo->GetVolumetricCloudCommonShaderParameters().CloudShadowmapWorldToLightClipMatrix[1];
 					RenderLightParams.Cloud_ShadowmapStrength = AtmosphereLight1Proxy->GetCloudShadowOnSurfaceStrength();
 				}

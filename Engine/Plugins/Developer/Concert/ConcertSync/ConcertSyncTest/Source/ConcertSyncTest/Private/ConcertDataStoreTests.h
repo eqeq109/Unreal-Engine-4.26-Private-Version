@@ -12,13 +12,13 @@ struct FConcertDataStore_CustomTypeTest
 	GENERATED_BODY()
 
 	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
-	int8 Int8Value = 0;
+	int8 Int8Value;
 
 	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
-	int64 Int64Value = 0;
+	int64 Int64Value;
 
 	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
-	float FloatValue = 0;
+	float FloatValue;
 
 	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
 	TArray<int> IntArray;

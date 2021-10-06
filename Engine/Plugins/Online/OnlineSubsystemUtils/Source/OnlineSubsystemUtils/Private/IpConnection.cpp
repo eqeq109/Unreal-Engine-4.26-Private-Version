@@ -76,11 +76,6 @@ void UIpConnection::InitBase(UNetDriver* InDriver, class FSocket* InSocket, cons
 	{
 		Socket = InSocket;
 	}
-
-	if (CVarNetEnableCongestionControl.GetValueOnAnyThread() > 0)
-	{
-		NetworkCongestionControl.Emplace(CurrentNetSpeed, FNetPacketNotify::SequenceHistoryT::Size);
-	}
 }
 
 void UIpConnection::InitLocalConnection(UNetDriver* InDriver, class FSocket* InSocket, const FURL& InURL, EConnectionState InState, int32 InMaxPacket, int32 InPacketOverhead)
@@ -167,21 +162,15 @@ void UIpConnection::Tick(float DeltaSeconds)
 	if (CVarNetIpConnectionUseSendTasks.GetValueOnGameThread() != 0)
 	{
 		ISocketSubsystem* const SocketSubsystem = Driver->GetSocketSubsystem();
-		TArray<FSocketSendResult> ResultsCopy;
 
-		{
-			FScopeLock ScopeLock(&SocketSendResultsCriticalSection);
-
-			if (SocketSendResults.Num())
-			{
-				ResultsCopy = MoveTemp(SocketSendResults);
-			}
-		}
+		FScopeLock ScopeLock(&SocketSendResultsCriticalSection);
 		
-		for (const FSocketSendResult& Result : ResultsCopy)
+		for (const FSocketSendResult& Result : SocketSendResults)
 		{
 			HandleSocketSendResult(Result, SocketSubsystem);
 		}
+
+		SocketSendResults.Reset();
 	}
 
 	if (ResolutionState == EAddressResolutionState::TryNextAddress)
@@ -393,26 +382,23 @@ void UIpConnection::LowLevelSend(void* Data, int32 CountBits, FOutPacketTraits& 
 				
 				LastSendTask = FFunctionGraphTask::CreateAndDispatchWhenReady([this, Packet = TArray<uint8>(DataToSend, CountBytes), SocketSubsystem, bNotifyOnSuccess]
 				{
-					if (Socket != nullptr)
+					bool bWasSendSuccessful = false;
+					UIpConnection::FSocketSendResult Result;
+
 					{
-						bool bWasSendSuccessful = false;
-						UIpConnection::FSocketSendResult Result;
+						SCOPE_CYCLE_COUNTER(STAT_IpConnection_SendToSocket);
+						bWasSendSuccessful = Socket->SendTo(Packet.GetData(), Packet.Num(), Result.BytesSent, *RemoteAddr);
+					}
 
-						{
-							SCOPE_CYCLE_COUNTER(STAT_IpConnection_SendToSocket);
-							bWasSendSuccessful = Socket->SendTo(Packet.GetData(), Packet.Num(), Result.BytesSent, *RemoteAddr);
-						}
+					if (!bWasSendSuccessful && SocketSubsystem)
+					{
+						Result.Error = SocketSubsystem->GetLastErrorCode();
+					}
 
-						if (!bWasSendSuccessful && SocketSubsystem)
-						{
-							Result.Error = SocketSubsystem->GetLastErrorCode();
-						}
-
-						if (!bWasSendSuccessful || (bNotifyOnSuccess && Result.Error == SE_NO_ERROR))
-						{
-							FScopeLock ScopeLock(&SocketSendResultsCriticalSection);
-							SocketSendResults.Add(MoveTemp(Result));
-						}
+					if (!bWasSendSuccessful || (bNotifyOnSuccess && Result.Error == SE_NO_ERROR))
+					{
+						FScopeLock ScopeLock(&SocketSendResultsCriticalSection);
+						SocketSendResults.Add(MoveTemp(Result));
 					}
 				},
 				GET_STATID(STAT_IpConnection_SendToTask), &Prerequisites);

@@ -593,7 +593,7 @@ int32 FDependsNode::GetConnectionCount() const
 	return PackageDependencies.Num() + NameDependencies.Num() + ManageDependencies.Num() + Referencers.Num();
 }
 
-void FDependsNode::SerializeSave(FArchive& Ar, const TUniqueFunction<int32(FDependsNode*, bool)>& GetSerializeIndexFromNode, FSaveScratch& Scratch, const FAssetRegistrySerializationOptions& Options) const
+void FDependsNode::SerializeSave(FArchive& Ar, const TUniqueFunction<int32(FDependsNode*, bool)>& GetSerializeIndexFromNode, FSaveScratch& Scratch) const
 {
 	Ar << const_cast<FAssetIdentifier&>(Identifier);
 
@@ -632,16 +632,16 @@ void FDependsNode::SerializeSave(FArchive& Ar, const TUniqueFunction<int32(FDepe
 	};
 
 	WriteDependencies(PackageDependencies, &PackageFlags, PackageFlagSetWidth, false);
-	WriteDependencies(Options.bSerializeSearchableNameDependencies ? NameDependencies : FDependsNodeList(), nullptr, 0, false);
-	WriteDependencies(Options.bSerializeManageDependencies ? ManageDependencies : FDependsNodeList(), Options.bSerializeManageDependencies ? &ManageFlags : nullptr, ManageFlagSetWidth, false);
+	WriteDependencies(NameDependencies, nullptr, 0, false);
+	WriteDependencies(ManageDependencies, &ManageFlags, ManageFlagSetWidth, false);
 	WriteDependencies(Referencers, nullptr, 0, true);
 }
 
-void FDependsNode::SerializeLoad(FArchive& Ar, const TUniqueFunction<FDependsNode* (int32)>& GetNodeFromSerializeIndex, FLoadScratch& Scratch)
+void FDependsNode::SerializeLoad(FArchive& Ar, const TUniqueFunction<FDependsNode* (int32)>& GetNodeFromSerializeIndex, FLoadScratch& Scratch, const FAssetRegistrySerializationOptions& Options)
 {
 	Ar << Identifier;
 
-	auto ReadDependencies = [&Ar, &GetNodeFromSerializeIndex, &Scratch](TArray<FDependsNode*>& OutDependencies, TBitArray<>* OutFlagBits, int FlagSetWidth)
+	auto ReadDependencies = [&Ar, &GetNodeFromSerializeIndex, &Scratch](TArray<FDependsNode*>& OutDependencies, TBitArray<>* OutFlagBits, int FlagSetWidth, bool bAllowWrite)
 	{
 		TArray<int32>& InDependencies = Scratch.InDependencies;
 		TArray<uint32>& InFlagBits = Scratch.InFlagBits;
@@ -659,6 +659,11 @@ void FDependsNode::SerializeLoad(FArchive& Ar, const TUniqueFunction<FDependsNod
 			const int32 NumFlagWords = FBitSet::CalculateNumWords(NumFlagBits);
 			InFlagBits.SetNumUninitialized(NumFlagWords);
 			Ar.Serialize(InFlagBits.GetData(), NumFlagWords * sizeof(uint32));
+		}
+
+		if (!bAllowWrite)
+		{
+			return;
 		}
 		
 		PointerDependencies.Reset(NumDependencies);
@@ -698,13 +703,13 @@ void FDependsNode::SerializeLoad(FArchive& Ar, const TUniqueFunction<FDependsNod
 		}
 	};
 
-	ReadDependencies(PackageDependencies, &PackageFlags, PackageFlagSetWidth);
-	ReadDependencies(NameDependencies, nullptr, 0);
-	ReadDependencies(ManageDependencies, &ManageFlags, ManageFlagSetWidth);
-	ReadDependencies(Referencers, nullptr, 0);
+	ReadDependencies(PackageDependencies, &PackageFlags, PackageFlagSetWidth, true);
+	ReadDependencies(NameDependencies, nullptr, 0, Options.bSerializeSearchableNameDependencies);
+	ReadDependencies(ManageDependencies, &ManageFlags, ManageFlagSetWidth, Options.bSerializeManageDependencies);
+	ReadDependencies(Referencers, nullptr, 0, true);
 }
 
-void FDependsNode::SerializeLoad_BeforeFlags(FArchive& Ar, FAssetRegistryVersion::Type Version, FDependsNode* PreallocatedDependsNodeDataBuffer, int32 NumDependsNodes, bool bSerializeDependencies,
+void FDependsNode::LegacySerializeLoad_BeforeAssetRegistryDependencyFlags(FArchive& Ar, FAssetRegistryVersion::Type Version, FDependsNode* PreallocatedDependsNodeDataBuffer, int32 NumDependsNodes, const FAssetRegistrySerializationOptions& Options,
 	uint32 HardBits, uint32 SoftBits, uint32 HardManageBits, uint32 SoftManageBits)
 {
 	Ar << Identifier;
@@ -726,8 +731,8 @@ void FDependsNode::SerializeLoad_BeforeFlags(FArchive& Ar, FAssetRegistryVersion
 
 	// Empty dependency arrays and reserve space
 	PackageDependencies.Empty(NumHard + NumSoft);
-	NameDependencies.Empty(bSerializeDependencies ? NumName : 0);
-	ManageDependencies.Empty(bSerializeDependencies ? NumSoftManage + NumHardManage : 0);
+	NameDependencies.Empty(Options.bSerializeSearchableNameDependencies ? NumName : 0);
+	ManageDependencies.Empty(Options.bSerializeManageDependencies ? NumSoftManage + NumHardManage : 0);
 	Referencers.Empty(NumReferencers);
 
 	auto SerializeNodeArray = [&Ar, PreallocatedDependsNodeDataBuffer, NumDependsNodes](int32 Num, TArray<FDependsNode*>& OutNodes, TBitArray<>* OutFlagBits, uint32 FlagSetWidth, uint32 FlagSetBits, bool bShouldOverwriteFlag, bool bAllowWrite)
@@ -767,13 +772,13 @@ void FDependsNode::SerializeLoad_BeforeFlags(FArchive& Ar, FAssetRegistryVersion
 	// Read the bits for each type, but don't write anything if serializing that type isn't allowed
 	SerializeNodeArray(NumHard, PackageDependencies, &PackageFlags, PackageFlagSetWidth, HardBits, true, true);
 	SerializeNodeArray(NumSoft, PackageDependencies, &PackageFlags, PackageFlagSetWidth, SoftBits, false, true);
-	SerializeNodeArray(NumName, NameDependencies, nullptr, 0, 0, true, bSerializeDependencies);
-	SerializeNodeArray(NumSoftManage, ManageDependencies, &ManageFlags, ManageFlagSetWidth, SoftManageBits, true, bSerializeDependencies);
-	SerializeNodeArray(NumHardManage, ManageDependencies, &ManageFlags, ManageFlagSetWidth, HardManageBits, true, bSerializeDependencies);
+	SerializeNodeArray(NumName, NameDependencies, nullptr, 0, 0, true, Options.bSerializeSearchableNameDependencies);
+	SerializeNodeArray(NumSoftManage, ManageDependencies, &ManageFlags, ManageFlagSetWidth, SoftManageBits, true, Options.bSerializeManageDependencies);
+	SerializeNodeArray(NumHardManage, ManageDependencies, &ManageFlags, ManageFlagSetWidth, HardManageBits, true, Options.bSerializeManageDependencies);
 	SerializeNodeArray(NumReferencers, Referencers, nullptr, 0, 0, true, true);
 }
 
-void FDependsNode::GetPropertySetBits_BeforeFlags(uint32& HardBits, uint32& SoftBits, uint32& HardManageBits, uint32& SoftManageBits)
+void FDependsNode::LegacySerializeLoad_BeforeAssetRegistryDependencyFlags_GetPropertySetBits(uint32& HardBits, uint32& SoftBits, uint32& HardManageBits, uint32& SoftManageBits)
 {
 	{
 		FDependsNode::FPackageFlagSet FlagSet;

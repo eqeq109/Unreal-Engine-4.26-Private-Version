@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "NiagaraEditorCommon.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Framework/SlateDelegates.h"
@@ -28,7 +27,7 @@ private:
 
 	FText GetIconToolTip() const;
 
-	void UpdateFromEntry(ENiagaraStructureChangedFlags Flags);
+	void UpdateFromEntry();
 
 private:
 	const FSlateBrush* IconBrush;

@@ -37,11 +37,14 @@ public:
 	{
 		// Turn off common show flags for noisy sources of rendering.
 		FEngineShowFlags& ShowFlags = InViewFamily.EngineShowFlags;
-		ShowFlags.DisableAdvancedFeatures();
 		ShowFlags.SetAntiAliasing(0);
 		ShowFlags.SetMotionBlur(0);
+		ShowFlags.SetTemporalAA(0);
+		ShowFlags.SetScreenSpaceReflections(0);
 		ShowFlags.SetScreenSpaceAO(0);
+		ShowFlags.SetDistanceFieldAO(0);
 		ShowFlags.SetContactShadows(0);
+		ShowFlags.SetEyeAdaptation(0);
 		ShowFlags.SetBloom(0);
 
 		// Turn off time the ultimate source of noise.
@@ -50,7 +53,7 @@ public:
 		InViewFamily.DeltaWorldTime = 0;
 	}
 
-	bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext&) const
+	bool IsActiveThisFrame(class FViewport* InViewport) const
 	{
 		return true;
 	}

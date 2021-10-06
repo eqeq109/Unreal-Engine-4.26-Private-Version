@@ -54,8 +54,6 @@ public:
 
 	void SetParentTrackNode(TSharedPtr<SDataprepGraphTrackNode> InParentTrackNode);
 
-	TWeakPtr<SDataprepGraphActionNode> GetParentNode() const { return ParentNodePtr; }
-
 private:
 	/**
 	 * Returns a color depending whether the action step is selected or not
@@ -69,15 +67,6 @@ private:
 	FSlateColor GetBlockOverlayColor() const;
 
 	FMargin GetBlockPadding();
-	FMargin GetBlockDisabledPadding();
-
-	FMargin GetArrowPadding();
-
-	bool IsLastStep() const;
-
-	bool IsSelected() const;
-
-	EVisibility GetDisabledOverlayVisbility() const;
 
 private:
 	/** Pointer to the widget displaying the actual filter or operation */

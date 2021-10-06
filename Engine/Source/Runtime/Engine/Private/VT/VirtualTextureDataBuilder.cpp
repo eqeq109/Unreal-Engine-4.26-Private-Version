@@ -536,9 +536,6 @@ void FVirtualTextureDataBuilder::BuildTiles(const TArray<FVTSourceTileEntry>& Ti
 		CrunchParameters.OutputFormat = LayerData.TextureFormatName;
 		switch (BuildSettingsLayer0.LossyCompressionAmount)
 		{
-		// map Default to Lowest
-		//	(this used to be done outside in the Engine)
-		case TLCA_Default:
 		case TLCA_Lowest: CrunchParameters.CompressionAmmount = 0.0f; break;
 		case TLCA_Low: CrunchParameters.CompressionAmmount = 0.25f; break;
 		case TLCA_Medium: CrunchParameters.CompressionAmmount = 0.5f; break;
@@ -624,10 +621,6 @@ void FVirtualTextureDataBuilder::BuildTiles(const TArray<FVTSourceTileEntry>& Ti
  
 		GeneratedData.TilePayload.AddDefaulted(TileList.Num());
 
-		// ParallelFor is implemented with TaskGraph so it can cause deadlock if it invokes a compressor that also
-		// uses TaskGraph in combination with FAsyncTask.
-		bool bUsesTaskGraph = Compressor->UsesTaskGraph(TBSettings);
-
 		ParallelFor(TileList.Num(), [&](int32 TileIndex)
 		{
 			const FVTSourceTileEntry& Tile = TileList[TileIndex];
@@ -692,7 +685,7 @@ void FVirtualTextureDataBuilder::BuildTiles(const TArray<FVTSourceTileEntry>& Ti
 			{
 				GeneratedData.TilePayload[TileIndex] = MoveTemp(CompressedMip[0].RawData);
 			}
-		}, !bAllowAsync || bUsesTaskGraph); // ParallelFor
+		}, !bAllowAsync); // ParallelFor
 
 		if (BuildSettingsLayer0.bVirtualTextureEnableCompressZlib)
 		{
@@ -746,6 +739,7 @@ void FVirtualTextureDataBuilder::PushDataToChunk(const TArray<FVTSourceTileEntry
 	// codec payloads
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
+		check(ChunkOffset <= 0xffff); // make sure code offset fit within uint16
 		Chunk.CodecPayloadOffset[Layer] = ChunkOffset;
 		Chunk.CodecType[Layer] = LayerData[Layer].Codec;
 		if (LayerData[Layer].CodecPayload.Num() > 0)
@@ -797,21 +791,9 @@ int32 FVirtualTextureDataBuilder::FindSourceBlockIndex(int32 MipIndex, int32 Blo
 	return INDEX_NONE;
 }
 
-// Removes platform and other custom prefixes from the name.
-// Returns plain format name and the non-platform prefix (with trailing underscore).
-// i.e. PLAT_BLAH_AutoDXT returns AutoDXT and writes BLAH_ to OutPrefix.
-static const FName RemovePrefixFromName(FName const& InName, FName& OutPrefix)
+static const FName RemovePlatformPrefixFromName(FName const& InName)
 {
 	FString NameString = InName.ToString();
-
-	// Format names may have one of the following forms:
-	// - PLATFORM_PREFIX_FORMAT
-	// - PLATFORM_FORMAT
-	// - PREFIX_FORMAT
-	// - FORMAT
-	// We have to remove the platform prefix first, if it exists.
-	// Then we detect a non-platform prefix (such as codec name)
-	// and split the result into  explicit FORMAT and PREFIX parts.
 
 	for (const auto& PlatformInfo : FDataDrivenPlatformInfoRegistry::GetAllPlatformInfos())
 	{
@@ -819,21 +801,11 @@ static const FName RemovePrefixFromName(FName const& InName, FName& OutPrefix)
 		PlatformTextureFormatPrefix += TEXT('_');
 		if (NameString.StartsWith(PlatformTextureFormatPrefix, ESearchCase::IgnoreCase))
 		{
-			// Remove platform prefix and proceed with non-platform prefix detection.
-			NameString = NameString.RightChop(PlatformTextureFormatPrefix.Len());
-			break;
+			return *NameString.RightChop(PlatformTextureFormatPrefix.Len());
 		}
 	}
 
-	int32 UnderscoreIndex = INDEX_NONE;
-	if (NameString.FindChar(TCHAR('_'), UnderscoreIndex))
-	{
-		// Non-platform prefix, we want to keep these
-		OutPrefix = *NameString.Left(UnderscoreIndex + 1);
-		return *NameString.RightChop(UnderscoreIndex + 1);
-	}
-
-	return *NameString;
+	return InName;
 }
 
 // This builds an uncompressed version of the texture containing all other build settings baked in
@@ -855,8 +827,7 @@ void FVirtualTextureDataBuilder::BuildSourcePixels(const FTextureSourceData& Sou
 		LayerData.GammaSpace = BuildSettingsForLayer.GetGammaSpace();
 		LayerData.bHasAlpha = false;
 
-		FName TextureFormatPrefix;
-		const FName TextureFormatName = RemovePrefixFromName(BuildSettingsForLayer.TextureFormatName, TextureFormatPrefix);
+		const FName TextureFormatName = RemovePlatformPrefixFromName(BuildSettingsForLayer.TextureFormatName);
 
 		const bool bIsHdr = BuildSettingsForLayer.bHDRSource || TextureFormatName == "BC6H" || TextureFormatName == "RGBA16F";
 		const bool bIsG16 = TextureFormatName == "G16";
@@ -1138,8 +1109,7 @@ void FVirtualTextureDataBuilder::BuildSourcePixels(const FTextureSourceData& Sou
 
 		// Don't want platform specific swizzling for VT tile data, this tends to add extra padding for textures with odd dimensions
 		// (VT physical tiles generally not power-of-2 after adding border)
-		FName TextureFormatPrefix;
-		FName TextureFormatName = RemovePrefixFromName(BuildSettingsForLayer.TextureFormatName, TextureFormatPrefix);
+		FName TextureFormatName = RemovePlatformPrefixFromName(BuildSettingsForLayer.TextureFormatName);
 
 		// We handle AutoDXT specially here since otherwise the texture format compressor would choose a DXT format for every tile
 		// individually. Causing tiles in the same VT to use different formats which we don't allow.
@@ -1169,15 +1139,7 @@ void FVirtualTextureDataBuilder::BuildSourcePixels(const FTextureSourceData& Sou
 				CrunchCompression::IsValidFormat(TextureFormatName);
 		}
 #endif // WITH_CRUNCH_COMPRESSION
-		if (bUseCrunch // NOTE: Crunch expects a format with no prefixes. See GetCrnFormat().
-			|| TextureFormatPrefix.IsNone())
-		{
-			LayerData.TextureFormatName = TextureFormatName;
-		}
-		else
-		{
-			LayerData.TextureFormatName = *(TextureFormatPrefix.ToString() + TextureFormatName.ToString());
-		}
+		LayerData.TextureFormatName = TextureFormatName;
 		LayerData.bUseCrunch = bUseCrunch;
 
 		if (bUseCrunch && LayerData.ImageFormat != ERawImageFormat::BGRA8)

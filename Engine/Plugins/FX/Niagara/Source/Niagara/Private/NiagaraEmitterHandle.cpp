@@ -76,11 +76,11 @@ void FNiagaraEmitterHandle::SetName(FName InName, UNiagaraSystem& InOwnerSystem)
 	if (Instance->SetUniqueEmitterName(Name.ToString()))
 	{
  #if WITH_EDITOR
-		if (InOwnerSystem.GetSystemSpawnScript() && InOwnerSystem.GetSystemSpawnScript()->GetLatestSource())
+		if (InOwnerSystem.GetSystemSpawnScript() && InOwnerSystem.GetSystemSpawnScript()->GetSource())
 		{
 			// Just invalidate the system scripts here. The emitter scripts have their important variables 
 			// changed in the SetUniqueEmitterName method above.
-			InOwnerSystem.GetSystemSpawnScript()->GetLatestSource()->MarkNotSynchronized(TEXT("EmitterHandleRenamed"));
+			InOwnerSystem.GetSystemSpawnScript()->GetSource()->MarkNotSynchronized(TEXT("EmitterHandleRenamed"));
 		}
 #endif
 	}
@@ -98,10 +98,10 @@ bool FNiagaraEmitterHandle::SetIsEnabled(bool bInIsEnabled, UNiagaraSystem& InOw
 		bIsEnabled = bInIsEnabled;
 
 #if WITH_EDITOR
-		if (InOwnerSystem.GetSystemSpawnScript() && InOwnerSystem.GetSystemSpawnScript()->GetLatestSource())
+		if (InOwnerSystem.GetSystemSpawnScript() && InOwnerSystem.GetSystemSpawnScript()->GetSource())
 		{
 			// We need to get the NiagaraNodeEmitters to update their enabled state based on what happened.
-			InOwnerSystem.GetSystemSpawnScript()->GetLatestSource()->RefreshFromExternalChanges();
+			InOwnerSystem.GetSystemSpawnScript()->GetSource()->RefreshFromExternalChanges();
 
 			// Need to cause us to recompile in the future if necessary...
 			FString InvalidateReason = TEXT("Emitter enabled changed.");
@@ -176,6 +176,13 @@ void FNiagaraEmitterHandle::ConditionalPostLoad(int32 NiagaraCustomVersion)
 				Instance->ParentAtLastMerge = LastMergedSource_DEPRECATED;
 				Instance->ParentAtLastMerge->Rename(nullptr, Instance, REN_ForceNoResetLoaders);
 				LastMergedSource_DEPRECATED = nullptr;
+			}
+
+			// Since we've previously post loaded the emitter it wouldn't have merged on load since it didn't have
+			// the parent information so we check this again here, now that the parent information has been set.
+			if (Instance->IsSynchronizedWithParent() == false)
+			{
+				Instance->MergeChangesFromParent();
 			}
 		}
 

@@ -16,7 +16,6 @@ namespace UnrealBuildTool.Rules
 					"CoreUObject",
 					"EditorStyle",
 					"Engine",
-					"GeometryCache",
 					"HairStrandsCore",
 					"InputCore",
 					"MainFrame",
@@ -31,11 +30,7 @@ namespace UnrealBuildTool.Rules
 					"InputCore",
 					"Renderer",
 					"PropertyEditor",
-					"RHI",
-					"LevelSequence",
-					"MovieScene",
-					"MovieSceneTools",
-					"Sequencer"
+					"RHI"
 				});
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 			 "FBX"

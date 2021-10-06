@@ -14,30 +14,31 @@ namespace Chaos
 	/**
 	 * Collision event data stored for use by other systems (e.g. Niagara, gameplay events)
 	 */
-	struct FCollidingData
+	template<class T, int d>
+	struct TCollisionData
 	{
-		FCollidingData()
-			: Location(FVec3((FReal)0.0))
-			, AccumulatedImpulse(FVec3((FReal)0.0))
-			, Normal(FVec3((FReal)0.0))
-			, Velocity1(FVec3((FReal)0.0))
-			, Velocity2(FVec3((FReal)0.0))
-		    , DeltaVelocity1(FVec3((FReal)0.0))
-		    , DeltaVelocity2(FVec3((FReal)0.0))
-			, AngularVelocity1(FVec3((FReal)0.0))
-			, AngularVelocity2(FVec3((FReal)0.0))
-			, Mass1((FReal)0.0)
-			, Mass2((FReal)0.0)
-			, PenetrationDepth((FReal)0.0)
+		TCollisionData()
+			: Location(TVector<T, d>((T)0.0))
+			, AccumulatedImpulse(TVector<T, d>((T)0.0))
+			, Normal(TVector<T, d>((T)0.0))
+			, Velocity1(TVector<T, d>((T)0.0))
+			, Velocity2(TVector<T, d>((T)0.0))
+		    , DeltaVelocity1(TVector<T, d>((T)0.0))
+		    , DeltaVelocity2(TVector<T, d>((T)0.0))
+			, AngularVelocity1(TVector<T, d>((T)0.0))
+			, AngularVelocity2(TVector<T, d>((T)0.0))
+			, Mass1((T)0.0)
+			, Mass2((T)0.0)
+			, PenetrationDepth((T)0.0)
 			, Particle(nullptr)
 			, Levelset(nullptr)
 			, ParticleProxy(nullptr)
 		    , LevelsetProxy(nullptr)
 		{}
 
-		FCollidingData(FVec3 InLocation, FVec3 InAccumulatedImpulse, FVec3 InNormal, FVec3 InVelocity1, FVec3 InVelocity2, FVec3 InDeltaVelocity1, FVec3 InDeltaVelocity2
-		, FVec3 InAngularVelocity1, FVec3 InAngularVelocity2, FReal InMass1, FReal InMass2, FReal InPenetrationDepth, FGeometryParticle* InParticle
-		, FGeometryParticle* InLevelset, IPhysicsProxyBase* InParticleProxy, IPhysicsProxyBase* InLevelsetProxy)
+		TCollisionData(TVector<T, d> InLocation, TVector<T, d> InAccumulatedImpulse, TVector<T, d> InNormal, TVector<T, d> InVelocity1, TVector<T, d> InVelocity2, TVector<T, d> InDeltaVelocity1, TVector<T, d> InDeltaVelocity2
+		, TVector<T, d> InAngularVelocity1, TVector<T, d> InAngularVelocity2, T InMass1, T InMass2, T InPenetrationDepth, TGeometryParticle<T, d>* InParticle
+		, TGeometryParticle<T, d>* InLevelset, IPhysicsProxyBase* InParticleProxy, IPhysicsProxyBase* InLevelsetProxy)
 		    : Location(InLocation)
 			, AccumulatedImpulse(InAccumulatedImpulse)
 			, Normal(InNormal)
@@ -58,16 +59,16 @@ namespace Chaos
 
 		bool IsValid() { return (ParticleProxy && LevelsetProxy); }
 
-		FVec3 Location;
-		FVec3 AccumulatedImpulse;
-		FVec3 Normal;
-		FVec3 Velocity1, Velocity2;
-		FVec3 DeltaVelocity1, DeltaVelocity2;
-		FVec3 AngularVelocity1, AngularVelocity2;
-		FReal Mass1, Mass2;
-		FReal PenetrationDepth;
-		FGeometryParticle* Particle;
-		FGeometryParticle* Levelset;
+		TVector<T, d> Location;
+		TVector<T, d> AccumulatedImpulse;
+		TVector<T, d> Normal;
+		TVector<T, d> Velocity1, Velocity2;
+		TVector<T, d> DeltaVelocity1, DeltaVelocity2;
+		TVector<T, d> AngularVelocity1, AngularVelocity2;
+		T Mass1, Mass2;
+		T PenetrationDepth;
+		TGeometryParticle<T, d>* Particle;
+		TGeometryParticle<T, d>* Levelset;
 		IPhysicsProxyBase* ParticleProxy;
 		IPhysicsProxyBase* LevelsetProxy;
 	};
@@ -75,33 +76,34 @@ namespace Chaos
 	/*
 	CollisionData used in the subsystems
 	*/
-	struct FCollidingDataExt
+	template<class T, int d>
+	struct TCollisionDataExt
 	{
-		FCollidingDataExt()
-			: Location(FVec3((FReal)0.0))
-			, AccumulatedImpulse(FVec3((FReal)0.0))
-			, Normal(FVec3((FReal)0.0))
-			, Velocity1(FVec3((FReal)0.0))
-			, Velocity2(FVec3((FReal)0.0))
-			, AngularVelocity1(FVec3((FReal)0.0))
-			, AngularVelocity2(FVec3((FReal)0.0))
-			, Mass1((FReal)0.0)
-			, Mass2((FReal)0.0)
+		TCollisionDataExt()
+			: Location(TVector<T, d>((T)0.0))
+			, AccumulatedImpulse(TVector<T, d>((T)0.0))
+			, Normal(TVector<T, d>((T)0.0))
+			, Velocity1(TVector<T, d>((T)0.0))
+			, Velocity2(TVector<T, d>((T)0.0))
+			, AngularVelocity1(TVector<T, d>((T)0.0))
+			, AngularVelocity2(TVector<T, d>((T)0.0))
+			, Mass1((T)0.0)
+			, Mass2((T)0.0)
 			, Particle(nullptr)
 			, Levelset(nullptr)
 		    , ParticleProxy(nullptr)
 		    , LevelsetProxy(nullptr)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{}
 
-		FCollidingDataExt(
-		    FVec3 InLocation, FVec3 InAccumulatedImpulse, FVec3 InNormal, FVec3 InVelocity1, FVec3 InVelocity2
-			, FVec3 InAngularVelocity1, FVec3 InAngularVelocity2, FReal InMass1, FReal InMass2, FGeometryParticle* InParticle
-			, FGeometryParticle* InLevelset, IPhysicsProxyBase* InParticleProxy, IPhysicsProxyBase* InLevelsetProxy
-			, FReal InBoundingboxVolume, FReal InBoundingboxExtentMin, FReal InBoundingboxExtentMax, int32 InSurfaceType)
+		TCollisionDataExt(
+		    TVector<T, d> InLocation, TVector<T, d> InAccumulatedImpulse, TVector<T, d> InNormal, TVector<T, d> InVelocity1, TVector<T, d> InVelocity2
+			, TVector<T, d> InAngularVelocity1, TVector<T, d> InAngularVelocity2, T InMass1, T InMass2, TGeometryParticle<T, d>* InParticle
+			, TGeometryParticle<T, d>* InLevelset, IPhysicsProxyBase* InParticleProxy, IPhysicsProxyBase* InLevelsetProxy
+			, float InBoundingboxVolume, float InBoundingboxExtentMin, float InBoundingboxExtentMax, int32 InSurfaceType)
 			: Location(InLocation)
 			, AccumulatedImpulse(InAccumulatedImpulse)
 			, Normal(InNormal)
@@ -121,7 +123,7 @@ namespace Chaos
 			, SurfaceType(InSurfaceType)
 		{}
 
-		FCollidingDataExt(const FCollidingData& InCollisionData)
+		TCollisionDataExt(const TCollisionData<T, d>& InCollisionData)
 			: Location(InCollisionData.Location)
 			, AccumulatedImpulse(InCollisionData.AccumulatedImpulse)
 			, Normal(InCollisionData.Normal)
@@ -135,79 +137,81 @@ namespace Chaos
 			, Levelset(InCollisionData.Levelset)
 		    , ParticleProxy(InCollisionData.ParticleProxy)
 		    , LevelsetProxy(InCollisionData.LevelsetProxy)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{
 		}
 
-		FVec3 Location;
-		FVec3 AccumulatedImpulse;
-		FVec3 Normal;
-		FVec3 Velocity1, Velocity2;
-		FVec3 AngularVelocity1, AngularVelocity2;
-		FReal Mass1, Mass2;
-		FGeometryParticle* Particle;
-		FGeometryParticle* Levelset;
+		TVector<T, d> Location;
+		TVector<T, d> AccumulatedImpulse;
+		TVector<T, d> Normal;
+		TVector<T, d> Velocity1, Velocity2;
+		TVector<T, d> AngularVelocity1, AngularVelocity2;
+		T Mass1, Mass2;
+		TGeometryParticle<T, d>* Particle;
+		TGeometryParticle<T, d>* Levelset;
 		IPhysicsProxyBase* ParticleProxy;
 		IPhysicsProxyBase* LevelsetProxy;
-		FReal BoundingboxVolume;
-		FReal BoundingboxExtentMin, BoundingboxExtentMax;
+		float BoundingboxVolume;
+		float BoundingboxExtentMin, BoundingboxExtentMax;
 		int32 SurfaceType;
 	};
 
 	/*
 	BreakingData passed from the physics solver to subsystems
 	*/
-	struct FBreakingData
+	template<class T, int d>
+	struct TBreakingData
 	{
-		FBreakingData()
+		TBreakingData()
 			: Particle(nullptr)
 		    , ParticleProxy(nullptr)
-			, Location(FVec3((FReal)0.0))
-			, Velocity(FVec3((FReal)0.0))
-			, AngularVelocity(FVec3((FReal)0.0))
-			, Mass((FReal)0.0)
-			, BoundingBox(FAABB3(FVec3((FReal)0.0), FVec3((FReal)0.0)))
+			, Location(TVector<T, d>((T)0.0))
+			, Velocity(TVector<T, d>((T)0.0))
+			, AngularVelocity(TVector<T, d>((T)0.0))
+			, Mass((T)0.0)
+			, BoundingBox(TAABB<T, d>(TVector<T, d>((T)0.0), TVector<T, d>((T)0.0)))
 		{}
 
-		FGeometryParticleHandle* Particle;
+		TGeometryParticleHandle<T, d>* Particle;
 		IPhysicsProxyBase* ParticleProxy;
-		FVec3 Location;
-		FVec3 Velocity;
-		FVec3 AngularVelocity;
-		FReal Mass;
-		Chaos::FAABB3 BoundingBox;
+		TVector<T, d> Location;
+		TVector<T, d> Velocity;
+		TVector<T, d> AngularVelocity;
+		T Mass;
+		Chaos::TAABB<T, d> BoundingBox;
 	};
 
 	/*
 	BreakingData used in the subsystems
 	*/
-	struct FBreakingDataExt
+	template<class T, int d>
+	struct TBreakingDataExt
 	{
-		FBreakingDataExt()
-			: Location(FVec3((FReal)0.0))
-			, Velocity(FVec3((FReal)0.0))
-			, AngularVelocity(FVec3((FReal)0.0))
-			, Mass((FReal)0.0)
+		TBreakingDataExt()
+			: Location(TVector<T, d>((T)0.0))
+			, Velocity(TVector<T, d>((T)0.0))
+			, AngularVelocity(TVector<T, d>((T)0.0))
+			, Mass((T)0.0)
 		    , Particle(nullptr)
 		    , ParticleProxy(nullptr)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{}
 
-		FBreakingDataExt(FVec3 InLocation
-			, FVec3 InVelocity
-			, FVec3 InAngularVelocity
-			, FReal InMass
-			, FGeometryParticleHandle* InParticle
+		TBreakingDataExt(TVector<T, d> InLocation
+			, TVector<T, d> InVelocity
+			, TVector<T, d> InAngularVelocity
+			, T InMass
+			, TGeometryParticleHandle<T, d>* InParticle
 			, IPhysicsProxyBase* InParticleProxy
-			, FReal InBoundingboxVolume
-			, FReal InBoundingboxExtentMin
-			, FReal InBoundingboxExtentMax
+			, float InBoundingboxVolume
+			, float InBoundingboxExtentMin
+			, float InBoundingboxExtentMax
 			, int32 InSurfaceType)
 			: Location(InLocation)
 			, Velocity(InVelocity)
@@ -221,28 +225,28 @@ namespace Chaos
 			, SurfaceType(InSurfaceType)
 		{}
 
-		FBreakingDataExt(const FBreakingData& InBreakingData)
+		TBreakingDataExt(const TBreakingData<float, 3>& InBreakingData)
 			: Location(InBreakingData.Location)
 			, Velocity(InBreakingData.Velocity)
 			, AngularVelocity(InBreakingData.AngularVelocity)
 			, Mass(InBreakingData.Mass)
 		    , Particle(InBreakingData.Particle)
 		    , ParticleProxy(InBreakingData.ParticleProxy)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{
 		}
 
-		FVec3 Location;
-		FVec3 Velocity;
-		FVec3 AngularVelocity;
-		FReal Mass;
-		FGeometryParticleHandle* Particle;
+		TVector<T, d> Location;
+		TVector<T, d> Velocity;
+		TVector<T, d> AngularVelocity;
+		T Mass;
+		TGeometryParticleHandle<T, d>* Particle;
 		IPhysicsProxyBase* ParticleProxy;
-		FReal BoundingboxVolume;
-		FReal BoundingboxExtentMin, BoundingboxExtentMax;
+		float BoundingboxVolume;
+		float BoundingboxExtentMin, BoundingboxExtentMax;
 		int32 SurfaceType;
 
 		FVector TransformTranslation;
@@ -260,20 +264,21 @@ namespace Chaos
 	/*
 	TrailingData passed from the physics solver to subsystems
 	*/
-	struct FTrailingData
+	template<class T, int d>
+	struct TTrailingData
 	{
-		FTrailingData()
-			: Location(FVec3((FReal)0.0))
-			, Velocity(FVec3((FReal)0.0))
-			, AngularVelocity(FVec3((FReal)0.0))
-			, Mass((FReal)0.0)
+		TTrailingData()
+			: Location(TVector<T, d>((T)0.0))
+			, Velocity(TVector<T, d>((T)0.0))
+			, AngularVelocity(TVector<T, d>((T)0.0))
+			, Mass((T)0.0)
 			, Particle(nullptr)
 		    , ParticleProxy(nullptr)
-			, BoundingBox(FAABB3(FVec3((FReal)0.0), FVec3((FReal)0.0)))
+			, BoundingBox(TAABB<T, d>(TVector<T, d>((T)0.0), TVector<T, d>((T)0.0)))
 		{}
 
-		FTrailingData(FVec3 InLocation, FVec3 InVelocity, FVec3 InAngularVelocity, FReal InMass
-			, FGeometryParticleHandle* InParticle, IPhysicsProxyBase* InParticleProxy, Chaos::FAABB3& InBoundingBox)
+		TTrailingData(TVector<T, d> InLocation, TVector<T, d> InVelocity, TVector<T, d> InAngularVelocity, T InMass
+			, TGeometryParticleHandle<T, d>* InParticle, IPhysicsProxyBase* InParticleProxy, Chaos::TAABB<T, d>& InBoundingBox)
 			: Location(InLocation)
 			, Velocity(InVelocity)
 			, AngularVelocity(InAngularVelocity)
@@ -283,20 +288,20 @@ namespace Chaos
 			, BoundingBox(InBoundingBox)
 		{}
 
-		FVec3 Location;
-		FVec3 Velocity;
-		FVec3 AngularVelocity;
-		FReal Mass;
-		FGeometryParticleHandle* Particle;
+		TVector<T, d> Location;
+		TVector<T, d> Velocity;
+		TVector<T, d> AngularVelocity;
+		T Mass;
+		TGeometryParticleHandle<T, d>* Particle;
 		IPhysicsProxyBase* ParticleProxy;
-		Chaos::FAABB3 BoundingBox;
+		Chaos::TAABB<T, d> BoundingBox;
 
-		friend inline uint32 GetTypeHash(const FTrailingData& Other)
+		friend inline uint32 GetTypeHash(const TTrailingData& Other)
 		{
 			return ::GetTypeHash(Other.Particle);
 		}
 
-		friend bool operator==(const FTrailingData& A, const FTrailingData& B)
+		friend bool operator==(const TTrailingData& A, const TTrailingData& B)
 		{
 			return A.Particle == B.Particle;
 		}
@@ -305,29 +310,30 @@ namespace Chaos
 	/*
 	TrailingData used in subsystems
 	*/
-	struct FTrailingDataExt
+	template<class T, int d>
+	struct TTrailingDataExt
 	{
-		FTrailingDataExt()
-			: Location(FVec3((FReal)0.0))
-			, Velocity(FVec3((FReal)0.0))
-			, AngularVelocity(FVec3((FReal)0.0))
-			, Mass((FReal)0.0)
+		TTrailingDataExt()
+			: Location(TVector<T, d>((T)0.0))
+			, Velocity(TVector<T, d>((T)0.0))
+			, AngularVelocity(TVector<T, d>((T)0.0))
+			, Mass((T)0.0)
 			, Particle(nullptr)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{}
 
-		FTrailingDataExt(FVec3 InLocation
-			, FVec3 InVelocity
-			, FVec3 InAngularVelocity
-			, FReal InMass
-			, FGeometryParticleHandle* InParticle
+		TTrailingDataExt(TVector<T, d> InLocation
+			, TVector<T, d> InVelocity
+			, TVector<T, d> InAngularVelocity
+			, T InMass
+			, TGeometryParticleHandle<T, d>* InParticle
 			, IPhysicsProxyBase* InParticleProxy
-			, FReal InBoundingboxVolume
-			, FReal InBoundingboxExtentMin
-			, FReal InBoundingboxExtentMax
+			, float InBoundingboxVolume
+			, float InBoundingboxExtentMin
+			, float InBoundingboxExtentMax
 			, int32 InSurfaceType)
 			: Location(InLocation)
 			, Velocity(InVelocity)
@@ -341,79 +347,60 @@ namespace Chaos
 			, SurfaceType(InSurfaceType)
 		{}
 
-		FTrailingDataExt(const FTrailingData& InTrailingData)
+		TTrailingDataExt(const TTrailingData<float, 3>& InTrailingData)
 			: Location(InTrailingData.Location)
 			, Velocity(InTrailingData.Velocity)
 			, AngularVelocity(InTrailingData.AngularVelocity)
 			, Mass(InTrailingData.Mass)
 			, Particle(InTrailingData.Particle)
 		    , ParticleProxy(InTrailingData.ParticleProxy)
-			, BoundingboxVolume((FReal)-1.0)
-			, BoundingboxExtentMin((FReal)-1.0)
-			, BoundingboxExtentMax((FReal)-1.0)
+			, BoundingboxVolume((T)-1.0)
+			, BoundingboxExtentMin((T)-1.0)
+			, BoundingboxExtentMax((T)-1.0)
 			, SurfaceType(-1)
 		{}
 
-		FVec3 Location;
-		FVec3 Velocity;
-		FVec3 AngularVelocity;
-		FReal Mass;
-		FGeometryParticleHandle* Particle;
+		TVector<T, d> Location;
+		TVector<T, d> Velocity;
+		TVector<T, d> AngularVelocity;
+		T Mass;
+		TGeometryParticleHandle<T, d>* Particle;
 		IPhysicsProxyBase* ParticleProxy;
 		//	int32 ParticleIndexMesh; // If ParticleIndex points to a cluster then this index will point to an actual mesh in the cluster
 								 // It is important to be able to get extra data from the component
-		FReal BoundingboxVolume;
-		FReal BoundingboxExtentMin, BoundingboxExtentMax;
+		float BoundingboxVolume;
+		float BoundingboxExtentMin, BoundingboxExtentMax;
 		int32 SurfaceType;
 
-		friend inline uint32 GetTypeHash(const FTrailingDataExt& Other)
+		friend inline uint32 GetTypeHash(const TTrailingDataExt& Other)
 		{
 			return ::GetTypeHash(Other.Particle);
 		}
 
-		friend bool operator==(const FTrailingDataExt& A, const FTrailingDataExt& B)
+		friend bool operator==(const TTrailingDataExt& A, const TTrailingDataExt& B)
 		{
 			return A.Particle == B.Particle;
 		}
 	};
 
-	struct FSleepingData
+	template<class T, int d>
+	struct TSleepingData
 	{
-		FSleepingData()
+		TSleepingData()
 			: Particle(nullptr)
 			, Sleeping(true)
 		{}
 
-		FSleepingData(
-		    FGeometryParticle* InParticle, bool InSleeping)
+		TSleepingData(
+		    TGeometryParticle<T, d>* InParticle, bool InSleeping)
 			: Particle(InParticle)
 			, Sleeping(InSleeping)
 		{}
 
-		FGeometryParticle* Particle;
+		TGeometryParticle<T, d>* Particle;
 		bool Sleeping;	// if !Sleeping == Awake
 	};
 
-	template<class T, int d>
-	using TCollisionData UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FCollidingData instead") = FCollidingData;
-
-	template<class T, int d>
-	using TCollisionDataExt UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FCollidingDataExt instead") = FCollidingDataExt;
-
-	template<class T, int d>
-	using TBreakingData UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FBreakingData instead") = FBreakingData;
-
-	template<class T, int d>
-	using TBreakingDataExt UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FBreakingDataExt instead") = FBreakingDataExt;
-
-	template<class T, int d>
-	using TTrailingData UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FTrailingData instead") = FTrailingData;
-
-	template<class T, int d>
-	using TTrailingDataExt UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FTrailingDataExt instead") = FTrailingDataExt;
-
-	template<class T, int d>
-	using TSleepingData UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FSleepingData instead") = FSleepingData;
 }
 
 

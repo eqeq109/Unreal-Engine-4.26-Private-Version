@@ -136,11 +136,9 @@ void FAnimNode_LookAt::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseCont
 	FVector LookUpVector = LookUp_Axis.GetTransformedAxis(ComponentBoneTransform);
 	// Find new transform from look at info
 	FQuat DeltaRotation = AnimationCore::SolveAim(ComponentBoneTransform, CurrentLookAtLocation, LookAtVector, bUseLookUpAxis, LookUpVector, LookAtClamp);
-
-	ModifyPoseFromDeltaRotation(Output, OutBoneTransforms, ComponentBoneTransform, DeltaRotation);
-
-	// Sort OutBoneTransforms so indices are in increasing order.
-	OutBoneTransforms.Sort(FCompareBoneTransformIndex());
+	ComponentBoneTransform.SetRotation(DeltaRotation * ComponentBoneTransform.GetRotation());
+	// Set New Transform 
+	OutBoneTransforms.Add(FBoneTransform(ModifyBoneIndex, ComponentBoneTransform));
 
 #if !UE_BUILD_SHIPPING
 	CachedLookAtTransform = ComponentBoneTransform;
@@ -280,11 +278,4 @@ void FAnimNode_LookAt::Initialize_AnyThread(const FAnimationInitializeContext& C
 		UE_LOG(LogAnimation, Warning, TEXT("Zero-length look-at axis specified in LookAt node. Reverting to default."));
 		LookAt_Axis.Axis = DefaultLookAtAxis;
 	}
-}
-
-void FAnimNode_LookAt::ModifyPoseFromDeltaRotation(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms, FTransform& InOutBoneToModifyTransform, const FQuat& DeltaRotation)
-{
-	InOutBoneToModifyTransform.SetRotation(DeltaRotation * InOutBoneToModifyTransform.GetRotation());
-	const FCompactPoseBoneIndex BoneToModifyIndex = BoneToModify.GetCompactPoseIndex(Output.Pose.GetPose().GetBoneContainer());
-	OutBoneTransforms.Add(FBoneTransform(BoneToModifyIndex, InOutBoneToModifyTransform));
 }

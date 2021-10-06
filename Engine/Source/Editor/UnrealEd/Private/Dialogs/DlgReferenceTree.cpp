@@ -27,7 +27,7 @@ FArchiveGenerateReferenceGraph::FArchiveGenerateReferenceGraph( FReferenceGraph&
 	ArIgnoreOuterRef = true;
 
 	// Iterate over each object..
-	for( FThreadSafeObjectIterator It; It; ++It )
+	for( FObjectIterator It; It; ++It )
 	{
 		UObject* Object	= *It;
 

@@ -1870,14 +1870,14 @@ bool UParticleModuleLocationBoneSocket::PerformCustomMenuEntry(int32 InEntryInde
 				else //BONESOCKETSOURCE_Bones
 				{
 					// Retrieve all the bones
-					if (EditorSkelMesh->GetRefSkeleton().GetNum() > 0)
+					if (EditorSkelMesh->RefSkeleton.GetNum() > 0)
 					{
 						SourceLocations.Empty();
-						for (int32 BoneIdx = 0; BoneIdx < EditorSkelMesh->GetRefSkeleton().GetNum(); BoneIdx++)
+						for (int32 BoneIdx = 0; BoneIdx < EditorSkelMesh->RefSkeleton.GetNum(); BoneIdx++)
 						{
 							int32 NewItemIdx = SourceLocations.AddZeroed();
 							FLocationBoneSocketInfo& Info = SourceLocations[NewItemIdx];
-							Info.BoneSocketName = EditorSkelMesh->GetRefSkeleton().GetBoneName(BoneIdx);
+							Info.BoneSocketName = EditorSkelMesh->RefSkeleton.GetBoneName(BoneIdx);
 						}
 						return true;
 					}
@@ -1995,9 +1995,8 @@ void UParticleModuleLocationBoneSocket::GetSkeletalMeshComponentSource(FParticle
 
 bool UParticleModuleLocationBoneSocket::GetSocketInfoForSourceIndex(FModuleLocationBoneSocketInstancePayload* InstancePayload, USkeletalMeshComponent* SourceComponent, int32 SourceIndex, USkeletalMeshSocket*& OutSocket, FVector& OutOffset) const
 {
-	if (!ensureMsgf(SourceType == BONESOCKETSOURCE_Sockets, TEXT("Invalid source type %d for %s"), SourceType, *GetPathName()) ||
-		!ensureMsgf(SourceComponent, TEXT("Null SkeletalMeshComponent for %s"), *GetPathName()) ||
-		!ensureMsgf(SourceComponent->SkeletalMesh, TEXT("Null SkeletalMesh on Component %s for %s"), *SourceComponent->GetPathName(), *GetPathName()))
+	if (!ensure(SourceType == BONESOCKETSOURCE_Sockets) ||
+		!ensure(SourceComponent && SourceComponent->SkeletalMesh))
 	{
 		return false;
 	}
@@ -2583,7 +2582,7 @@ void UParticleModuleLocationSkelVertSurface::UpdateBoneIndicesList(FParticleEmit
 		int32 InsertionIndex = 0;
 		for (int32 FindBoneIdx = 0; FindBoneIdx < ValidAssociatedBones.Num(); FindBoneIdx++)
 		{
-			const int32 BoneIdx = SkelMeshComp->SkeletalMesh->GetRefSkeleton().FindBoneIndex(ValidAssociatedBones[FindBoneIdx]);
+			const int32 BoneIdx = SkelMeshComp->SkeletalMesh->RefSkeleton.FindBoneIndex(ValidAssociatedBones[FindBoneIdx]);
 			if (BoneIdx != INDEX_NONE && ValidAssociatedBones.Num() > InsertionIndex)
 			{
 				InstancePayload->ValidAssociatedBoneIndices[InsertionIndex++] = BoneIdx;
@@ -2668,13 +2667,13 @@ bool UParticleModuleLocationSkelVertSurface::PerformCustomMenuEntry(int32 InEntr
 			if (EditorSkelMesh != NULL)
 			{
 				// Retrieve all the bones
-				if (EditorSkelMesh->GetRefSkeleton().GetRawBoneNum() > 0)
+				if (EditorSkelMesh->RefSkeleton.GetRawBoneNum() > 0)
 				{
 					ValidAssociatedBones.Empty();
-					for (int32 BoneIdx = 0; BoneIdx < EditorSkelMesh->GetRefSkeleton().GetRawBoneNum(); BoneIdx++)
+					for (int32 BoneIdx = 0; BoneIdx < EditorSkelMesh->RefSkeleton.GetRawBoneNum(); BoneIdx++)
 					{
 						int32 NewItemIdx = ValidAssociatedBones.AddZeroed();
-						ValidAssociatedBones[NewItemIdx] = EditorSkelMesh->GetRefSkeleton().GetBoneName(BoneIdx);
+						ValidAssociatedBones[NewItemIdx] = EditorSkelMesh->RefSkeleton.GetBoneName(BoneIdx);
 					}
 				}
 				else
@@ -2750,7 +2749,7 @@ void UParticleModuleLocationSkelVertSurface::GetSkeletalMeshComponentSource(FPar
 		if (NewSkelMeshComp && NewSkelMeshComp->GetScene() && NewSkelMeshComp->SkeletalMesh)
 		{
 			FSkeletalMeshRenderData* SkelMeshResource = NewSkelMeshComp->GetSkeletalMeshRenderData();
-			MinLOD = SkelMeshResource->GetFirstValidLODIdx(NewSkelMeshComp->SkeletalMesh->GetMinLod().GetValue());
+			MinLOD = SkelMeshResource->GetFirstValidLODIdx(NewSkelMeshComp->SkeletalMesh->MinLod.GetValue());
 
 			if (MinLOD != INDEX_NONE)
 			{
@@ -2964,7 +2963,7 @@ bool UParticleModuleLocationSkelVertSurface::VertInfluencedByActiveBoneTyped(
 			int32 BoneIndex = Section.BoneMap[WeightBuffer->GetBoneIndex(Section.GetVertexBufferIndex() + VertIndex, InfluenceIndex)];
 			if (InSkelMeshComponent->MasterPoseComponent.IsValid())
 			{
-				check(MasterBoneMap.Num() == InSkelMeshComponent->SkeletalMesh->GetRefSkeleton().GetNum());
+				check(MasterBoneMap.Num() == InSkelMeshComponent->SkeletalMesh->RefSkeleton.GetNum());
 				BoneIndex = MasterBoneMap[BoneIndex];
 			}
 

@@ -195,27 +195,27 @@ void QRCodeUpdateObserver::OnRemoved(QRCodeWatcher sender, QRCodeRemovedEventArg
 	}
 }
 
-bool QRCodeUpdateObserver::StartQRCodeObserver(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*))
+void QRCodeUpdateObserver::StartQRCodeObserver(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*))
 {
 	OnAddedQRCode = AddedFunctionPointer;
 	if (OnAddedQRCode == nullptr)
 	{
 		Log(L"Null added function pointer passed to StartQRCodeObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	OnUpdatedQRCode = UpdatedFunctionPointer;
 	if (OnUpdatedQRCode == nullptr)
 	{
 		Log(L"Null updated function pointer passed to StartQRCodeObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	OnRemovedQRCode = UpdatedFunctionPointer;
 	if (OnRemovedQRCode == nullptr)
 	{
 		Log(L"Null removed function pointer passed to StartQRCodeObserver(). Aborting.");
-		return false;
+		return;
 	}
 
 	std::lock_guard<std::mutex> lock(QRCodeRefsLock);
@@ -242,18 +242,11 @@ bool QRCodeUpdateObserver::StartQRCodeObserver(void(*AddedFunctionPointer)(QRCod
 					Log(L"Interop: StartQRCodeObserver() Access Denied!");
 				}
 			});
-
-			return true;
-		}
-		else
-		{
-			return false;
 		}
 	}
 	else
 	{
 		Log(L"Interop: StartQRCodeObserver() already called!");
-		return true;
 	}
 }
 
@@ -269,7 +262,7 @@ void QRCodeUpdateObserver::UpdateCoordinateSystem(SpatialCoordinateSystem InCoor
 	LastCoordinateSystem = InCoordinateSystem;
 }
 
-bool QRCodeUpdateObserver::StopQRCodeObserver()
+void QRCodeUpdateObserver::StopQRCodeObserver()
 {
 	std::lock_guard<std::mutex> lock(QRCodeRefsLock);
 	if (QRTrackerInstance != nullptr)
@@ -284,6 +277,4 @@ bool QRCodeUpdateObserver::StopQRCodeObserver()
 
 		Log(L"Interop: StopQRCodeObserver() success!");
 	}
-
-	return true;
 }

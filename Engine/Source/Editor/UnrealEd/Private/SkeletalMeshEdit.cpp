@@ -30,7 +30,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopedSlowTask.h"
 #include "ObjectTools.h"
-#include "Rendering/SkeletalMeshLODImporterData.h"
+#include "SkelImport.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/Object.h"
 
@@ -124,8 +124,6 @@ bool UEditorEngine::ReimportFbxAnimation( USkeleton* Skeleton, UAnimSequence* An
 	
 	const bool bPrevImportMorph = (AnimSequence->RawCurveData.FloatCurves.Num() > 0) ;
 
-	const bool bOverrideImportSettings = ReimportUI != nullptr;
-	
 	if (!ReimportUI)
 	{
 		ReimportUI = NewObject<UFbxImportUI>();
@@ -139,17 +137,9 @@ bool UEditorEngine::ReimportFbxAnimation( USkeleton* Skeleton, UAnimSequence* An
 	if (ImportData && !ShowImportDialogAtReimport)
 	{
 		// Prepare the import options
-		if (!bOverrideImportSettings)
-		{
-			//Use the asset import data setting only if there was no ReimportUI parameter
-			ReimportUI->AnimSequenceImportData = ImportData;
-		}
-		else
-		{
-			ImportData->CopyAnimationValues(ReimportUI->AnimSequenceImportData);
-		}
+		ReimportUI->AnimSequenceImportData = ImportData;
 		ReimportUI->SkeletalMeshImportData->bImportMeshesInBoneHierarchy = ImportData->bImportMeshesInBoneHierarchy;
-
+		
 		ApplyImportUIToImportOptions(ReimportUI, *FbxImporter->ImportOptions);
 	}
 	else if(ShowImportDialogAtReimport)
@@ -370,7 +360,7 @@ bool UnFbx::FFbxImporter::IsValidAnimationData(TArray<FbxNode*>& SortedLinks, TA
 		// debug purpose
 		for (int32 BoneIndex = 0; BoneIndex < SortedLinks.Num(); BoneIndex++)
 		{
-			FString BoneName = MakeName(SortedLinks[BoneIndex]->GetName());
+			FString BoneName = UTF8_TO_TCHAR(MakeName(SortedLinks[BoneIndex]->GetName()));
 			UE_LOG(LogFbx, Log, TEXT("SortedLinks :(%d) %s"), BoneIndex, *BoneName );
 		}
 
@@ -430,7 +420,7 @@ void UnFbx::FFbxImporter::FillAndVerifyBoneNames(USkeleton* Skeleton, TArray<Fbx
 	// copy to the data
 	for (int32 BoneIndex = 0; BoneIndex < TrackNum; BoneIndex++)
 	{
-		OutRawBoneNames[BoneIndex] = FName(*FSkeletalMeshImportData::FixupBoneName( MakeName(SortedLinks[BoneIndex]->GetName()) ));
+		OutRawBoneNames[BoneIndex] = FName(*FSkeletalMeshImportData::FixupBoneName( UTF8_TO_TCHAR(MakeName(SortedLinks[BoneIndex]->GetName())) ));
 	}
 
 	const FReferenceSkeleton& RefSkeleton = Skeleton->GetReferenceSkeleton();
@@ -1011,17 +1001,14 @@ bool UnFbx::FFbxImporter::ImportCurve(const FbxAnimCurve* FbxCurve, FRichCurve& 
 
 	if ( FbxCurve )
 	{
-		int32 KeyCount = FbxCurve->KeyGetCount();
-		float PreviousKeyValue = 0;
-		for ( int32 KeyIndex=0; KeyIndex < KeyCount; ++KeyIndex )
+		for ( int32 KeyIndex=0; KeyIndex<FbxCurve->KeyGetCount(); ++KeyIndex )
 		{
 			FbxAnimCurveKey Key = FbxCurve->KeyGet(KeyIndex);
 			FbxTime KeyTime = Key.GetTime() - AnimTimeSpan.GetStart();
 			float Value = Key.GetValue() * ValueScale;
 			FKeyHandle NewKeyHandle = RichCurve.AddKey(KeyTime.GetSecondDouble(), Value, false);
 
-			const bool bIncludeOverrides = true;
-			FbxAnimCurveDef::ETangentMode KeyTangentMode = Key.GetTangentMode(bIncludeOverrides);
+			FbxAnimCurveDef::ETangentMode KeyTangentMode = Key.GetTangentMode();
 			FbxAnimCurveDef::EInterpolationType KeyInterpMode = Key.GetInterpolation();
 			FbxAnimCurveDef::EWeightedMode KeyTangentWeightMode = Key.GetTangentWeightMode();
 
@@ -1033,22 +1020,6 @@ bool UnFbx::FFbxImporter::ImportCurve(const FbxAnimCurve* FbxCurve, FRichCurve& 
 			float ArriveTangent = 0.f;
 			float LeaveTangentWeight = DefaultCurveWeight;
 			float ArriveTangentWeight = DefaultCurveWeight;
-
-			//Gather if we want to use auto mode for tangent weight
-			const bool bIsAutoTangent = (KeyTangentMode & FbxAnimCurveDef::eTangentAuto);
-			// When this flag is true, the tangent is flat if the value has the same value as the previous or next key.
-			const bool bTangentGenericClamp = (KeyTangentMode & FbxAnimCurveDef::eTangentGenericClamp);
-			// When this flag is true, the tangent is flat if the value is outside of the [previous key, next key] value range.
-			const bool bTangentGenericClampProgressive = (KeyTangentMode & FbxAnimCurveDef::ETangentMode::eTangentGenericClampProgressive) == FbxAnimCurveDef::ETangentMode::eTangentGenericClampProgressive;
- 			if (KeyTangentMode & FbxAnimCurveDef::eTangentGenericBreak)
- 			{
- 				NewTangentMode = RCTM_Break;
- 			}
-  			else if(KeyTangentMode & FbxAnimCurveDef::eTangentUser)
-  			{
-  				NewTangentMode = RCTM_User;
-  			}
-			//Anything else will be set to auto, we do not support eTangentTCB (Tension, Continuity, Bias)
 
 			switch (KeyInterpMode)
 			{
@@ -1062,55 +1033,16 @@ bool UnFbx::FFbxImporter::ImportCurve(const FbxAnimCurve* FbxCurve, FRichCurve& 
 				NewInterpMode = RCIM_Cubic;
 				// get tangents
 				{
-					bool bIsFlatTangent = false;
-					if (bTangentGenericClampProgressive)
-					{
-						if (KeyIndex > 0 && KeyIndex < KeyCount - 1)
-						{
-							const float NextValue = FbxCurve->KeyGet(KeyIndex + 1).GetValue() * ValueScale;
-							const float PreviousNextHalfDelta = (NextValue - PreviousKeyValue) * 0.5f;
-							const float PreviousNextAverage = PreviousKeyValue + PreviousNextHalfDelta;
+					LeaveTangent = Key.GetDataFloat(FbxAnimCurveDef::eRightSlope);
 
-							// If the value is outside of the previous-next value range, the tangent is flat.
-							bIsFlatTangent = FMath::Abs(Value - PreviousNextAverage) >= FMath::Abs(PreviousNextHalfDelta);
-						}
-						else
-						{
-							//Start/End tangent with the ClampProgressive flag are flat.
-							bIsFlatTangent = true;
-						}
-					}
-					else if (bTangentGenericClamp && (KeyIndex > 0 || KeyIndex < KeyCount - 1))
+					if ( KeyIndex > 0 )
 					{
-						if (KeyIndex > 0 && PreviousKeyValue == Value)
-						{
-							bIsFlatTangent = true;
-						}
-						if (KeyIndex < KeyCount - 1)
-						{
-							const float NextValue = FbxCurve->KeyGet(KeyIndex + 1).GetValue() * ValueScale;
-							bIsFlatTangent |= Value == NextValue;
-						}
-					}
-					
-					if (bIsFlatTangent)
-					{
-						LeaveTangent = 0;
-						ArriveTangent = 0;
-						NewTangentMode = RCTM_User;
+						FbxAnimCurveKey PrevKey = FbxCurve->KeyGet(KeyIndex-1);
+						ArriveTangent = PrevKey.GetDataFloat(FbxAnimCurveDef::eNextLeftSlope);
 					}
 					else
 					{
-						LeaveTangent = Key.GetDataFloat(FbxAnimCurveDef::eRightSlope);
-						if ( KeyIndex > 0 )
-						{
-							FbxAnimCurveKey PrevKey = FbxCurve->KeyGet(KeyIndex-1);
-							ArriveTangent = PrevKey.GetDataFloat(FbxAnimCurveDef::eNextLeftSlope);
-						}
-						else
-						{
-							ArriveTangent = 0.f;
-						}
+						ArriveTangent = 0.f;
 					}
 
 				}
@@ -1129,7 +1061,8 @@ bool UnFbx::FFbxImporter::ImportCurve(const FbxAnimCurve* FbxCurve, FRichCurve& 
   			}
 			//Anything else will be set to auto, we do not support eTangentTCB (Tension, Continuity, Bias)
 
-			if (!bIsAutoTangent)
+			// @fix me : weight of tangent is not used, but we'll just save this for future where we might use it.
+			if (!bSetDefaultWeight)
 			{
 				switch (KeyTangentWeightMode)
 				{
@@ -1171,25 +1104,15 @@ bool UnFbx::FFbxImporter::ImportCurve(const FbxAnimCurve* FbxCurve, FRichCurve& 
 				}
 			}
 
-			const bool bForceDisableTangentRecompute = false; //No need to recompute all the tangents of the curve every time we change de key.
-			RichCurve.SetKeyInterpMode(NewKeyHandle, NewInterpMode, bForceDisableTangentRecompute);
-			RichCurve.SetKeyTangentMode(NewKeyHandle, NewTangentMode, bForceDisableTangentRecompute);
-			RichCurve.SetKeyTangentWeightMode(NewKeyHandle, NewTangentWeightMode, bForceDisableTangentRecompute);
+			RichCurve.SetKeyInterpMode(NewKeyHandle, NewInterpMode, bAutoSetTangents);
+			RichCurve.SetKeyTangentMode(NewKeyHandle, NewTangentMode, bAutoSetTangents);
+			RichCurve.SetKeyTangentWeightMode(NewKeyHandle, NewTangentWeightMode, bAutoSetTangents);
 
-			if (NewTangentMode != RCTM_Auto || !bAutoSetTangents)
-			{
-				FRichCurveKey& NewKey = RichCurve.GetKey(NewKeyHandle);
-				NewKey.ArriveTangent = ArriveTangent * ValueScale;
-				NewKey.LeaveTangent = LeaveTangent * ValueScale;
-				NewKey.ArriveTangentWeight = ArriveTangentWeight;
-				NewKey.LeaveTangentWeight = LeaveTangentWeight;
-			}
-			PreviousKeyValue = Value;
-		}
-
-		if (bAutoSetTangents)
-		{
-			RichCurve.AutoSetTangents();
+			FRichCurveKey& NewKey = RichCurve.GetKey(NewKeyHandle);
+			NewKey.ArriveTangent = ArriveTangent * ValueScale;
+			NewKey.LeaveTangent = LeaveTangent * ValueScale;
+			NewKey.ArriveTangentWeight = ArriveTangentWeight;
+			NewKey.LeaveTangentWeight = LeaveTangentWeight;
 		}
 
 		return true;
@@ -1659,7 +1582,7 @@ void UnFbx::FFbxImporter::ImportBlendShapeCurves(FAnimCurveImportSettings& AnimI
 
 				const int32 BlendShapeChannelCount = BlendShape->GetBlendShapeChannelCount();
 
-				FString BlendShapeName = MakeName(BlendShape->GetName());
+				FString BlendShapeName = UTF8_TO_TCHAR(MakeName(BlendShape->GetName()));
 
 				// see below where this is used for explanation...
 				const bool bMightBeBadMAXFile = (BlendShapeName == FString("Morpher"));
@@ -1671,7 +1594,7 @@ void UnFbx::FFbxImporter::ImportBlendShapeCurves(FAnimCurveImportSettings& AnimI
 
 					if (Channel)
 					{
-						FString ChannelName = MakeName(Channel->GetName());
+						FString ChannelName = UTF8_TO_TCHAR(MakeName(Channel->GetName()));
 						// Maya adds the name of the blendshape and an underscore or point to the front of the channel name, so remove it
 						// Also avoid to endup with a empty name, we prefer having the Blendshapename instead of nothing
 						if (ChannelName.StartsWith(BlendShapeName) && ChannelName.Len() > BlendShapeName.Len())
@@ -1684,7 +1607,7 @@ void UnFbx::FFbxImporter::ImportBlendShapeCurves(FAnimCurveImportSettings& AnimI
 							FbxShape* TargetShape = Channel->GetTargetShapeCount() > 0 ? Channel->GetTargetShape(0) : nullptr;
 							if (TargetShape)
 							{
-								FString TargetShapeName = MakeName(TargetShape->GetName());
+								FString TargetShapeName = UTF8_TO_TCHAR(MakeName(TargetShape->GetName()));
 								ChannelName = TargetShapeName.IsEmpty() ? ChannelName : TargetShapeName;
 							}
 						}

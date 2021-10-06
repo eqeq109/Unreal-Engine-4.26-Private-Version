@@ -385,21 +385,13 @@ void FTextureStreamIn::FinalizeNewMips(const FContext& Context)
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FTextureStreamIn::FinalizeNewMips"), STAT_TextureStreamIn_FinalizeNewMips, STATGROUP_StreamingDetails);
 
 	// Execute
-	const bool bSuccessfullyFinalized = DoFinalizeNewMips(Context);
-	if (!bSuccessfullyFinalized)
+	if (!DoFinalizeNewMips(Context))
 	{
 		MarkAsCancelled();
 	}
 
 	// Schedule the next update step.
 	EThreadType NextThread = GetMipAllocatorThread(FTextureMipAllocator::ETickState::FinalizeMips);
-
-	if (bSuccessfullyFinalized && NextThread == TT_None)
-	{
-		// RHI resource swap has happened so treat the stream-in as successful
-		MarkAsSuccessfullyFinished();
-	}
-
 	if (NextThread != TT_None) // Loop on this state.
 	{
 		PushTask(Context, NextThread, SRA_UPDATE_CALLBACK(FinalizeNewMips), GetCancelThread(), SRA_UPDATE_CALLBACK(Cancel));

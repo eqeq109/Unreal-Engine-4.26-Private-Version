@@ -4,7 +4,6 @@
 
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
-#include "Misc/AssetRegistryInterface.h"
 #include "Misc/Optional.h"
 #include "Misc/PackageName.h"
 #include "Serialization/CustomVersion.h"
@@ -78,7 +77,7 @@ public:
 		{
 			ForEachObjectWithPackage(Package, [this](UObject* InObject)
 				{
-					if (InObject->IsAsset() && !UE::AssetRegistry::FFiltering::ShouldSkipAsset(InObject))
+					if (InObject->IsAsset())
 					{
 						Asset = InObject;
 						return false;

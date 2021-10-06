@@ -18,13 +18,6 @@
 #include "EditorClassUtils.h"
 #include "Widgets/Input/SSearchBox.h"
 
-#define LOCTEXT_NAMESPACE "PlacementMode"
-
-namespace PlacementModeTools
-{
-	bool bItemInternalsInTooltip = false;
-	FAutoConsoleVariableRef CVarItemInternalsInTooltip(TEXT("PlacementMode.ItemInternalsInTooltip"), bItemInternalsInTooltip, TEXT("Shows placeable item internal information in its tooltip"));
-}
 
 struct FSortPlaceableItems
 {
@@ -146,31 +139,19 @@ void SPlacementAssetEntry::Construct(const FArguments& InArgs, const TSharedPtr<
 		DefaultActor = CastChecked<AActor>(CastChecked<UClass>(Item->AssetData.GetAsset())->ClassDefaultObject);
 	}
 
-	TSharedPtr<IToolTip> AssetEntryToolTip;
-	if (PlacementModeTools::bItemInternalsInTooltip)
-	{
-		AssetEntryToolTip = FSlateApplicationBase::Get().MakeToolTip(
-			FText::Format(LOCTEXT("ItemInternalsTooltip", "Native Name: {0}\nAsset Path: {1}\nFactory Class: {2}"), 
-			FText::FromString(Item->NativeName), 
-			FText::FromName(Item->AssetData.ObjectPath),
-			FText::FromString(Item->Factory ? Item->Factory->GetClass()->GetName() : TEXT("None"))));
-	}
-
 	UClass* DocClass = nullptr;
+	TSharedPtr<IToolTip> AssetEntryToolTip;
 	if(DefaultActor != nullptr)
 	{
 		DocClass = DefaultActor->GetClass();
-		if (!AssetEntryToolTip)
-		{
-			AssetEntryToolTip = FEditorClassUtils::GetTooltip(DefaultActor->GetClass());
-		}
+		AssetEntryToolTip = FEditorClassUtils::GetTooltip(DefaultActor->GetClass());
 	}
 
-	if (!AssetEntryToolTip)
+	if (!AssetEntryToolTip.IsValid())
 	{
 		AssetEntryToolTip = FSlateApplicationBase::Get().MakeToolTip(Item->DisplayName);
 	}
-
+	
 	const FButtonStyle& ButtonStyle = FEditorStyle::GetWidgetStyle<FButtonStyle>( "PlacementBrowser.Asset" );
 
 	NormalImage = &ButtonStyle.Normal;
@@ -310,21 +291,16 @@ SPlacementModeTools::~SPlacementModeTools()
 {
 	if ( IPlacementModeModule::IsAvailable() )
 	{
-		IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
-		PlacementModeModule.OnRecentlyPlacedChanged().RemoveAll(this);
-		PlacementModeModule.OnAllPlaceableAssetsChanged().RemoveAll(this);
-		PlacementModeModule.OnPlacementModeCategoryListChanged().RemoveAll(this);
-		PlacementModeModule.OnPlaceableItemFilteringChanged().RemoveAll(this);
+		IPlacementModeModule::Get().OnRecentlyPlacedChanged().RemoveAll( this );
+		IPlacementModeModule::Get().OnAllPlaceableAssetsChanged().RemoveAll( this );
 	}
 }
 
 void SPlacementModeTools::Construct( const FArguments& InArgs )
 {
-	bRefreshAllClasses = false;
-	bRefreshRecentlyPlaced = false;
-	bUpdateShownItems = true;
-
-	ActiveTabName = FBuiltInPlacementCategories::Basic();
+	bPlaceablesFullRefreshRequested = false;
+	bRecentlyPlacedRefreshRequested = false;
+	bNeedsUpdate = true;
 
 	FPlacementMode* PlacementEditMode = (FPlacementMode*)GLevelEditorModeTools().GetActiveMode( FBuiltinEditorModes::EM_Placement );
 	if (PlacementEditMode)
@@ -336,9 +312,21 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 		FPlacementAssetEntryTextFilter::FItemToStringArray::CreateStatic(&PlacementViewFilter::GetBasicStrings)
 		));
 
-	Tabs = SNew(SVerticalBox).Visibility(this, &SPlacementModeTools::GetTabsVisibility);
+	TSharedRef<SVerticalBox> Tabs = SNew(SVerticalBox).Visibility(this, &SPlacementModeTools::GetTabsVisibility);
 
-	UpdatePlacementCategories();
+	// Populate the tabs and body from the defined placeable items
+	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
+
+	TArray<FPlacementCategoryInfo> Categories;
+	PlacementModeModule.GetSortedCategories(Categories);
+	for (const FPlacementCategoryInfo& Category : Categories)
+	{
+		Tabs->AddSlot()
+		.AutoHeight()
+		[
+			CreatePlacementGroupTab(Category)
+		];
+	}
 
 	TSharedRef<SScrollBar> ScrollBar = SNew(SScrollBar)
 		.Thickness(FVector2D(9.0f, 9.0f));
@@ -352,7 +340,7 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 		.AutoHeight()
 		[
 			SAssignNew( SearchBoxPtr, SSearchBox )
-			.HintText(LOCTEXT("SearchPlaceables", "Search Classes"))
+			.HintText(NSLOCTEXT("PlacementMode", "SearchPlaceables", "Search Classes"))
 			.OnTextChanged(this, &SPlacementModeTools::OnSearchChanged)
 			.OnTextCommitted(this, &SPlacementModeTools::OnSearchCommitted)
 		]
@@ -365,7 +353,7 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			[
-				Tabs.ToSharedRef()
+				Tabs
 			]
 
 			+ SHorizontalBox::Slot()
@@ -381,7 +369,7 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 					.VAlign(VAlign_Fill)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("NoResultsFound", "No Results Found"))
+						.Text(NSLOCTEXT("PlacementMode", "NoResultsFound", "No Results Found"))
 						.Visibility(this, &SPlacementModeTools::GetFailedSearchVisibility)
 					]
 
@@ -416,11 +404,11 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 		]
 	];
 
-	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
-	PlacementModeModule.OnRecentlyPlacedChanged().AddSP(this, &SPlacementModeTools::RequestRefreshRecentlyPlaced);
-	PlacementModeModule.OnAllPlaceableAssetsChanged().AddSP(this, &SPlacementModeTools::RequestRefreshAllClasses);
-	PlacementModeModule.OnPlaceableItemFilteringChanged().AddSP(this, &SPlacementModeTools::RequestUpdateShownItems);
-	PlacementModeModule.OnPlacementModeCategoryListChanged().AddSP(this, &SPlacementModeTools::UpdatePlacementCategories);
+	ActiveTabName = FBuiltInPlacementCategories::Basic();
+	bNeedsUpdate = true;
+
+	PlacementModeModule.OnRecentlyPlacedChanged().AddSP( this, &SPlacementModeTools::UpdateRecentlyPlacedAssets );
+	PlacementModeModule.OnAllPlaceableAssetsChanged().AddSP( this, &SPlacementModeTools::UpdatePlaceableAssets );
 }
 
 TSharedRef< SWidget > SPlacementModeTools::CreatePlacementGroupTab( const FPlacementCategoryInfo& Info )
@@ -463,19 +451,9 @@ FName SPlacementModeTools::GetActiveTab() const
 	return IsSearchActive() ? FBuiltInPlacementCategories::AllClasses() : ActiveTabName;
 }
 
-void SPlacementModeTools::SetActiveTab(FName TabName)
+void SPlacementModeTools::UpdateFilteredItems()
 {
-	if (TabName != ActiveTabName)
-	{
-		ActiveTabName = TabName;
-		IPlacementModeModule::Get().RegenerateItemsForCategory(ActiveTabName);
-		bUpdateShownItems = true;
-	}
-}
-
-void SPlacementModeTools::UpdateShownItems()
-{
-	bUpdateShownItems = false;
+	bNeedsUpdate = false;
 
 	IPlacementModeModule& PlacementModeModule = IPlacementModeModule::Get();
 
@@ -494,22 +472,28 @@ void SPlacementModeTools::UpdateShownItems()
 	else
 	{
 		FilteredItems.Reset();
+
+		const FPlacementCategoryInfo* CategoryInfo = PlacementModeModule.GetRegisteredPlacementCategory(GetActiveTab());
+		if (!ensure(CategoryInfo))
+		{
+			return;
+		}
 		
 		if (IsSearchActive())
 		{
 			auto Filter = [&](const TSharedPtr<FPlaceableItem>& Item) { return SearchTextFilter->PassesFilter(*Item); };
-			PlacementModeModule.GetFilteredItemsForCategory(Category->UniqueHandle, FilteredItems, Filter);
+			PlacementModeModule.GetFilteredItemsForCategory(CategoryInfo->UniqueHandle, FilteredItems, Filter);
 			
-			if (Category->bSortable)
+			if (CategoryInfo->bSortable)
 			{
 				FilteredItems.Sort(&FSortPlaceableItems::SortItemsByName);
 			}
 		}
 		else
 		{
-			PlacementModeModule.GetItemsForCategory(Category->UniqueHandle, FilteredItems);
+			PlacementModeModule.GetItemsForCategory(CategoryInfo->UniqueHandle, FilteredItems);
 
-			if (Category->bSortable)
+			if (CategoryInfo->bSortable)
 			{
 				FilteredItems.Sort(&FSortPlaceableItems::SortItemsByOrderThenName);
 			}
@@ -558,7 +542,10 @@ void SPlacementModeTools::OnPlacementTabChanged( ECheckBoxState NewState, FName 
 {
 	if ( NewState == ECheckBoxState::Checked )
 	{
-		SetActiveTab(CategoryName);
+		ActiveTabName = CategoryName;
+		IPlacementModeModule::Get().RegenerateItemsForCategory(ActiveTabName);
+
+		bNeedsUpdate = true;
 	}
 }
 
@@ -575,89 +562,41 @@ const FSlateBrush* SPlacementModeTools::PlacementGroupBorderImage( FName Categor
 	}
 }
 
-void SPlacementModeTools::RequestUpdateShownItems()
-{
-	bUpdateShownItems = true;
-}
-
-void SPlacementModeTools::RequestRefreshRecentlyPlaced( const TArray< FActorPlacementInfo >& RecentlyPlaced )
+void SPlacementModeTools::UpdateRecentlyPlacedAssets( const TArray< FActorPlacementInfo >& RecentlyPlaced )
 {
 	if (GetActiveTab() == FBuiltInPlacementCategories::RecentlyPlaced())
 	{
-		bRefreshRecentlyPlaced = true;
+		bRecentlyPlacedRefreshRequested = true;
 	}
 }
 
-void SPlacementModeTools::RequestRefreshAllClasses()
+void SPlacementModeTools::UpdatePlaceableAssets()
 {
 	if (GetActiveTab() == FBuiltInPlacementCategories::AllClasses())
 	{
-		bRefreshAllClasses = true;
+		bPlaceablesFullRefreshRequested = true;
 	}
-}
-
-void SPlacementModeTools::UpdatePlacementCategories()
-{
-	bool BasicTabExists = false;
-	FName TabToActivate;
-
-	Tabs->ClearChildren();
-
-	TArray<FPlacementCategoryInfo> Categories;
-	IPlacementModeModule::Get().GetSortedCategories(Categories);
-	for (const FPlacementCategoryInfo& Category : Categories)
-	{
-		if (Category.UniqueHandle == FBuiltInPlacementCategories::Basic())
-		{
-			BasicTabExists = true;
-		}
-
-		if (Category.UniqueHandle == ActiveTabName)
-		{
-			TabToActivate = ActiveTabName;
-		}
-
-		Tabs->AddSlot()
-			.AutoHeight()
-			[
-				CreatePlacementGroupTab(Category)
-			];
-	}
-
-	if (TabToActivate.IsNone())
-	{
-		if (BasicTabExists)
-		{
-			TabToActivate = FBuiltInPlacementCategories::Basic();
-		}
-		else if (Categories.Num() > 0)
-		{
-			TabToActivate = Categories[0].UniqueHandle;
-		}
-	}
-
-	SetActiveTab(TabToActivate);
 }
 
 void SPlacementModeTools::Tick( const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime )
 {
-	if (bRefreshAllClasses)
+	if ( bPlaceablesFullRefreshRequested )
 	{
 		IPlacementModeModule::Get().RegenerateItemsForCategory(FBuiltInPlacementCategories::AllClasses());
-		bRefreshAllClasses = false;
-		bUpdateShownItems = true;
+		bPlaceablesFullRefreshRequested = false;
+		bNeedsUpdate = true;
 	}
 
-	if (bRefreshRecentlyPlaced)
+	if ( bRecentlyPlacedRefreshRequested )
 	{
 		IPlacementModeModule::Get().RegenerateItemsForCategory(FBuiltInPlacementCategories::RecentlyPlaced());
-		bRefreshRecentlyPlaced = false;
-		bUpdateShownItems = true;
+		bRecentlyPlacedRefreshRequested = false;
+		bNeedsUpdate = true;
 	}
 
-	if (bUpdateShownItems)
+	if ( bNeedsUpdate )
 	{
-		UpdateShownItems();
+		UpdateFilteredItems();
 	}
 }
 
@@ -685,11 +624,11 @@ void SPlacementModeTools::OnSearchChanged(const FText& InFilterText)
 	// for the placeable widgets.
 	if ( !IsSearchActive() )
 	{
-		bRefreshAllClasses = true;
+		bPlaceablesFullRefreshRequested = true;
 	}
 	else
 	{
-		bUpdateShownItems = true;
+		bNeedsUpdate = true;
 	}
 
 	SearchTextFilter->SetRawFilterText( InFilterText );
@@ -705,5 +644,3 @@ FText SPlacementModeTools::GetHighlightText() const
 {
 	return SearchTextFilter->GetRawFilterText();
 }
-
-#undef LOCTEXT_NAMESPACE

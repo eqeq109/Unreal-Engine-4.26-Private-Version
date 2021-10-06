@@ -14,7 +14,6 @@ public class ActorSequence : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"MovieScene",
-				"MovieSceneTracks",
 				"TimeManagement",
 			}
 		);

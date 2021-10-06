@@ -42,20 +42,6 @@ public:
 	virtual TUniquePtr<IAudioEndpointSettingsProxy> GetProxy() const PURE_VIRTUAL(UAudioEndpointSettingsBase::GetProxy, return nullptr;);
 };
 
-//A blank class for when unimplemented endpoint types are returned
-class FDummyEndpointSettingsProxy : public IAudioEndpointSettingsProxy
-{
-};
-
-UCLASS()
-class UDummyEndpointSettings : public UAudioEndpointSettingsBase
-{
-	GENERATED_BODY()
-
-	public:
-		virtual TUniquePtr<IAudioEndpointSettingsProxy> GetProxy() const override;
-};
-
 /**
  * Class that allows audio to be sent to an arbitrary locale. This can be used for multi-device rendering, haptics systems, etc. 
  * Note that this only for interleaved audio buffers with no metadata for object-based or soundfield-based rendering.
@@ -92,20 +78,15 @@ public:
 	 */
 	void ProcessAudioIfNeccessary();
 
-	/**
-	* Whether this endpoint is of an implemented type
-	*/
-	virtual bool IsImplemented();
-
 protected:
 
 	/** REQUIRED OVERRIDES: */
 
 	/** This should return the sample rate we should be sending to this endpoint. If the sample rate changes, please call DisconnectAllInputs(). */
-	virtual float GetSampleRate() const;
+	virtual float GetSampleRate() const = 0;
 
 	/** This should return the number of channels we should be sending to this endpoint. If the number of channels changes, please call DisconnectAllInputs. */
-	virtual int32 GetNumChannels() const;
+	virtual int32 GetNumChannels() const = 0;
 
 	/** OPTIONAL OVERRIDES: */
 
@@ -160,7 +141,6 @@ protected:
 	 */
 	void RunCallbackSynchronously();
 
-
 private:
 	// Owns a scoped thread and runs OnAudioCallback when StartRunningCallback() is called.
 	TUniquePtr<Audio::FMixerNullCallback> RenderCallback;
@@ -176,7 +156,6 @@ private:
 	Audio::FPatchMixer PatchMixer;
 };
 
-
 /**
  * This factory is used to expose Endpoint types to the editor.
  * Once a factory is constructed and RegisterEndpointType is called, it will be exposed as a type of endpoint
@@ -191,7 +170,7 @@ public:
 	}
 
 	/** Get the name for the endpoint type that this factory produces.  */
-	virtual FName GetEndpointTypeName();
+	virtual FName GetEndpointTypeName() = 0;
 
 	/** This is a special cased name for endpoint submixes that render directly to the default audio device in Audio::FMixerDevice::OnProcessAudioStream. */
 	static FName GetTypeNameForDefaultEndpoint();
@@ -222,19 +201,18 @@ public:
 	static TArray<FName> GetAvailableEndpointTypes();
 
 	/** Called for every new endpoint submix created with this factory's endpoint type. */
-	virtual TUniquePtr<IAudioEndpoint> CreateNewEndpointInstance(const FAudioPluginInitializationParams& InitInfo, const IAudioEndpointSettingsProxy& InitialSettings);
+	virtual TUniquePtr<IAudioEndpoint> CreateNewEndpointInstance(const FAudioPluginInitializationParams& InitInfo, const IAudioEndpointSettingsProxy& InitialSettings) = 0;
 
 	/**
 	 * Should return the StaticClass of this factory's implementation of UAudioEndpointSettingsBase.
 	 */
-	virtual UClass* GetCustomSettingsClass() const;
+	virtual UClass* GetCustomSettingsClass() const
+	{
+		return nullptr;
+	}
 
 	/**
-	 * return the settings an endpoint should use 
+	 * return the settings an endpoint should use if 
 	 */
-	virtual const UAudioEndpointSettingsBase* GetDefaultSettings() const;
-
-	bool bIsImplemented = false;
-
-	static IAudioEndpointFactory* GetDummyFactory();
+	virtual const UAudioEndpointSettingsBase* GetDefaultSettings() const = 0;
 };

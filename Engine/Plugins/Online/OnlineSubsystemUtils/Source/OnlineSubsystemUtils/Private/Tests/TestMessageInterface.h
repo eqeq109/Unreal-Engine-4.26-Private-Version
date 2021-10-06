@@ -44,11 +44,11 @@ private:
 	/** true to delete all messages that were enumerated */
 	bool bDeleteMessages;
 	/** List of messages to download */
-	TArray<FUniqueMessageIdRef> MessagesToRead;
+	TArray<TSharedRef<FUniqueMessageId> > MessagesToRead;
 	/** List of recipients for the test message */
-	TArray<FUniqueNetIdRef> Recipients;
+	TArray<TSharedRef<const FUniqueNetId> > Recipients;
 	/** List of messages to delete */
-	TArray<FUniqueMessageIdRef> MessagesToDelete;
+	TArray<TSharedRef<FUniqueMessageId> > MessagesToDelete;
 
 	/**
 	 * Step through the various tests that should be run and initiate the next one

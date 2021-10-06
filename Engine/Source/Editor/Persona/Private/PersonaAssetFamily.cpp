@@ -358,7 +358,7 @@ void FPersonaAssetFamily::FindCounterpartAssets(const UObject* InAsset, const US
 	else if (InAsset->IsA<USkeletalMesh>())
 	{
 		OutMesh = CastChecked<USkeletalMesh>(InAsset);
-		OutSkeleton = OutMesh->GetSkeleton();
+		OutSkeleton = OutMesh->Skeleton;
 	}
 	else if (InAsset->IsA<UAnimBlueprint>())
 	{
@@ -381,7 +381,7 @@ void FPersonaAssetFamily::FindCounterpartAssets(const UObject* InAsset, const US
 		OutMesh = PhysicsAsset->PreviewSkeletalMesh.LoadSynchronous();
 		if(OutMesh != nullptr)
 		{
-			OutSkeleton = OutMesh->GetSkeleton();
+			OutSkeleton = OutMesh->Skeleton;
 		}
 	}
 }

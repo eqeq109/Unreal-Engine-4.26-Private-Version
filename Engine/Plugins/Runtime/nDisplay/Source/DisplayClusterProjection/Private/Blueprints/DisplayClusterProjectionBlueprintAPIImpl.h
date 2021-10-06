@@ -22,6 +22,9 @@ public:
 	// Policy: CAMERA
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	/** Sets active camera component for camera policy */
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Set camera"), Category = "NDisplayProjection|Camera")
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Set camera"), Category = "DisplayClusterProjection|Camera")
 	virtual void CameraPolicySetCamera(const FString& ViewportId, UCameraComponent* NewCamera, float FOVMultiplier = 1.f) override;
+
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Assign Warp Mesh To Viewport"), Category = "DisplayClusterProjection|Mesh")
+	virtual void AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent) override;
 };

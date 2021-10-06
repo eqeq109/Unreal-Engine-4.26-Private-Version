@@ -10,8 +10,6 @@
 #include "RHI.h"
 #include "RHIResources.h"
 
-struct FImgMediaTileSelection;
-
 /**
  * Information about an image sequence frame.
  */
@@ -54,11 +52,8 @@ struct FImgMediaFrame
 	/** Additional information about the frame. */
 	FImgMediaFrameInfo Info;
 
-	/** Bitmask of which mipmaps are present. */
-	int32 MipMapsPresent = 0;
-
 	/** The frame's horizontal stride (in bytes). */
-	uint32 Stride = 0;
+	uint32 Stride;
 
 	/** Uncompressed EXR files are read faster via plain read and GPU swizzling. This value is used by ExrImgMediaReaderGpu.*/
 	FTexture2DRHIRef Texture;
@@ -100,14 +95,12 @@ public:
 	/**
 	 * Read a single image frame.
 	 *
-	 * @param FrameId Frame number to read.
-	 * @param MipLevel Will read in this level and all higher levels.
-	 * @param InTileSelection Which tiles to read.
+	 * @param ImagePath Path to the image file to read.
 	 * @param OutFrame Will contain the frame.
 	 * @return true on success, false otherwise.
 	 * @see GetFrameInfo
 	 */
-	virtual bool ReadFrame(int32 FrameId, int32 MipLevel, const FImgMediaTileSelection& InTileSelection, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame) = 0;
+	virtual bool ReadFrame(const FString& ImagePath, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame, int32 FrameId) = 0;
 
 	/**
 	 * Mark Frame to be canceled based on Frame number. Typically this will be 
@@ -121,7 +114,7 @@ public:
 	 * maximum number of frames with as much efficiency as possible.
 	 *
 	 */
-	virtual void PreAllocateMemoryPool(int32 NumFrames, const FImgMediaFrameInfo& FrameInfo) {};
+	virtual void PreAllocateMemoryPool(int32 NumFrames, int32 AllocSize) {};
 
 	/**
 	 * Used in case reader needs to do some processing once per frame.

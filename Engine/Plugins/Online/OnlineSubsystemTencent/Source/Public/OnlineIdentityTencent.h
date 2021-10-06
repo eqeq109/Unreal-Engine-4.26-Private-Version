@@ -21,7 +21,7 @@ public:
 
 	// FOnlineUser
 	
-	virtual FUniqueNetIdRef GetUserId() const override;
+	virtual TSharedRef<const FUniqueNetId> GetUserId() const override;
 	virtual FString GetRealName() const override;
 	virtual FString GetDisplayName(const FString& Platform = FString()) const override;
 	virtual bool GetUserAttribute(const FString& AttrName, FString& OutAttrValue) const override;
@@ -76,7 +76,7 @@ public:
 	 * Init/default constructor
 	 */
 #if WITH_TENCENT_RAIL_SDK
-	FUserOnlineAccountTencent(const FUniqueNetIdRef InUserId)
+	FUserOnlineAccountTencent(const TSharedRef<const FUniqueNetId> InUserId)
 		: UserId(InUserId)
 	{ }
 #endif
@@ -86,7 +86,7 @@ public:
 	virtual ~FUserOnlineAccountTencent() = default;
 
 	/** User Id represented as a FUniqueNetId */
-	FUniqueNetIdRef UserId;
+	TSharedRef<const FUniqueNetId> UserId;
 	/** Any addition account data associated with the user */
 	FJsonSerializableKeyValueMap AccountData;
 	/** Full auth code which can be exchanged for access */
@@ -109,9 +109,9 @@ public:
 	virtual bool AutoLogin(int32 LocalUserNum) override;
 	virtual TSharedPtr<FUserOnlineAccount> GetUserAccount(const FUniqueNetId& UserId) const override;
 	virtual TArray<TSharedPtr<FUserOnlineAccount> > GetAllUserAccounts() const override;
-	virtual FUniqueNetIdPtr GetUniquePlayerId(int32 LocalUserNum) const override;
-	virtual FUniqueNetIdPtr CreateUniquePlayerId(uint8* Bytes, int32 Size) override;
-	virtual FUniqueNetIdPtr CreateUniquePlayerId(const FString& Str) override;
+	virtual TSharedPtr<const FUniqueNetId> GetUniquePlayerId(int32 LocalUserNum) const override;
+	virtual TSharedPtr<const FUniqueNetId> CreateUniquePlayerId(uint8* Bytes, int32 Size) override;
+	virtual TSharedPtr<const FUniqueNetId> CreateUniquePlayerId(const FString& Str) override;
 	virtual ELoginStatus::Type GetLoginStatus(int32 LocalUserNum) const override;
 	virtual ELoginStatus::Type GetLoginStatus(const FUniqueNetId& UserId) const override;
 	virtual FString GetPlayerNickname(int32 LocalUserNum) const override;
@@ -163,7 +163,7 @@ private:
 	/** Users that have been registered. Only one Tencent user can ever be logged in. */
 	TSharedPtr<FUserOnlineAccountTencent> UserAccount;
 	/** Ids mapped to locally registered users */
-	TMap<int32, FUniqueNetIdPtr > UserIds;
+	TMap<int32, TSharedPtr<const FUniqueNetId> > UserIds;
 
 	/** Reference to the main subsystem */
 	FOnlineSubsystemTencent* Subsystem;

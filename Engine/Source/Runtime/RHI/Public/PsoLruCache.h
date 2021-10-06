@@ -393,17 +393,6 @@ public:
 	}
 
 	/**
-	 * Return the least recent element from the cache.
-	 *
-	 * @return Copy of the least recent value.
-	 */
-	FORCEINLINE const ValueType GetLeastRecent() const
-	{
-		check(LeastRecent);
-		return LeastRecent->Value;
-	}
-
-	/**
 	* Remove and return the most recent element from the cache.
 	*
 	* @return Copy of removed value.

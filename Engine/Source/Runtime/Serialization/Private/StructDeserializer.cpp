@@ -142,24 +142,9 @@ bool FStructDeserializer::Deserialize( void* OutStruct, UStruct& TypeInfo, IStru
 						SetHelper.EmptyElements();
 					}
 					// handle array property
-					else if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(NewState.Property))
+					else if (NewState.Property != nullptr)
 					{
-						// fast path for byte array 
-						if (Backend.ReadPODArray(ArrayProperty, CurrentState.Data))
-						{
-							// read the entire array, move to the next property
-							continue;
-						}
-						// failed to read as a pod array, read as regular array iterating on each property
-						else
-						{
-							NewState.Data = CurrentState.Data;
-						}
-					}
-					// handle static array	
-					else
-					{
-						NewState.Data = CurrentState.Data;
+					NewState.Data = CurrentState.Data;
 					}
 
 					NewState.TypeInfo = FindClass(NewState);

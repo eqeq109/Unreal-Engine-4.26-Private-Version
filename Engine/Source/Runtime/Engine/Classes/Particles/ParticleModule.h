@@ -144,7 +144,7 @@ struct FParticleRandomSeedInfo
 	
 };
 
-UCLASS(editinlinenew, hidecategories=Object, abstract, Within=ParticleSystem)
+UCLASS(editinlinenew, hidecategories=Object, abstract)
 class ENGINE_API UParticleModule : public UObject
 {
 	GENERATED_UCLASS_BODY()

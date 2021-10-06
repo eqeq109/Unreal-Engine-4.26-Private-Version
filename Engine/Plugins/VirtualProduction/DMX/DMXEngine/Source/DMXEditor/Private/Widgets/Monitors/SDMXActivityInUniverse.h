@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include "DMXProtocolConstants.h"
-
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -56,13 +54,19 @@ public:
 	/** Constructs the widget */
 	void Construct(const FArguments& InArgs);
 	
-	/** Visualizes specified buffer */
-	void VisualizeBuffer(const TArray<uint8, TFixedAllocator<DMX_UNIVERSE_SIZE>>& Values);
+	/** Visualizes specified input buffer */
+	void VisualizeInputBuffer(const TArray<uint8>& Values);
+		
+	/** Visualizes specified input buffer */
+	void VisualizeOutputBuffer(const TArray<uint8>& Values);
 
 	/** Gets the universe ID this widget represents */
 	uint32 GetUniverseID() const { return UniverseID.Get(); }
 
 protected:
+	/** Visualizes specified buffer */
+	void VisualizeBuffer(const TArray<uint8>& Values);
+
 	/** Updates Channels along with their UI representation */
 	void UpdateChannels();
 
@@ -74,7 +78,7 @@ private:
 	TAttribute<uint32> UniverseID;
 
 	/** The buffer currently displayed */
-	TArray<uint8, TFixedAllocator<DMX_UNIVERSE_SIZE>> Buffer;
+	TArray<uint8> Buffer;
 
 	/** List view widget that displays current non-zero values for all universes */
 	TSharedPtr<SListView<TSharedPtr<class FDMXUniverseMonitorChannelItem>>> ChannelList;

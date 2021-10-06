@@ -257,7 +257,6 @@ FGameplayAbilitySpecHandle UAbilitySystemComponent::GiveAbility(const FGameplayA
 		return Spec.Handle;
 	}
 	
-	ABILITYLIST_SCOPE_LOCK();
 	FGameplayAbilitySpec& OwnedSpec = ActivatableAbilities.Items[ActivatableAbilities.Items.Add(Spec)];
 	
 	if (OwnedSpec.Ability->GetInstancingPolicy() == EGameplayAbilityInstancingPolicy::InstancedPerActor)
@@ -272,7 +271,7 @@ FGameplayAbilitySpecHandle UAbilitySystemComponent::GiveAbility(const FGameplayA
 	return OwnedSpec.Handle;
 }
 
-FGameplayAbilitySpecHandle UAbilitySystemComponent::GiveAbilityAndActivateOnce(FGameplayAbilitySpec& Spec, const FGameplayEventData* GameplayEventData)
+FGameplayAbilitySpecHandle UAbilitySystemComponent::GiveAbilityAndActivateOnce(FGameplayAbilitySpec& Spec)
 {
 	check(Spec.Ability);
 
@@ -300,7 +299,7 @@ FGameplayAbilitySpecHandle UAbilitySystemComponent::GiveAbilityAndActivateOnce(F
 	{
 		FoundSpec->RemoveAfterActivation = true;
 
-		if (!InternalTryActivateAbility(AddedAbilityHandle, FPredictionKey(), nullptr, nullptr, GameplayEventData))
+		if (!InternalTryActivateAbility(AddedAbilityHandle))
 		{
 			// We failed to activate it, so remove it now
 			ClearAbility(AddedAbilityHandle);
@@ -320,6 +319,7 @@ void UAbilitySystemComponent::SetRemoveAbilityOnEnd(FGameplayAbilitySpecHandle A
 		if (FoundSpec->IsActive())
 		{
 			FoundSpec->RemoveAfterActivation = true;
+			FoundSpec->InputID = INDEX_NONE;
 		}
 		else
 		{
@@ -1085,12 +1085,6 @@ bool UAbilitySystemComponent::TryActivateAbility(FGameplayAbilitySpecHandle Abil
 		return false;
 	}
 
-	// don't activate abilities that are waiting to be removed
-	if (Spec->PendingRemove || Spec->RemoveAfterActivation)
-	{
-		return false;
-	}
-
 	UGameplayAbility* Ability = Spec->Ability;
 
 	if (!Ability)
@@ -1632,8 +1626,6 @@ void UAbilitySystemComponent::RemoteEndOrCancelAbility(FGameplayAbilitySpecHandl
 
 			for (auto Instance : Instances)
 			{
-				UE_CLOG(Instance == nullptr, LogAbilitySystem, Fatal, TEXT("UAbilitySystemComponent::RemoteEndOrCancelAbility null instance for %s"), *GetNameSafe(AbilitySpec->Ability));
-
 				// Check if the ability is the same prediction key (can both by 0) and has been confirmed. If so cancel it.
 				if (Instance->GetCurrentActivationInfoRef().GetActivationPredictionKey() == ActivationInfo.GetActivationPredictionKey())
 				{

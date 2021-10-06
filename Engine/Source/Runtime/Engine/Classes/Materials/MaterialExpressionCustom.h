@@ -43,7 +43,7 @@ struct FCustomOutput
 	FName OutputName;
 
 	UPROPERTY(EditAnywhere, Category = CustomOutput)
-	TEnumAsByte<enum ECustomMaterialOutputType> OutputType = ECustomMaterialOutputType::CMOT_Float1;
+	TEnumAsByte<enum ECustomMaterialOutputType> OutputType;
 };
 
 USTRUCT()
@@ -67,7 +67,7 @@ class UMaterialExpressionCustom : public UMaterialExpression
 	FString Code;
 
 	UPROPERTY(EditAnywhere, Category=MaterialExpressionCustom)
-	TEnumAsByte<enum ECustomMaterialOutputType> OutputType = ECustomMaterialOutputType::CMOT_Float1;
+	TEnumAsByte<enum ECustomMaterialOutputType> OutputType;
 
 	UPROPERTY(EditAnywhere, Category=MaterialExpressionCustom)
 	FString Description;

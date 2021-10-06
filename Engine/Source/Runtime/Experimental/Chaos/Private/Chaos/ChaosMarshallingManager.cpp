@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/ChaosMarshallingManager.h"
-#include "Chaos/PullPhysicsDataImp.h"
 
 namespace Chaos
 {
@@ -10,40 +9,17 @@ int32 SimDelay = 0;
 FAutoConsoleVariableRef CVarSimDelay(TEXT("p.simDelay"),SimDelay,TEXT(""));
 
 FChaosMarshallingManager::FChaosMarshallingManager()
-: ExternalTime_External(0)
-, ExternalTimestamp_External(0)
-, SimTime_External(0)
-, InternalStep_External(0)
+: ExternalTime(0)
+, ExternalTimestamp(0)
+, SimTime(0)
+, InternalTimestamp(-1)
 , ProducerData(nullptr)
-, CurPullData(nullptr)
 , Delay(SimDelay)
-, HistoryLength(0)
 {
-	PrepareExternalQueue_External();
-	PreparePullData();
+	PrepareExternalQueue();
 }
 
-FChaosMarshallingManager::~FChaosMarshallingManager() = default;
-
-void FChaosMarshallingManager::FinalizePullData_Internal(int32 LastExternalTimestampConsumed, FReal SimStartTime, FReal DeltaTime)
-{
-	CurPullData->SolverTimestamp = LastExternalTimestampConsumed;
-	CurPullData->ExternalStartTime = SimStartTime;
-	CurPullData->ExternalEndTime = SimStartTime + DeltaTime;
-	PullDataQueue.Enqueue(CurPullData);
-	PreparePullData();
-}
-
-void FChaosMarshallingManager::PreparePullData()
-{
-	if(!PullDataPool.Dequeue(CurPullData))
-	{
-		const int32 Idx = BackingPullBuffer.Add(MakeUnique<FPullPhysicsData>());
-		CurPullData = BackingPullBuffer[Idx].Get();
-	}
-}
-
-void FChaosMarshallingManager::PrepareExternalQueue_External()
+void FChaosMarshallingManager::PrepareExternalQueue()
 {
 	if(!PushDataPool.Dequeue(ProducerData))
 	{
@@ -51,62 +27,50 @@ void FChaosMarshallingManager::PrepareExternalQueue_External()
 		ProducerData = BackingBuffer.Last().Get();
 	}
 
-	ProducerData->StartTime = ExternalTime_External;
+	ProducerData->StartTime = ExternalTime;
 }
 
-void FChaosMarshallingManager::Step_External(FReal ExternalDT, const int32 NumSteps)
+void FChaosMarshallingManager::Step_External(FReal ExternalDT)
 {
-	ensure(NumSteps > 0);
-
-	FPushPhysicsData* FirstStepData = nullptr;
-	for(int32 Step = 0; Step < NumSteps; ++Step)
+	for(FSimCallbackDataPair& Pair : ProducerData->SimCallbackDataPairs)
 	{
-		for (int32 Idx = ProducerData->SimCallbackInputs.Num() -1; Idx >= 0; --Idx)
-		{
-			FSimCallbackInputAndObject& Pair = ProducerData->SimCallbackInputs[Idx];
-			Pair.CallbackObject->CurrentExternalInput_External = nullptr;	//mark data as marshalled, any new data must be in a new data packet
-			Pair.Input->SetNumSteps_External(NumSteps);
-
-			if(Pair.CallbackObject->bPendingDelete_External)
-			{
-				ProducerData->SimCallbackInputs.RemoveAtSwap(Idx);
-			}
-		}
-
-		//stored in reverse order for easy removal later. Might want to use a circular buffer if perf is bad here
-		//expecting queue to be fairly small (3,4 at most) so probably doesn't matter
-		ProducerData->ExternalDt = ExternalDT;
-		ProducerData->ExternalTimestamp = ExternalTimestamp_External;
-		ProducerData->InternalStep = InternalStep_External++;
-		ProducerData->IntervalStep = Step;
-		ProducerData->IntervalNumSteps = NumSteps;
-
-		ExternalQueue.Insert(ProducerData, 0);
-
-		if(Step == 0)
-		{
-			FirstStepData = ProducerData;
-		}
-		else
-		{
-			//copy sub-step only data
-			ProducerData->CopySubstepData(*FirstStepData);
-		}
-
-		ExternalTime_External += ExternalDT;
-		PrepareExternalQueue_External();
+		Pair.Callback->LatestCallbackData = nullptr;	//mark data as marshalled, any new data must be in a new data packet
 	}
 
-	++ExternalTimestamp_External;
+	//stored in reverse order for easy removal later. Might want to use a circular buffer if perf is bad here
+	//expecting queue to be fairly small (3,4 at most) so probably doesn't matter
+	ExternalQueue.Insert(ProducerData,0);
+
+	ExternalTime += ExternalDT;
+	++ExternalTimestamp;
+	PrepareExternalQueue();
 }
 
-FPushPhysicsData* FChaosMarshallingManager::StepInternalTime_External()
+TArray<FPushPhysicsData*> FChaosMarshallingManager::StepInternalTime_External(FReal InternalDt)
 {
-	if (Delay == 0)
+	TArray<FPushPhysicsData*> PushDataUpToEnd;
+
+	if(Delay == 0)
 	{
-		if(ExternalQueue.Num())
+		SimTime += InternalDt;
+
+		//if dt is exactly 0 we still want to get first data so add an epsilon. todo: is there a better way to handle this?
+		const FReal EndTime = InternalDt == 0 ? SimTime + KINDA_SMALL_NUMBER : SimTime;
+
+		//stored in reverse order so push from back to front
+		for(int32 Idx = ExternalQueue.Num() - 1; Idx >= 0; --Idx)
 		{
-			return ExternalQueue.Pop(/*bAllowShrinking=*/false);
+			if(ExternalQueue[Idx]->StartTime < EndTime)
+			{
+				FPushPhysicsData* PushData = ExternalQueue.Pop(/*bAllowShrinking=*/false);
+				PushDataUpToEnd.Add(PushData);
+				++InternalTimestamp;
+			}
+			else
+			{
+				//sorted so stop
+				break;
+			}
 		}
 	}
 	else
@@ -114,148 +78,39 @@ FPushPhysicsData* FChaosMarshallingManager::StepInternalTime_External()
 		--Delay;
 	}
 
-	return nullptr;
+	return PushDataUpToEnd;
 }
 
 void FChaosMarshallingManager::FreeData_Internal(FPushPhysicsData* PushData)
 {
-	//TODO: we know entire manager is cleared, so we can probably just iterate over its pools and reset
-	//instead of going through dirty proxies. If perf matters fix this
-	FDirtyPropertiesManager* Manager = &PushData->DirtyPropertiesManager;
-	FShapeDirtyData* ShapeDirtyData = PushData->DirtyProxiesDataBuffer.GetShapesDirtyData();
-
-	PushData->DirtyProxiesDataBuffer.ForEachProxy([Manager, ShapeDirtyData](int32 DataIdx, FDirtyProxy& Dirty)
-	{
-		Dirty.Clear(*Manager, DataIdx, ShapeDirtyData);
-	});
-
 	PushData->Reset();
 	PushDataPool.Enqueue(PushData);
 }
 
-void FChaosMarshallingManager::FreePullData_External(FPullPhysicsData* PullData)
+void FChaosMarshallingManager::FreeCallbackData_Internal(FSimCallbackHandlePT* Callback)
 {
-	PullData->Reset();
-	PullDataPool.Enqueue(PullData);
+	if(Callback->IntervalData.Num())
+	{
+		if(Callback->Handle->FreeExternal)
+		{
+			Callback->Handle->FreeExternal(Callback->IntervalData);	//any external data should be freed
+		}
+
+		for(FSimCallbackData* Data : Callback->IntervalData)
+		{
+			CallbackDataPool.Enqueue(Data);
+		}
+
+		Callback->IntervalData.Reset();
+	}
 }
 
 void FPushPhysicsData::Reset()
 {
-	for(FSimCallbackInputAndObject& CallbackInputAndObject : SimCallbackInputs)
-	{
-		CallbackInputAndObject.Input->Release_Internal(*CallbackInputAndObject.CallbackObject);
-	}
-
-	for(ISimCallbackObject* CallbackToRemove : SimCallbackObjectsToRemove)
-	{
-		ensure(CallbackToRemove->bPendingDelete);	//should already be marked pending delete
-		delete CallbackToRemove;
-	}
-
 	DirtyProxiesDataBuffer.Reset();
-	SimCallbackInputs.Reset();
-	SimCallbackObjectsToRemove.Reset();
-	ResetForHistory();
-}
-
-void FPushPhysicsData::ResetForHistory()
-{
-	SimCommands.Reset();
-	SimCallbackObjectsToAdd.Reset();
-}
-
-void FChaosMarshallingManager::FreeDataToHistory_Internal(FPushPhysicsData* PushData)
-{
-	if(HistoryLength == 0)
-	{
-		FreeData_Internal(PushData);
-	}
-	else
-	{
-		PushData->ResetForHistory();
-		HistoryQueue_Internal.Insert(PushData, 0);
-		SetHistoryLength_Internal(HistoryLength);
-	}
-}
-
-void FChaosMarshallingManager::SetHistoryLength_Internal(int32 InHistoryLength)
-{
-	HistoryLength = InHistoryLength;
-	//make sure late entries are pruned
-	if(HistoryQueue_Internal.Num() > HistoryLength)
-	{
-		for(int32 Idx = HistoryLength; Idx < HistoryQueue_Internal.Num(); ++Idx)
-		{
-			FreeData_Internal(HistoryQueue_Internal[Idx]);
-		}
-		HistoryQueue_Internal.SetNum(InHistoryLength, /*bAllowShrinking=*/false);
-	}
-}
-
-TArray<FPushPhysicsData*> FChaosMarshallingManager::StealHistory_Internal(int32 NumFrames)
-{
-	ensure(NumFrames <= HistoryQueue_Internal.Num());
-	const int32 UseNumFrames = FMath::Min(NumFrames, HistoryQueue_Internal.Num());
-
-	TArray<FPushPhysicsData*> History;
-	History.Reserve(UseNumFrames);
-
-	for(int32 Idx = 0; Idx < UseNumFrames; ++Idx)
-	{
-		History.Add(HistoryQueue_Internal[Idx]);
-	}
-
-	for(int32 Idx = UseNumFrames; Idx < HistoryQueue_Internal.Num(); ++Idx)
-	{
-		FreeData_Internal(HistoryQueue_Internal[Idx]);
-	}
-
-	HistoryQueue_Internal.Reset();
-	return History;
-}
-
-void FPushPhysicsData::CopySubstepData(const FPushPhysicsData& FirstStepData)
-{
-	const FDirtyPropertiesManager& FirstManager = FirstStepData.DirtyPropertiesManager;
-	DirtyPropertiesManager.SetNumParticles(FirstStepData.DirtyProxiesDataBuffer.NumDirtyProxies());
-	FirstStepData.DirtyProxiesDataBuffer.ForEachProxy([this, &FirstManager](int32 FirstDataIdx, const FDirtyProxy& Dirty)
-	{
-		if (Dirty.ParticleData.GetParticleBufferType() == EParticleType::Rigid)
-		{
-			if (const FParticleDynamics* DynamicsData = Dirty.ParticleData.FindDynamics(FirstManager, FirstDataIdx))
-			{
-				if (DynamicsData->F() != FVec3(0) || DynamicsData->Torque() != FVec3(0))	//don't bother interpolating 0. This is important because the input dirtys rewind data
-				{
-					DirtyProxiesDataBuffer.Add(Dirty.Proxy);
-					FParticleDynamics& SubsteppedDynamics = DirtyPropertiesManager.GetParticlePool<FParticleDynamics, EParticleProperty::Dynamics>().GetElement(Dirty.Proxy->GetDirtyIdx());
-					SubsteppedDynamics = *DynamicsData;
-					//we don't want to sub-step impulses so those are cleared in the sub-step
-					SubsteppedDynamics.SetAngularImpulse(FVec3(0));
-					SubsteppedDynamics.SetLinearImpulse(FVec3(0));
-					FDirtyProxy& NewDirtyProxy = DirtyProxiesDataBuffer.GetDirtyProxyAt(Dirty.Proxy->GetDirtyIdx());
-					NewDirtyProxy.ParticleData.DirtyFlag(EParticleFlags::Dynamics);
-					NewDirtyProxy.ParticleData.SetParticleBufferType(EParticleType::Rigid);
-				}
-			}
-
-			Dirty.Proxy->ResetDirtyIdx();	//dirty idx is only used temporarily
-		}
-	});
-
-	//make sure inputs are available to every sub-step
-	SimCallbackInputs = FirstStepData.SimCallbackInputs;
-}
-
-FSimCallbackInput* ISimCallbackObject::GetProducerInputData_External()
-{
-	if (CurrentExternalInput_External == nullptr)
-	{
-		FChaosMarshallingManager& Manager = Solver->GetMarshallingManager();
-		CurrentExternalInput_External = AllocateInputData_External();
-		Manager.AddSimCallbackInputData_External(this, CurrentExternalInput_External);
-	}
-
-	return CurrentExternalInput_External;
+	SimCallbacksToAdd.Reset();
+	SimCallbacksToRemove.Reset();
+	SimCallbackDataPairs.Reset();
 }
 
 }

@@ -4,15 +4,10 @@
             "Info": {
                 "Types": {
                     "ArResolver": {},
-                    "ArDefaultResolver": {
-                        "bases": [
-                            "ArResolver"
-                        ]
-                    },
                     "ArPackageResolver": {}
                 }
             },
-            "LibraryPath": "../../../../../Source/ThirdParty/Linux/bin/x86_64-unknown-linux-gnu/libar.so", 
+            "LibraryPath": "../../../../../Binaries/Linux/x86_64-unknown-linux-gnu/libar.so", 
             "Name": "ar", 
             "ResourcePath": "resources", 
             "Root": "..", 

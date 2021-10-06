@@ -1,9 +1,4 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
-function goHome() {
-    location.href = '/' + location.hash
-}
-
 function shelfVerify() {
     let queryParams = processQueryParameters(['bot', 'branch', 'cl', 'target'], ['targetStream'])
     if (!queryParams) return;
@@ -170,7 +165,7 @@ function shelfVerify() {
                 // Return to Robomerge homepage
                 let cancelButton = $('<button type="button" class="btn btn-lg btn-info">').text(`Cancel`).appendTo(buttonDiv)
                 cancelButton.click(function() {
-                    goHome()
+                    window.location.href='/'
                 })
 
                 // Show the acknowledge checkbox option
@@ -340,7 +335,7 @@ function shelfWarning(message) {
 }
 
 function shelfSuccess(message) {
-    $(`<div class="alert alert-success show" role="alert">`).html(message).appendTo($('#result'))
+    $(`<div class="alert alert-success show" role="alert">`).html(`<strong>SUCCESS!</strong> ${message}`).appendTo($('#result'))
     $('#nextSteps').removeClass("initiallyHidden")
     $('#returnbutton').removeClass("initiallyHidden")
 }

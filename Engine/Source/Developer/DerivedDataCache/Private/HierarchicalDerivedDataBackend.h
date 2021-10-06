@@ -8,7 +8,6 @@
 #include "DerivedDataCacheUsageStats.h"
 #include "DerivedDataBackendAsyncPutWrapper.h"
 #include "Templates/UniquePtr.h"
-#include "Containers/ArrayView.h"
 
 /** 
  * A backend wrapper that implements a cache hierarchy of backends. 
@@ -36,7 +35,7 @@ public:
 	}
 
 	/** Are we a remote cache? */
-	virtual ESpeedClass GetSpeedClass() const override
+	virtual ESpeedClass GetSpeedClass() override
 	{
 		return ESpeedClass::Local;
 	}
@@ -79,7 +78,7 @@ public:
 	}
 
 	/** return true if this cache is writable **/
-	virtual bool IsWritable() const override
+	virtual bool IsWritable() override
 	{
 		return bIsWritable;
 	}
@@ -95,16 +94,6 @@ public:
 		COOK_STAT(auto Timer = UsageStats.TimeProbablyExists());
 		for (int32 CacheIndex = 0; CacheIndex < InnerBackends.Num(); CacheIndex++)
 		{
-			// Skip slow caches because the primary users of this function assume that
-			// they will have fast access to the data if this returns true. It will be
-			// better in those cases to rebuild the data locally than to block on slow
-			// fetch operations because the build may be, and often is, asynchronous.
-			bool bFastCache = InnerBackends[CacheIndex]->GetSpeedClass() >= ESpeedClass::Fast;
-			if (!bFastCache)
-			{
-				continue;
-			}
-
 			if (InnerBackends[CacheIndex]->CachedDataProbablyExists(CacheKey))
 			{
 				COOK_STAT(Timer.AddHit(0));
@@ -265,8 +254,7 @@ public:
 								// only backfill to fast caches (todo - need a way to put data that was created locally into the cache for other people)
 								bool bFastCache = PutBackend->GetSpeedClass() >= ESpeedClass::Fast;
 
-								// No need to validate that the cache data might exist since the check can be expensive, the async put will do the check and early out in that case
-								if (bFastCache && PutBackend->IsWritable())
+								if (bFastCache && PutBackend->IsWritable() && !PutBackend->CachedDataProbablyExists(CacheKey))
 								{								
 									AsyncPutInnerBackends[PutCacheIndex]->PutCachedData(CacheKey, OutData, false); // we do not need to force a put here
 									UE_LOG(LogDerivedDataCache, Verbose, TEXT("Back-filling cache %s with: %s (%d bytes) (force=%d)"), *PutBackend->GetName(), CacheKey, OutData.Num(), false);
@@ -345,28 +333,29 @@ public:
 		}
 	}
 
-	virtual TSharedRef<FDerivedDataCacheStatsNode> GatherUsageStats() const override
+	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override
 	{
-		TSharedRef<FDerivedDataCacheStatsNode> Usage = MakeShared<FDerivedDataCacheStatsNode>(this, TEXT("Hierarchical"));
-		Usage->Stats.Add(TEXT(""), UsageStats);
-
-		// All the inner backends are actually wrapped by AsyncPut backends in writable cases (most cases in practice)
-		if (AsyncPutInnerBackends.Num() > 0)
+		COOK_STAT(
 		{
-			for (const auto& InnerBackend : AsyncPutInnerBackends)
+			UsageStatsMap.Add(GraphPath + TEXT(": Hierarchical"), UsageStats);
+			// All the inner backends are actually wrapped by AsyncPut backends in writable cases (most cases in practice)
+			if (AsyncPutInnerBackends.Num() > 0)
 			{
-				Usage->Children.Add(InnerBackend->GatherUsageStats());
+				int Ndx = 0;
+				for (const auto& InnerBackend : AsyncPutInnerBackends)
+				{
+					InnerBackend->GatherUsageStats(UsageStatsMap, GraphPath + FString::Printf(TEXT(".%2d"), Ndx++));
+				}
 			}
-		}
-		else
-		{
-			for (auto InnerBackend : InnerBackends)
+			else
 			{
-				Usage->Children.Add(InnerBackend->GatherUsageStats());
+				int Ndx = 0;
+				for (auto InnerBackend : InnerBackends)
+				{
+					InnerBackend->GatherUsageStats(UsageStatsMap, GraphPath + FString::Printf(TEXT(".%2d"), Ndx++));
+				}
 			}
-		}
-
-		return Usage;
+		});
 	}
 
 

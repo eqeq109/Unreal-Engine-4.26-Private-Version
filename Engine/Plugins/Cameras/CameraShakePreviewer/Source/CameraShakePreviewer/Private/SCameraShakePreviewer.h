@@ -2,53 +2,30 @@
 
 #pragma once 
 
-#include "Camera/CameraModifier_CameraShake.h"
-#include "Camera/PlayerCameraManager.h"
 #include "Containers/Array.h"
 #include "EditorUndoClient.h"
-#include "Engine/Scene.h"
 #include "Templates/SharedPointer.h"
 #include "TickableEditorObject.h"
 #include "UObject/GCObject.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
-#include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
-#include "SCameraShakePreviewer.generated.h"
+#include "Widgets/SCompoundWidget.h"
 
 class AActor;
-class ACameraActor;
-class FCameraShakePreviewUpdater;
 class FCameraShakePreviewerLevelEditorViewportClient;
 class FCameraShakePreviewerModule;
+class FCameraShakePreviewUpdater;
 class FLevelEditorViewportClient;
 class FSceneView;
 class ITableRow;
 class STableViewBase;
-class UCameraAnimInst;
-class UCameraShakeSourceComponent;
 class ULevel;
+class UCameraModifier_CameraShake;
+class UCameraShakeSourceComponent;
 class UWorld;
 struct FCameraShakeData;
-struct FEditorViewportViewModifierParams;
+struct FMinimalViewInfo;
 struct FTogglePreviewCameraShakesParams;
-
-UCLASS()
-class APreviewPlayerCameraManager : public APlayerCameraManager
-{
-	GENERATED_BODY()
-
-public:
-	void ResetPostProcessSettings()
-	{
-		ClearCachedPPBlends();
-	}
-
-	void MergePostProcessSettings(TArray<FPostProcessSettings>& InSettings, TArray<float>& InBlendWeights)
-	{
-		InSettings.Append(PostProcessBlendCache);
-		InBlendWeights.Append(PostProcessBlendCacheWeights);
-	}
-};
 
 class FCameraShakePreviewUpdater : public FTickableEditorObject, public FGCObject
 {
@@ -58,43 +35,24 @@ public:
 	// FTickableObject Interface
 	virtual ETickableTickType GetTickableTickType() const { return ETickableTickType::Always; }
 	virtual TStatId GetStatId() const override { RETURN_QUICK_DECLARE_CYCLE_STAT(FCameraShakePreviewUpdater, STATGROUP_Tickables); }
-	virtual void Tick(float DeltaTime) override;
+	virtual void Tick(float DeltaTime) override { LastDeltaTime = DeltaTime; }
 
 	// FGCObject interface
-	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override { Collector.AddReferencedObject(PreviewCameraShake); }
 	virtual FString GetReferencerName() const override { return TEXT("SCameraShakePreviewer"); }
 
-	UCameraShakeBase* AddCameraShake(TSubclassOf<UCameraShakeBase> ShakeClass, const FAddCameraShakeParams& Params);
-	void RemoveAllCameraShakesFromSource(const UCameraShakeSourceComponent* SourceComponent);
-	void GetActiveCameraShakes(TArray<FActiveCameraShakeInfo>& ActiveCameraShakes) const;
-	void RemoveCameraShake(UCameraShakeBase* ShakeInstance);
-	void RemoveAllCameraShakes();
+	UCameraModifier_CameraShake& ShakeModifier() const { return *PreviewCameraShake; }
 
-	void ModifyCamera(FEditorViewportViewModifierParams& Params);
+	void ModifyCamera(FMinimalViewInfo& InOutPOV);
 
 private:
-	ACameraActor* GetTempCameraActor();
-	void UpdateCameraAnimInstance(UCameraAnimInst& CameraAnimInstance, float DeltaTime, FMinimalViewInfo& InOutPOV);
-	void CleanUpCameraAnimInstances();
-
-	void AddPostProcessBlend(const FPostProcessSettings& Settings, float Weight);
-
-private:
-	APreviewPlayerCameraManager* PreviewCamera;
 	UCameraModifier_CameraShake* PreviewCameraShake;
-
-	/** Hidden camera actor and active camera anims for Matinee shakes specifically */
-	TWeakObjectPtr<ACameraActor> TempCameraActor;
-	TArray<UCameraAnimInst*> ActiveAnims;
 
 	TOptional<float> LastDeltaTime;
 
 	FVector LastLocationModifier;
 	FRotator LastRotationModifier;
 	float LastFOVModifier;
-
-	TArray<FPostProcessSettings> LastPostProcessSettings;
-	TArray<float> LastPostProcessBlendWeights;
 };
 
 /**
@@ -142,7 +100,7 @@ private:
 	void OnNewCurrentLevel();
 	void OnMapLoaded(const FString&  Filename, bool bAsTemplate);
 
-	void OnModifyView(FEditorViewportViewModifierParams& Params);
+	void OnModifyView(FMinimalViewInfo& InOutPOV);
 
 private:
 	TArray<TSharedPtr<FCameraShakeData>> CameraShakes;

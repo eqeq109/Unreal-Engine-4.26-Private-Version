@@ -178,11 +178,6 @@ void FStreamedAudioChunk::Serialize(FArchive& Ar, UObject* Owner, int32 ChunkInd
 	{
 		Ar << DerivedDataKey;
 	}
-
-	if (Ar.IsLoading() && bCooked)
-	{
-		bLoadedFromCookedPackage = true;
-	}
 #endif // #if WITH_EDITORONLY_DATA
 }
 
@@ -244,7 +239,6 @@ USoundWave::USoundWave(const FObjectInitializer& ObjectInitializer)
 
 #if WITH_EDITOR
 	bWasStreamCachingEnabledOnLastCook = FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching();
-	bLoadedFromCookedData = false;
 	RunningPlatformData = nullptr;
 
 	OwnedBulkDataPtr = nullptr;
@@ -382,7 +376,6 @@ void USoundWave::Serialize( FArchive& Ar )
 	bool bShouldStreamSound = false;
 
 #if WITH_EDITORONLY_DATA
-		bLoadedFromCookedData = Ar.IsLoading() && bCooked;
 		if (bVirtualizeWhenSilent_DEPRECATED)
 		{
 			bVirtualizeWhenSilent_DEPRECATED = 0;
@@ -537,6 +530,34 @@ void USoundWave::Serialize( FArchive& Ar )
 			}
 		}
 	}
+}
+
+/**
+ * Prints the subtitle associated with the SoundWave to the console
+ */
+void USoundWave::LogSubtitle( FOutputDevice& Ar )
+{
+	FString Subtitle = "";
+	for( int32 i = 0; i < Subtitles.Num(); i++ )
+	{
+		Subtitle += Subtitles[ i ].Text.ToString();
+	}
+
+	if( Subtitle.Len() == 0 )
+	{
+		Subtitle = SpokenText;
+	}
+
+	if( Subtitle.Len() == 0 )
+	{
+		Subtitle = "<NO SUBTITLE>";
+	}
+
+	Ar.Logf( TEXT( "Subtitle:  %s" ), *Subtitle );
+#if WITH_EDITORONLY_DATA
+	Ar.Logf( TEXT( "Comment:   %s" ), *Comment );
+#endif // WITH_EDITORONLY_DATA
+	Ar.Logf( TEXT("Mature:    %s"), bMature ? TEXT( "Yes" ) : TEXT( "No" ) );
 }
 
 float USoundWave::GetSubtitlePriority() const
@@ -1065,12 +1086,7 @@ void USoundWave::PostLoad()
 	// Compress to whatever formats the active target platforms want
 	// static here as an optimization
 	ITargetPlatformManagerModule* TPM = GetTargetPlatformManager();
-#if WITH_EDITORONLY_DATA
-	const bool bShouldLoadCompressedData = !(bLoadedFromCookedData && IsRunningCommandlet());
-#else
-	const bool bShouldLoadCompressedData = true;
-#endif
-	if (TPM && bShouldLoadCompressedData)
+	if (TPM)
 	{
 		const TArray<ITargetPlatform*>& Platforms = TPM->GetActiveTargetPlatforms();
 
@@ -2162,30 +2178,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 	// Copy over the source bus send and data
 	if (!WaveInstance->ActiveSound->bIsPreviewSound)
 	{
-		//Parse the parameters of the wave instance
-		WaveInstance->bEnableBusSends = ParseParams.bEnableBusSends;
-		WaveInstance->bEnableBaseSubmix = ParseParams.bEnableBaseSubmix;
-		WaveInstance->bEnableSubmixSends = ParseParams.bEnableSubmixSends;
-
-		// Active sounds can override their enablement behavior via audio components
-		if (ActiveSound.bHasActiveBusSendRoutingOverride)
-		{
-			WaveInstance->bEnableBusSends = ActiveSound.bEnableBusSendRoutingOverride;
-		}
-
-		if (ActiveSound.bHasActiveMainSubmixOutputOverride)
-		{
-			WaveInstance->bEnableBaseSubmix = ActiveSound.bEnableMainSubmixOutputOverride;
-		}
-
-		if (ActiveSound.bHasActiveSubmixSendRoutingOverride)
-		{
-			WaveInstance->bEnableSubmixSends = ActiveSound.bEnableSubmixSendRoutingOverride;
-		}
-	}
-	else //if this is a preview sound, ignore sends and only play the base submix
-	{
-		WaveInstance->bEnableBaseSubmix = true;
+		WaveInstance->bOutputToBusOnly = ParseParams.bOutputToBusOnly;
 	}
 
 	for (int32 BusSendType = 0; BusSendType < (int32)EBusSendType::Count; ++BusSendType)
@@ -2222,7 +2215,7 @@ void USoundWave::Parse(FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstance
 
 #if !NO_LOGGING
 	// Sanity check
-	if (NumChannels > 2 && !WaveInstance->bIsAmbisonics && WaveInstance->GetUseSpatialization() && !WaveInstance->bReportedSpatializationWarning)
+	if (NumChannels > 2 && WaveInstance->GetUseSpatialization() && !WaveInstance->bReportedSpatializationWarning)
 	{
 		static TSet<USoundWave*> ReportedSounds;
 		if (!ReportedSounds.Contains(this))
@@ -2753,10 +2746,7 @@ void USoundWave::GetHandleForChunkOfAudio(TFunction<void(FAudioChunkHandle&&)> O
 				FAudioChunkHandle ChunkHandle = IStreamingManager::Get().GetAudioStreamingManager().GetLoadedChunk(ThisSoundWave, ChunkIndex, (BlockOnChunkLoadCompletionCVar != 0));
 
 				// If we hit this, something went wrong in GetLoadedChunk.
-				if (!ChunkHandle.IsValid())
-				{
-					UE_LOG(LogAudio, Display, TEXT("Failed to retrieve chunk %d from sound %s after successfully requesting it!"), ChunkIndex, *(WeakThis->GetName()));
-				}
+				ensureMsgf(ChunkHandle.IsValid(), TEXT("Failed to retrieve chunk %d from sound %s after successfully requesting it!"), ChunkIndex, *(WeakThis->GetName()));
 				DispatchOnLoadCompletedCallback(MoveTemp(ChunkHandle));
 			}
 			else
@@ -2902,7 +2892,7 @@ void USoundWave::CacheInheritedLoadingBehavior()
 		// if this is true then the behavior should not be Inherited here
 		check(!bLoadingBehaviorOverridden);
 
-		USoundClass* CurrentSoundClass = GetSoundClass();
+		USoundClass* CurrentSoundClass = SoundClassObject;
 		ESoundWaveLoadingBehavior SoundClassLoadingBehavior = ESoundWaveLoadingBehavior::Inherited;
 
 		// Recurse through this sound class's parents until we find an override.

@@ -3,48 +3,13 @@
 #include "ConcertSyncSessionDatabase.h"
 #include "ConcertFileCache.h"
 #include "ConcertLogGlobal.h"
-#include "ConcertMessageData.h"
-#include "ConcertSyncSessionTypes.h"
 #include "ConcertUtil.h"
 
 #include "SQLiteDatabase.h"
 #include "HAL/FileManager.h"
-#include "Templates/SharedPointer.h"
-#include "Templates/UniquePtr.h"
-#include "UObject/ObjectMacros.h"
 #include "UObject/StructOnScope.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
-#include "Async/Async.h"
-
-
-/** Contains an asynchronous representation of the FConcertPackageDataStream */
-namespace PackageDataUtil
-{
-	struct WritePackageResult
-	{
-		TArray<uint8> CacheData;
-		bool		  bShouldCache{false};
-	};
-}
-
-struct FConcertPackageAsyncDataStream
-{
-	FConcertPackageAsyncDataStream(const FConcertPackageDataStream& InStream, const FString& InPackageName)
-		:
-		CachedPackageName(InPackageName),
-		PackageData(InStream.DataBlob->GetData(),InStream.DataBlob->Num())
-	{
-		PackageStream = {nullptr, InStream.DataSize, &PackageData};
-	}
-
-	FString								CachedPackageName;
-	TFuture<bool>						AsyncTask;
-	PackageDataUtil::WritePackageResult Result;
-
-	FConcertPackageDataStream   PackageStream;
-	TArray<uint8>			    PackageData;
-};
 
 namespace TransactionDataUtil
 {
@@ -67,7 +32,6 @@ FString GetDataFilename(const int64 InIndex)
 
 bool WriteTransactionData(const FStructOnScope& InTransaction, TArray<uint8>& OutSerializedTransactionData)
 {
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_WriteTransactionData);
 	FMemoryWriter Ar(OutSerializedTransactionData);
 
 	const UScriptStruct* TransactionType = CastChecked<const UScriptStruct>(InTransaction.GetStruct());
@@ -81,7 +45,6 @@ bool WriteTransactionData(const FStructOnScope& InTransaction, TArray<uint8>& Ou
 
 bool WriteTransaction(const FStructOnScope& InTransaction, TArray<uint8>& OutSerializedTransactionData)
 {
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_WriteTransaction);
 	check(InTransaction.IsValid());
 
 	FMemoryWriter Ar(OutSerializedTransactionData);
@@ -114,7 +77,6 @@ bool WriteTransaction(const FStructOnScope& InTransaction, TArray<uint8>& OutSer
 
 bool ReadTransactionData(const TArray<uint8>& InSerializedTransactionData, FStructOnScope& OutTransaction)
 {
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_ReadTransactionData);
 	FMemoryReader Ar(InSerializedTransactionData);
 
 	// Deserialize the transaction
@@ -147,7 +109,6 @@ bool ReadTransactionData(const TArray<uint8>& InSerializedTransactionData, FStru
 
 bool ReadTransaction(const TArray<uint8>& InSerializedTransactionData, FStructOnScope& OutTransaction)
 {
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_ReadTransaction);
 	FMemoryReader Ar(InSerializedTransactionData);
 
 	// Test the footer is in place so we know we didn't crash mid-write
@@ -201,35 +162,6 @@ const uint8 DataVersion = 2;
 const uint64 MaxFileSizeBytesToCache = 200 * 1024 * 1024;
 const FGuid EntryFooter = FGuid(0x2EFC8CDD, 0x748E46C0, 0xA5485769, 0x13A3C354);
 
-/** Threshold used to avoid caching very large packages (3GB for example) in memory. */
-constexpr const uint64 MaxPackageBlobSizeForCaching = FMath::Max(
-	PackageDataUtil::MaxFileSizeBytesToCache / PackageDataUtil::MinFilesToCache, 16ull * 1024 * 1024);
-
-// Bigger files will not be compressed to avoid performance hit to decompress them when requested.
-// (Streaming compression is not supported yet, so it is done in memory only)
-//
-constexpr const uint64 MaxPackageDataSizeForCompression = 32ull * 1024 * 1024;
-
-/**
- * Returns true if a package blob should be cached in memory, according to its size.
- * @param PackageBlobSize The blob size (containing package data (possibly compressed) and some meta data).
- * @return true if the pacage should be cached, false otherwise.
- */
-bool ShouldCachePackageBlob(uint64 PackageBlobSize)
-{
-	return PackageBlobSize <= MaxPackageBlobSizeForCaching;
-}
-
-/**
- * Returns true if the package data should be compressed in the blob, according to its size.
- * @param PackageDataSize The uncompressed package data size.
- * @return true if the package data should be compressed, false otherwise.
- */
-bool ShouldCompressPackageData(uint64 PackageDataSize)
-{
-	return PackageDataSize > 0 && PackageDataSize <= MaxPackageDataSizeForCompression;
-}
-
 /**
  * Defines how the package data file written. The 8 LSB are reserved for FileFormatVersion which control how 24 MSB are interpreted.
  */
@@ -242,16 +174,6 @@ enum class EPackageDataFormat : uint8
 	PackageDataUncompressed = 1 << 1,
 };
 ENUM_CLASS_FLAGS(EPackageDataFormat)
-
-
-PackageDataUtil::EPackageDataFormat GetPackageDataFormat(int64 DataSize)
-{
-	if (ShouldCompressPackageData(DataSize))
-	{
-		return PackageDataUtil::EPackageDataFormat::PackageDataCompressed;
-	}
-	return PackageDataUtil::EPackageDataFormat::PackageDataUncompressed;
-}
 
 /** Write the version/format information in the first 4 bytes of the blob, enabling the reader to parse the blob. */
 void WritePackageBlobVersionInfo(FArchive& Ar, EPackageDataFormat PackageDataFormat)
@@ -354,84 +276,68 @@ int64 EstimatePackageBlobMetaDataSize()
 	return sizeof(uint32) + sizeof(int64) + sizeof(FGuid);
 }
 
-bool WillUseMemoryWriter(int64 DataSize)
+/**
+ * Store the package data, possibly compressed, along with some meta data.
+ * @param PackageDataStream The source stream containing the package data.
+ * @param PackageDataFormat How the package data should be stored in the blob.
+ * @param DstAr The archive used to write the blob data.
+ */
+bool WritePackageBlob(FConcertPackageDataStream& PackageDataStream, EPackageDataFormat PackageDataFormat, FArchive& DstAr)
 {
-	return DataSize > 0 && (GetPackageDataFormat(DataSize) == EPackageDataFormat::PackageDataCompressed ||
-							ShouldCachePackageBlob(DataSize + PackageDataUtil::EstimatePackageBlobMetaDataSize()));
-}
-
-void WritePackageCompressed(FConcertPackageDataStream& PackageDataStream, FArchive& DstAr)
-{
-	check(PackageDataStream.DataSize > 0);
-
-	// Write the package data size.
-	uint32 UncompressedPackageSize = PackageDataStream.DataSize;
-	DstAr.SerializeIntPacked(UncompressedPackageSize);
-	check(static_cast<uint64>(UncompressedPackageSize) <= TNumericLimits<TArray<uint8>::SizeType>::Max());
-
-	if (PackageDataStream.DataBlob) // Optimization to avoid transfering from the archive to a temporary buffer.
-	{
-		DstAr.SerializeCompressed(const_cast<uint8*>(PackageDataStream.DataBlob->GetData()), UncompressedPackageSize, NAME_Zlib); // Write
-	}
-	else
-	{
-		TArray<uint8> UncompressedPackageData;
-		UncompressedPackageData.AddUninitialized(UncompressedPackageSize);
-		PackageDataStream.DataAr->Serialize(UncompressedPackageData.GetData(), UncompressedPackageSize); // Read.
-		DstAr.SerializeCompressed(const_cast<uint8*>(UncompressedPackageData.GetData()), UncompressedPackageSize, NAME_Zlib); // Write.
-	}
-}
-
-void WritePackageUncompressed(FConcertPackageDataStream& PackageDataStream, FArchive& DstAr)
-{
-	// Write the package size.
-	DstAr << PackageDataStream.DataSize;
-
-	if (PackageDataStream.DataSize > 0)
-	{
-		// Copy the package data in the destination.
-		if (!ConcertUtil::Copy(DstAr, *PackageDataStream.DataAr, PackageDataStream.DataSize))
-		{
-			UE_LOG(LogConcert, Error, TEXT("Failed copy package data stream to destination."));
-		}
-	}
-}
-
-WritePackageResult WritePackage(FConcertPackageDataStream& PackageDataStream, FArchive& DstAr)
-{
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_WritePackage);
-
-	WritePackageResult OutResult;
-	FMemoryWriter MemWriter(OutResult.CacheData);
-
-	EPackageDataFormat PackageDataFormat = GetPackageDataFormat(PackageDataStream.DataSize);
-	if (WillUseMemoryWriter(PackageDataStream.DataSize))
-	{
-		DstAr = MemWriter;
-	}
-
 	check(DstAr.IsSaving() && DstAr.Tell() == 0);
+	check(PackageDataStream.DataAr == nullptr || PackageDataStream.DataAr->IsLoading()); // The package data stream may be null to write an 'empty' package.
+	check(PackageDataStream.DataAr != nullptr || (PackageDataStream.DataAr == nullptr && PackageDataStream.DataSize == 0 && PackageDataStream.DataBlob == nullptr)); // If the package data archive is null, the size must be zero.
 
-	// The package data stream may be null to write an 'empty' package.
-	check(PackageDataStream.DataAr == nullptr || PackageDataStream.DataAr->IsLoading());
-
-	 // If the package data archive is null, the size must be zero.
-	check(PackageDataStream.DataAr != nullptr || (PackageDataStream.DataAr == nullptr && PackageDataStream.DataSize == 0 && PackageDataStream.DataBlob == nullptr));
-
+	// Write blob version and format.
 	WritePackageHeader(DstAr, PackageDataFormat);
+
 	if (PackageDataFormat == EPackageDataFormat::PackageDataCompressed)
 	{
-		WritePackageCompressed(PackageDataStream, DstAr);
-		OutResult.bShouldCache = ShouldCachePackageBlob(OutResult.CacheData.Num());
+		// Write the package data size.
+		uint32 UncompressedPackageSize = PackageDataStream.DataSize;
+		DstAr.SerializeIntPacked(UncompressedPackageSize);
+		check(static_cast<uint64>(UncompressedPackageSize) <= TNumericLimits<TArray<uint8>::SizeType>::Max());
+
+		// Compress and write the package data.
+		if (UncompressedPackageSize > 0)
+		{
+			if (PackageDataStream.DataBlob) // Optimization to avoid transfering from the archive to a temporary buffer.
+			{
+				DstAr.SerializeCompressed(const_cast<uint8*>(PackageDataStream.DataBlob->GetData()), UncompressedPackageSize, NAME_Zlib); // Write
+			}
+			else
+			{
+				TArray<uint8> UncompressedPackageData;
+				UncompressedPackageData.AddUninitialized(UncompressedPackageSize);
+				PackageDataStream.DataAr->Serialize(UncompressedPackageData.GetData(), UncompressedPackageSize); // Read.
+				DstAr.SerializeCompressed(const_cast<uint8*>(UncompressedPackageData.GetData()), UncompressedPackageSize, NAME_Zlib); // Write.
+			}
+		}
 	}
 	else
 	{
-		WritePackageUncompressed(PackageDataStream, DstAr);
-		OutResult.bShouldCache = ShouldCachePackageBlob(PackageDataStream.DataSize);
+		check(PackageDataFormat == EPackageDataFormat::PackageDataUncompressed);
+
+		// Write the package size.
+		DstAr << PackageDataStream.DataSize;
+
+		// Copy the package data in the destination.
+		if (PackageDataStream.DataSize > 0 && PackageDataStream.DataAr != nullptr)
+		{
+			ConcertUtil::Copy(DstAr, *PackageDataStream.DataAr, PackageDataStream.DataSize);
+		}
 	}
+
+	// Write a footer as proof that the operation did not crash mid-write.
 	WritePackageFooter(DstAr);
 
-	return OutResult;
+	return !DstAr.IsError();
+}
+
+bool WritePackageBlob(FConcertPackageDataStream& PackageDataStream, EPackageDataFormat InPackageDataFormat, TArray<uint8>& OutPackageBlob)
+{
+	FMemoryWriter DstAr(OutPackageBlob);
+	return WritePackageBlob(PackageDataStream, InPackageDataFormat, DstAr);
 }
 
 /** Extract the package data in OutPackageData if the data is smaller than the streaming threshold, otherwise, stream the data using the streaming function.*/
@@ -490,7 +396,6 @@ bool ExtractPackageData(FArchive& PackageBlobAr, const TFunctionRef<void(FConcer
 
 bool ExtractPackageData(const TArray<uint8>& InPackageBlob, const TFunctionRef<void(FConcertPackageDataStream&)>& PackageDataStreamFallbackFn)
 {
-	SCOPED_CONCERT_TRACE(ConcertSyncSessionDatabase_ExtreactPackageData);
 	FMemoryReader PackageBlobAr(InPackageBlob);
 	return ExtractPackageData(PackageBlobAr, PackageDataStreamFallbackFn);
 }
@@ -501,26 +406,14 @@ bool ExtractPackageData(const FString& InPackageBlobPathname, const TFunctionRef
 	return PackageBlobAr ? ExtractPackageData(*PackageBlobAr, PackageDataStreamFallbackFn) : false;
 }
 
-template <typename SerializedDataT>
-void SetSerializedPayloadFlags(SerializedDataT& Data, int32 Flags)
-{
-	Data.bPayloadIsCompressed = static_cast<bool>(Flags);
-}
-
-template <typename SerializedDataT>
-int32 ConvertSerializedPayloadFlagsToInt32(const SerializedDataT& Data)
-{
-	return static_cast<int32>(Data.bPayloadIsCompressed);
-}
-
 } // namespace PackageDataUtil
 
 enum class FConcertSyncSessionDatabaseVersion
 {
 	Empty = 0,
 	Initial = 1,
-	V2 = 2,
-	Current = V2,
+
+	Current = Initial,
 };
 
 class FConcertSyncSessionDatabaseStatements
@@ -746,28 +639,24 @@ public:
 	 */
 
 	/** Set the endpoint data in endpoints for the given endpoint_id */
-	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetEndpointData, "INSERT OR REPLACE INTO endpoints(endpoint_id, user_id, client_info_flags, client_info_size_bytes, client_info_data) VALUES(?1, ?2, ?3, ?4, ?5);", SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid, FString, int32, int32, TArray<uint8>));
+	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetEndpointData, "INSERT OR REPLACE INTO endpoints(endpoint_id, user_id, client_info_size_bytes, client_info_data) VALUES(?1, ?2, ?3, ?4);", SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid, FString, int32, TArray<uint8>));
 	FSetEndpointData Statement_SetEndpointData;
 	bool SetEndpointData(const FGuid& InEndpointId, const FConcertClientInfo& InClientInfo)
 	{
-		FConcertSessionSerializedPayload ClientInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload ClientInfoPayload;
 		verify(ClientInfoPayload.SetTypedPayload(InClientInfo));
-		return Statement_SetEndpointData.BindAndExecute(InEndpointId, InClientInfo.UserName,
-														PackageDataUtil::ConvertSerializedPayloadFlagsToInt32(ClientInfoPayload),
-														ClientInfoPayload.PayloadSize, ClientInfoPayload.PayloadBytes.Bytes);
+		return Statement_SetEndpointData.BindAndExecute(InEndpointId, InClientInfo.UserName, ClientInfoPayload.UncompressedPayloadSize, ClientInfoPayload.CompressedPayload);
 	}
 
 	/** Set the endpoint data from endpoints for the given endpoint_id */
-	SQLITE_PREPARED_STATEMENT(FGetEndpointDataForId, "SELECT client_info_flags, client_info_size_bytes, client_info_data FROM endpoints WHERE endpoint_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(int32, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid));
+	SQLITE_PREPARED_STATEMENT(FGetEndpointDataForId, "SELECT client_info_size_bytes, client_info_data FROM endpoints WHERE endpoint_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid));
 	FGetEndpointDataForId Statement_GetEndpointDataForId;
 	bool GetEndpointDataForId(const FGuid& InEndpointId, FConcertClientInfo& OutClientInfo)
 	{
-		FConcertSessionSerializedPayload ClientInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload ClientInfoPayload;
 		ClientInfoPayload.PayloadTypeName = *FConcertClientInfo::StaticStruct()->GetPathName();
-		int32 ClientInfoFlags = 0;
-		if (Statement_GetEndpointDataForId.BindAndExecuteSingle(InEndpointId, ClientInfoFlags, ClientInfoPayload.PayloadSize, ClientInfoPayload.PayloadBytes.Bytes))
+		if (Statement_GetEndpointDataForId.BindAndExecuteSingle(InEndpointId, ClientInfoPayload.UncompressedPayloadSize, ClientInfoPayload.CompressedPayload))
 		{
-			PackageDataUtil::SetSerializedPayloadFlags(ClientInfoPayload, ClientInfoFlags);
 			verify(ClientInfoPayload.GetTypedPayload(OutClientInfo));
 			return true;
 		}
@@ -775,20 +664,18 @@ public:
 	}
 
 	/** Get the endpoint data from endpoints for all endpoint_ids */
-	SQLITE_PREPARED_STATEMENT_COLUMNS_ONLY(FGetAllEndpointData, "SELECT endpoint_id, client_info_flags, client_info_size_bytes, client_info_data FROM endpoints ORDER BY endpoint_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(FGuid, int32, int32, TArray<uint8>));
+	SQLITE_PREPARED_STATEMENT_COLUMNS_ONLY(FGetAllEndpointData, "SELECT endpoint_id, client_info_size_bytes, client_info_data FROM endpoints ORDER BY endpoint_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(FGuid, int32, TArray<uint8>));
 	FGetAllEndpointData Statement_GetAllEndpointData;
 	bool GetAllEndpointData(TFunctionRef<ESQLitePreparedStatementExecuteRowResult(const FGuid&, FConcertClientInfo&&)> InCallback)
 	{
-		FConcertSessionSerializedPayload ClientInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload ClientInfoPayload;
 		ClientInfoPayload.PayloadTypeName = *FConcertClientInfo::StaticStruct()->GetPathName();
 		return Statement_GetAllEndpointData.Execute([&ClientInfoPayload, &InCallback](const FGetAllEndpointData& InStatement)
 		{
 			FGuid EndpointId;
-			int32 ClientInfoFlags = 0;
-			if (InStatement.GetColumnValues(EndpointId, ClientInfoFlags, ClientInfoPayload.PayloadSize, ClientInfoPayload.PayloadBytes.Bytes))
+			if (InStatement.GetColumnValues(EndpointId, ClientInfoPayload.UncompressedPayloadSize, ClientInfoPayload.CompressedPayload))
 			{
 				FConcertClientInfo ClientInfo;
-				PackageDataUtil::SetSerializedPayloadFlags( ClientInfoPayload, ClientInfoFlags );
 				verify(ClientInfoPayload.GetTypedPayload(ClientInfo));
 				return InCallback(EndpointId, MoveTemp(ClientInfo));
 			}
@@ -911,28 +798,24 @@ public:
 	 */
 	
 	/** Set the package event in package_events for the given package_event_id */
-	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetPackageEvent, "INSERT OR REPLACE INTO package_events(package_event_id, package_name_id, package_revision, package_info_flags, package_info_size_bytes, package_info_data, transaction_event_id_at_save, data_filename) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7,?8);", SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64, int64, int32, int32, TArray<uint8>, int64, FString));
+	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetPackageEvent, "INSERT OR REPLACE INTO package_events(package_event_id, package_name_id, package_revision, package_info_size_bytes, package_info_data, transaction_event_id_at_save, data_filename) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7);", SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64, int64, int32, TArray<uint8>, int64, FString));
 	FSetPackageEvent Statement_SetPackageEvent;
 	bool SetPackageEvent(const int64 InPackageEventId, const int64 InPackageNameId, const int64 InPackageRevision, const int64 InTransactionEventIdAtSave, const FConcertPackageInfo& InPackageInfo, const FString& InDataFilename)
 	{
-		FConcertSessionSerializedPayload PackageInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload PackageInfoPayload;
 		verify(PackageInfoPayload.SetTypedPayload(InPackageInfo));
-		return Statement_SetPackageEvent.BindAndExecute(InPackageEventId, InPackageNameId, InPackageRevision,
-														PackageDataUtil::ConvertSerializedPayloadFlagsToInt32(PackageInfoPayload),
-														PackageInfoPayload.PayloadSize, PackageInfoPayload.PayloadBytes.Bytes, InTransactionEventIdAtSave, InDataFilename);
+		return Statement_SetPackageEvent.BindAndExecute(InPackageEventId, InPackageNameId, InPackageRevision, PackageInfoPayload.UncompressedPayloadSize, PackageInfoPayload.CompressedPayload, InTransactionEventIdAtSave, InDataFilename);
 	}
 
 	/** Get the package event from package_events for the given package_event_id */
-	SQLITE_PREPARED_STATEMENT(FGetPackageEventForId, "SELECT package_revision, package_info_flags, package_info_size_bytes, package_info_data, data_filename FROM package_events WHERE package_event_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, int32, int32, TArray<uint8>, FString), SQLITE_PREPARED_STATEMENT_BINDINGS(int64));
+	SQLITE_PREPARED_STATEMENT(FGetPackageEventForId, "SELECT package_revision, package_info_size_bytes, package_info_data, data_filename FROM package_events WHERE package_event_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, int32, TArray<uint8>, FString), SQLITE_PREPARED_STATEMENT_BINDINGS(int64));
 	FGetPackageEventForId Statement_GetPackageEventForId;
 	bool GetPackageEventForId(const int64 InPackageEventId, int64& OutPackageRevision, FConcertPackageInfo& OutPackageInfo, FString& OutDataFilename)
 	{
-		FConcertSessionSerializedPayload PackageInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload PackageInfoPayload;
 		PackageInfoPayload.PayloadTypeName = *FConcertPackageInfo::StaticStruct()->GetPathName();
-		int32 ClientFlags;
-		if (Statement_GetPackageEventForId.BindAndExecuteSingle(InPackageEventId, OutPackageRevision, ClientFlags, PackageInfoPayload.PayloadSize, PackageInfoPayload.PayloadBytes.Bytes, OutDataFilename))
+		if (Statement_GetPackageEventForId.BindAndExecuteSingle(InPackageEventId, OutPackageRevision, PackageInfoPayload.UncompressedPayloadSize, PackageInfoPayload.CompressedPayload, OutDataFilename))
 		{
-			PackageDataUtil::SetSerializedPayloadFlags(PackageInfoPayload, ClientFlags);
 			verify(PackageInfoPayload.GetTypedPayload(OutPackageInfo));
 			return true;
 		}
@@ -972,16 +855,14 @@ public:
 	}
 
 	/** Get the package data from package_events for the given package_name_id and package_revision */
-	SQLITE_PREPARED_STATEMENT(FGetPackageDataForRevision, "SELECT package_info_flags, package_info_size_bytes, package_info_data, data_filename FROM package_events WHERE package_name_id = ?1 AND package_revision = ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int32, int32, TArray<uint8>, FString), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64));
+	SQLITE_PREPARED_STATEMENT(FGetPackageDataForRevision, "SELECT package_info_size_bytes, package_info_data, data_filename FROM package_events WHERE package_name_id = ?1 AND package_revision = ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int32, TArray<uint8>, FString), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64));
 	FGetPackageDataForRevision Statement_GetPackageDataForRevision;
 	bool GetPackageDataForRevision(const int64 InPackageId, const int64 InPackageRevision, FConcertPackageInfo& OutPackageInfo, FString& OutDataFilename)
 	{
-		FConcertSessionSerializedPayload PackageInfoPayload(EConcertPayloadSerializationMethod::Cbor);
+		FConcertSessionSerializedCborPayload PackageInfoPayload;
 		PackageInfoPayload.PayloadTypeName = *FConcertPackageInfo::StaticStruct()->GetPathName();
-		int32 ClientInfoFlags;
-		if (Statement_GetPackageDataForRevision.BindAndExecuteSingle(InPackageId, InPackageRevision, ClientInfoFlags, PackageInfoPayload.PayloadSize, PackageInfoPayload.PayloadBytes.Bytes, OutDataFilename))
+		if (Statement_GetPackageDataForRevision.BindAndExecuteSingle(InPackageId, InPackageRevision, PackageInfoPayload.UncompressedPayloadSize, PackageInfoPayload.CompressedPayload, OutDataFilename))
 		{
-			PackageDataUtil::SetSerializedPayloadFlags(PackageInfoPayload, ClientInfoFlags);
 			verify(PackageInfoPayload.GetTypedPayload(OutPackageInfo));
 			return true;
 		}
@@ -1039,17 +920,13 @@ public:
 	/**
 	 * Statements working on activities
 	 */
-
+	
 	/** Add the activity data to activities and get its activity_id */
-	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FAddActivityData, "INSERT INTO activities(endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);", SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, int32, TArray<uint8>));
+	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FAddActivityData, "INSERT INTO activities(endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7);", SQLITE_PREPARED_STATEMENT_BINDINGS(FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, TArray<uint8>));
 	FAddActivityData Statement_AddActivityData;
-	bool AddActivityData(const FGuid& InEndpointId, const EConcertSyncActivityEventType InEventType, const int64 InEventId, const FConcertSessionSerializedPayload& InEventSummary, int64& OutActivityId)
+	bool AddActivityData(const FGuid& InEndpointId, const EConcertSyncActivityEventType InEventType, const int64 InEventId, const FConcertSessionSerializedCborPayload& InEventSummary, int64& OutActivityId)
 	{
-		if (Statement_AddActivityData.BindAndExecute(InEndpointId, FDateTime::UtcNow(), InEventType,
-													 InEventId, InEventSummary.PayloadTypeName,
-													 PackageDataUtil::ConvertSerializedPayloadFlagsToInt32(InEventSummary),
-													 InEventSummary.PayloadSize,
-													 InEventSummary.PayloadBytes.Bytes))
+		if (Statement_AddActivityData.BindAndExecute(InEndpointId, FDateTime::UtcNow(), InEventType, InEventId, InEventSummary.PayloadTypeName, InEventSummary.UncompressedPayloadSize, InEventSummary.CompressedPayload))
 		{
 			OutActivityId = Database.GetLastInsertRowId();
 			return true;
@@ -1058,52 +935,27 @@ public:
 	}
 
 	/** Set the activity data in activities for the given activity_id */
-	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetActivityData, "INSERT OR REPLACE INTO activities(activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);", SQLITE_PREPARED_STATEMENT_BINDINGS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, int32, TArray<uint8>));
+	SQLITE_PREPARED_STATEMENT_BINDINGS_ONLY(FSetActivityData, "INSERT OR REPLACE INTO activities(activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);", SQLITE_PREPARED_STATEMENT_BINDINGS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, TArray<uint8>));
 	FSetActivityData Statement_SetActivityData;
-	bool SetActivityData(const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, const FConcertSessionSerializedPayload& InEventSummary)
+	bool SetActivityData(const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, const FConcertSessionSerializedCborPayload& InEventSummary)
 	{
-		return Statement_SetActivityData.BindAndExecute(InActivityId, InEndpointId, InEventTime, InEventType, InEventId,
-														InEventSummary.PayloadTypeName,
-														PackageDataUtil::ConvertSerializedPayloadFlagsToInt32(InEventSummary),
-														InEventSummary.PayloadSize,
-														InEventSummary.PayloadBytes.Bytes);
+		return Statement_SetActivityData.BindAndExecute(InActivityId, InEndpointId, InEventTime, InEventType, InEventId, InEventSummary.PayloadTypeName, InEventSummary.UncompressedPayloadSize, InEventSummary.CompressedPayload);
 	}
 
 	/** Get the activity data from activities for the given activity_id */
-	SQLITE_PREPARED_STATEMENT(FGetActivityDataForId, "SELECT endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data FROM activities WHERE activity_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64));
+	SQLITE_PREPARED_STATEMENT(FGetActivityDataForId, "SELECT endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data FROM activities WHERE activity_id = ?1;", SQLITE_PREPARED_STATEMENT_COLUMNS(FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64));
 	FGetActivityDataForId Statement_GetActivityDataForId;
-	bool GetActivityDataForId(const int64 InActivityId, FGuid& OutEndpointId, FDateTime& OutEventTime, EConcertSyncActivityEventType& OutEventType, int64& OutEventId, FConcertSessionSerializedPayload& OutEventSummary)
+	bool GetActivityDataForId(const int64 InActivityId, FGuid& OutEndpointId, FDateTime& OutEventTime, EConcertSyncActivityEventType& OutEventType, int64& OutEventId, FConcertSessionSerializedCborPayload& OutEventSummary)
 	{
-		int32 PayloadFlags;
-		if(  Statement_GetActivityDataForId.BindAndExecuteSingle(InActivityId, OutEndpointId, OutEventTime, OutEventType, OutEventId,
-																 OutEventSummary.PayloadTypeName,
-																 PayloadFlags,
-																 OutEventSummary.PayloadSize,
-																 OutEventSummary.PayloadBytes.Bytes) )
-		{
-			PackageDataUtil::SetSerializedPayloadFlags( OutEventSummary, PayloadFlags );
-			return true;
-		}
-		return false;
+		return Statement_GetActivityDataForId.BindAndExecuteSingle(InActivityId, OutEndpointId, OutEventTime, OutEventType, OutEventId, OutEventSummary.PayloadTypeName, OutEventSummary.UncompressedPayloadSize, OutEventSummary.CompressedPayload);
 	}
 
 	/** Get the activity data from activities for the given event_id and event_type */
-	SQLITE_PREPARED_STATEMENT(FGetActivityDataForEvent, "SELECT activity_id, endpoint_id, event_time, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data FROM activities WHERE event_id = ?1 AND event_type = ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, FName, int32, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, EConcertSyncActivityEventType));
+	SQLITE_PREPARED_STATEMENT(FGetActivityDataForEvent, "SELECT activity_id, endpoint_id, event_time, event_summary_type, event_summary_size_bytes, event_summary_data FROM activities WHERE event_id = ?1 AND event_type = ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, FName, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, EConcertSyncActivityEventType));
 	FGetActivityDataForEvent Statement_GetActivityDataForEvent;
-	bool GetActivityDataForEvent(const int64 InEventId, const EConcertSyncActivityEventType InEventType, int64& OutActivityId, FGuid& OutEndpointId, FDateTime& OutEventTime, FConcertSessionSerializedPayload& OutEventSummary)
+	bool GetActivityDataForEvent(const int64 InEventId, const EConcertSyncActivityEventType InEventType, int64& OutActivityId, FGuid& OutEndpointId, FDateTime& OutEventTime, FConcertSessionSerializedCborPayload& OutEventSummary)
 	{
-		int32 PayloadFlags;
-		if (  Statement_GetActivityDataForEvent.BindAndExecuteSingle(InEventId, InEventType, OutActivityId, OutEndpointId,
-																	 OutEventTime,
-																	 OutEventSummary.PayloadTypeName,
-																	 PayloadFlags,
-																	 OutEventSummary.PayloadSize,
-																	 OutEventSummary.PayloadBytes.Bytes) )
-		{
-			PackageDataUtil::SetSerializedPayloadFlags( OutEventSummary, PayloadFlags );
-			return true;
-		}
-		return false;
+		return Statement_GetActivityDataForEvent.BindAndExecuteSingle(InEventId, InEventType, OutActivityId, OutEndpointId, OutEventTime, OutEventSummary.PayloadTypeName, OutEventSummary.UncompressedPayloadSize, OutEventSummary.CompressedPayload);
 	}
 
 	/** Get the event_type from activities for the given activity_id */
@@ -1115,9 +967,9 @@ public:
 	}
 
 	/** Get the activity data from activities for all activity_ids */
-	SQLITE_PREPARED_STATEMENT_COLUMNS_ONLY(FGetAllActivityData, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data FROM activities ORDER BY activity_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, int32, TArray<uint8>));
+	SQLITE_PREPARED_STATEMENT_COLUMNS_ONLY(FGetAllActivityData, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data FROM activities ORDER BY activity_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, TArray<uint8>));
 	FGetAllActivityData Statement_GetAllActivityData;
-	bool GetAllActivityData(TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, EConcertSyncActivityEventType, int64, FConcertSessionSerializedPayload&&)> InCallback)
+	bool GetAllActivityData(TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, EConcertSyncActivityEventType, int64, FConcertSessionSerializedCborPayload&&)> InCallback)
 	{
 		return Statement_GetAllActivityData.Execute([&InCallback](const FGetAllActivityData& InStatement)
 		{
@@ -1126,15 +978,9 @@ public:
 			FDateTime EventTime;
 			EConcertSyncActivityEventType EventType = EConcertSyncActivityEventType::Connection;
 			int64 EventId = 0;
-			FConcertSessionSerializedPayload EventSummary(EConcertPayloadSerializationMethod::Cbor);
-			int32 PayloadFlags;
-			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventType, EventId,
-											EventSummary.PayloadTypeName,
-											PayloadFlags,
-											EventSummary.PayloadSize,
-											EventSummary.PayloadBytes.Bytes))
+			FConcertSessionSerializedCborPayload EventSummary;
+			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventType, EventId, EventSummary.PayloadTypeName, EventSummary.UncompressedPayloadSize, EventSummary.CompressedPayload))
 			{
-				PackageDataUtil::SetSerializedPayloadFlags(EventSummary, PayloadFlags);
 				return InCallback(ActivityId, EndpointId, EventTime, EventType, EventId, MoveTemp(EventSummary));
 			}
 			return ESQLitePreparedStatementExecuteRowResult::Error;
@@ -1142,9 +988,9 @@ public:
 	}
 
 	/** Get the activity data from activities for all activities of event_type */
-	SQLITE_PREPARED_STATEMENT(FGetAllActivityDataForEventType, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data FROM activities WHERE event_type = ?1 ORDER BY activity_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, int64, FName, int32, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(EConcertSyncActivityEventType));
+	SQLITE_PREPARED_STATEMENT(FGetAllActivityDataForEventType, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data FROM activities WHERE event_type = ?1 ORDER BY activity_id;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, int64, FName, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(EConcertSyncActivityEventType));
 	FGetAllActivityDataForEventType Statement_GetAllActivityDataForEventType;
-	bool GetAllActivityDataForEventType(const EConcertSyncActivityEventType InEventType, TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, int64, FConcertSessionSerializedPayload&&)> InCallback)
+	bool GetAllActivityDataForEventType(const EConcertSyncActivityEventType InEventType, TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, int64, FConcertSessionSerializedCborPayload&&)> InCallback)
 	{
 		return Statement_GetAllActivityDataForEventType.BindAndExecute(InEventType, [&InCallback](const FGetAllActivityDataForEventType& InStatement)
 		{
@@ -1152,15 +998,9 @@ public:
 			FGuid EndpointId;
 			FDateTime EventTime;
 			int64 EventId = 0;
-			int32 PayloadFlags;
-			FConcertSessionSerializedPayload EventSummary(EConcertPayloadSerializationMethod::Cbor);
-			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventId,
-											EventSummary.PayloadTypeName,
-											PayloadFlags,
-											EventSummary.PayloadSize,
-											EventSummary.PayloadBytes.Bytes))
+			FConcertSessionSerializedCborPayload EventSummary;
+			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventId, EventSummary.PayloadTypeName, EventSummary.UncompressedPayloadSize, EventSummary.CompressedPayload))
 			{
-				PackageDataUtil::SetSerializedPayloadFlags(EventSummary, PayloadFlags);
 				return InCallback(ActivityId, EndpointId, EventTime, EventId, MoveTemp(EventSummary));
 			}
 			return ESQLitePreparedStatementExecuteRowResult::Error;
@@ -1168,9 +1008,9 @@ public:
 	}
 
 	/** Get the activity data from activities for all activities in the given range */
-	SQLITE_PREPARED_STATEMENT(FGetActivityDataInRange, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_flags, event_summary_size_bytes, event_summary_data FROM activities WHERE activity_id >= ?1 ORDER BY activity_id LIMIT ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64));
+	SQLITE_PREPARED_STATEMENT(FGetActivityDataInRange, "SELECT activity_id, endpoint_id, event_time, event_type, event_id, event_summary_type, event_summary_size_bytes, event_summary_data FROM activities WHERE activity_id >= ?1 ORDER BY activity_id LIMIT ?2;", SQLITE_PREPARED_STATEMENT_COLUMNS(int64, FGuid, FDateTime, EConcertSyncActivityEventType, int64, FName, int32, TArray<uint8>), SQLITE_PREPARED_STATEMENT_BINDINGS(int64, int64));
 	FGetActivityDataInRange Statement_GetActivityDataInRange;
-	bool GetActivityDataInRange(const int64 InFirstActivityId, const int64 InMaxNumActivities, TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, EConcertSyncActivityEventType, int64, FConcertSessionSerializedPayload&&)> InCallback)
+	bool GetActivityDataInRange(const int64 InFirstActivityId, const int64 InMaxNumActivities, TFunctionRef<ESQLitePreparedStatementExecuteRowResult(int64, const FGuid&, FDateTime, EConcertSyncActivityEventType, int64, FConcertSessionSerializedCborPayload&&)> InCallback)
 	{
 		return Statement_GetActivityDataInRange.BindAndExecute(InFirstActivityId, InMaxNumActivities, [&InCallback](const FGetActivityDataInRange& InStatement)
 		{
@@ -1179,15 +1019,9 @@ public:
 			FDateTime EventTime;
 			EConcertSyncActivityEventType EventType = EConcertSyncActivityEventType::Connection;
 			int64 EventId = 0;
-			FConcertSessionSerializedPayload EventSummary(EConcertPayloadSerializationMethod::Cbor);
-			int32 EventFlags;
-			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventType, EventId,
-											EventSummary.PayloadTypeName,
-											EventFlags,
-											EventSummary.PayloadSize,
-											EventSummary.PayloadBytes.Bytes))
+			FConcertSessionSerializedCborPayload EventSummary;
+			if (InStatement.GetColumnValues(ActivityId, EndpointId, EventTime, EventType, EventId, EventSummary.PayloadTypeName, EventSummary.UncompressedPayloadSize, EventSummary.CompressedPayload))
 			{
-				PackageDataUtil::SetSerializedPayloadFlags(EventSummary, EventFlags);
 				return InCallback(ActivityId, EndpointId, EventTime, EventType, EventId, MoveTemp(EventSummary));
 			}
 			return ESQLitePreparedStatementExecuteRowResult::Error;
@@ -1509,6 +1343,8 @@ private:
 /** Defined here where TUniquePtr can see the definition of FConcertFileCache and FConcertSyncSessionDatabaseStatements as the TUniquePtr constructor/destructor cannot work with a forward declared type */
 FConcertSyncSessionDatabase::FConcertSyncSessionDatabase()
 	: Database(MakeUnique<FSQLiteDatabase>())
+	, MaxPackageBlobSizeForCaching(FMath::Max(PackageDataUtil::MaxFileSizeBytesToCache / PackageDataUtil::MinFilesToCache, 16ull * 1024 * 1024)) // Prevent caching very large files.
+	, MaxPackageDataSizeForCompression(32ull * 1024 * 1024) // Bigger files will not be compressed to avoid performance hit to decompress them when requested. (Streaming compression is not supported yet, so it is done in memory only)
 {
 }
 
@@ -1565,13 +1401,13 @@ bool FConcertSyncSessionDatabase::Open(const FString& InSessionPath, const ESQLi
 	}
 	CREATE_TABLE("object_names", "object_name_id INTEGER PRIMARY KEY, object_path_name TEXT UNIQUE NOT NULL");
 	CREATE_TABLE("package_names", "package_name_id INTEGER PRIMARY KEY, package_name TEXT UNIQUE NOT NULL");
-	CREATE_TABLE("endpoints", "endpoint_id BLOB PRIMARY KEY, user_id TEXT NOT NULL, client_info_flags INTEGER NOT NULL, client_info_size_bytes INTEGER NOT NULL, client_info_data BLOB");
+	CREATE_TABLE("endpoints", "endpoint_id BLOB PRIMARY KEY, user_id TEXT NOT NULL, client_info_size_bytes INTEGER NOT NULL, client_info_data BLOB");
 	CREATE_TABLE("connection_events", "connection_event_id INTEGER PRIMARY KEY, connection_event_type INTEGER NOT NULL");
 	CREATE_TABLE("lock_events", "lock_event_id INTEGER PRIMARY KEY, lock_event_type INTEGER NOT NULL");
 	CREATE_TABLE("transaction_events", "transaction_event_id INTEGER PRIMARY KEY, data_filename TEXT NOT NULL");
-	CREATE_TABLE("package_events", "package_event_id INTEGER PRIMARY KEY, package_name_id INTEGER NOT NULL, package_revision INTEGER NOT NULL, package_info_flags INTEGER NOT NULL, package_info_size_bytes INTEGER NOT NULL, package_info_data BLOB, transaction_event_id_at_save INTEGER NOT NULL, data_filename TEXT NOT NULL, FOREIGN KEY(package_name_id) REFERENCES package_names(package_name_id)");
+	CREATE_TABLE("package_events", "package_event_id INTEGER PRIMARY KEY, package_name_id INTEGER NOT NULL, package_revision INTEGER NOT NULL, package_info_size_bytes INTEGER NOT NULL, package_info_data BLOB, transaction_event_id_at_save INTEGER NOT NULL, data_filename TEXT NOT NULL, FOREIGN KEY(package_name_id) REFERENCES package_names(package_name_id)");
 	CREATE_TABLE("persist_events", "persist_event_id INTEGER PRIMARY KEY, package_event_id INTEGER NOT NULL, transaction_event_id_at_persist INTEGER NOT NULL, FOREIGN KEY(package_event_id) REFERENCES package_events(package_event_id)");
-	CREATE_TABLE("activities", "activity_id INTEGER PRIMARY KEY, endpoint_id BLOB NOT NULL, event_time INTEGER NOT NULL, event_type INTEGER NOT NULL, event_id INTEGER NOT NULL, event_summary_type TEXT NOT NULL, event_summary_flags INTEGER NOT NULL, event_summary_size_bytes INTEGER NOT NULL, event_summary_data BLOB, FOREIGN KEY(endpoint_id) REFERENCES endpoints(endpoint_id)");
+	CREATE_TABLE("activities", "activity_id INTEGER PRIMARY KEY, endpoint_id BLOB NOT NULL, event_time INTEGER NOT NULL, event_type INTEGER NOT NULL, event_id INTEGER NOT NULL, event_summary_type TEXT NOT NULL, event_summary_size_bytes INTEGER NOT NULL, event_summary_data BLOB, FOREIGN KEY(endpoint_id) REFERENCES endpoints(endpoint_id)");
 	CREATE_TABLE("ignored_activities", "activity_id INTEGER NOT NULL, FOREIGN KEY(activity_id) REFERENCES activities(activity_id)");
 	CREATE_TABLE("resource_locks", "object_name_id INTEGER NOT NULL, lock_event_id INTEGER NOT NULL, FOREIGN KEY(object_name_id) REFERENCES object_names(object_name_id), FOREIGN KEY(lock_event_id) REFERENCES lock_events(lock_event_id)");
 	CREATE_TABLE("package_transactions", "package_name_id INTEGER NOT NULL, transaction_event_id INTEGER NOT NULL, FOREIGN KEY(package_name_id) REFERENCES package_names(package_name_id), FOREIGN KEY(transaction_event_id) REFERENCES transaction_events(transaction_event_id)");
@@ -1639,8 +1475,7 @@ bool FConcertSyncSessionDatabase::Close(const bool InDeleteDatabase)
 		UE_LOG(LogConcert, Error, TEXT("Failed to close session database for '%s': %s"), *SessionPath, *GetLastError());
 		return false;
 	}
-
-	FlushAsynchronousTasks();
+	
 	TransactionFileCache.Reset();
 	PackageFileCache.Reset();
 
@@ -1834,7 +1669,7 @@ bool FConcertSyncSessionDatabase::GetPackageActivityForEvent(const int64 InPacka
 
 bool FConcertSyncSessionDatabase::EnumerateActivities(TFunctionRef<bool(FConcertSyncActivity&&)> InCallback) const
 {
-	return Statements->GetAllActivityData([this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityData([this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncActivity Activity;
 		Activity.ActivityId = InActivityId;
@@ -1852,7 +1687,7 @@ bool FConcertSyncSessionDatabase::EnumerateActivities(TFunctionRef<bool(FConcert
 
 bool FConcertSyncSessionDatabase::EnumerateConnectionActivities(TFunctionRef<bool(FConcertSyncConnectionActivity&&)> InCallback) const
 {
-	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Connection, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Connection, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncConnectionActivity ConnectionActivity;
 		ConnectionActivity.ActivityId = InActivityId;
@@ -1874,7 +1709,7 @@ bool FConcertSyncSessionDatabase::EnumerateConnectionActivities(TFunctionRef<boo
 
 bool FConcertSyncSessionDatabase::EnumerateLockActivities(TFunctionRef<bool(FConcertSyncLockActivity&&)> InCallback) const
 {
-	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Lock, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Lock, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncLockActivity LockActivity;
 		LockActivity.ActivityId = InActivityId;
@@ -1896,7 +1731,7 @@ bool FConcertSyncSessionDatabase::EnumerateLockActivities(TFunctionRef<bool(FCon
 
 bool FConcertSyncSessionDatabase::EnumerateTransactionActivities(TFunctionRef<bool(FConcertSyncTransactionActivity&&)> InCallback) const
 {
-	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Transaction, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Transaction, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncTransactionActivity TransactionActivity;
 		TransactionActivity.ActivityId = InActivityId;
@@ -1918,7 +1753,7 @@ bool FConcertSyncSessionDatabase::EnumerateTransactionActivities(TFunctionRef<bo
 
 bool FConcertSyncSessionDatabase::EnumeratePackageActivities(const TFunctionRef<bool(FConcertSyncActivity&&, FConcertSyncPackageEventData&)>& InCallback) const
 {
-	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Package, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityDataForEventType(EConcertSyncActivityEventType::Package, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncActivity PackageActivity;
 		PackageActivity.ActivityId = InActivityId;
@@ -1942,7 +1777,7 @@ bool FConcertSyncSessionDatabase::EnumeratePackageActivities(const TFunctionRef<
 
 bool FConcertSyncSessionDatabase::EnumerateActivitiesForEventType(const EConcertSyncActivityEventType InEventType, TFunctionRef<bool(FConcertSyncActivity&&)> InCallback) const
 {
-	return Statements->GetAllActivityDataForEventType(InEventType, [this, InEventType, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetAllActivityDataForEventType(InEventType, [this, InEventType, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncActivity Activity;
 		Activity.ActivityId = InActivityId;
@@ -1960,7 +1795,7 @@ bool FConcertSyncSessionDatabase::EnumerateActivitiesForEventType(const EConcert
 
 bool FConcertSyncSessionDatabase::EnumerateActivitiesInRange(const int64 InFirstActivityId, const int64 InMaxNumActivities, TFunctionRef<bool(FConcertSyncActivity&&)> InCallback) const
 {
-	return Statements->GetActivityDataInRange(InFirstActivityId, InMaxNumActivities, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, FConcertSessionSerializedPayload&& InEventSummary)
+	return Statements->GetActivityDataInRange(InFirstActivityId, InMaxNumActivities, [this, &InCallback](const int64 InActivityId, const FGuid& InEndpointId, const FDateTime InEventTime, const EConcertSyncActivityEventType InEventType, const int64 InEventId, FConcertSessionSerializedCborPayload&& InEventSummary)
 	{
 		FConcertSyncActivity Activity;
 		Activity.ActivityId = InActivityId;
@@ -2694,58 +2529,42 @@ bool FConcertSyncSessionDatabase::LoadTransaction(const FString& InTransactionFi
 	return false;
 }
 
-bool HandleWritePackageResult(const FString& InDstPackageBlobPathname, TUniquePtr<FConcertFileCache>& Cache, PackageDataUtil::WritePackageResult&& Result)
+bool FConcertSyncSessionDatabase::SavePackage(const FString& InDstPackageBlobPathname, const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream) const
 {
-	if (Result.CacheData.Num()>0)
+	// Decide if the package data should be stored compressed.
+	PackageDataUtil::EPackageDataFormat PackageDataFormat = ShouldCompressPackageData(InPackageDataStream.DataSize) ? PackageDataUtil::EPackageDataFormat::PackageDataCompressed : PackageDataUtil::EPackageDataFormat::PackageDataUncompressed;
+	if (PackageDataFormat == PackageDataUtil::EPackageDataFormat::PackageDataCompressed)
 	{
-		if (Result.bShouldCache)
+		TArray<uint8> PackageBlob;
+		if (PackageDataUtil::WritePackageBlob(InPackageDataStream, PackageDataFormat, PackageBlob))
 		{
-			return Cache->SaveAndCacheFile(InDstPackageBlobPathname, MoveTemp(Result.CacheData));
-		}
-		TUniquePtr<FArchive> DstAr(IFileManager::Get().CreateFileWriter(*InDstPackageBlobPathname));
-		if (DstAr)
-		{
-			DstAr->Serialize(Result.CacheData.GetData(), Result.CacheData.Num());
-			return !DstAr->IsError();
-		}
-		return false;
-	}
-	return true;
-}
+			if (ShouldCachePackageBlob(PackageBlob.Num()))
+			{
+				return PackageFileCache->SaveAndCacheFile(InDstPackageBlobPathname, MoveTemp(PackageBlob));
+			}
 
-bool FConcertSyncSessionDatabase::SavePackage(const FString& InDstPackageBlobPathname, const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream)
-{
-	SCOPED_CONCERT_TRACE(FConcertSyncSessionDatabase_SavePackage);
-
-	// There are a few different cases that affect how SavePackage works.
-	//  1. In memory binary data:  We have received a package of data from that is in memory.  In this case the archive
-	//     provided is Null and we can simply copy that data into a temporary buffer and perform an asynchronous write
-	//     to disk.
-	//  2. No in memory: We have received a handle to a file on disk via InPackageDataStream.DstAr.  We cannot guarantee the lifetime
-	//     of this object and thus we cannot perform asynchronous work (Unless the raw data via DataBlob has already
-	//     been provided) in which case we ignore the DstAr and do asynchronous path.
-	//
-	if (InPackageDataStream.DataBlob && InPackageDataStream.DataBlob->Num() > 0)
-	{
-		ScheduleAsyncWrite(InDstPackageBlobPathname, InPackageDataStream);
-		return true;
+			TUniquePtr<FArchive> DstAr(IFileManager::Get().CreateFileWriter(*InDstPackageBlobPathname));
+			if (DstAr)
+			{
+				DstAr->Serialize(PackageBlob.GetData(), PackageBlob.Num());
+				return !DstAr->IsError();
+			}
+		}
 	}
 	else
 	{
-		if (PackageDataUtil::WillUseMemoryWriter(InPackageDataStream.DataSize))
+		check(PackageDataFormat == PackageDataUtil::EPackageDataFormat::PackageDataUncompressed);
+
+		int64 EstimatedPackageBlobSize = InPackageDataStream.DataSize + PackageDataUtil::EstimatePackageBlobMetaDataSize();
+		if (ShouldCachePackageBlob(EstimatedPackageBlobSize))
 		{
-			FArchive NullArchive;
-			PackageDataUtil::WritePackageResult Result = PackageDataUtil::WritePackage(InPackageDataStream, NullArchive);
-			return HandleWritePackageResult(InDstPackageBlobPathname, PackageFileCache, MoveTemp(Result));
+			TArray<uint8> PackageBlob;
+			return PackageDataUtil::WritePackageBlob(InPackageDataStream, PackageDataFormat, PackageBlob) && PackageFileCache->SaveAndCacheFile(InDstPackageBlobPathname, MoveTemp(PackageBlob));
 		}
 		else
 		{
 			TUniquePtr<FArchive> DstAr(IFileManager::Get().CreateFileWriter(*InDstPackageBlobPathname));
-			if (DstAr)
-			{
-				PackageDataUtil::WritePackage(InPackageDataStream, *DstAr);
-				return !DstAr->IsError();
-			}
+			return DstAr && PackageDataUtil::WritePackageBlob(InPackageDataStream, PackageDataFormat, *DstAr);
 		}
 	}
 
@@ -2754,18 +2573,6 @@ bool FConcertSyncSessionDatabase::SavePackage(const FString& InDstPackageBlobPat
 
 bool FConcertSyncSessionDatabase::LoadPackage(const FString& InPackageBlobFilename, const TFunctionRef<void(FConcertPackageDataStream&)>& PackageDataStreamFn) const
 {
-	// First check the deferred file IO buffer before looking on disk.
-	using FAsyncPtr = TSharedPtr<FConcertPackageAsyncDataStream>;
-	if(FAsyncPtr const* Found = DeferredLargePackageIO.Find(InPackageBlobFilename))
-	{
-		FAsyncPtr Owned = *Found;
-		FConcertPackageDataStream Stream = Owned->PackageStream;
-		FMemoryReader PackageBlobAr(Owned->PackageData);
-		Stream.DataAr = &PackageBlobAr;
-		PackageDataStreamFn(Stream);
-		return true;
-	}
-
 	int64 PackageBlobSize = IFileManager::Get().FileSize(*InPackageBlobFilename);
 	if (PackageBlobSize < 0) // Possible if the file doesn't exist.
 	{
@@ -2773,8 +2580,7 @@ bool FConcertSyncSessionDatabase::LoadPackage(const FString& InPackageBlobFilena
 		return false;
 	}
 
-	 // Try the cache if the blob is small enough to be found or stored.
-	if (PackageDataUtil::ShouldCachePackageBlob(static_cast<uint64>(PackageBlobSize)))
+	if (ShouldCachePackageBlob(static_cast<uint64>(PackageBlobSize))) // Try the cache if the blob is small enough to be found or stored.
 	{
 		TArray<uint8> PackageBlob;
 		return PackageFileCache->FindOrCacheFile(InPackageBlobFilename, PackageBlob) && PackageDataUtil::ExtractPackageData(PackageBlob, PackageDataStreamFn);
@@ -2783,54 +2589,14 @@ bool FConcertSyncSessionDatabase::LoadPackage(const FString& InPackageBlobFilena
 	return PackageDataUtil::ExtractPackageData(InPackageBlobFilename, PackageDataStreamFn);
 }
 
-void FConcertSyncSessionDatabase::FlushAsynchronousTasks()
+bool FConcertSyncSessionDatabase::ShouldCachePackageBlob(uint64 PackageBlobSize) const
 {
-	for (const auto& Item : DeferredLargePackageIO)
-	{
-		if(!Item.Value->AsyncTask.Get())
-		{
-			UE_LOG(LogConcert, Error, TEXT("Async task failed to write package %s"), *Item.Value->CachedPackageName);
-		}
-	}
-	DeferredLargePackageIO = {};
+	return PackageBlobSize <= MaxPackageBlobSizeForCaching;
 }
 
-void FConcertSyncSessionDatabase::UpdateAsynchronousTasks()
+bool FConcertSyncSessionDatabase::ShouldCompressPackageData(uint64 PackageDataSize) const
 {
-	for (auto It = DeferredLargePackageIO.CreateIterator(); It; ++It)
-	{
-		if (It->Value->AsyncTask.IsReady())
-		{
-			if (HandleWritePackageResult(It->Key, PackageFileCache,MoveTemp(It->Value->Result)) == false)
-			{
-				UE_LOG(LogConcert, Warning, TEXT("Failed to handle package write result of file '%s'."), *It->Key);
-			}
-			It.RemoveCurrent();
-		}
-	}
-}
-
-void FConcertSyncSessionDatabase::ScheduleAsyncWrite(const FString& InDstPackageBlobPathname, FConcertPackageDataStream& InPackageDataStream)
-{
-	check(InPackageDataStream.DataBlob && InPackageDataStream.DataBlob->Num() > 0);
-
-	using FAsyncPtr = TSharedPtr<FConcertPackageAsyncDataStream>;
-	FAsyncPtr SharedStream = MakeShared<FConcertPackageAsyncDataStream>(InPackageDataStream, InDstPackageBlobPathname);
-	if(FAsyncPtr* Item = DeferredLargePackageIO.Find(InDstPackageBlobPathname))
-	{
-		(*Item)->AsyncTask.Get();
-		HandleWritePackageResult(InDstPackageBlobPathname, PackageFileCache, MoveTemp((*Item)->Result));
-	}
-	DeferredLargePackageIO.FindOrAdd(InDstPackageBlobPathname) = SharedStream;
-	SharedStream->AsyncTask = Async(EAsyncExecution::TaskGraph, [InDstPackageBlobPathname,SharedStream]()
-	{
-		TUniquePtr<FArchive> DstAr(IFileManager::Get().CreateFileWriter(*InDstPackageBlobPathname));
-		FConcertPackageDataStream& InPackageDataStream = SharedStream->PackageStream;
-		FMemoryReader PackageBlobAr(SharedStream->PackageData);
-		InPackageDataStream.DataAr = &PackageBlobAr;
-		SharedStream->Result = PackageDataUtil::WritePackage(InPackageDataStream, *DstAr);
-		return !DstAr->IsError();
-	});
+	return PackageDataSize <= MaxPackageDataSizeForCompression;
 }
 
 bool ConcertSyncSessionDatabaseFilterUtil::TransactionEventPassesFilter(const int64 InTransactionEventId, const FConcertSessionFilter& InSessionFilter, const FConcertSyncSessionDatabase& InDatabase)

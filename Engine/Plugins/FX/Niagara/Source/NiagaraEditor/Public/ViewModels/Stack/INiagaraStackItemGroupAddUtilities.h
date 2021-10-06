@@ -1,14 +1,13 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "NiagaraActions.h"
 
 /** Represents a single action for adding an item to a group in the stack. */
 class INiagaraStackItemGroupAddAction
 {
 public:
 	/** Gets the category for this action. */
-	virtual TArray<FString> GetCategories() const = 0;
+	virtual FText GetCategory() const = 0;
 
 	/** Gets the short display name for this action. */
 	virtual FText GetDisplayName() const = 0;
@@ -18,24 +17,6 @@ public:
 
 	/** Gets a space separated string of keywords which expose additional search terms for this action. */
 	virtual FText GetKeywords() const = 0;
-
-	/** Gets a bool that indicates whether this action is suggested or not */
-	virtual bool GetSuggested() const
-	{
-		return false;
-	}
-
-	/** Indicates if this action represents a library action */
-	virtual bool IsInLibrary() const
-	{
-		return true;
-	}
-
-	/** Gets a source data struct that is useful to display additional information about an action */
-	virtual FNiagaraActionSourceData GetSourceData() const
-	{
-		return FNiagaraActionSourceData();
-	}
 
 	virtual ~INiagaraStackItemGroupAddAction() { }
 };
@@ -82,12 +63,6 @@ public:
 	/** Executes the specified add action. */
 	virtual void ExecuteAddAction(TSharedRef<INiagaraStackItemGroupAddAction> AddAction, int32 TargetIndex) = 0;
 
-	/** Should we add a library filter to the add menu? */
-	virtual bool SupportsLibraryFilter() const = 0;
-
-	/** Should we add a source filter to the add menu? */
-	virtual bool SupportsSourceFilter() const = 0;
-
 	virtual ~INiagaraStackItemGroupAddUtilities() { }
 };
 
@@ -104,9 +79,6 @@ public:
 	virtual FText GetAddItemName() const override { return AddItemName; }
 	virtual bool GetAutoExpandAddActions() const override { return bAutoExpandAddActions; }
 	virtual EAddMode GetAddMode() const override { return AddMode; }
-
-	virtual bool SupportsLibraryFilter() const override { return false; }
-	virtual bool SupportsSourceFilter() const override { return false; }
 
 protected:
 	FText AddItemName;

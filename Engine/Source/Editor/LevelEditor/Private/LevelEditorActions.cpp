@@ -94,8 +94,6 @@
 #include "PlatformInfo.h"
 #include "Misc/CoreMisc.h"
 
-#include "Internationalization/Culture.h"
-
 #if WITH_LIVE_CODING
 #include "ILiveCodingModule.h"
 #endif
@@ -182,8 +180,6 @@ void FLevelEditorActionCallbacks::BrowseViewportControls()
 	FString URL;
 	if (FUnrealEdMisc::Get().GetURL(TEXT("ViewportControlsURL"), URL))
 	{
-		// documentation URLS are now stored with placeholders for internationalization and version
-		FUnrealEdMisc::Get().ReplaceDocumentationURLWildcards(URL, FInternationalization::Get().GetCurrentCulture());
 		FPlatformProcess::LaunchURL(*URL, NULL, NULL);
 	}
 }
@@ -1128,7 +1124,7 @@ void FLevelEditorActionCallbacks::LiveCoding_StartSession_Clicked()
 
 		if (!LiveCoding->IsEnabledForSession())
 		{
-			FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("NoStartedLiveCodingAfterHotReload", "Live Coding cannot be started after hot-reload has been used. Please close the editor and build from your IDE before restarting."));
+			FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("NoStartedLiveCodingAfterHotReload", "Live Coding cannot be started after hot-reload has been used. Please restart the editor."));
 		}
 	}
 }
@@ -1483,7 +1479,7 @@ void FLevelEditorActionCallbacks::ReplaceActorsFromClass_Clicked( UClass* ActorC
 
 			FText ErrorMessage;
 			FText UnusedErrorMessage;
-			const FAssetData NoAssetData {};
+			const FAssetData NoAssetData;
 			const FAssetData TargetAssetData(TargetAsset);
 			if( ActorFactory->CanCreateActorFrom( TargetAssetData, ErrorMessage ) )
 			{
@@ -2040,7 +2036,7 @@ bool FLevelEditorActionCallbacks::SaveAnimationFromSkeletalMeshComponent(AActor 
 		bool bSimulating = false;
 		for (auto & Comp : SimSkelComponents)
 		{
-			bSimulating |= (Comp->SkeletalMesh && Comp->SkeletalMesh->GetSkeleton() && Comp->IsSimulatingPhysics());
+			bSimulating |= (Comp->SkeletalMesh && Comp->SkeletalMesh->Skeleton && Comp->IsSimulatingPhysics());
 		}
 
 		// if any of them are legitimately simulating
@@ -2054,7 +2050,7 @@ bool FLevelEditorActionCallbacks::SaveAnimationFromSkeletalMeshComponent(AActor 
 			{
 				for (auto & Comp : SimSkelComponents)
 				{
-					if (Comp->SkeletalMesh && Comp->SkeletalMesh->GetSkeleton() && Comp->IsSimulatingPhysics())
+					if (Comp->SkeletalMesh && Comp->SkeletalMesh->Skeleton && Comp->IsSimulatingPhysics())
 					{
 						// now record to animation
 						class UAnimSequence* Sequence = LevelEditorModule.OnCaptureSingleFrameAnimSequence().IsBound() ? LevelEditorModule.OnCaptureSingleFrameAnimSequence().Execute(Comp) : nullptr;
@@ -3418,14 +3414,15 @@ void FLevelEditorCommands::RegisterCommands()
 	UI_COMMAND(PreviewPlatformOverride_SM5, "Shader Model 5", "DirectX 11, OpenGL 4.3+, PS4, XB1", EUserInterfaceActionType::Check, FInputChord());
 
 	// Add preview platforms
-	for (auto& Item : PlatformInfo::GetPreviewPlatformMenuItems())
+	for (auto It = PlatformInfo::GetPreviewPlatformMenuItems().CreateConstIterator(); It; ++It)
 	{
 		PreviewPlatformOverrides.Add(
+			It.Key(),
 			FUICommandInfoDecl(
 				this->AsShared(),
-				FName(*FString::Printf(TEXT("PreviewPlatformOverrides_%s_%s"), *Item.PlatformName.ToString(), *Item.ShaderFormat.ToString())),
-				Item.MenuText,
-				Item.MenuTooltip)
+				FName(*(FString(TEXT("PreviewPlatformOverrides"))+It.Key().ToString())),
+				It.Value().MenuText,
+				It.Value().MenuTooltip)
 			.UserInterfaceType(EUserInterfaceActionType::Check)
 			.DefaultChord(FInputChord())
 		);

@@ -7,7 +7,6 @@
 #include "AssetData.h"
 #include "IAssetTypeActions.h"
 #include "ContentBrowserDelegates.h"
-#include "Widgets/Workflow/SWizard.h"
 
 
 class SNiagaraAssetPickerList;
@@ -28,16 +27,14 @@ public:
 		FText OptionDescription;
 		FText AssetPickerHeader;
 		TSharedRef<SWidget> AssetPicker;
-		TSharedPtr<SWidget> WidgetToFocusOnEntry;
 		FOnGetSelectedAssetsFromPicker OnGetSelectedAssetsFromPicker;
 		FOnSelectionConfirmed OnSelectionConfirmed;
 
-		FNiagaraNewAssetDialogOption(FText InOptionText, FText InOptionDescription, FText InAssetPickerHeader, FOnGetSelectedAssetsFromPicker InOnGetSelectedAssetsFromPicker, FOnSelectionConfirmed InOnSelecitonConfirmed, TSharedRef<SWidget> InAssetPicker, TSharedPtr<SWidget> InWidgetToFocus = nullptr)
+		FNiagaraNewAssetDialogOption(FText InOptionText, FText InOptionDescription, FText InAssetPickerHeader, FOnGetSelectedAssetsFromPicker InOnGetSelectedAssetsFromPicker, FOnSelectionConfirmed InOnSelecitonConfirmed, TSharedRef<SWidget> InAssetPicker)
 			: OptionText(InOptionText)
 			, OptionDescription(InOptionDescription)
 			, AssetPickerHeader(InAssetPickerHeader)
 			, AssetPicker(InAssetPicker)
-			, WidgetToFocusOnEntry(InWidgetToFocus)
 			, OnGetSelectedAssetsFromPicker(InOnGetSelectedAssetsFromPicker)
 			, OnSelectionConfirmed(InOnSelecitonConfirmed)
 		{
@@ -50,7 +47,7 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs, FName InSaveConfigKey, FText AssetTypeDisplayName, TArray<FNiagaraNewAssetDialogOption> InOptions);
-	void ShowAssetPicker();
+	void GetAssetPicker();
 	void ResetStage();
 	bool GetUserConfirmedSelection() const;
 
@@ -58,8 +55,6 @@ protected:
 	const TArray<FAssetData>& GetSelectedAssets() const;
 
 	void ConfirmSelection();
-	void ConfirmSelection(const FAssetData& AssetData);
-
 	int32 GetSelectedObjectIndex() const { return SelectedOptionIndex; };
 
 protected:
@@ -70,7 +65,6 @@ private:
 	void OnWindowClosed(const TSharedRef<SWindow>& Window);
 
 	FSlateColor GetOptionBorderColor(int32 OptionIndex) const;
-	FReply OnOptionDoubleClicked(const FGeometry& Geometry, const FPointerEvent& PointerEvent, int32 OptionIndex);
 
 	ECheckBoxState GetOptionCheckBoxState(int32 OptionIndex) const;
 
@@ -86,7 +80,6 @@ private:
 
 private:
 	FName SaveConfigKey;
-	TSharedPtr<SWizard> Wizard;
 	TArray<FNiagaraNewAssetDialogOption> Options;
 	int32 SelectedOptionIndex;
 	bool bUserConfirmedSelection;

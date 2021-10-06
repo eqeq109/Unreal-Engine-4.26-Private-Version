@@ -7,7 +7,6 @@
 #include "INiagaraMergeManager.h"
 #include "NiagaraTypes.h"
 #include "NiagaraCommon.h"
-#include "NiagaraMessages.h"
 
 #include "Templates/SharedPointer.h"
 #include "UObject/WeakObjectPtr.h"
@@ -100,13 +99,12 @@ public:
 
 	void GatherFunctionCallNodes(TArray<UNiagaraNodeFunctionCall*>& OutFunctionCallNodes) const;
 
-	const TArray<FNiagaraStackMessage>& GetMessages() const;
-
 private:
 	TWeakObjectPtr<UNiagaraScript> OwningScript;
 	TWeakObjectPtr<UNiagaraNodeFunctionCall> FunctionCallNode;
 	int32 StackIndex;
 	bool bUsesScratchPadScript;
+
 	TArray<TSharedRef<FNiagaraStackFunctionInputOverrideMergeAdapter>> InputOverrides;
 };
 
@@ -167,8 +165,8 @@ private:
 class FNiagaraSimulationStageMergeAdapter
 {
 public:
-	FNiagaraSimulationStageMergeAdapter(const UNiagaraEmitter& InEmitter, const UNiagaraSimulationStageBase* InSimulationStage, int32 InSimulationStageIndex, UNiagaraNodeOutput* InOutputNode);
-	FNiagaraSimulationStageMergeAdapter(const UNiagaraEmitter& InEmitter, UNiagaraSimulationStageBase* InSimulationStage, int32 InSimulationStageIndex, UNiagaraNodeOutput* InOutputNode);
+	FNiagaraSimulationStageMergeAdapter(const UNiagaraEmitter& InEmitter, const UNiagaraSimulationStageBase* InSimulationStage, UNiagaraNodeOutput* InOutputNode);
+	FNiagaraSimulationStageMergeAdapter(const UNiagaraEmitter& InEmitter, UNiagaraSimulationStageBase* InSimulationStage, UNiagaraNodeOutput* InOutputNode);
 	FNiagaraSimulationStageMergeAdapter(const UNiagaraEmitter& InEmitter, UNiagaraNodeOutput* InOutputNode);
 
 	FGuid GetUsageId() const;
@@ -177,11 +175,10 @@ public:
 	UNiagaraSimulationStageBase* GetEditableSimulationStage() const;
 	UNiagaraNodeOutput* GetOutputNode() const;
 	UNiagaraNodeInput* GetInputNode() const;
-	int32 GetSimulationStageIndex() const;
 	TSharedPtr<FNiagaraScriptStackMergeAdapter> GetSimulationStageStack() const;
 
 private:
-	void Initialize(const UNiagaraEmitter& InEmitter, const UNiagaraSimulationStageBase* InSimulationStage, UNiagaraSimulationStageBase* InEditableSimulationStage, int32 InSimulationStageIndex, UNiagaraNodeOutput* InOutputNode);
+	void Initialize(const UNiagaraEmitter& InEmitter, const UNiagaraSimulationStageBase* InSimulationStage, UNiagaraSimulationStageBase* InEditableSimulationStage, UNiagaraNodeOutput* InOutputNode);
 
 private:
 	TWeakObjectPtr<UNiagaraEmitter> Emitter;
@@ -189,7 +186,6 @@ private:
 	UNiagaraSimulationStageBase* EditableSimulationStage;
 	TWeakObjectPtr<UNiagaraNodeOutput> OutputNode;
 	TWeakObjectPtr<UNiagaraNodeInput> InputNode;
-	int32 SimulationStageIndex;
 
 	TSharedPtr<FNiagaraScriptStackMergeAdapter> SimulationStageStack;
 };
@@ -268,11 +264,6 @@ private:
 	TWeakObjectPtr<const UNiagaraEmitterEditorData> EditorData;
 };
 
-struct FNiagaraStackFunctionMessageData
-{
-	TSharedPtr<FNiagaraStackFunctionMergeAdapter> Function;
-	FNiagaraStackMessage StackMessage;
-};
 struct FNiagaraScriptStackDiffResults
 {
 	FNiagaraScriptStackDiffResults();
@@ -291,15 +282,9 @@ struct FNiagaraScriptStackDiffResults
 	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> MovedBaseModules;
 	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> MovedOtherModules;
 
-	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> ChangedVersionBaseModules;
-	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> ChangedVersionOtherModules;
-
 	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> EnabledChangedBaseModules;
 	TArray<TSharedRef<FNiagaraStackFunctionMergeAdapter>> EnabledChangedOtherModules;
 
-	TArray<FNiagaraStackFunctionMessageData> AddedOtherMessages;
-	TArray<FNiagaraStackFunctionMessageData> RemovedBaseMessagesInOther;
-	
 	TArray<TSharedRef<FNiagaraStackFunctionInputOverrideMergeAdapter>> RemovedBaseInputOverrides;
 	TArray<TSharedRef<FNiagaraStackFunctionInputOverrideMergeAdapter>> AddedOtherInputOverrides;
 	TArray<TSharedRef<FNiagaraStackFunctionInputOverrideMergeAdapter>> ModifiedBaseInputOverrides;
@@ -342,7 +327,6 @@ struct FNiagaraEmitterDiffResults
 	const TArray<FText>& GetErrorMessages() const;
 
 	FString GetErrorMessagesString() const;
-	bool HasVersionChanges() const;
 
 	TArray<FProperty*> DifferentEmitterProperties;
 
@@ -393,8 +377,6 @@ public:
 	};
 
 public:
-	void UpdateModuleVersions(UNiagaraEmitter& Instance, const FNiagaraEmitterDiffResults& EmitterDiffResults) const;
-	
 	virtual INiagaraMergeManager::FMergeEmitterResults MergeEmitter(UNiagaraEmitter& Parent, UNiagaraEmitter* ParentAtLastMerge, UNiagaraEmitter& Instance) const override;
 
 	static TSharedRef<FNiagaraScriptMergeManager> Get();

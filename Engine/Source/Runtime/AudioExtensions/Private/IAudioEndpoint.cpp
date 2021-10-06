@@ -4,13 +4,6 @@
 
 DEFINE_LOG_CATEGORY(LogAudioEndpoints);
 
-TUniquePtr<IAudioEndpointSettingsProxy> UDummyEndpointSettings::GetProxy() const
-{
-	FDummyEndpointSettingsProxy* Settings = new FDummyEndpointSettingsProxy();
-
-	return TUniquePtr<IAudioEndpointSettingsProxy>(Settings);
-}
-
 Audio::FPatchInput IAudioEndpoint::PatchNewInput(float ExpectedDurationPerRender, float& OutSampleRate, int32& OutNumChannels)
 {
 	OutSampleRate = GetSampleRate();
@@ -45,21 +38,6 @@ void IAudioEndpoint::ProcessAudioIfNeccessary()
 	{
 		RunCallbackSynchronously();
 	}
-}
-
-bool IAudioEndpoint::IsImplemented()
-{
-	return false;
-}
-
-float IAudioEndpoint::GetSampleRate() const
-{
-	return 0;
-}
-
-int32 IAudioEndpoint::GetNumChannels() const
-{
-	return 0;
 }
 
 int32 IAudioEndpoint::PopAudio(float* OutAudio, int32 NumSamples)
@@ -125,11 +103,6 @@ void IAudioEndpoint::RunCallbackSynchronously()
 	}
 }
 
-FName IAudioEndpointFactory::GetEndpointTypeName() 
-{ 
-	return FName(); 
-}
-
 FName IAudioEndpointFactory::GetTypeNameForDefaultEndpoint()
 {
 	static FName DefaultEndpointName = FName(TEXT("Default Endpoint"));
@@ -169,9 +142,8 @@ IAudioEndpointFactory* IAudioEndpointFactory::Get(const FName& InName)
 		}
 	}
 
-	//If we got here, we're probably dealing with a platform-specific endpoint on a platform its not enabled for, so we'll want to mute it
 	UE_LOG(LogAudioEndpoints, Display, TEXT("No endpoint implementation for %s found for this platform. Endpoint Submixes set to this type will not do anything."), *InName.ToString());
-	return GetDummyFactory();
+	return nullptr;
 }
 
 TArray<FName> IAudioEndpointFactory::GetAvailableEndpointTypes()
@@ -187,25 +159,4 @@ TArray<FName> IAudioEndpointFactory::GetAvailableEndpointTypes()
 	}
 
 	return SoundfieldFormatNames;
-}
-
-TUniquePtr<IAudioEndpoint> IAudioEndpointFactory::CreateNewEndpointInstance(const FAudioPluginInitializationParams& InitInfo, const IAudioEndpointSettingsProxy& InitialSettings)
-{
-	return TUniquePtr<IAudioEndpoint>(new IAudioEndpoint());
-}
-
-UClass* IAudioEndpointFactory::GetCustomSettingsClass() const
-{
-	return nullptr;
-}
-
-const UAudioEndpointSettingsBase* IAudioEndpointFactory::GetDefaultSettings() const
-{
-	return GetDefault<UDummyEndpointSettings>();
-}
-
-IAudioEndpointFactory* IAudioEndpointFactory::GetDummyFactory()
-{
-	static IAudioEndpointFactory DummyFactory = IAudioEndpointFactory();
-	return &DummyFactory;
 }

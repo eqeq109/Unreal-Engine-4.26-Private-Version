@@ -15,22 +15,22 @@ struct FOculusMR_PlaneMeshTriangle
     GENERATED_USTRUCT_BODY()
 
     UPROPERTY()
-    FVector Vertex0 = FVector(0.0f);
+    FVector Vertex0;
 
     UPROPERTY()
-    FVector2D UV0 = FVector2D(0.0f);
+    FVector2D UV0;
 
     UPROPERTY()
-    FVector Vertex1 = FVector(0.0f);
+    FVector Vertex1;
 
     UPROPERTY()
-    FVector2D UV1 = FVector2D(0.0f);
+    FVector2D UV1;
 
     UPROPERTY()
-    FVector Vertex2 = FVector(0.0f);
+    FVector Vertex2;
 
     UPROPERTY()
-    FVector2D UV2 = FVector2D(0.0f);
+    FVector2D UV2;
 };
 
 /** Component that allows you to specify custom triangle mesh geometry */

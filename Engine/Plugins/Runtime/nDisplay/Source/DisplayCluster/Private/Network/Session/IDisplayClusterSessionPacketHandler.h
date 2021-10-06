@@ -10,7 +10,8 @@ template <typename TPacketType, bool bIsBidirectional>
 class IDisplayClusterSessionPacketHandler
 {
 public:
-	virtual ~IDisplayClusterSessionPacketHandler() = default;
+	virtual ~IDisplayClusterSessionPacketHandler()
+	{ }
 
 public:
 	// Kind of hack to avoid any problems with 'void' in the templates

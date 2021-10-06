@@ -187,10 +187,11 @@ bool FEnumProperty::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data,
 	}
 	else
 	{
-		Ar.SerializeBits(Data, GetMaxNetSerializeBits());
+        const uint64 MaxBits = ElementSize * 8;
+        const uint64 DesiredBits = FMath::CeilLogTwo64(Enum->GetMaxEnumValue() + 1);
+		Ar.SerializeBits(Data, FMath::Min(DesiredBits, MaxBits));
 	}
-
-	return true;
+	return 1;
 }
 
 void FEnumProperty::Serialize( FArchive& Ar )
@@ -238,17 +239,7 @@ FString FEnumProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFla
 
 void FEnumProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
 {
-	if (Enum == nullptr)
-	{
-		UE_LOG(
-			LogClass,
-			Warning,
-			TEXT("Member 'Enum' of %s is nullptr, export operation would fail. This can occur when the enum class has been moved or deleted."),
-			*GetFullName()
-		);
-		return;
-	}
-
+	check(Enum);
 	check(UnderlyingProp);
 
 	FNumericProperty* LocalUnderlyingProp = UnderlyingProp;
@@ -494,14 +485,6 @@ void FEnumProperty::GetInnerFields(TArray<FField*>& OutFields)
 		OutFields.Add(UnderlyingProp);
 		UnderlyingProp->GetInnerFields(OutFields);
 	}
-}
-
-uint64 FEnumProperty::GetMaxNetSerializeBits() const
-{
-	const uint64 MaxBits = ElementSize * 8;
-	const uint64 DesiredBits = FMath::CeilLogTwo64(Enum->GetMaxEnumValue() + 1);
-	
-	return FMath::Min(DesiredBits, MaxBits);
 }
 
 #include "UObject/DefineUPropertyMacros.h"

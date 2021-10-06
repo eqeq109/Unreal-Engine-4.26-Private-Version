@@ -3,7 +3,6 @@
 #include "GroomManager.h"
 #include "HairStrandsMeshProjection.h"
 
-#include "GeometryCacheComponent.h"
 #include "GPUSkinCache.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Rendering/SkinWeightVertexBuffer.h"
@@ -158,26 +157,19 @@ static void RunInternalHairStrandsInterpolation(
 		check(Instance->HairGroupPublicData);
 
 		FCachedGeometry CachedGeometry;
-		if (Instance->Debug.GroomBindingType == EGroomBindingMeshType::SkeletalMesh)
+		if (Instance->Debug.SkeletalComponent)
 		{
-			if (USkeletalMeshComponent* SkeletalMeshComponent = Cast<USkeletalMeshComponent>(Instance->Debug.MeshComponent))
+			if (SkinCache)
 			{
-				if (SkinCache)
-				{
-					CachedGeometry = SkinCache->GetCachedGeometry(SkeletalMeshComponent->ComponentId.PrimIDValue);
-				}
-
-				if (IsHairStrandsSkinCacheEnable() && CachedGeometry.Sections.Num() == 0)
-				{
-					//#hair_todo: Need to have a (frame) cache to insure that we don't recompute the same projection several time
-					// Actual populate the cache with only the needed part basd on the groom projection data. At the moment it recompute everything ...
-					BuildCacheGeometry(GraphBuilder, ShaderMap, SkeletalMeshComponent, CachedGeometry);
-				}
+				CachedGeometry = SkinCache->GetCachedGeometry(Instance->Debug.SkeletalComponent->ComponentId.PrimIDValue);
 			}
-		}
-		else if (UGeometryCacheComponent* GeometryCacheComponent = Cast<UGeometryCacheComponent>(Instance->Debug.MeshComponent))
-		{
-			BuildCacheGeometry(GraphBuilder, ShaderMap, GeometryCacheComponent, CachedGeometry);
+
+			if (IsHairStrandsSkinCacheEnable() && CachedGeometry.Sections.Num() == 0)
+			{
+				//#hair_todo: Need to have a (frame) cache to insure that we don't recompute the same projection several time
+				// Actual populate the cache with only the needed part basd on the groom projection data. At the moment it recompute everything ...
+				BuildCacheGeometry(GraphBuilder, ShaderMap, Instance->Debug.SkeletalComponent, CachedGeometry);
+			}
 		}
 		if (CachedGeometry.Sections.Num() == 0)
 			continue;
@@ -210,22 +202,6 @@ static void RunInternalHairStrandsInterpolation(
 							MeshDataLOD, 
 							Instance->Strands.RestRootResource, 
 							Instance->Strands.DeformedRootResource);
-
-						AddHairStrandUpdatePositionOffsetPass(
-							GraphBuilder,
-							ShaderMap,
-							MeshLODIndex,
-							Instance->Strands.DeformedRootResource,
-							Instance->Strands.DeformedResource);
-					}
-					else if (Instance->Strands.HasValidData())
-					{
-						AddHairStrandUpdatePositionOffsetPass(
-							GraphBuilder,
-							ShaderMap,
-							MeshLODIndex,
-							nullptr,
-							Instance->Strands.DeformedResource);
 					}
 				}
 				else if (InstanceGeometryType == EHairGeometryType::Cards)
@@ -244,22 +220,6 @@ static void RunInternalHairStrandsInterpolation(
 								MeshDataLOD,
 								CardsInstance.Guides.RestRootResource,
 								CardsInstance.Guides.DeformedRootResource);
-
-							AddHairStrandUpdatePositionOffsetPass(
-								GraphBuilder,
-								ShaderMap,
-								MeshLODIndex,
-								CardsInstance.Guides.DeformedRootResource,
-								CardsInstance.Guides.DeformedResource);
-						}
-						else if (CardsInstance.Guides.IsValid())
-						{
-							AddHairStrandUpdatePositionOffsetPass(
-								GraphBuilder,
-								ShaderMap,
-								MeshLODIndex,
-								nullptr,
-								CardsInstance.Guides.DeformedResource);
 						}
 					}
 				}
@@ -301,22 +261,6 @@ static void RunInternalHairStrandsInterpolation(
 							Instance->Guides.RestRootResource,
 							Instance->Guides.DeformedRootResource);
 					}
-
-					AddHairStrandUpdatePositionOffsetPass(
-						GraphBuilder,
-						ShaderMap,
-						Instance->Debug.MeshLODIndex,
-						Instance->Guides.DeformedRootResource,
-						Instance->Guides.DeformedResource);
-				}
-				else if (Instance->Guides.IsValid())
-				{
-					AddHairStrandUpdatePositionOffsetPass(
-						GraphBuilder,
-						ShaderMap,
-						Instance->Debug.MeshLODIndex,
-						nullptr,
-						Instance->Guides.DeformedResource);
 				}
 			}
 		}

@@ -55,6 +55,7 @@ public:
 			.OnValueCommitted(this, &SNumericKeyEditor::OnValueCommitted)
 			.OnBeginSliderMovement(this, &SNumericKeyEditor::OnBeginSliderMovement)
 			.OnEndSliderMovement(this, &SNumericKeyEditor::OnEndSliderMovement)
+			.ClearKeyboardFocusOnCommit(true)
 		];
 	}
 

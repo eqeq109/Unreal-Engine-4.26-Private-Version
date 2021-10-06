@@ -134,23 +134,3 @@ void FTreeItem::SortChildrenIfNeeded()
 		bChildrenRequireSort = false;
 	}
 }
-
-bool FTreeItem::IsDisplayOnlyFolder() const
-{
-	return GetItem().IsDisplayOnlyFolder();
-}
-
-void FTreeItem::ExpandToNonDisplayOnlyFolders(TArray<TSharedPtr<FTreeItem>>& OutTreeItems)
-{
-	if (!IsDisplayOnlyFolder())
-	{
-		OutTreeItems.Add(SharedThis(this));
-		return;
-	}
-
-	for (const TSharedPtr<FTreeItem>& Child : Children)
-	{
-		Child->ExpandToNonDisplayOnlyFolders(OutTreeItems);
-	}
-}
-

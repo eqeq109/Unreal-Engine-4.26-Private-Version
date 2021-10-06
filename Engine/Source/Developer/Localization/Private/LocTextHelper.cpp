@@ -377,9 +377,8 @@ void FLocTextWordCounts::SortRowsByDate()
 }
 
 
-FLocTextHelper::FLocTextHelper(FString InTargetName, TSharedPtr<ILocFileNotifies> InLocFileNotifies, const ELocTextPlatformSplitMode InPlatformSplitMode)
+FLocTextHelper::FLocTextHelper(TSharedPtr<ILocFileNotifies> InLocFileNotifies, const ELocTextPlatformSplitMode InPlatformSplitMode)
 	: PlatformSplitMode(InPlatformSplitMode)
-	, TargetName(MoveTemp(InTargetName))
 	, LocFileNotifies(MoveTemp(InLocFileNotifies))
 {
 }
@@ -531,22 +530,26 @@ void FLocTextHelper::TrimManifest()
 				{
 					if (!(DependencyEntry->Source.IsExactMatch(ManifestEntry->Source)))
 					{
+						// There is a dependency manifest entry that has the same namespace and keys as our main manifest entry but the source text differs.
+						FString Message = SanitizeLogOutput(
+							FString::Printf(TEXT("Found previously entered localized string [%s] %s %s=\"%s\" %s. It was previously \"%s\" %s in dependency manifest %s."),
+								*ManifestEntry->Namespace.GetString(),
+								*Context.Key.GetString(),
+								*FJsonInternationalizationMetaDataSerializer::MetadataToString(Context.KeyMetadataObj),
+								*ManifestEntry->Source.Text,
+								*FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj),
+								*DependencyEntry->Source.Text,
+								*FJsonInternationalizationMetaDataSerializer::MetadataToString(DependencyEntry->Source.MetadataObj),
+								*DependencyFileName
+								)
+							);
+						UE_LOG(LogLocTextHelper, Warning, TEXT("%s"), *Message);
+
+						ConflictTracker.AddConflict(ManifestEntry->Namespace, Context.Key, Context.KeyMetadataObj, ManifestEntry->Source, *Context.SourceLocation);
+
 						const FManifestContext* ConflictingContext = DependencyEntry->FindContext(Context.Key, Context.KeyMetadataObj);
 						const FString DependencyEntryFullSrcLoc = (!DependencyFileName.IsEmpty()) ? DependencyFileName : ConflictingContext->SourceLocation;
 
-						// There is a dependency manifest entry that has the same namespace and keys as our main manifest entry but the source text differs.
-						UE_LOG(LogLocTextHelper, Warning, TEXT("Text conflict for namespace \"%s\" and key \"%s\"%s. The conflicting sources are \"%s\"%s and \"%s\"%s (from manifest dependency \"%s\")."),
-							*SanitizeLogOutput(ManifestEntry->Namespace.GetString()),
-							*SanitizeLogOutput(Context.Key.GetString()),
-							(Context.KeyMetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(Context.KeyMetadataObj))) : TEXT("")),
-							*SanitizeLogOutput(ManifestEntry->Source.Text),
-							(ManifestEntry->Source.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj))) : TEXT("")),
-							*SanitizeLogOutput(DependencyEntry->Source.Text),
-							(DependencyEntry->Source.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(DependencyEntry->Source.MetadataObj))) : TEXT("")),
-							*DependencyFileName
-							);
-						
-						ConflictTracker.AddConflict(ManifestEntry->Namespace, Context.Key, Context.KeyMetadataObj, ManifestEntry->Source, *Context.SourceLocation);
 						ConflictTracker.AddConflict(ManifestEntry->Namespace, Context.Key, Context.KeyMetadataObj, DependencyEntry->Source, DependencyEntryFullSrcLoc);
 					}
 				}
@@ -556,13 +559,11 @@ void FLocTextHelper::TrimManifest()
 					const bool bAddSuccessful = TrimmedManifest->AddSource(ManifestEntry->Namespace, ManifestEntry->Source, Context);
 					if (!bAddSuccessful)
 					{
-						UE_LOG(LogLocTextHelper, Error, TEXT("Failed to add text for namespace \"%s\" and key \"%s\"%s with source \"%s\"%s from manifest dependency \"%s\"."),
+						UE_LOG(LogLocTextHelper, Error, TEXT("Could not process localized string: %s [%s] %s=\"%s\" %s."),
 							*ManifestEntry->Namespace.GetString(),
 							*Context.Key.GetString(),
-							(Context.KeyMetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(Context.KeyMetadataObj)) : TEXT("")),
 							*ManifestEntry->Source.Text,
-							(ManifestEntry->Source.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj)) : TEXT("")),
-							*DependencyFileName
+							*FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj)
 							);
 					}
 				}
@@ -870,18 +871,20 @@ bool FLocTextHelper::AddSourceText(const FLocKey& InNamespace, const FLocItem& I
 			const FManifestContext* ConflictingContext = ExistingEntry->FindContext(InContext.Key, InContext.KeyMetadataObj);
 			const FString& ExistingEntrySourceLocation = (!ExistingEntryFileName.IsEmpty()) ? ExistingEntryFileName : ConflictingContext->SourceLocation;
 
-			UE_LOG(LogLocTextHelper, Warning, TEXT("Text conflict%s for namespace \"%s\" and key \"%s\"%s at \"%s\" and \"%s\". The conflicting sources are \"%s\"%s and \"%s\"%s."), 
-				(InDescription ? *FString::Printf(TEXT(" from %s"), **InDescription) : TEXT("")),
-				*SanitizeLogOutput(InNamespace.GetString()),
-				*SanitizeLogOutput(InContext.Key.GetString()),
-				(InContext.KeyMetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(InContext.KeyMetadataObj))) : TEXT("")),
-				*InContext.SourceLocation,
-				*ExistingEntrySourceLocation,
-				*SanitizeLogOutput(InSource.Text),
-				(InSource.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(InSource.MetadataObj))) : TEXT("")),
-				*SanitizeLogOutput(ExistingEntry->Source.Text),
-				(ExistingEntry->Source.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *SanitizeLogOutput(FJsonInternationalizationMetaDataSerializer::MetadataToString(ExistingEntry->Source.MetadataObj))) : TEXT(""))
+			FString Message = SanitizeLogOutput(
+				FString::Printf(TEXT("Found previously entered localized string: %s [%s] %s %s=\"%s\" %s. It was previously \"%s\" %s in %s."),
+					(InDescription ? **InDescription : *FString()),
+					*InNamespace.GetString(),
+					*InContext.Key.GetString(),
+					*FJsonInternationalizationMetaDataSerializer::MetadataToString(InContext.KeyMetadataObj),
+					*InSource.Text,
+					*FJsonInternationalizationMetaDataSerializer::MetadataToString(InSource.MetadataObj),
+					*ExistingEntry->Source.Text,
+					*FJsonInternationalizationMetaDataSerializer::MetadataToString(ExistingEntry->Source.MetadataObj),
+					*ExistingEntrySourceLocation
+					)
 				);
+			UE_LOG(LogLocTextHelper, Warning, TEXT("%s"), *Message);
 
 			ConflictTracker.AddConflict(InNamespace, InContext.Key, InContext.KeyMetadataObj, InSource, InContext.SourceLocation);
 			ConflictTracker.AddConflict(InNamespace, InContext.Key, InContext.KeyMetadataObj, ExistingEntry->Source, ExistingEntrySourceLocation);
@@ -892,14 +895,12 @@ bool FLocTextHelper::AddSourceText(const FLocKey& InNamespace, const FLocItem& I
 		bAddSuccessful = Manifest->AddSource(InNamespace, InSource, InContext);
 		if (!bAddSuccessful)
 		{
-			UE_LOG(LogLocTextHelper, Error, TEXT("Failed to add text%s for namespace \"%s\" and key \"%s\"%s from \"%s\" with source \"%s\"%s."),
-				(InDescription ? *FString::Printf(TEXT(" from %s"), **InDescription) : TEXT("")),
+			UE_LOG(LogLocTextHelper, Error, TEXT("Could not process localized string: %s [%s] %s=\"%s\" %s."),
+				(InDescription ? **InDescription : *FString()),
 				*InNamespace.GetString(),
 				*InContext.Key.GetString(),
-				(InContext.KeyMetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(InContext.KeyMetadataObj)) : TEXT("")),
-				*InContext.SourceLocation,
 				*InSource.Text,
-				(InSource.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(InSource.MetadataObj)) : TEXT(""))
+				*FJsonInternationalizationMetaDataSerializer::MetadataToString(InSource.MetadataObj)
 				);
 		}
 	}
@@ -1300,26 +1301,14 @@ bool FLocTextHelper::SaveWordCountReport(const FDateTime& InTimestamp, const FSt
 	return bSaved;
 }
 
-FString FLocTextHelper::SanitizeLogOutput(FStringView InString)
+FString FLocTextHelper::SanitizeLogOutput(const FString& InString)
 {
-	return SanitizeLogOutput(FString(InString));
-}
-
-FString FLocTextHelper::SanitizeLogOutput(FString&& ResultStr)
-{
-	if (ResultStr.IsEmpty())
+	if (!GIsBuildMachine || InString.IsEmpty())
 	{
-		return MoveTemp(ResultStr);
+		return InString;
 	}
 
-	ResultStr.ReplaceCharWithEscapedCharInline();
-
-	if (!GIsBuildMachine)
-	{
-		return MoveTemp(ResultStr);
-	}
-
-	static const TCHAR* ErrorStrs[] = {
+	static const FString ErrorStrs[] = {
 		TEXT("Error"),
 		TEXT("Failed"),
 		TEXT("[BEROR]"),
@@ -1353,26 +1342,16 @@ FString FLocTextHelper::SanitizeLogOutput(FString&& ResultStr)
 		TEXT("can't edit exclusive file already opened"),
 	};
 
-	static const TArray<FString> ReplacementStrings = []()
-	{
-		TArray<FString> TmpReplacementStrings;
-		TmpReplacementStrings.Reserve(UE_ARRAY_COUNT(ErrorStrs));
-		for (const TCHAR* ErrorStr : ErrorStrs)
-		{
-			FString ReplacementStr = TmpReplacementStrings.Add_GetRef(ErrorStr);
-			ReplacementStr.InsertAt(1, TEXT(' '));
-		}
-		return TmpReplacementStrings;
-	}();
+	FString ResultStr = InString.ReplaceCharWithEscapedChar();
 
-	check(UE_ARRAY_COUNT(ErrorStrs) == ReplacementStrings.Num());
-
-	for (int32 ErrorIndex = 0; ErrorIndex < UE_ARRAY_COUNT(ErrorStrs); ++ErrorIndex)
+	for (const FString& ErrorStr : ErrorStrs)
 	{
-		ResultStr.ReplaceInline(ErrorStrs[ErrorIndex], *ReplacementStrings[ErrorIndex]);
+		FString ReplaceStr = FString::Printf(TEXT("%s %s"), *ErrorStr.Left(1), *ErrorStr.RightChop(1));
+
+		ResultStr.ReplaceInline(*ErrorStr, *ReplaceStr);
 	}
 
-	return MoveTemp(ResultStr);
+	return ResultStr;
 }
 
 bool FLocTextHelper::FindKeysForLegacyTranslation(const FString& InCulture, const FLocKey& InNamespace, const FString& InSource, const TSharedPtr<FLocMetadataObject> InKeyMetadataObj, TArray<FLocKey>& OutKeys) const
@@ -1593,13 +1572,11 @@ bool FLocTextHelper::SaveManifestImpl(const TSharedRef<const FInternationalizati
 
 					if (!ManifestToUpdate->AddSource(ManifestEntry->Namespace, ManifestEntry->Source, Context))
 					{
-						UE_LOG(LogLocTextHelper, Error, TEXT("Failed to add text for namespace \"%s\" and key \"%s\"%s with source \"%s\"%s%s."),
+						UE_LOG(LogLocTextHelper, Error, TEXT("Could not process localized string: %s [%s] %s=\"%s\" %s."),
 							*ManifestEntry->Namespace.GetString(),
 							*Context.Key.GetString(),
-							(Context.KeyMetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(Context.KeyMetadataObj)) : TEXT("")),
 							*ManifestEntry->Source.Text,
-							(ManifestEntry->Source.MetadataObj ? *FString::Printf(TEXT(" (meta-data \"%s\")"), *FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj)) : TEXT("")),
-							(Context.PlatformName.IsNone() ? TEXT("") : *FString::Printf(TEXT(" for platform \"%s\""), *Context.PlatformName.ToString()))
+							*FJsonInternationalizationMetaDataSerializer::MetadataToString(ManifestEntry->Source.MetadataObj)
 							);
 					}
 				}

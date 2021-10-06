@@ -103,17 +103,8 @@ struct FMovieSceneEvaluationFieldEntityMetaData
 
 	friend bool operator==(const FMovieSceneEvaluationFieldEntityMetaData& A, const FMovieSceneEvaluationFieldEntityMetaData& B)
 	{
-		return A.ForcedTime == B.ForcedTime && 
-			A.InterrogationChannel == B.InterrogationChannel && 
-			A.Flags == B.Flags && 
-			A.bEvaluateInSequencePreRoll == B.bEvaluateInSequencePreRoll && 
-			A.bEvaluateInSequencePostRoll == B.bEvaluateInSequencePostRoll &&
-			A.OverrideBoundPropertyPath == B.OverrideBoundPropertyPath;
+		return A.ForcedTime == B.ForcedTime && A.InterrogationChannel == B.InterrogationChannel && A.Flags == B.Flags && A.bEvaluateInSequencePreRoll == B.bEvaluateInSequencePreRoll && A.bEvaluateInSequencePostRoll == B.bEvaluateInSequencePostRoll;
 	}
-
-	/** Opt-in - when this value is set, the entity should use this property path instead of the one defined on its generating section */
-	UPROPERTY()
-	FString OverrideBoundPropertyPath;
 
 	UPROPERTY()
 	FFrameNumber ForcedTime;
@@ -288,8 +279,6 @@ private:
  */
 struct MOVIESCENE_API FMovieSceneEntityComponentFieldBuilder
 {
-	static constexpr uint32 InvalidEntityID = ~0u;
-
 	/**
 	 * Construction from a field to populate
 	 */
@@ -493,7 +482,7 @@ struct FMovieSceneFieldEntry_EvaluationTrack
 	FMovieSceneEvaluationFieldTrackPtr TrackPtr;
 
 	UPROPERTY()
-	uint16 NumChildren = 0;
+	uint16 NumChildren;
 };
 
 USTRUCT()
@@ -572,10 +561,10 @@ struct FMovieSceneOrderedEvaluationKey
 	FMovieSceneEvaluationKey Key;
 
 	UPROPERTY()
-	uint16 SetupIndex = 0;
+	uint16 SetupIndex;
 
 	UPROPERTY()
-	uint16 TearDownIndex = 0;
+	uint16 TearDownIndex;
 };
 
 /** Informational meta-data that applies to a given time range */

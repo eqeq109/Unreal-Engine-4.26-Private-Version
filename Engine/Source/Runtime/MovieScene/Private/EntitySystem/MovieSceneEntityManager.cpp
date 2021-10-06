@@ -10,7 +10,6 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Containers/SortedMap.h"
 
-#include "HAL/PlatformProcess.h"
 #include "Misc/FeedbackContext.h"
 
 #include "EntitySystem/EntityAllocationIterator.h"
@@ -151,7 +150,7 @@ struct FEntityInitializer
 
 	static FEntityAllocation* Initialize(const FEntityManager& EntityManager, const FComponentMask& EntityComponentMask, const FEntityAllocationInitializationInfo& InitInfo)
 	{
-		const FEntityAllocationWriteContext WriteContext(EntityManager);
+		const uint64 CurrentSystemSerialNumber = EntityManager.GetSystemSerial();
 		check(IsValidUint16(InitInfo.NumComponents));
 
 		// Compute the size that we need: struct size + component headers array + entity IDs array.
@@ -170,7 +169,7 @@ struct FEntityInitializer
 		Allocation->Size = 0;
 		Allocation->Capacity = InitInfo.InitialCapacity;
 		Allocation->MaxCapacity = InitInfo.MaxCapacity;
-		Allocation->SerialNumber = WriteContext.GetSystemSerial();
+		Allocation->SerialNumber = CurrentSystemSerialNumber;
 
 		// Fixup pointer offsets:
 		//
@@ -216,7 +215,7 @@ struct FEntityInitializer
 
 				Header->ComponentType = ComponentTypeID;
 				Header->Sizeof = TypeInfo.Sizeof;
-				Header->PostWriteComponents(WriteContext);
+				Header->PostWriteComponents(CurrentSystemSerialNumber);
 				if (TypeInfo.IsTag())
 				{
 					Header->Components = nullptr;
@@ -542,11 +541,9 @@ bool FEntityManager::IsHandleValid(FEntityHandle InEntityHandle) const
 
 EEntityThreadingModel FEntityManager::GetThreadingModel() const
 {
-	const bool bCanThread = FPlatformProcess::SupportsMultithreading();
-
-	const bool bShouldThread = bCanThread &&
-		(EntityAllocations.Num() >= GThreadedEvaluationAllocationThreshold ||
-		EntityLocations.Num() >= GThreadedEvaluationEntityThreshold);
+	const bool bShouldThread = 
+		EntityAllocations.Num() >= GThreadedEvaluationAllocationThreshold ||
+		EntityLocations.Num() >= GThreadedEvaluationEntityThreshold;
 
 	return bShouldThread ? EEntityThreadingModel::TaskGraph : EEntityThreadingModel::NoThreading;
 }
@@ -607,8 +604,6 @@ int32 FEntityManager::FreeEntities(const FFreeEntityOperation& Operation, TSet<F
 	{
 		return 0;
 	}
-
-	FEntityAllocationWriteContext WriteContext(*this);
 
 	FBuiltInComponentTypes* BuiltInComponents = FBuiltInComponentTypes::Get();
 	FFreeEntityOperation::FCommitData Committed = Operation.Commit();
@@ -681,7 +676,7 @@ int32 FEntityManager::FreeEntities(const FFreeEntityOperation& Operation, TSet<F
 		int32 LastEntityIndex = Num - 1;
 
 		// Modify allocation and headers
-		Allocation->PostModifyStructure(WriteContext);
+		Allocation->PostModifyStructure(SystemSerialNumber);
 
 		// Reverse the set bits so we can iterate backwards
 		const int32 MaskSize = Pair.Value.Mask.Num();
@@ -1439,10 +1434,8 @@ bool FEntityManager::CopyComponent(FMovieSceneEntityID SrcEntityID, FMovieSceneE
 	void* DstValue = DstHeader.GetValuePtr(DstLocation.GetEntryIndexWithinAllocation());
 	const void* SrcValue = SrcHeader.GetValuePtr(SrcLocation.GetEntryIndexWithinAllocation());
 
-	FEntityAllocationWriteContext WriteContext(*this);
-
 	ComponentTypeInfo.CopyItems(DstValue, SrcValue, 1);
-	DstHeader.PostWriteComponents(WriteContext);
+	DstHeader.PostWriteComponents(SystemSerialNumber);
 
 	if (bDidChangeStructure)
 	{
@@ -1606,6 +1599,8 @@ int32 FEntityManager::MutateAll(const FEntityComponentFilter& Filter, const IMov
 {
 	CheckCanChangeStructure();
 
+	check(Filter.IsValid());
+
 	TMap<int32, FComponentMask> AllocationMutations;
 
 	for (int32 AllocationIndex = 0; AllocationIndex < EntityAllocationMasks.GetMaxIndex(); ++AllocationIndex)
@@ -1642,8 +1637,6 @@ int32 FEntityManager::MutateAll(const FEntityComponentFilter& Filter, const IMov
 		EntityAllocationMasks[Pair.Key] = Pair.Value;
 		EntityAllocations[Pair.Key] = NewAllocation;
 
-		Mutation.InitializeAllocation(NewAllocation, Pair.Value);
-
 		DestroyAllocation(SourceAllocation);
 	}
 
@@ -1662,13 +1655,13 @@ void FEntityManager::TouchEntity(FMovieSceneEntityID EntityID)
 		FEntityAllocation* Allocation = GetAllocation(Location.GetAllocationIndex());
 		check(Allocation);
 
-		FEntityAllocationWriteContext WriteContext(*this);
+		const uint64 CurrentSystemSerialNumber = SystemSerialNumber;
 
 		for (FComponentHeader& Header : Allocation->GetComponentHeaders())
 		{
 			if (!Header.IsTag())
 			{
-				Header.PostWriteComponents(WriteContext);
+				Header.PostWriteComponents(CurrentSystemSerialNumber);
 			}
 		}
 	}
@@ -1987,20 +1980,20 @@ int32 FEntityManager::MigrateEntity(int32 DestAllocationIndex, int32 SourceAlloc
 
 	check(SrcOffset < Src->Num() && DstOffset < Dst->Num());
 
-	FEntityAllocationWriteContext WriteContext(*this);
-	Src->PostModifyStructureExcludingHeaders(WriteContext);
-	Dst->PostModifyStructureExcludingHeaders(WriteContext);
+	const uint64 CurrentSystemSerialNumber = SystemSerialNumber;
+	Src->PostModifyStructureExcludingHeaders(CurrentSystemSerialNumber);
+	Dst->PostModifyStructureExcludingHeaders(CurrentSystemSerialNumber);
 
 	// Iterate all destination component types
 	for (int32 DstHeaderOffset = 0; DstHeaderOffset < Dst->GetNumComponentTypes(); ++DstHeaderOffset)
 	{
 		FComponentHeader* DstComponentHeader = &Dst->ComponentHeaders[DstHeaderOffset];
-		DstComponentHeader->PostWriteComponents(WriteContext);
+		DstComponentHeader->PostWriteComponents(CurrentSystemSerialNumber);
 
 		// Try to find a matching source component type
 		while (SrcComponentHeader != SrcLastComponentHeader && SrcComponentHeader->ComponentType.BitIndex() < DstComponentHeader->ComponentType.BitIndex())
 		{
-			SrcComponentHeader->PostWriteComponents(WriteContext);
+			SrcComponentHeader->PostWriteComponents(CurrentSystemSerialNumber);
 			++SrcComponentHeader;
 		}
 
@@ -2077,8 +2070,8 @@ void FEntityManager::CopyComponents(int32 DestAllocationIndex, int32 DestEntityI
 
 	check(SrcOffset < Src->Num() && DstOffset < Dst->Num());
 
-	FEntityAllocationWriteContext WriteContext(*this);
-	Dst->PostModifyStructureExcludingHeaders(WriteContext);
+	const uint64 CurrentSystemSerialNumber = SystemSerialNumber;
+	Dst->PostModifyStructureExcludingHeaders(CurrentSystemSerialNumber);
 
 	// Iterate all source component types
 	for (int32 DstHeaderOffset = 0;  DstHeaderOffset < Dst->GetNumComponentTypes(); ++DstHeaderOffset)
@@ -2089,7 +2082,7 @@ void FEntityManager::CopyComponents(int32 DestAllocationIndex, int32 DestEntityI
 			continue;
 		}
 
-		DstComponentHeader->PostWriteComponents(WriteContext);
+		DstComponentHeader->PostWriteComponents(CurrentSystemSerialNumber);
 
 		// Try to find a matching source component type
 		while (SrcComponentHeader != SrcLastComponentHeader && SrcComponentHeader->ComponentType.BitIndex() < DstComponentHeader->ComponentType.BitIndex())
@@ -2193,12 +2186,12 @@ int32 FEntityManager::AddEntityToAllocation(int32 AllocationIndex, FMovieSceneEn
 	const int32 ActualEntityOffset   = Allocation->Num();
 	FEntityInitializer::AddEntity(Allocation, ActualEntityOffset, ID);
 
-	FEntityAllocationWriteContext WriteContext(*this);
-	Allocation->PostModifyStructureExcludingHeaders(WriteContext);
+	const uint64 CurrentSystemSerialNumber = SystemSerialNumber;
+	Allocation->PostModifyStructureExcludingHeaders(CurrentSystemSerialNumber);
 
 	for (FComponentHeader& Header : Allocation->GetComponentHeaders())
 	{
-		Header.PostWriteComponents(WriteContext);
+		Header.PostWriteComponents(CurrentSystemSerialNumber);
 
 		if (!Header.IsTag())
 		{
@@ -2229,13 +2222,13 @@ void FEntityManager::RemoveEntityFromAllocation(int32 AllocationIndex, int32 Ent
 
 	const bool bHadCapacity = Allocation->Num() != Allocation->GetMaxCapacity();
 
-	FEntityAllocationWriteContext WriteContext(*this);
-	Allocation->PostModifyStructureExcludingHeaders(WriteContext);
+	const uint64 CurrentSystemSerialNumber = SystemSerialNumber;
+	Allocation->PostModifyStructureExcludingHeaders(CurrentSystemSerialNumber);
 
 	// Destruct its components
 	for (FComponentHeader& Header : Allocation->GetComponentHeaders())
 	{
-		Header.PostWriteComponents(WriteContext);
+		Header.PostWriteComponents(CurrentSystemSerialNumber);
 
 		if (Header.IsTag())
 		{

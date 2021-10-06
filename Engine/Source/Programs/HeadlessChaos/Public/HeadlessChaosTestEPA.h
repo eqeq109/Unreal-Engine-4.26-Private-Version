@@ -7,7 +7,9 @@
 
 namespace ChaosTest {
 
+	template <typename T>
 	void EPAInitTest();
 
+	template <typename T>
 	void EPASimpleTest();
 }

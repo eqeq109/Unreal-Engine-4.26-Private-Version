@@ -1077,9 +1077,9 @@ static bool BlueprintActionDatabaseImpl::IsObjectValidForDatabase(UObject const*
 	{
 		bReturn = false;
 	}
-	else if(Object->GetOutermost()->HasAnyPackageFlags(PKG_PlayInEditor | PKG_ForDiffing))
+	else if(Object->GetOutermost()->HasAnyPackageFlags(PKG_PlayInEditor))
 	{
-		// Do not keep track of any PIE/diff objects as they will not exist after those processes finish
+		// Do not keep track of any PIE objects as we may prevent them from being cleaned up when ending PIE
 		bReturn = false;
 	}
 	else if(Object->IsAsset())

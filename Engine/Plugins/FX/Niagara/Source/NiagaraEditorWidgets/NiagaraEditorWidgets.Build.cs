@@ -29,7 +29,6 @@ public class NiagaraEditorWidgets : ModuleRules
 			"Sequencer",
             "EditorWidgets",
 			"ApplicationCore",
-			"CurveEditor",
 		});
 
 		PrivateIncludePathModuleNames.AddRange(new string[] {

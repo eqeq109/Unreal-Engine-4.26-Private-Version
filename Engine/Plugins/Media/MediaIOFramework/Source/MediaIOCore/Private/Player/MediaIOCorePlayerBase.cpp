@@ -333,8 +333,7 @@ bool FMediaIOCorePlayerBase::SetLooping(bool Looping)
 
 bool FMediaIOCorePlayerBase::SetRate(float Rate)
 {
-	//Return true if a proper rate is applied. 
-	return FMath::IsNearlyEqual(Rate, 1.0f);
+	return false;
 }
 
 
@@ -505,19 +504,12 @@ TArray<ITimedDataInputChannel*> FMediaIOCorePlayerBase::GetChannels() const
 
 FText FMediaIOCorePlayerBase::GetDisplayName() const
 {
-	IMediaModule* MediaModule = FModuleManager::Get().GetModulePtr<IMediaModule>("Media");
+	IMediaModule* MediaModule = FModuleManager::Get().GetModulePtr<IMediaModule>("MediaModule");
 	if (!MediaModule)
 	{
-		return LOCTEXT("InvalidMediaModule", "NoMediaModule");
+		return FText::GetEmpty();
 	}
-
-	IMediaPlayerFactory* PlayerFactory = MediaModule->GetPlayerFactory(GetPlayerPluginGUID());
-	if (PlayerFactory == nullptr)
-	{
-		return LOCTEXT("InvalidPlayerFactory", "NoPlayerFactory");
-	}
-
-	return FText::Format(LOCTEXT("PlayerDisplayName", "{0} - {1}"), FText::FromName(PlayerFactory->GetPlayerName()), FText::FromString(GetUrl()));
+	return FText::Format(LOCTEXT("PlayerDisplayName", "{0} - {1}"), FText::FromName(MediaModule->GetPlayerFactory(GetPlayerPluginGUID())->GetPlayerName()), FText::FromString(GetUrl()));
 }
 ETimedDataInputEvaluationType FMediaIOCorePlayerBase::GetEvaluationType() const
 {

@@ -58,7 +58,23 @@ void SSequencerTreeFilterStatusBar::ClearFilters()
 	TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
 	if (Sequencer)
 	{
-		Sequencer->ClearFilters();
+		Sequencer->GetNodeTree()->RemoveAllFilters();
+		Sequencer->GetSequencerSettings()->SetShowSelectedNodesOnly(false);
+
+		UMovieSceneSequence* FocusedMovieSequence = Sequencer->GetFocusedMovieSceneSequence();
+		UMovieScene* FocusedMovieScene = nullptr;
+		if (IsValid(FocusedMovieSequence))
+		{
+			FocusedMovieScene = FocusedMovieSequence->GetMovieScene();
+			if (IsValid(FocusedMovieScene))
+			{
+				for (UMovieSceneNodeGroup* NodeGroup : FocusedMovieScene->GetNodeGroups())
+				{
+					NodeGroup->SetEnableFilter(false);
+				}
+			}
+		}
+
 	}
 }
 

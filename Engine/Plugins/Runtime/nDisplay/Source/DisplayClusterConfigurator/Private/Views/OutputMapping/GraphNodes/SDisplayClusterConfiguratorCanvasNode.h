@@ -8,7 +8,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
 class IDisplayClusterConfiguratorOutputMappingSlot;
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 class FDisplayClusterConfiguratorOutputMappingBuilder;
 class UDisplayClusterConfiguratorCanvasNode;
 class UDisplayClusterConfigurationCluster;
@@ -21,27 +21,26 @@ public:
 	{}
 	SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs, UDisplayClusterConfiguratorCanvasNode* InNode, const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit);
+	void Construct(const FArguments& InArgs, UDisplayClusterConfiguratorCanvasNode* InNode, const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit);
 
 	//~ SGraphNode interface
 	virtual void UpdateGraphNode() override;
-	virtual void MoveTo(const FVector2D& NewPosition, FNodeSet& NodeFilter, bool bMarkDirty = true) override;
-	virtual FVector2D ComputeDesiredSize(float) const override;
-	virtual FVector2D GetPosition() const override;
-	virtual TArray<FOverlayWidgetInfo> GetOverlayWidgets(bool bSelected, const FVector2D& WidgetSize) const override;
+	virtual void SetOwner(const TSharedRef<SGraphPanel>& OwnerPanel) override;
+	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 	//~ End SGraphNode interface
 
 	//~ Begin SDisplayClusterConfiguratorBaseNode interface
-	virtual bool CanNodeBeResized() const { return false; }
+	virtual UObject* GetEditingObject() const override;
+	virtual void OnSelectedItemSet(const TSharedRef<IDisplayClusterConfiguratorTreeItem>& InTreeItem) override;
 	//~ End of SDisplayClusterConfiguratorBaseNode interface
 
-private:
-	const FSlateBrush* GetSelectedBrush() const;
-	FMargin GetBackgroundPosition() const;
-	FText GetCanvasSizeText() const;
+public:
+	const TArray<TSharedPtr<IDisplayClusterConfiguratorOutputMappingSlot>>& GetAllSlots() const;
 
 private:
-	TSharedPtr<SWidget> CanvasSizeTextWidget;
+	TWeakObjectPtr<UDisplayClusterConfiguratorCanvasNode> CanvasNodePtr;
 
-	FMargin CanvasPadding;
+	TWeakObjectPtr<UDisplayClusterConfigurationCluster> CfgClusterPtr;
+
+	TSharedPtr<FDisplayClusterConfiguratorOutputMappingBuilder> OutputMappingBuilder;
 };

@@ -169,6 +169,7 @@ class STEAMSHARED_API FSteamServerInstanceHandler : public FSteamInstanceHandler
 public:
 	virtual ~FSteamServerInstanceHandler() { Destroy(); }
 
+	int32 GetSteamPort() const { return SteamPort; }
 	int32 GetQueryPort() const { return QueryPort; }
 
 PACKAGE_SCOPE:
@@ -176,12 +177,14 @@ PACKAGE_SCOPE:
 	FSteamServerInstanceHandler(FSteamSharedModule* SteamInitializer);
 
 protected:
+	int32 SteamPort;
 	int32 QueryPort;
 	virtual void InternalShutdown() override;
 
 private:
 	FSteamServerInstanceHandler() : 
 		FSteamInstanceHandlerBase(),
+		SteamPort(-1),
 		QueryPort(-1)
 	{
 	}

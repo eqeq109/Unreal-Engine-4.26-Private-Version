@@ -4,114 +4,40 @@
 #include "AssetRegistry/AssetData.h"
 #include "UObject/PropertyPortFlags.h"
 
-IMPLEMENT_STRUCT(AssetBundleData);
-
-
-namespace UE { namespace AssetBundleEntry { namespace Private
+bool FAssetBundleData::SetFromAssetData(const FAssetData& AssetData)
 {
+	FString TagValue;
 
-const FStringView BundleNamePrefix(TEXT("(BundleName=\""));
-const FStringView BundleAssetsPrefix(TEXT(",BundleAssets=("));
-const FStringView BundleAssetsSuffix(TEXT("))"));
-const FStringView BundlesPrefix(TEXT("(Bundles=("));
-const FStringView BundlesSuffix(TEXT("))"));
-const FStringView EmptyBundles(TEXT("(Bundles=)"));
+	// Register that we're reading string assets for a specific package
+	UScriptStruct* AssetBundleDataStruct = TBaseStructure<FAssetBundleData>::Get();
+	FSoftObjectPathSerializationScope SerializationScope(AssetData.PackageName, AssetBundleDataStruct->GetFName(), ESoftObjectPathCollectType::AlwaysCollect, ESoftObjectPathSerializeType::AlwaysSerialize);
 
-static bool SkipPrefix(const TCHAR*& InOutIt, FStringView Prefix)
-{
-	const bool bOk = FStringView(InOutIt, Prefix.Len()) == Prefix;
-	if (bOk)
+	if (AssetData.GetTagValue(AssetBundleDataStruct->GetFName(), TagValue))
 	{
-		InOutIt += Prefix.Len();
-	}
-	return bOk;
-}
-
-}}}
-
-bool FAssetBundleEntry::ExportTextItem(FString& ValueStr, const FAssetBundleEntry& DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
-{	
-	if (DefaultValue.IsValid())
-	{
-		// This path does not handle default values, fall back to normal export path
-		return false;
-	}
-
-	using namespace UE::AssetBundleEntry::Private;
-
-	const uint32 OriginalLen = ValueStr.Len();
-
-	ValueStr += BundleNamePrefix;
-	BundleName.AppendString(ValueStr);
-	ValueStr += '\"';
-	ValueStr += BundleAssetsPrefix;
-
-	const FSoftObjectPath EmptyPath;
-	for (const FSoftObjectPath& Path : BundleAssets)
-	{
-		if (!Path.ExportTextItem(ValueStr, EmptyPath, Parent, PortFlags, ExportRootScope))
+		if (AssetBundleDataStruct->ImportText(*TagValue, this, nullptr, PPF_None, (FOutputDevice*)GWarn, [&AssetData]() { return AssetData.AssetName.ToString(); }))
 		{
-			ValueStr.LeftInline(OriginalLen);
-			return false;
-		}
-		
-		ValueStr.AppendChar(',');
-	}
+			FPrimaryAssetId FoundId = AssetData.GetPrimaryAssetId();
 
-	// Remove last comma
-	ValueStr.LeftChopInline(1, /* shrink */ false);
-
-	ValueStr += BundleAssetsSuffix;
-
-	return true;
-}
-
-bool FAssetBundleEntry::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText)
-{
-	using namespace UE::AssetBundleEntry::Private;
-
-	const TCHAR* BundleNameBegin = Buffer;
-	if (SkipPrefix(/* in-out */ BundleNameBegin, BundleNamePrefix))
-	{
-		if (const TCHAR* BundleNameEnd = FCString::Strchr(BundleNameBegin, TCHAR('"')))
-		{
-			FName Name(BundleNameEnd - BundleNameBegin, BundleNameBegin);
-
-			const TCHAR* PathIt = BundleNameEnd + 1;
-			if (SkipPrefix(/* in-out */ PathIt, BundleAssetsPrefix))
+			if (FoundId.IsValid())
 			{
-				TArray<FSoftObjectPath> Paths;
-				while (Paths.Emplace_GetRef().ImportTextItem(/* in-out */ PathIt, PortFlags, Parent, ErrorText))
+				// Update the primary asset id if valid
+				for (FAssetBundleEntry& Bundle : Bundles)
 				{
-					if (*PathIt == ',')
-					{
-						++PathIt;
-					}
-					else if (SkipPrefix(/* in-out */ PathIt, BundleAssetsSuffix))
-					{
-						BundleName = Name;
-						BundleAssets = MoveTemp(Paths);
-						Buffer = PathIt;
-
-						return true;
-					}
-					else
-					{
-						return false;
-					}
+					Bundle.BundleScope = FoundId;
 				}
 			}
+
+			return true;
 		}
 	}
-
 	return false;
 }
 
-FAssetBundleEntry* FAssetBundleData::FindEntry(FName SearchName)
+FAssetBundleEntry* FAssetBundleData::FindEntry(const FPrimaryAssetId& SearchScope, FName SearchName)
 {
 	for (FAssetBundleEntry& Entry : Bundles)
 	{
-		if (Entry.BundleName == SearchName)
+		if (Entry.BundleScope == SearchScope && Entry.BundleName == SearchName)
 		{
 			return &Entry;
 		}
@@ -126,11 +52,11 @@ void FAssetBundleData::AddBundleAsset(FName BundleName, const FSoftObjectPath& A
 		return;
 	}
 
-	FAssetBundleEntry* FoundEntry = FindEntry(BundleName);
+	FAssetBundleEntry* FoundEntry = FindEntry(FPrimaryAssetId(), BundleName);
 
 	if (!FoundEntry)
 	{
-		FoundEntry = new(Bundles) FAssetBundleEntry(BundleName);
+		FoundEntry = new(Bundles) FAssetBundleEntry(FPrimaryAssetId(), BundleName);
 	}
 
 	FoundEntry->BundleAssets.AddUnique(AssetPath);
@@ -138,7 +64,7 @@ void FAssetBundleData::AddBundleAsset(FName BundleName, const FSoftObjectPath& A
 
 void FAssetBundleData::AddBundleAssets(FName BundleName, const TArray<FSoftObjectPath>& AssetPaths)
 {
-	FAssetBundleEntry* FoundEntry = FindEntry(BundleName);
+	FAssetBundleEntry* FoundEntry = FindEntry(FPrimaryAssetId(), BundleName);
 
 	for (const FSoftObjectPath& Path : AssetPaths)
 	{
@@ -147,7 +73,7 @@ void FAssetBundleData::AddBundleAssets(FName BundleName, const TArray<FSoftObjec
 			// Only create if required
 			if (!FoundEntry)
 			{
-				FoundEntry = new(Bundles) FAssetBundleEntry(BundleName);
+				FoundEntry = new(Bundles) FAssetBundleEntry(FPrimaryAssetId(), BundleName);
 			}
 
 			FoundEntry->BundleAssets.AddUnique(Path);
@@ -157,11 +83,11 @@ void FAssetBundleData::AddBundleAssets(FName BundleName, const TArray<FSoftObjec
 
 void FAssetBundleData::SetBundleAssets(FName BundleName, TArray<FSoftObjectPath>&& AssetPaths)
 {
-	FAssetBundleEntry* FoundEntry = FindEntry(BundleName);
+	FAssetBundleEntry* FoundEntry = FindEntry(FPrimaryAssetId(), BundleName);
 
 	if (!FoundEntry)
 	{
-		FoundEntry = new(Bundles) FAssetBundleEntry(BundleName);
+		FoundEntry = new(Bundles) FAssetBundleEntry(FPrimaryAssetId(), BundleName);
 	}
 
 	FoundEntry->BundleAssets = AssetPaths;
@@ -179,35 +105,8 @@ bool FAssetBundleData::ExportTextItem(FString& ValueStr, FAssetBundleData const&
 		// Empty, don't write anything to avoid it cluttering the asset registry tags
 		return true;
 	}
-	else if (DefaultValue.Bundles.Num() != 0)
-	{
-		// This path does not handle default values, fall back to normal export path
-		return false;
-	}
-	
-	using namespace UE::AssetBundleEntry::Private;
-
-	const uint32 OriginalLen = ValueStr.Len();
-
-	ValueStr += BundlesPrefix;
-
-	const FAssetBundleEntry EmptyEntry;
-	for (const FAssetBundleEntry& Entry : Bundles)
-	{
-		if (!Entry.ExportTextItem(ValueStr, EmptyEntry, Parent, PortFlags, ExportRootScope))
-		{
-			ValueStr.LeftInline(OriginalLen);
-			return false;
-		}
-		ValueStr.AppendChar(',');
-	}
-
-	// Remove last comma
-	ValueStr.LeftChopInline(1, /* shrink */ false);
-
-	ValueStr += BundlesSuffix;
-
-	return true;
+	// Not empty, do normal export
+	return false;
 }
 
 bool FAssetBundleData::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText)
@@ -217,54 +116,6 @@ bool FAssetBundleData::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UOb
 		// Empty, don't read/write anything
 		return true;
 	}
-
-	using namespace UE::AssetBundleEntry::Private;
-	
-	const TCHAR* It = Buffer;
-	if (SkipPrefix(/* in-out */ It, BundlesPrefix))
-	{
-		TArray<FAssetBundleEntry> Entries;
-		while (Entries.Emplace_GetRef().ImportTextItem(/* in-out */ It, PortFlags, Parent, ErrorText))
-		{
-			if (*It == ',')
-			{
-				++It;
-			}
-			else if (SkipPrefix(/* in-out */ It, BundlesSuffix))
-			{
-				Bundles = MoveTemp(Entries);
-				Buffer = It;
-				
-				return true;
-			}
-			else
-			{
-				return false;
-			}
-		}
-	}
-
-	return SkipPrefix(/* in-out */ Buffer, EmptyBundles);
-}
-
-FString FAssetBundleData::ToDebugString() const
-{
-	TStringBuilder<220> Result;
-
-	bool bFirstLine = true;
-	for (const FAssetBundleEntry& Data : Bundles)
-	{
-		if (!bFirstLine)
-		{
-			Result.Append(TEXT("\n"));
-		}
-
-		Result.Appendf(TEXT("%s -> (%s)"),
-			*Data.BundleName.ToString(),
-			*FString::JoinBy(Data.BundleAssets, TEXT(", "), [](const FSoftObjectPath& LoadBundle) { return LoadBundle.ToString(); }));
-
-		bFirstLine = false;
-	}
-
-	return Result.ToString();
+	// Full structure, do normal parse
+	return false;
 }

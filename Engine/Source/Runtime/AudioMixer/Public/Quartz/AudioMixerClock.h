@@ -53,9 +53,6 @@ namespace Audio
 		// start ticking the clock
 		void Resume();
 
-		// stop ticking and reset the clock
-		void Stop(bool CancelPendingEvents);
-
 		// stop ticking the clock
 		void Pause();
 
@@ -65,11 +62,7 @@ namespace Audio
 		// shutdown
 		void Shutdown();
 
-		// low-resolution clock update
-		// (not sample-accurate!, useful when running without an Audio Device)
-		void LowResolutionTick(float InDeltaTimeSeconds);
-
-		// sample accurate clock update
+		// tick the clock
 		void Tick(int32 InNumFramesUntilNextTick);
 
 		// Set the sample rate of the clock
@@ -105,38 +98,14 @@ namespace Audio
 		// does the clock have any pending events
 		bool HasPendingEvents();
 
-		// is the clock currently ticking?
-		bool IsRunning();
-
-		// Returns the duration in seconds of the given Quantization Type
-		float GetDurationOfQuantizationTypeInSeconds(const EQuartzCommandQuantization& QuantizationType, float Multiplier);
-
-		// Returns the current location of the clock in the transport
-		FQuartzTransportTimeStamp GetCurrentTimestamp();
-
-		// Returns the amount of time, in seconds, the clock has been running. Caution: due to latency, this will not be perfectly accurate
-		float GetEstimatedRunTime();
-
 		FMixerDevice* GetMixerDevice();
 
 		FMixerSourceManager* GetSourceManager();
 
-		FQuartzClockManager* GetClockManager();
-
 		void ResetTransport();
 
-		void AddToTickDelay(int32 NumFramesOfDelayToAdd)
-		{
-			TickDelayLengthInFrames += NumFramesOfDelayToAdd;
-		}
-
-		void SetTickDelay(int32 NumFramesOfDelay)
-		{
-			TickDelayLengthInFrames = NumFramesOfDelay;
-		}
-
 	private:
-		void TickInternal(int32 InNumFramesUntilNextTick, TArray<PendingCommand>& CommandsToTick, int32 FramesOfLatency = 0, int32 FramesOfDelay = 0);
+		void TickInternal(int32 InNumFramesUntilNextTick, TArray<PendingCommand>& CommandsToTick, int32 FramesOfLatency = 0);
 
 		bool CancelQuantizedCommandInternal(TSharedPtr<IQuartzQuantizedCommand> InCommandPtr, TArray<PendingCommand>& CommandsToTick);
 
@@ -161,7 +130,6 @@ namespace Audio
 
 		bool bIgnoresFlush{ false };
 
-		int32 TickDelayLengthInFrames{ 0 };
 
 	}; // class FQuartzClock
 

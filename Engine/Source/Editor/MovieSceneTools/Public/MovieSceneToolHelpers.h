@@ -36,7 +36,6 @@ struct FMovieSceneSequenceTransform;
 class UAnimSeqExportOption;
 template<typename ChannelType> struct TMovieSceneChannelData;
 enum class EVisibilityBasedAnimTickOption : uint8;
-class ACameraActor;
 
 namespace fbxsdk
 {
@@ -54,7 +53,6 @@ struct FFBXInOutParameters
 	bool bConvertSceneBackup;
 	bool bConvertSceneUnitBackup;
 	bool bForceFrontXAxisBackup;
-	float ImportUniformScaleBackup;
 };
 
 //callback's used by skel mesh recorders
@@ -103,17 +101,6 @@ public:
 	 * @param bDeleteKeys Delete keys outside the split ranges
 	 */
 	static void TrimSection(const TSet<TWeakObjectPtr<UMovieSceneSection>>& Sections, FQualifiedFrameTime Time, bool bTrimLeft, bool bDeleteKeys);
-
-	/**
-	 * Trim or extend section at the given time
-	 *
-	 * @param Track The track that contains the sections to trim
-	 * @param RowIndex Optional row index to trim, otherwise trims sections with all row indices
-	 * @param Time	The time at which to trim
-	 * @param bTrimOrExtendleft Trim or extend left or right
-	 * @param bDeleteKeys Delete keys outside the split ranges
-	 */
-	static void TrimOrExtendSection(UMovieSceneTrack* Track, TOptional<int32> RowIndex, FQualifiedFrameTime Time, bool bTrimOrExtendLeft, bool bDeleteKeys);
 
 	/**
 	 * Splits sections at the given time
@@ -197,20 +184,9 @@ public:
 	 *
 	 * @param InTrack The track to find the next available row on
 	 * @param InSection The section
-	 * @param SectionsToDisregard Disregard checking these sections
 	 * @return The next available row index
 	 */
-	static int32 FindAvailableRowIndex(UMovieSceneTrack* InTrack, UMovieSceneSection* InSection, const TArray<UMovieSceneSection*>& SectionsToDisregard = TArray<UMovieSceneSection*>());
-
-	/**
-	 * Does this section overlap any other track section?
-	 *
-	 * @param InTrack The track to find sections on
-	 * @param InSection The section
-	 * @param SectionsToDisregard Disregard checking these sections
-	 * @return Whether this section overlaps any other track section
-	 */
-	static bool OverlapsSection(UMovieSceneTrack* InTrack, UMovieSceneSection* InSection, const TArray<UMovieSceneSection*>& SectionsToDisregard = TArray<UMovieSceneSection*>());
+	static int32 FindAvailableRowIndex(UMovieSceneTrack* InTrack, UMovieSceneSection* InSection);
 
 	/**
 	 * Generate a combobox for editing enum values
@@ -364,22 +340,15 @@ public:
 	*/
 	static bool ImportFBXNode(FString NodeName, UnFbx::FFbxCurvesAPI& CurveAPI, UMovieSceneSequence* InSequence, IMovieScenePlayer* Player, FMovieSceneSequenceIDRef TemplateID, FGuid ObjectBinding);
 
-	/**
-	 * Lock the given camera actor to the viewport
-	 *
-	 * @param Sequencer The Sequencer to set the camera cut enabled for
-	 * @param CameraActor The camera actor to lock
-	 */
-	static void LockCameraActorToViewport(const TSharedPtr<ISequencer>& Sequencer, ACameraActor* CameraActor);
 
 	/**
-	 * Create a new camera cut section for the given camera
-	 *
-	 * @param MovieScene MovieScene to add Camera.
-	 * @param CameraGuid CameraGuid  Guid of the camera that was added.
-	 * @param FrameNumber FrameNumber it's added at.
-	 */
-	static void CreateCameraCutSectionForCamera(UMovieScene* MovieScene, FGuid CameraGuid, FFrameNumber FrameNumber);
+	*  Camera track was added, we usually do extra things, like add a Camera Cut tracks
+	*
+	* @param MovieScene MovieScene to add Camera.
+	* @param CameraGuid CameraGuid  Guid of the camera that was added.
+	* @param FrameNumber FrameNumber it's added at.
+	*/
+	static void CameraAdded(UMovieScene* MovieScene, FGuid CameraGuid, FFrameNumber FrameNumber);
 
 	/**
 	* Import FBX Camera to existing camera's
@@ -441,7 +410,6 @@ public:
 	 * @param SkelMesh The Player to evaluate
 	 * @param Template ID of the sequence template.
 	 * @param RootToLocalTransform Transform Offset to apply to exported anim sequence.
-	* @param ExportOptions The options to use when baking the mesh.
 	 * @param InitCallback Callback before it starts running, maybe performance heavy.
 	 * @param StartCallback Callback right before starting if needed, should be lightweight.
 	 * @param TickCallback Callback per tick where you can bake the skelmesh.
@@ -451,7 +419,7 @@ public:
 	*/
 
 	static bool BakeToSkelMeshToCallbacks(UMovieScene* MovieScene, IMovieScenePlayer* Player,
-		USkeletalMeshComponent* SkelMesh, FMovieSceneSequenceIDRef& Template, FMovieSceneSequenceTransform& RootToLocalTransform, UAnimSeqExportOption* ExportOptions,
+		USkeletalMeshComponent* SkelMesh, FMovieSceneSequenceIDRef& Template, FMovieSceneSequenceTransform& RootToLocalTransform,
 		FInitAnimationCB InitCallback, FStartAnimationCB StartCallback, FTickAnimationCB TickCallback, FEndAnimationCB EndCallback);
 
 

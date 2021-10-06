@@ -66,9 +66,6 @@ private:
 	EVisibility GetFrameRateIsMultipleOfErrorVisibility() const;
 	EVisibility GetFrameRateMismatchErrorVisibility() const;
 
-	EVisibility GetClockSourceVisibility() const;
-	const FSlateBrush* GetClockSourceImage() const;
-
 	/** Sequencer pointer */
 	TWeakPtr<FSequencer> WeakSequencer;
 	TWeakPtr<SSequencer> WeakSequencerWidget;

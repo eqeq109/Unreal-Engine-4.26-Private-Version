@@ -18,6 +18,7 @@ enum class EConcertMovieScenePlayerStatus : uint8
 {
 	Stopped,
 	Playing,
+	Recording,
 	Scrubbing,
 	Jumping,
 	Stepping,
@@ -78,7 +79,7 @@ struct FConcertSequencerCloseEvent
 	FString SequenceObjectPath;
 
 	UPROPERTY()
-	bool bMasterClose = false;
+	bool bMasterClose;
 };
 
 /**

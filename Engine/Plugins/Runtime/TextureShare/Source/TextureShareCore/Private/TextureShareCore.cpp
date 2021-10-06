@@ -94,7 +94,7 @@ bool FTextureShareCoreModule::GetTextureShareItem(const FString& InShareName, TS
 }
 
 // Create shared resource object
-bool FTextureShareCoreModule::CreateTextureShareItem(const FString& InShareName, ETextureShareProcess Process, FTextureShareSyncPolicy SyncMode, ETextureShareDevice DeviceType, TSharedPtr<ITextureShareItem>& OutShareObject, float SyncWaitTime)
+bool FTextureShareCoreModule::CreateTextureShareItem(const FString& InShareName, ETextureShareProcess Process, FTextureShareSyncPolicy SyncMode, ETextureShareDevice DeviceType, TSharedPtr<ITextureShareItem>& OutShareObject)
 {
 	if (IsShareNameEmpty(InShareName))
 	{
@@ -145,9 +145,6 @@ bool FTextureShareCoreModule::CreateTextureShareItem(const FString& InShareName,
 			return false;
 		}
 
-		// set sync wait time
-		Resource->SetSyncWaitTime(SyncWaitTime);
-
 		// Save created object ptr
 		TSharedPtr<ITextureShareItem> NewShareObject = MakeShareable(Resource);
 		TextureShares.Add(LowerShareName, NewShareObject);
@@ -197,18 +194,6 @@ FTextureShareSyncPolicySettings FTextureShareCoreModule::GetSyncPolicySettings(E
 void FTextureShareCoreModule::SetSyncPolicySettings(ETextureShareProcess Process, const FTextureShareSyncPolicySettings& InSyncPolicySettings)
 {
 	TextureShareItem::FTextureShareItemBase::SetSyncPolicySettings(Process, InSyncPolicySettings);
-}
-
-bool FTextureShareCoreModule::BeginSyncFrame()
-{
-	// NOT IMPLEMENTED
-	return false;
-}
-
-bool FTextureShareCoreModule::EndSyncFrame()
-{
-	// NOT IMPLEMENTED
-	return false;
 }
 
 IMPLEMENT_MODULE(FTextureShareCoreModule, TextureShareCore);

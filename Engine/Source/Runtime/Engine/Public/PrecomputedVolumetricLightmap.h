@@ -16,7 +16,6 @@
 #include "RenderResource.h"
 #include "ShaderParameterStruct.h"
 #include "GlobalShader.h"
-#include "UObject/WeakObjectPtr.h"
 
 class FSceneInterface;
 
@@ -249,8 +248,6 @@ public:
 private:
 
 	bool bAddedToScene;
-
-	TWeakObjectPtr<UMapBuildDataRegistry> SourceRegistry;
 
 	/** Offset from world origin. Non-zero only when world origin was rebased */
 	FVector WorldOriginOffset;

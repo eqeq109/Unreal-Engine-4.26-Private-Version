@@ -215,13 +215,14 @@ bool FWindowsVideoRecordingSystem::IsEnabled() const
 
 void FWindowsVideoRecordingSystem::NextRecording()
 {
+	FString Path = FPaths::VideoCaptureDir();
 	if (Parameters.bAutoContinue)
 	{
-		CurrentFilename = FString::Printf(TEXT("%s_%d.mp4"), *BaseFilename, ++RecordingIndex);
+		CurrentFilename = Path + FString::Printf(TEXT("%s_%d.mp4"), *BaseFilename, ++RecordingIndex);
 	}
 	else
 	{
-		CurrentFilename = BaseFilename + TEXT(".mp4");
+		CurrentFilename = Path + BaseFilename + TEXT(".mp4");
 	}
 }
 
@@ -364,12 +365,12 @@ void FWindowsVideoRecordingSystem::FinalizeRecording(const bool bSaveRecording, 
 
 	if (bSaveRecording)
 	{
-		bool bRet = Recorder->SaveHighlight(*CurrentFilename, [this, bStopAutoContinue](bool bRes, const FString& InFullPathToFile)
+		bool bRet = Recorder->SaveHighlight(*CurrentFilename, [this, bStopAutoContinue, Path = CurrentFilename](bool bRes)
 		{
 			// Execute the Finalize event on the GameThread
 			FGraphEventRef FinalizeEvent = FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
 				FSimpleDelegateGraphTask::FDelegate::CreateRaw(this, &FWindowsVideoRecordingSystem::FinalizeCallbackOnGameThread,
-					bRes, Parameters.bAutoContinue && !bStopAutoContinue, InFullPathToFile, true),
+					bRes, Parameters.bAutoContinue && !bStopAutoContinue, Path, true),
 				TStatId(), nullptr, ENamedThreads::GameThread);
 		}, Parameters.RecordingLengthSeconds);
 

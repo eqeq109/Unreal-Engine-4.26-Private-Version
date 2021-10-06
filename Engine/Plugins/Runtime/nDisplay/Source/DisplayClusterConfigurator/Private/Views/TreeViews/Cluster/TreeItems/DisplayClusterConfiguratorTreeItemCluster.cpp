@@ -2,14 +2,13 @@
 
 #include "Views/TreeViews/Cluster/TreeItems/DisplayClusterConfiguratorTreeItemCluster.h"
 
-#include "DisplayClusterConfiguratorBlueprintEditor.h"
+#include "DisplayClusterConfiguratorToolkit.h"
 #include "Interfaces/Views/TreeViews/IDisplayClusterConfiguratorViewTree.h"
-#include "Interfaces/Views/OutputMapping/IDisplayClusterConfiguratorViewOutputMapping.h"
 
 
 FDisplayClusterConfiguratorTreeItemCluster::FDisplayClusterConfiguratorTreeItemCluster(const FName& InName,
 	const TSharedRef<IDisplayClusterConfiguratorViewTree>& InViewTree,
-	const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit,
+	const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit,
 	UObject* InObjectToEdit,
 	FString InIconStyle,
 	bool InbRoot)
@@ -18,31 +17,4 @@ FDisplayClusterConfiguratorTreeItemCluster::FDisplayClusterConfiguratorTreeItemC
 	, IconStyle(InIconStyle)
 {}
 
-void FDisplayClusterConfiguratorTreeItemCluster::OnItemDoubleClicked()
-{
-	if (ToolkitPtr.IsValid())
-	{
-		TSharedPtr<FDisplayClusterConfiguratorBlueprintEditor> Toolkit = ToolkitPtr.Pin();
-		Toolkit->GetViewOutputMapping()->JumpToObject(GetObject());
-	}
-}
 
-void FDisplayClusterConfiguratorTreeItemCluster::OnMouseEnter()
-{
-	ViewTreePtr.Pin()->SetHoveredItem(SharedThis(this));
-}
-
-void FDisplayClusterConfiguratorTreeItemCluster::OnMouseLeave()
-{
-	ViewTreePtr.Pin()->ClearHoveredItem();
-}
-
-bool FDisplayClusterConfiguratorTreeItemCluster::IsHovered() const
-{
-	if (TSharedPtr<IDisplayClusterConfiguratorTreeItem> HoveredItem = ViewTreePtr.Pin()->GetHoveredItem())
-	{
-		return HoveredItem.Get() == this;
-	}
-
-	return false;
-}

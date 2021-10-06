@@ -6,7 +6,6 @@
 #include "UObject/FastReferenceCollector.h"
 #include "UObject/UObjectArray.h"
 #include "Async/ParallelFor.h"
-#include "HAL/IConsoleManager.h"
 
 class FAllReferencesProcessor : public FSimpleReferenceProcessorBase
 {
@@ -51,15 +50,6 @@ public:
 };
 typedef TDefaultReferenceCollector<FAllReferencesProcessor> FAllReferencesCollector;
 
-// Allow parallel reference collection to be overridden to single threaded via console command.
-static int32 GAllowParallelReferenceCollection = 1;
-static FAutoConsoleVariableRef CVarAllowParallelReferenceCollection(
-	TEXT("ref.AllowParallelCollection"),
-	GAllowParallelReferenceCollection,
-	TEXT("Used to control parallel reference collection."),
-	ECVF_Default
-);
-
 // Until all native UObject classes have been registered it's unsafe to run FReferencerFinder on multiple threads
 static bool GUObjectRegistrationComplete = false;
 
@@ -73,6 +63,9 @@ TArray<UObject*> FReferencerFinder::GetAllReferencers(const TArray<UObject*>& Re
 	return GetAllReferencers(TSet<UObject*>(Referencees), ObjectsToIgnore, Flags);
 }
 
+void LockUObjectHashTables();
+void UnlockUObjectHashTables();
+
 TArray<UObject*> FReferencerFinder::GetAllReferencers(const TSet<UObject*>& Referencees, const TSet<UObject*>* ObjectsToIgnore, EReferencerFinderFlags Flags)
 {
 	TArray<UObject*> Ret;
@@ -81,7 +74,7 @@ TArray<UObject*> FReferencerFinder::GetAllReferencers(const TSet<UObject*>& Refe
 		FCriticalSection ResultCritical;
 
 		// Lock hashtables so that nothing can add UObjects while we're iterating over the GUObjectArray
-		FScopedUObjectHashTablesLock HashTablesLock;
+		LockUObjectHashTables();
 
 		const int32 MaxNumberOfObjects = GUObjectArray.GetObjectArrayNum();
 		const int32 NumThreads = FMath::Max(1, FTaskGraphInterface::Get().GetNumWorkerThreads());
@@ -133,7 +126,9 @@ TArray<UObject*> FReferencerFinder::GetAllReferencers(const TSet<UObject*>& Refe
 				FScopeLock ResultLock(&ResultCritical);
 				Ret.Append(ThreadResult.Array());
 			}
-		}, (GUObjectRegistrationComplete && GAllowParallelReferenceCollection) ? EParallelForFlags::None : EParallelForFlags::ForceSingleThread);
+		}, GUObjectRegistrationComplete ? EParallelForFlags::None :  EParallelForFlags::ForceSingleThread );
+
+		UnlockUObjectHashTables();
 	}
 	return Ret;
 }

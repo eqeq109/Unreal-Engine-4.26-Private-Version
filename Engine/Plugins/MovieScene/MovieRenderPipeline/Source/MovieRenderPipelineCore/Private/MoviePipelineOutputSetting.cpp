@@ -5,7 +5,6 @@
 #include "MoviePipelineMasterConfig.h"
 #include "MoviePipelineQueue.h"
 #include "MovieRenderPipelineDataTypes.h"
-#include "MoviePipeline.h"
 
 UMoviePipelineOutputSetting::UMoviePipelineOutputSetting()
 	: OutputResolution(FIntPoint(1920, 1080))
@@ -22,7 +21,6 @@ UMoviePipelineOutputSetting::UMoviePipelineOutputSetting()
 	, bAutoVersion(true)
 	, ZeroPadFrameNumbers(4)
 	, FrameNumberOffset(0)
-	, bFlushDiskWritesPerShot(false)
 {
 	FileNameFormat = TEXT("{sequence_name}.{frame_number}");
 	OutputDirectory.Path = FPaths::ProjectSavedDir() / TEXT("MovieRenders/");
@@ -58,7 +56,7 @@ FText UMoviePipelineOutputSetting::GetFooterText(UMoviePipelineExecutorJob* InJo
 		MasterConfig->GetFormatArguments(FormatArgs);
 	}
 
-	for (const TPair<FString, FString>& KVP : FormatArgs.FilenameArguments)
+	for (const TPair<FString, FStringFormatArg>& KVP : FormatArgs.FilenameArguments)
 	{
 		FStringFormatOrderedArguments OrderedArgs = { KVP.Key, KVP.Value };
 		FString FormattedArgs = FString::Format(TEXT("{0} => {1}"), OrderedArgs);
@@ -76,8 +74,8 @@ void UMoviePipelineOutputSetting::GetFormatArguments(FMoviePipelineFormatArgs& I
 	{
 		FString Resolution = FString::Printf(TEXT("%d_%d"), OutputResolution.X, OutputResolution.Y);
 		InOutFormatArgs.FilenameArguments.Add(TEXT("output_resolution"), Resolution);
-		InOutFormatArgs.FilenameArguments.Add(TEXT("output_width"), FString::FromInt(OutputResolution.X));
-		InOutFormatArgs.FilenameArguments.Add(TEXT("output_height"), FString::FromInt(OutputResolution.Y));
+		InOutFormatArgs.FilenameArguments.Add(TEXT("output_width"), OutputResolution.X);
+		InOutFormatArgs.FilenameArguments.Add(TEXT("output_height"), OutputResolution.Y);
 	}
 
 	if (bAutoVersion)
@@ -88,13 +86,5 @@ void UMoviePipelineOutputSetting::GetFormatArguments(FMoviePipelineFormatArgs& I
 	{
 		FString VersionText = FString::Printf(TEXT("v%0*d"), 3, VersionNumber);
 		InOutFormatArgs.FilenameArguments.Add(TEXT("version"), VersionText);
-	}
-}
-
-void UMoviePipelineOutputSetting::SetupForPipelineImpl(UMoviePipeline* InPipeline)
-{
-	if (InPipeline)
-	{
-		InPipeline->SetFlushDiskWritesPerShot(InPipeline->IsFlushDiskWritesPerShot() || bFlushDiskWritesPerShot);
 	}
 }

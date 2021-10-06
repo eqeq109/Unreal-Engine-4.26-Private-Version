@@ -7,8 +7,6 @@
 #include "AjaMediaPrivate.h"
 #include "AjaMediaSource.h"
 
-#include <atomic>
-
 class FAjaMediaAudioSample;
 class FAjaMediaAudioSamplePool;
 class FAjaMediaBinarySamplePool;
@@ -67,8 +65,6 @@ public:
 	virtual void TickInput(FTimespan DeltaTime, FTimespan Timecode) override;
 
 	virtual FString GetStats() const override;
-
-	bool SetRate(float Rate) override;
 
 	//~ ITimedDataInput interface
 #if WITH_EDITOR
@@ -165,10 +161,6 @@ private:
 
 	/** Frame Description from capture device */
 	AJA::FAJAVideoFormat LastVideoFormatIndex;
-
 	/** Previous frame timecode for stats purpose */
 	AJA::FTimecode AjaThreadPreviousFrameTimecode;
-
-	/** Flag to indicate that pause is being requested */
-	std::atomic<bool> bPauseRequested;
 };

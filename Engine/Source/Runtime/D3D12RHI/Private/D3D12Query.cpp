@@ -120,24 +120,20 @@ bool FD3D12DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64
 
 		if (Query->Type == RQT_AbsoluteTime)
 		{
-			uint64 AdjustedTimestamp;
+			// GetTimingFrequency is the number of ticks per second
+			uint64 Div = FMath::Max(1llu, FGPUTiming::GetTimingFrequency(GPUIndex) / (1000 * 1000));
+
 #if D3D12_SUBMISSION_GAP_RECORDER
 			if (RHIConsoleVariables::GAdjustRenderQueryTimestamps)
 			{
-				AdjustedTimestamp = Adapter.SubmissionGapRecorder.AdjustTimestampForSubmissionGaps(Query->FrameSubmitted, Query->Result);
+				OutResult = FMath::Max<uint64>(Adapter.SubmissionGapRecorder.AdjustTimestampForSubmissionGaps(Query->FrameSubmitted, Query->Result) / Div, OutResult);
+				
 			}
 			else
 #endif
 			{
-				AdjustedTimestamp = Query->Result;
+				OutResult = FMath::Max<uint64>(Query->Result / Div, OutResult);
 			}
-
-			// GetTimingFrequency is the number of ticks per second
-			uint64 GPUFrequency = FMath::Max(1llu, FGPUTiming::GetTimingFrequency(GPUIndex));
-			double CyclesToMicroseconds = 1e6 / double(GPUFrequency);
-
-			double TimeInMicroseconds = (double)AdjustedTimestamp * CyclesToMicroseconds;
-			OutResult = FMath::Max((uint64)TimeInMicroseconds, OutResult);
 
 			bSuccess = true;
 		}
@@ -368,15 +364,9 @@ void FD3D12QueryHeap::StartQueryBatch(FD3D12CommandContext& CmdContext, uint32 N
 	CurrentQueryBatch.bOpen = true;
 }
 
-void FD3D12QueryHeap::EndQueryBatchAndResolveQueryData(FD3D12CommandContext& CmdContextIn)
+void FD3D12QueryHeap::EndQueryBatchAndResolveQueryData(FD3D12CommandContext& CmdContext)
 {
-	FD3D12CommandContext* CmdContext = &CmdContextIn;
-	if (CmdContext->IsAsyncComputeContext())
-	{
-		CmdContext = &GetParentDevice()->GetDefaultCommandContext();
-	}
-	check(CmdContext);
-	check(CmdContext->IsDefaultContext());
+	check(CmdContext.IsDefaultContext());
 
 	if (!CurrentQueryBatch.bOpen)
 	{
@@ -410,34 +400,34 @@ void FD3D12QueryHeap::EndQueryBatchAndResolveQueryData(FD3D12CommandContext& Cmd
 		ActiveAllocatedElementCount -= OldestBatch.ElementCount;
 	}
 
-	CmdContext->otherWorkCounter++;
+	CmdContext.otherWorkCounter++;
 	if (CurrentQueryBatch.StartElement + CurrentQueryBatch.ElementCount <= QueryHeapCount)
 	{
 		// Single range
-		CmdContext->CommandListHandle->ResolveQueryData(
+		CmdContext.CommandListHandle->ResolveQueryData(
 			ActiveQueryHeap, QueryType, CurrentQueryBatch.StartElement, CurrentQueryBatch.ElementCount,
 			ActiveResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
 	}
 	else
 	{
 		// Wrapping around heap border, need two resolves for end of heap and beginning of new range
-		CmdContext->CommandListHandle->ResolveQueryData(
+		CmdContext.CommandListHandle->ResolveQueryData(
 			ActiveQueryHeap, QueryType, CurrentQueryBatch.StartElement, QueryHeapCount - CurrentQueryBatch.StartElement,
 			ActiveResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
-		CmdContext->CommandListHandle->ResolveQueryData(
+		CmdContext.CommandListHandle->ResolveQueryData(
 			ActiveQueryHeap, QueryType, 0, CurrentQueryBatch.ElementCount - (QueryHeapCount - CurrentQueryBatch.StartElement),
 			ActiveResultBuffer->GetResource(), 0);
 	}
 
-	CmdContext->CommandListHandle.UpdateResidency(&ActiveQueryHeapResidencyHandle);
-	CmdContext->CommandListHandle.UpdateResidency(ActiveResultBuffer);
+	CmdContext.CommandListHandle.UpdateResidency(&ActiveQueryHeapResidencyHandle);
+	CmdContext.CommandListHandle.UpdateResidency(ActiveResultBuffer);
 
 	// For each render query used in this batch, update the command list
 	// so we know what sync point to wait for. The query's data isn't ready to read until the above ResolveQueryData completes on the GPU.	
 	check(CurrentQueryBatch.UsedResultBuffer == ActiveResultBuffer);
 	for (int32 i = 0; i < CurrentQueryBatch.RenderQueries.Num(); i++)
 	{
-		CurrentQueryBatch.RenderQueries[i]->MarkResolved(CmdContext->CommandListHandle, ActiveResultBuffer);
+		CurrentQueryBatch.RenderQueries[i]->MarkResolved(CmdContext.CommandListHandle, ActiveResultBuffer);
 	}
 }
 

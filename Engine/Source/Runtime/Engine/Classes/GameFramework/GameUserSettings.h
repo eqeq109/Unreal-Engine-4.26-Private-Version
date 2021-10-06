@@ -289,7 +289,7 @@ public:
 	virtual float GetRecommendedResolutionScale();
 
 	/** Loads the resolution settings before is object is available */
-	static void PreloadResolutionSettings(bool bAllowCmdLineOverrides = true);
+	static void PreloadResolutionSettings();
 
 	/** Returns the default resolution when no resolution is set */
 	UFUNCTION(BlueprintCallable, Category=Settings)

@@ -45,40 +45,6 @@ public:
 	}
 };
 
-static bool ValidateTexture2DPlatformData(const FTexturePlatformData& TextureData, const UTexture2D& Texture, bool bFromDDC)
-{
-	// Temporarily disable as the size check reports false negatives on some platforms
-#if 0
-	bool bValid = true;
-	for (int32 MipIndex = 0; MipIndex < TextureData.Mips.Num(); ++MipIndex)
-	{
-		const FTexture2DMipMap& MipMap = TextureData.Mips[MipIndex];
-		const int64 BulkDataSize = MipMap.BulkData.GetBulkDataSize();
-		if (BulkDataSize > 0)
-		{
-			const int64 ExpectedMipSize = CalcTextureMipMapSize(TextureData.SizeX, TextureData.SizeY, TextureData.PixelFormat, MipIndex);
-			if (BulkDataSize != ExpectedMipSize)
-			{
-				//UE_LOG(LogTexture,Warning,TEXT("Invalid mip data. Texture will be rebuilt. MipIndex %d [%dx%d], Expected size %lld, BulkData size %lld, PixelFormat %s, LoadedFromDDC %d, Texture %s"), 
-				//	MipIndex, 
-				//	MipMap.SizeX, 
-				//	MipMap.SizeY, 
-				//	ExpectedMipSize, 
-				//	BulkDataSize, 
-				//	GPixelFormats[TextureData.PixelFormat].Name, 
-				//	bFromDDC ? 1 : 0,
-				//	*Texture.GetFullName());
-				
-				bValid = false;
-			}
-		}
-	}
-
-	return bValid;
-#else
-	return true;
-#endif
-}
 
 void FTextureSourceData::Init(UTexture& InTexture, const FTextureBuildSettings* InBuildSettingsPerLayer, bool bAllowAsyncLoading)
 {
@@ -422,38 +388,8 @@ FTextureCacheDerivedDataWorker::FTextureCacheDerivedDataWorker(
 	TextureData.Init(Texture, BuildSettingsPerLayer.GetData(), bAllowAsyncLoading);
 	if (Texture.CompositeTexture && Texture.CompositeTextureMode != CTM_Disabled)
 	{
-		bool bMatchingBlocks = Texture.CompositeTexture->Source.GetNumBlocks() == Texture.Source.GetNumBlocks();
-		bool bMatchingAspectRatio = true;
-		bool bOnlyPowerOfTwoSize = true;
-		if (bMatchingBlocks)
-		{
-			for (int32 BlockIdx = 0; BlockIdx < Texture.Source.GetNumBlocks(); ++BlockIdx)
-			{
-				FTextureSourceBlock TextureBlock;
-				Texture.Source.GetBlock(BlockIdx, TextureBlock);
-				FTextureSourceBlock CompositeTextureBlock;
-				Texture.CompositeTexture->Source.GetBlock(BlockIdx, CompositeTextureBlock);
-
-				bMatchingBlocks = bMatchingBlocks && TextureBlock.BlockX == CompositeTextureBlock.BlockX && TextureBlock.BlockY == CompositeTextureBlock.BlockY;
-				bMatchingAspectRatio = bMatchingAspectRatio && TextureBlock.SizeX * CompositeTextureBlock.SizeY == TextureBlock.SizeY * CompositeTextureBlock.SizeX;
-				bOnlyPowerOfTwoSize = bOnlyPowerOfTwoSize && FMath::IsPowerOfTwo(TextureBlock.SizeX) && FMath::IsPowerOfTwo(TextureBlock.SizeY);
-			}
-		}
-
-		if (!bMatchingBlocks)
-		{
-			UE_LOG(LogTexture, Warning, TEXT("Issue while building %s : Composite texture resolution/UDIMs do not match. Composite texture will be ignored"), *Texture.GetPathName());
-		}
-		else if (!bOnlyPowerOfTwoSize)
-		{
-			UE_LOG(LogTexture, Warning, TEXT("Issue while building %s : Some blocks (UDIMs) have a non power of two size. Composite texture will be ignored"), *Texture.GetPathName());
-		}
-		else if (!bMatchingAspectRatio)
-		{
-			UE_LOG(LogTexture, Warning, TEXT("Issue while building %s : Some blocks (UDIMs) have mismatched aspect ratio. Composite texture will be ignored"), *Texture.GetPathName());
-		}
-
-		if (bMatchingBlocks && bMatchingAspectRatio && bOnlyPowerOfTwoSize)
+		const FIntPoint CompositeSourceSize = Texture.CompositeTexture->Source.GetLogicalSize();
+		if (FMath::IsPowerOfTwo(CompositeSourceSize.X) && FMath::IsPowerOfTwo(CompositeSourceSize.Y))
 		{
 			CompositeTextureData.Init(*Texture.CompositeTexture, BuildSettingsPerLayer.GetData(), bAllowAsyncLoading);
 		}
@@ -517,39 +453,27 @@ void FTextureCacheDerivedDataWorker::DoWork()
 				{
 					// Code inspired by the texture compressor module as a hot fix for the bad data that might have been push into the ddc in 4.23 or 4.24 
 					const bool bLongLatCubemap = DerivedData->IsCubemap() && DerivedData->GetNumSlices() == 1;
-					int32 MaximumNumberOfMipMaps = TNumericLimits<int32>::Max();
+					int32 MaximunNumberOfMipMap = TNumericLimits<int32>::Max();
 					if (bLongLatCubemap)
 					{
-						MaximumNumberOfMipMaps = FMath::CeilLogTwo(FMath::Clamp<uint32>(uint32(1 << FMath::FloorLog2(DerivedData->SizeX / 2)), uint32(32), BuildSettingsPerLayer[0].MaxTextureResolution)) + 1;
+						MaximunNumberOfMipMap = FMath::CeilLogTwo(FMath::Clamp<uint32>(uint32(1 << FMath::FloorLog2(DerivedData->SizeX / 2)), uint32(32), BuildSettingsPerLayer[0].MaxTextureResolution)) + 1;
 					}
 					else
 					{
-						MaximumNumberOfMipMaps = FMath::CeilLogTwo(FMath::Max3(DerivedData->SizeX, DerivedData->SizeY, BuildSettingsPerLayer[0].bVolume ? DerivedData->GetNumSlices() : 1)) + 1;
+						MaximunNumberOfMipMap = FMath::CeilLogTwo(FMath::Max3(DerivedData->SizeX, DerivedData->SizeY, BuildSettingsPerLayer[0].bVolume ? DerivedData->GetNumSlices() : 1)) + 1;
 					}
 
-					bSucceeded = DerivedData->Mips.Num() <= MaximumNumberOfMipMaps;
+					bSucceeded = DerivedData->Mips.Num() <= MaximunNumberOfMipMap;
+				}
 
-					if (!bSucceeded)
-					{
-						UE_LOG(LogTexture, Warning, TEXT("The data retrieved from the derived data cache for the texture %s was invalid. ")
-							TEXT("The cached data has %d mips when a maximum of %d are expected. The texture will be rebuilt."),
-							*Texture.GetFullName(), DerivedData->Mips.Num(), MaximumNumberOfMipMaps);
-					}
+				if (!bSucceeded)
+				{
+					UE_LOG(LogTexture, Warning, TEXT("The data retrieved from the derived data cache for the texture %s was invalid. The texture will be rebuild."), *Texture.GetFullName())
 				}
 			}
 		}
 		bLoadedFromDDC = true;
 
-		if (bSucceeded)
-		{
-			const UTexture2D* Texture2D = ExactCast<UTexture2D>(&Texture);
-			if (Texture2D)
-			{
-				// force texture rebuild if one of the mips got invalid data from the DDC
-				bSucceeded = ValidateTexture2DPlatformData(*DerivedData, *Texture2D, bLoadedFromDDC);
-			}
-		}
-		
 		// Reset everything derived data so that we can do a clean load from the source data
 		if (!bSucceeded)
 		{
@@ -559,8 +483,6 @@ void FTextureCacheDerivedDataWorker::DoWork()
 				delete DerivedData->VTData;
 				DerivedData->VTData = nullptr;
 			}
-			
-			bLoadedFromDDC = false;
 		}
 	}
 	
@@ -609,18 +531,6 @@ void FTextureCacheDerivedDataWorker::Finalize()
 	if (BuildSettingsPerLayer[0].bVirtualStreamable) // Texture.VirtualTextureStreaming is more a hint that might be overruled by the buildsettings
 	{
 		check((DerivedData->VTData != nullptr) == Texture.VirtualTextureStreaming); 
-	}
-
-	const UTexture2D* Texture2D = ExactCast<UTexture2D>(&Texture);
-	if (Texture2D)
-	{
-		if (!ValidateTexture2DPlatformData(*DerivedData, *Texture2D, bLoadedFromDDC))
-		{
-			// FTexture2DStreamIn_IO::SetIORequests will try to write BulkDataSize bytes into a buffer of ExpectedMipSize allocated inside RHI
-			// if BulkDataSize is bigger than expected size it will cause memory corruption at runtime
-			// Log an error to fail the cook
-			// UE_LOG(LogTexture,Error,TEXT("Texture %s has invalid mip data"), *Texture.GetFullName());
-		}
 	}
 }
 

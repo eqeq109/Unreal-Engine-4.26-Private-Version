@@ -10,6 +10,8 @@
 UDisplayClusterSceneComponentSyncParent::UDisplayClusterSceneComponentSyncParent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	// Children of UDisplayClusterSceneComponent must always Tick to be able to process VRPN tracking
+	PrimaryComponentTick.bCanEverTick = true;
 }
 
 

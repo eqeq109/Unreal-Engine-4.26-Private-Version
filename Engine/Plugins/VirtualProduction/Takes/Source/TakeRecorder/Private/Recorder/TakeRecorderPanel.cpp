@@ -58,14 +58,6 @@ void UTakeRecorderPanel::SetupForRecording_LevelSequence(ULevelSequence* LevelSe
 	}
 }
 
-void UTakeRecorderPanel::SetupForRecordingInto_LevelSequence(ULevelSequence* LevelSequenceAsset)
-{
-	if (ValidateTabContent())
-	{
-		WeakTabContent.Pin()->SetupForRecordingInto(LevelSequenceAsset);
-	}
-}
-
 void UTakeRecorderPanel::SetupForEditing(UTakePreset* TakePreset)
 {
 	if (ValidateTabContent())
@@ -102,16 +94,6 @@ ULevelSequence* UTakeRecorderPanel::GetLevelSequence() const
 
 	return WeakTabContent.Pin()->GetLevelSequence();
 
-}
-
-ULevelSequence* UTakeRecorderPanel::GetLastRecordedLevelSequence() const
-{
-	if (!ValidateTabContent())
-	{
-		return nullptr;
-	}
-
-	return WeakTabContent.Pin()->GetLastRecordedLevelSequence();
 }
 
 UTakeMetaData* UTakeRecorderPanel::GetTakeMetaData() const
@@ -173,15 +155,5 @@ void UTakeRecorderPanel::StopRecording() const
 	{
 		return WeakTabContent.Pin()->StopRecording();
 	}
-}
-
-bool UTakeRecorderPanel::CanStartRecording(FText& OutErrorText) const
-{
-	if (ValidateTabContent())
-	{
-		return WeakTabContent.Pin()->CanStartRecording(OutErrorText);
-	}
-
-	return false;
 }
 

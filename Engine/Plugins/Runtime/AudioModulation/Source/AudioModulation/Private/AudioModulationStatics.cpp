@@ -178,7 +178,7 @@ AudioModulation::FAudioModulation* UAudioModulationStatics::GetModulation(UWorld
 		}
 	}
 
-	if (AudioDevice.IsValid() && AudioDevice->IsModulationPluginEnabled())
+	if (AudioDevice && AudioDevice->IsModulationPluginEnabled())
 	{
 		if (IAudioModulation* ModulationInterface = AudioDevice->ModulationInterface.Get())
 		{

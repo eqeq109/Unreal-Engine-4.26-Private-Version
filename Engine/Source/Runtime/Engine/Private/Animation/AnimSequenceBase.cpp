@@ -24,11 +24,6 @@ UAnimSequenceBase::UAnimSequenceBase(const FObjectInitializer& ObjectInitializer
 {
 }
 
-bool UAnimSequenceBase::IsPostLoadThreadSafe() const
-{
-	return false;	// PostLoad is not thread safe because of the call to VerifyCurveNames() (calling USkeleton::VerifySmartName) that can mutate a shared map in the skeleton.
-}
-
 void UAnimSequenceBase::PostLoad()
 {
 	Super::PostLoad();

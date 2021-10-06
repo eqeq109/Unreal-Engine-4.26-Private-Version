@@ -13,22 +13,6 @@
 #define LOCTEXT_NAMESPACE "NiagaraEditor"
 
 DEFINE_LOG_CATEGORY(LogNiagaraEditor);
-
-
-///////////////////////////////////////////////////////////////////////////////
-/// Common Editor Strings													///
-///////////////////////////////////////////////////////////////////////////////
-namespace FNiagaraEditorStrings
-{
-	const FName DefaultValueCustomRowName = TEXT("Default Value");
-	const FName DefaultModeCustomRowName = TEXT("Default Mode");
-
-	const FName FNiagaraParameterActionId = TEXT("FNiagaraParameterAction");
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/// Op Info																	///
-///////////////////////////////////////////////////////////////////////////////
 TMap<FName, int32> FNiagaraOpInfo::OpInfoMap;
 TArray<FNiagaraOpInfo> FNiagaraOpInfo::OpInfos;
 
@@ -111,16 +95,16 @@ void FNiagaraOpInfo::Init()
 	static FText MaxText = NSLOCTEXT("NiagaraOpInfo", "Max", "Max");
 
 	//Add all numeric ops
-	FText NumericCategory = NSLOCTEXT("NiagaraOpInfo", "NumericOpCategory", "Numeric");
 	{
 		FNiagaraTypeDefinition Type = FNiagaraTypeDefinition::GetGenericNumericDef();
 		FString DefaultStr_Zero(TEXT("0.0"));
 		FString DefaultStr_One(TEXT("1.0"));
+		FText CategoryText = NSLOCTEXT("NiagaraOpInfo", "NumericOpCategory", "Numeric");
 		FString CategoryName(TEXT("Numeric"));
 
 		int32 Idx = OpInfos.AddDefaulted();
 		FNiagaraOpInfo* Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Add Name", "Add");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Add Desc", "Result = A + B");
 		Op->Keywords = FText::FromString(TEXT("+"));
@@ -135,7 +119,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Subtract Name", "Subtract");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Subtract Desc", "Result = A - B");
 		Op->Keywords = FText::FromString(TEXT("-"));
@@ -150,7 +134,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Multiply Name", "Multiply");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Multiply Desc", "Result = A * B");
 		Op->Keywords = FText::FromString(TEXT("*"));
@@ -165,7 +149,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Divide Name", "Divide");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Divide Desc", "Result = A / B");
 		Op->Keywords = FText::FromString(TEXT("/"));
@@ -177,7 +161,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "MultiplyAdd Name", "MultiplyAdd");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "MultiplyAdd Desc", "Result = (A * B) + C");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -189,7 +173,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Lerp Name", "Lerp");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Lerp Desc", "Result = (A * (1 - C)) + (B * C)");
 		Op->Keywords = FText::FromString(TEXT("lerp"));
@@ -202,7 +186,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Fast Name", "Reciprocal Fast");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Fast Desc", "12-bits of accuracy, but faster. Result = 1 / A using Newton/Raphson approximation.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -212,7 +196,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Name", "Reciprocal");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Desc", "More accurate than Reciprocal Fast. Result = 1 / A");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -223,7 +207,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Sqrt Name", "Reciprocal Sqrt");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Reciprocal Sqrt Desc", "Result = 1 / sqrt(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -233,7 +217,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Sqrt Name", "Sqrt");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Sqrt Desc", "Result = sqrt(A)");
 		Op->Keywords = FText::FromString(TEXT("sqrt"));
@@ -244,7 +228,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "One Minus Name", "One Minus");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "One Minus Desc", "Result = 1 - A");
 		Op->Keywords = FText::FromString(TEXT("1-x"));
@@ -255,7 +239,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Negate Name", "Negate");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Negate Desc", "Result = -A");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -265,7 +249,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Abs Name", "Abs");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Abs Desc", "Result = abs(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -275,7 +259,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Exp Name", "Exp");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Exp Desc", "Result = exp(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -285,7 +269,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Exp2 Name", "Exp2");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Exp2 Desc", "Result = exp2(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -295,7 +279,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Log Name", "Log");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Log Desc", "Result = log(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -305,7 +289,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Log2 Name", "Log2");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Log2 Desc", "Result = log2(A)");
 		Op->Keywords = FText::FromString(TEXT("log2"));
@@ -323,7 +307,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Sine Name", "Sine");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Sine Desc", "Result = sin(Angle*(TWO_PI/Period))");
 		Op->Keywords = FText::FromString(TEXT("sine"));
@@ -335,7 +319,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "SinRad Name", "Sine(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "SinRad Desc", "Result = sin(AngleInRadians)");
 		Op->Keywords = FText::FromString(TEXT("sine"));
@@ -346,7 +330,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "SinDeg Name", "Sine(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "SinDeg Desc", "Result = sin(AngleInDegrees*DegreesToRadians)");
 		Op->Keywords = FText::FromString(TEXT("sine"));
@@ -357,7 +341,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Cosine Name", "Cosine");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Cosine Desc", "Result = cos(Angle*(TWO_PI/Period))");
 		Op->Keywords = FText::FromString(TEXT("Cosine"));
@@ -369,7 +353,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CosRad Name", "Cosine(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CosRad Desc", "Result = cos(AngleInRadians)");
 		Op->Keywords = FText::FromString(TEXT("Cosine"));
@@ -380,7 +364,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CosDeg Name", "Cosine(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CosDeg Desc", "Result = cos(AngleInDegrees*DegreesToRadians)");
 		Op->Keywords = FText::FromString(TEXT("Cosine"));
@@ -391,7 +375,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Tangent Name", "Tangent");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Tangent Desc", "Result = tan(Angle*(TWO_PI/Period))");
 		Op->Keywords = FText::FromString(TEXT("Tangent"));
@@ -403,7 +387,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "TanRad Name", "Tangent(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "TanRad Desc", "Result = tan(AngleInRadians)");
 		Op->Keywords = FText::FromString(TEXT("Tangent"));
@@ -414,7 +398,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "TanDeg Name", "Tangent(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "TanDeg Desc", "Result = tan(AngleInDegrees*DegreesToRadians)");
 		Op->Keywords = FText::FromString(TEXT("Tangent"));
@@ -426,7 +410,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcSine Name", "ArcSine");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcSine Desc", "Result = asin(A)*(Period/TWO_PI)");
 		Op->Keywords = FText::FromString(TEXT("ArcSine"));
@@ -438,7 +422,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcSineRad Name", "ArcSine(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcSineRad Desc", "Result = asin(A)");
 		Op->Keywords = FText::FromString(TEXT("ArcSine"));
@@ -449,7 +433,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcSineDeg Name", "ArcSine(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcSineDeg Desc", "Result = asin(A)*RadiansToDegrees");
 		Op->Keywords = FText::FromString(TEXT("ArcSine"));
@@ -460,7 +444,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Pi Name", "PI");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Pi Desc", "The constant PI");
 		Op->Keywords = FText::FromString(TEXT("pi"));
@@ -470,7 +454,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Two Pi Name", "TWO_PI");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Two Pi Desc", "The constant PI * 2");
 		Op->Keywords = FText::FromString(TEXT("pi"));
@@ -481,7 +465,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcCosine Name", "ArcCosine");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcCosine Desc", "Result = acos(A)*(Period/TWO_PI)");
 		Op->Keywords = FText::FromString(TEXT("ArcCosine"));
@@ -493,7 +477,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcCosineRad Name", "ArcCosine(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcCosineRad Desc", "Result = acos(A)");
 		Op->Keywords = FText::FromString(TEXT("ArcCosine"));
@@ -504,7 +488,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcCosineDeg Name", "ArcCosine(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcCosineDeg Desc", "Result = acos(A)*RadiansToDegrees");
 		Op->Keywords = FText::FromString(TEXT("ArcCosine"));
@@ -516,7 +500,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcTangent Name", "ArcTangent");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcTangent Desc", "Result = atan(A)*(Period/TWO_PI)");
 		Op->Keywords = FText::FromString(TEXT("ArcTangent"));
@@ -528,7 +512,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcTangentRad Name", "ArcTangent(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcTangentRad Desc", "Result = atan(A)");
 		Op->Keywords = FText::FromString(TEXT("ArcTangent"));
@@ -539,7 +523,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ArcTangentDeg Name", "ArcTangent(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ArcTangentDeg Desc", "Result = atan(A)*RadiansToDegrees");
 		Op->Keywords = FText::FromString(TEXT("ArcTangent"));
@@ -550,7 +534,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ATan2 Name", "ArcTangent2");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ATan2 Desc", "ResultInPeriod = Period * atan2(A, B) / 2PI");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -562,7 +546,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ATan2Rad Name", "ArcTangent2(Radians)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ATan2Rad Desc", "ResultInRadians = atan2(A, B)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -573,7 +557,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "ATan2Deg Name", "ArcTangent2(Degrees)");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "ATan2Deg Desc", "ResultInPeriod = 180 * atan2(A, B) / PI");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -584,7 +568,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Degrees To Radians", "DegreesToRadians");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Degrees To Radians Desc", "DegreesToRadians(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, FNiagaraTypeDefinition::GetFloatDef(), AText, AText, DefaultStr_One));
@@ -594,7 +578,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Radians To Degrees", "RadiansToDegrees");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "RadiansToDegrees Desc", "RadiansToDegrees(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, FNiagaraTypeDefinition::GetFloatDef(), AText, AText, DefaultStr_One));
@@ -604,7 +588,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Ceil Name", "Ceil");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Ceil Desc", "Rounds A to the nearest integer higher than A.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -614,7 +598,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Floor Name", "Floor");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Floor Desc", "Rounds A to the nearest integer lower than A.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -624,7 +608,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Round Name", "Round");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Round Desc", "Rounds A to the nearest integer.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -634,7 +618,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Fmod Name", "Modulo");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Fmod Desc", "Result = A % B");
 		Op->Keywords = FText::FromString(TEXT("%"));
@@ -646,7 +630,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Fmod Name Fast", "Modulo Fast");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Fmod Desc Fast", "Result = A % B. May be less precise than regular FMod.");
 		Op->Keywords = FText::FromString(TEXT("%"));
@@ -658,7 +642,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Frac Name", "Frac");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Frac Desc", "Result = frac(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -668,7 +652,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Trunc Name", "Trunc");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Trunc Desc", "Result = trunc(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -678,7 +662,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Clamp Name", "Clamp");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Clamp Desc", "Result = clamp(A, Min, Max)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -690,7 +674,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Min Name", "Min");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Min Desc", "Result = min(A, B)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -704,7 +688,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Max Name", "Max");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Max Desc", "Result = max(A, B)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -718,18 +702,18 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Pow Name", "Pow");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Pow Desc", "Result = pow(A, B). When A < 0, it will be clamped to 0.");
+		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Pow Desc", "Result = pow(A, B)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("pow(max(0, {0}),{1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("pow({0},{1})")));
 		Op->BuildName(TEXT("Pow"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Sign Name", "Sign");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Sign Desc", "Result = sign(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -739,17 +723,17 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Step Name", "Step");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Step Desc", "Result = step(0, A)");
+		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Step Desc", "Result = step(A)");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("step(0, {0})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("step({0})")));
 		Op->BuildName(TEXT("Step"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Noise Name", "Noise");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Noise Desc", "A continuous pseudo random noise function.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(X, Type, XText, XText, DefaultStr_Zero));
@@ -760,7 +744,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Dot Name", "Dot");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Dot Desc", "Dot product of two vectors.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -772,7 +756,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Normalize Name", "Normalize");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Normalize Desc", "Normalizes the passed value.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -782,7 +766,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Length Name", "Length");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Length Desc", "Returns the length of the passed value.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -794,7 +778,7 @@ void FNiagaraOpInfo::Init()
 		// Non-deterministic random number generation. Calls FRandomStream on the CPU. 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Rand Name", "Random");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Rand Desc", "Returns a non-deterministic random value between 0 and A.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -805,7 +789,7 @@ void FNiagaraOpInfo::Init()
 		// Non-deterministic integer random number generation. Calls FRandomStream on the CPU. 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Rand Integer Name", "Random Integer");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Rand Integer Desc", "Returns a non-deterministic random integer value between 0 and Max-1");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
@@ -818,7 +802,7 @@ void FNiagaraOpInfo::Init()
 		// Non-deterministic float random number generation. Calls FRandomStream on the CPU. 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Rand Float Name", "Random Float");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Rand Float Desc", "Returns a non-deterministic random float value between 0 and Max");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
@@ -840,7 +824,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Seeded Rand Name", "Seeded Random");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Seeded Rand Desc", "Returns a deterministic random value between 0 and A.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_One));
@@ -853,7 +837,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Seeded Integer Rand Name", "Seeded Integer Random");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Seeded Integer Rand Desc", "Returns a deterministic random integer value between 0 and Max-1.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
@@ -868,7 +852,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Seeded Float Rand Name", "Seeded Float Random");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Seeded Float Rand Desc", "Returns a deterministic random float value between 0 and Max.");
 		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
@@ -881,40 +865,10 @@ void FNiagaraOpInfo::Init()
 		Op->bNumericsCanBeFloats = true;
 		OpInfoMap.Add(Op->Name) = Idx;
 
- 		//Hash ops
- 		FNiagaraTypeDefinition IntHashType = FNiagaraTypeDefinition::GetIntDef();
- 		Idx = OpInfos.AddDefaulted();
- 		Op = &OpInfos[Idx];
- 		Op->Category = NumericCategory;
- 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "HashInt Name", "Hash Integer");
- 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "HashInt Desc", "Returns a hashed value for the given inputs. The output is in the range 0 to (2^31 - 1).");
- 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, IntHashType, AText, AText, DefaultStr_Zero));
- 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, IntHashType, BText, BText, DefaultStr_Zero));
- 		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, IntHashType, ResultText, ResultText, DefaultStr_One, TEXT("hash({0}, {1})")));
- 		Op->BuildName(TEXT("Hash Integer"), CategoryName);
- 		Op->bSupportsAddedInputs = true;
- 		Op->AddedInputTypeRestrictions.Add(IntHashType);
- 		Op->AddedInputFormatting = TEXT("hash({A}, {B})");
- 		OpInfoMap.Add(Op->Name) = Idx;
-
- 		Idx = OpInfos.AddDefaulted();
- 		Op = &OpInfos[Idx];
- 		Op->Category = NumericCategory;
- 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "HashFloat Name", "Hash Float");
- 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "HashFloat Desc", "Returns a hashed value for the given inputs. The result is normalized to the range 0 (inclusive) to 1 (exclusive).");
- 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, IntHashType, AText, AText, DefaultStr_Zero));
- 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, IntHashType, BText, BText, DefaultStr_Zero));
- 		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetFloatDef(), ResultText, ResultText, DefaultStr_One, TEXT("hash_float({0}, {1})")));
- 		Op->BuildName(TEXT("Hash Float"), CategoryName);
- 		Op->bSupportsAddedInputs = true;
- 		Op->AddedInputTypeRestrictions.Add(IntHashType);
- 		Op->AddedInputFormatting = TEXT("hash_float({A}, {B})");
- 		OpInfoMap.Add(Op->Name) = Idx;
-
 		//Comparison ops
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpLT Name", "Less Than");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpLT Desc", "Result = A < B");
 		Op->Keywords = FText::FromString(TEXT("<"));
@@ -926,7 +880,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpLE Name", "Less Than Or Equal");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpLE Desc", "Result = A <= B");
 		Op->Keywords = FText::FromString(TEXT("<="));
@@ -938,7 +892,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpGT Name", "Greater Than");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpGT Desc", "Result = A > B");
 		Op->Keywords = FText::FromString(TEXT(">"));
@@ -950,7 +904,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpGE Name", "Greater Than Or Equal");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpGE Desc", "Result = A >= B");
 		Op->Keywords = FText::FromString(TEXT(">="));
@@ -962,7 +916,7 @@ void FNiagaraOpInfo::Init()
 
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpEQ Name", "Equal");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpEQ Desc", "Result = A == B");
 		Op->Keywords = FText::FromString(TEXT("=="));
@@ -974,7 +928,7 @@ void FNiagaraOpInfo::Init()
 		
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
-		Op->Category = NumericCategory;
+		Op->Category = CategoryText;
 		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "CmpNEQ Name", "Not Equal");
 		Op->Description = NSLOCTEXT("NiagaraOpInfo", "CmpNEQ Desc", "Result = A != B");
 		Op->Keywords = FText::FromString(TEXT("!="));
@@ -1293,10 +1247,11 @@ void FNiagaraOpInfo::Init()
 
 	/* Vector3 only ops **/
 	//TODO: Replace all categories with "Math" or something like that?
+	FText Vec3Category = NSLOCTEXT("NiagaraOpInfo", "Vector3OpCategory", "Vector3");
 	FString Vec3CategoryName(TEXT("Vector3"));
 	Idx = OpInfos.AddDefaulted();
 	Op = &OpInfos[Idx];
-	Op->Category = NumericCategory;
+	Op->Category = Vec3Category;
 	Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Vector Cross Name", "Cross");
 	Op->Description = NSLOCTEXT("NiagaraOpInfo", "Vector Cross Desc", "Cross product of two vectors.");
 	Op->Inputs.Add(FNiagaraOpInOutInfo(A, FNiagaraTypeDefinition::GetVec3Def(), AText, AText, Default_VectorX));
@@ -1305,7 +1260,7 @@ void FNiagaraOpInfo::Init()
 	Op->BuildName(TEXT("Cross"), Vec3CategoryName);
 	OpInfoMap.Add(Op->Name) = Idx;
 
-	FText UtilCategory = NSLOCTEXT("NiagaraOpInfo", "UtilOpCategory", "Utility");
+	FText UtilCategory = NSLOCTEXT("NiagaraOpInfo", "UtilOpCategory", "Util");
 	FString UtilCategoryName(TEXT("Util"));
 	Idx = OpInfos.AddDefaulted();
 	Op = &OpInfos[Idx];
@@ -1326,12 +1281,12 @@ void FNiagaraOpInfo::Init()
 	OpInfoMap.Add(Op->Name) = Idx;
 }
 END_FUNCTION_BUILD_OPTIMIZATION
-////////////////////////////////////////////////////////////////////////// 
+//////////////////////////////////////////////////////////////////////////
 
 
-///////////////////////////////////////////////////////////////////////////////
-/// UActorFactoryNiagara													///
-///////////////////////////////////////////////////////////////////////////////
+/*-----------------------------------------------------------------------------
+UActorFactoryNiagara
+-----------------------------------------------------------------------------*/
 UActorFactoryNiagara::UActorFactoryNiagara(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -1400,12 +1355,15 @@ void UActorFactoryNiagara::PostCreateBlueprint(UObject* Asset, AActor* CDO)
 }
 
 
-///////////////////////////////////////////////////////////////////////////////
-/// INiagaraScriptGraphFocusInfo											///
-///////////////////////////////////////////////////////////////////////////////
+
+#undef LOCTEXT_NAMESPACE
+
 INiagaraScriptGraphFocusInfo::~INiagaraScriptGraphFocusInfo()
 {
 	//Stand-in definition for abstract INiagaraScriptGraphFocusInfo's pure virtual dtor
 }
 
-#undef LOCTEXT_NAMESPACE
+bool FNiagaraScriptVariableAndViewInfo::operator==(const FNiagaraScriptVariableAndViewInfo& Other) const
+{
+	return ScriptVariable == Other.ScriptVariable && MetaData.GetUsage() == Other.MetaData.GetUsage();
+}

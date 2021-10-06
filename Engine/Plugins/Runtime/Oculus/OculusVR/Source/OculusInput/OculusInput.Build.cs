@@ -26,8 +26,6 @@ namespace UnrealBuildTool.Rules
 					"OculusHMD",
 					"OculusMR",
 					"OVRPlugin",
-					"RHI",
-					"RenderCore"
 				});
 
 			PrivateIncludePaths.AddRange(

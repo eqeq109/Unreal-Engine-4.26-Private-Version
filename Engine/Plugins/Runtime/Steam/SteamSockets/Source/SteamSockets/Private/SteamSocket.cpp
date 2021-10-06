@@ -12,16 +12,12 @@ FSteamSocket::FSteamSocket(ESocketType InSocketType, const FString& InSocketDesc
 	InternalHandle(k_HSteamNetConnection_Invalid),
 	SendMode(k_nSteamNetworkingSend_UnreliableNoNagle),
 	bShouldLingerOnClose(false),
-	bIsListenSocket(false), 
+	bIsListenSocket(false),
 	bIsLANSocket(false),
 	bHasPendingData(false),
 	ClosureReason(k_ESteamNetConnectionEnd_App_Generic)
 {
 	SocketSubsystem = static_cast<FSteamSocketsSubsystem*>(ISocketSubsystem::Get(STEAM_SOCKETS_SUBSYSTEM));
-	ISteamNetworkingSockets* SocketInterface = FSteamSocketsSubsystem::GetSteamSocketsInterface();
-#if !PLATFORM_MAC
-	PollGroup = SocketInterface->CreatePollGroup();
-#endif // PLATFORM_MAC
 }
 
 FSteamSocket::~FSteamSocket()
@@ -31,12 +27,7 @@ FSteamSocket::~FSteamSocket()
 	{
 		PendingData->Release();
 	}
-
-#if !PLATFORM_MAC
-	ISteamNetworkingSockets* SocketInterface = FSteamSocketsSubsystem::GetSteamSocketsInterface();
-	SocketInterface->DestroyPollGroup(PollGroup);
-#endif // PLATFORM_MAC
-
+	
 	Close();
 }
 
@@ -138,9 +129,6 @@ bool FSteamSocket::Connect(const FInternetAddr& Addr)
 	{
 		UE_LOG(LogSockets, Verbose, TEXT("SteamSockets: Connection to %s initiated"), *Addr.ToString(false));
 		SocketSubsystem->AddSocket(Addr, this);
-#if !PLATFORM_MAC
-		SocketInterface->SetConnectionPollGroup(InternalHandle, PollGroup);
-#endif // PLATFORM_MAC
 		return true;
 	}
 
@@ -334,13 +322,8 @@ bool FSteamSocket::RecvRaw(SteamNetworkingMessage_t*& Data, int32 MaxMessages, i
 	}
 
 	// At this point, we will have already written our pending data or we're getting a new one.
-#if PLATFORM_MAC
 	MessagesRead = (bIsListenSocket) ? SocketInterface->ReceiveMessagesOnListenSocket(InternalHandle, ((bIsPeeking) ? &PendingData : &Data), MaxMessages) :
 		SocketInterface->ReceiveMessagesOnConnection(InternalHandle, ((bIsPeeking) ? &PendingData : &Data), MaxMessages);
-#else
-	MessagesRead = (bIsListenSocket) ? SocketInterface->ReceiveMessagesOnPollGroup(PollGroup, ((bIsPeeking) ? &PendingData : &Data), MaxMessages) :
-		SocketInterface->ReceiveMessagesOnConnection(InternalHandle, ((bIsPeeking) ? &PendingData : &Data), MaxMessages);
-#endif // PLATFORM_MAC
 
 	if (MessagesRead >= 1)
 	{

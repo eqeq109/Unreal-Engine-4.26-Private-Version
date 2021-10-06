@@ -47,7 +47,7 @@ public:
 	//~ FAssetEditorToolkit interface
 
 	virtual FString GetDocumentationLink() const override;
-	virtual void OnClose() override;
+	virtual bool OnRequestClose() override;
 	virtual void RegisterTabSpawners(const TSharedRef<FTabManager>& TabManager) override;
 	virtual void UnregisterTabSpawners(const TSharedRef<FTabManager>& TabManager) override;
 

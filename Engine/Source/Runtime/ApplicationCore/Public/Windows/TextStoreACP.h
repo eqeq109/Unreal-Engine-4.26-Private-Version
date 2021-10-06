@@ -11,7 +11,7 @@
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <TextStor.h>
 #include <msctf.h>
-#include "Microsoft/COMPointer.h"
+#include "Windows/COMPointer.h"
 
 class ITextInputMethodContext;
 

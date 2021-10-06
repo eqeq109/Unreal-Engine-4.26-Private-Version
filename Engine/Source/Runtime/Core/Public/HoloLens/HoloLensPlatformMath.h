@@ -5,7 +5,5 @@
 ==============================================================================================*/
 
 #pragma once
-#include "Microsoft/MicrosoftPlatformMath.h"
+#include "Windows/WindowsPlatformMath.h"
 
-typedef FMicrosoftPlatformMathBase FHololensPlatformMath;
-typedef FHololensPlatformMath FPlatformMath;

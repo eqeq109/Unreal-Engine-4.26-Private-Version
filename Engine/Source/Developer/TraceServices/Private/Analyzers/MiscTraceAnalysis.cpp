@@ -154,17 +154,16 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 	//
 	case RouteId_RegisterGameThread:
 	{
-		const uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
+		uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
 		ThreadProvider.AddGameThread(ThreadId);
 		break;
 	}
 	case RouteId_CreateThread:
 	{
-		const uint32 CreatedThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CreatedThreadId");
-		const EThreadPriority Priority = static_cast<EThreadPriority>(EventData.GetValue<uint32>("Priority"));
-		const TCHAR* CreatedThreadName = reinterpret_cast<const TCHAR*>(EventData.GetAttachment());
-		ThreadProvider.AddThread(CreatedThreadId, CreatedThreadName, Priority);
-		const uint32 CurrentThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CurrentThreadId");
+		uint32 CreatedThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CreatedThreadId");
+		EThreadPriority Priority = static_cast<EThreadPriority>(EventData.GetValue<uint32>("Priority"));
+		ThreadProvider.AddThread(CreatedThreadId, reinterpret_cast<const TCHAR*>(EventData.GetAttachment()), Priority);
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
 		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
 		if (ThreadState->ThreadGroupStack.Num())
 		{
@@ -175,21 +174,21 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 	case RouteId_SetThreadGroup:
 	{
 		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
-		const uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
+		uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
 		ThreadProvider.SetThreadGroup(ThreadId, GroupName);
 		break;
 	}
 	case RouteId_BeginThreadGroupScope:
 	{
 		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
-		const uint32 CurrentThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CurrentThreadId");
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
 		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
 		ThreadState->ThreadGroupStack.Push(GroupName);
 		break;
 	}
 	case RouteId_EndThreadGroupScope:
 	{
-		const uint32 CurrentThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CurrentThreadId");
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
 		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
 		ThreadState->ThreadGroupStack.Pop();
 		break;

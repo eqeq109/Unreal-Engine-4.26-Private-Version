@@ -64,8 +64,6 @@ struct FDataprepSchemaAction : public FEdGraphSchemaAction
 	 */
 	FString GeneratedClassObjectPath;
 
-	FText ActionCategory;
-
 	/**
 	 * Create a DataprepSchemaAction
 	 * @param InActionCategory The category in which the action will be displayed

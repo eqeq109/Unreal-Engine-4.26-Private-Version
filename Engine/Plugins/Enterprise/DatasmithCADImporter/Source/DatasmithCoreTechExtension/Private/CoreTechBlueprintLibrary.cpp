@@ -26,6 +26,7 @@ bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMe
 {
 	bool bTessellationOutcome = false;
 
+#ifdef CAD_LIBRARY
 	int32 LODIndex = 0;
 
 	FAssetData AssetData( StaticMesh );
@@ -99,6 +100,7 @@ bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMe
 	{
 		FailureReason = NSLOCTEXT("BlueprintRetessellation", "MissingData", "No tessellation data attached to the static mesh");
 	}
+#endif
 
 	return bTessellationOutcome;
 }

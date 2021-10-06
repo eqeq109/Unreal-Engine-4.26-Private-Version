@@ -47,6 +47,12 @@ public:
 		return MDLImporter.ImportMaterials(ParentPackage, Flags, Materials);
 	}
 
+	virtual void SetTextureFactory(UTextureFactory* TextureFactory) override
+	{
+		FMDLImporter& MDLImporter = GetImporterInstance();
+		MDLImporter.SetTextureFactory(TextureFactory);
+	}
+
 	virtual TMap<FString, UMaterialInterface*> GetCreatedMaterials() override
 	{
 		FMDLImporter& MDLImporter = GetImporterInstance();
@@ -77,7 +83,8 @@ public:
 	Mdl::FMaterialCollection Materials;
 };
 
-TUniquePtr<IMdlFileImporter> IMdlFileImporter::Create()
+
+IMdlFileImporter* IMdlFileImporter::Create()
 {
-	return MakeUnique< FMdlFileImporterImpl >();
+    return new FMdlFileImporterImpl;
 }

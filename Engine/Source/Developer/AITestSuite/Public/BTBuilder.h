@@ -148,27 +148,23 @@ struct FBTBuilder
 		ParentNode.Children[ChildIdx].ChildTask = TaskNode;
 	}
 
-	static void AddTaskFlagChange(UBTCompositeNode& ParentNode, bool bValue, EBTNodeResult::Type NodeResult, FName BoolKeyName = TEXT("Bool1"), FName BoolOnAbortKeyName = FName(), bool bOnAbortValue = false)
+	static void AddTaskFlagChange(UBTCompositeNode& ParentNode, bool bValue, EBTNodeResult::Type NodeResult, FName BoolKeyName = TEXT("Bool1"))
 	{
 		UTestBTTask_SetFlag* TaskNode = NewObject<UTestBTTask_SetFlag>(ParentNode.GetTreeAsset());
 		TaskNode->bValue = bValue;
 		TaskNode->TaskResult = NodeResult;
 		TaskNode->KeyName = BoolKeyName;
-		TaskNode->OnAbortKeyName = BoolOnAbortKeyName;
-		TaskNode->bOnAbortValue = bOnAbortValue;
 
 		const int32 ChildIdx = ParentNode.Children.AddZeroed(1);
 		ParentNode.Children[ChildIdx].ChildTask = TaskNode;
 	}
 
-	static void AddTaskValueChange(UBTCompositeNode& ParentNode, int32 Value, EBTNodeResult::Type NodeResult, FName IntKeyName = TEXT("Int"), FName IntOnAbortKeyName = FName(), int32 OnAbortValue = 0)
+	static void AddTaskValueChange(UBTCompositeNode& ParentNode, int32 Value, EBTNodeResult::Type NodeResult, FName IntKeyName = TEXT("Int"))
 	{
 		UTestBTTask_SetValue* TaskNode = NewObject<UTestBTTask_SetValue>(ParentNode.GetTreeAsset());
 		TaskNode->Value = Value;
 		TaskNode->TaskResult = NodeResult;
 		TaskNode->KeyName = IntKeyName;
-		TaskNode->OnAbortKeyName = IntOnAbortKeyName;
-		TaskNode->OnAbortValue = OnAbortValue;
 
 		const int32 ChildIdx = ParentNode.Children.AddZeroed(1);
 		ParentNode.Children[ChildIdx].ChildTask = TaskNode;

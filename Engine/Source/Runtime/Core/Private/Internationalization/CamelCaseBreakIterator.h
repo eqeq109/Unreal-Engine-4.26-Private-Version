@@ -16,8 +16,11 @@ class FCamelCaseBreakIterator : public IBreakIterator
 public:
 	FCamelCaseBreakIterator();
 
-	virtual void SetString(FString&& InString) override;
-	virtual void SetStringRef(FStringView InString) override;
+	virtual void SetString(const FText& InText) override;
+	virtual void SetString(const FString& InString) override;
+	virtual void SetString(const TCHAR* const InString, const int32 InStringLength) override;
+	virtual void SetStringRef(const FString* InString) override;
+	virtual void ClearString() override;
 
 	virtual int32 GetCurrentPosition() const override;
 
@@ -51,15 +54,13 @@ protected:
 		int32 StrIndex;
 	};
 
-	using FTokensArray = TArray<FToken, TInlineAllocator<1024>>;
-	virtual void TokenizeString(FTokensArray& OutTokens) = 0;
+	virtual void TokenizeString(TArray<FToken>& OutTokens) = 0;
 
 protected:
 	void UpdateBreakPointsArray();
-	void PopulateBreakPointsArray(const FTokensArray& InTokens);
+	void PopulateBreakPointsArray(const TArray<FToken>& InTokens);
 
-	FString InternalString;
-	FStringView String;
+	FString String;
 	int32 CurrentPosition;
-	TArray<int32, TInlineAllocator<32>> BreakPoints;
+	TArray<int32> BreakPoints;
 };

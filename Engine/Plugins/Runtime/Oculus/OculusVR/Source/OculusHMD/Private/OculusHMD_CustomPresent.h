@@ -82,7 +82,6 @@ protected:
 	ovrpTextureFormat DefaultDepthOvrpTextureFormat;
 	IRendererModule* RendererModule;
 	FTexture2DRHIRef MirrorTextureRHI;
-	bool bIsStandaloneStereoDevice;
 };
 
 

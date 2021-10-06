@@ -193,7 +193,7 @@ void FClothMeshPaintAdapter::SetSelectedClothingAsset(const FGuid& InAssetGuid, 
 	SelectedAsset = nullptr;
 	if(InAssetGuid.IsValid() && ReferencedSkeletalMesh)
 	{
-		for(UClothingAssetBase* Asset : ReferencedSkeletalMesh->GetMeshClothingAssets())
+		for(UClothingAssetBase* Asset : ReferencedSkeletalMesh->MeshClothingAssets)
 		{
 			UClothingAssetCommon* ConcreteAsset = CastChecked<UClothingAssetCommon>(Asset);
 			if(ConcreteAsset->GetAssetGuid() == InAssetGuid)

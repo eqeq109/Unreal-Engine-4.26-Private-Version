@@ -5,13 +5,13 @@
 
 namespace Audio
 {
-	FQuartzMetronome::FQuartzMetronome() : TimeSinceStart(0)
+	FQuartzMetronome::FQuartzMetronome()
 	{
 		SetTickRate(CurrentTickRate);
 	}
 
 	FQuartzMetronome::FQuartzMetronome(const FQuartzTimeSignature& InTimeSignature)
-		: CurrentTimeSignature(InTimeSignature), TimeSinceStart(0)
+		: CurrentTimeSignature(InTimeSignature)
 	{
 		SetTickRate(CurrentTickRate);
 	}
@@ -65,6 +65,7 @@ namespace Audio
 						}
 
 						FramesLeftInMusicalDuration[DurationType] += PulseDurations[PulseDurationIndex];
+
 					}
 					while (FramesLeftInMusicalDuration[DurationType] <= 0);
 				}
@@ -75,24 +76,13 @@ namespace Audio
 		if (ToUpdateBitField & (1 << static_cast<int>(EQuartzCommandQuantization::Bar)))
 		{
 			++CurrentTimeStamp.Bars;
-			CurrentTimeStamp.Beat = 1;
+			CurrentTimeStamp.Beat = 0;
 		}
 		else if (ToUpdateBitField & (1 << static_cast<int>(EQuartzCommandQuantization::Beat)))
 		{
 			++CurrentTimeStamp.Beat;
 		}
 
-		if (PulseDurations.Num())
-		{
-			CurrentTimeStamp.BeatFraction = 1.f - (FramesLeftInMusicalDuration[EQuartzCommandQuantization::Beat] / static_cast<float>(PulseDurations[PulseDurationIndex]));
-		}
-		else
-		{
-			CurrentTimeStamp.BeatFraction = 1.f - (FramesLeftInMusicalDuration[EQuartzCommandQuantization::Beat] / static_cast<float>(MusicalDurationsInFrames[EQuartzCommandQuantization::Beat]));
-		}
-
-		TimeSinceStart += double(InNumSamples) / CurrentTickRate.GetSampleRate(); 
-		CurrentTimeStamp.Seconds = TimeSinceStart;
 		FireEvents(ToUpdateBitField);
 	}
 
@@ -136,22 +126,14 @@ namespace Audio
 
 	int32 FQuartzMetronome::GetFramesUntilBoundary(FQuartzQuantizationBoundary InQuantizationBoundary) const
 	{
-		if (!ensure(InQuantizationBoundary.Quantization != EQuartzCommandQuantization::None))
-		{
-			return 0; // Metronome's should not have to deal w/ Quartization == None
-		}
-
 		if (InQuantizationBoundary.Multiplier < 1.0f)
 		{
-			UE_LOG(LogAudioQuartz, Warning, TEXT("Quantization Boundary being clamped to 1.0 (from %f)"), InQuantizationBoundary.Multiplier);
+			UE_LOG(LogAudioQuartz, Warning, TEXT("Quantizatoin Boundary being clamped to 1.0 (from %f)"), InQuantizationBoundary.Multiplier);
 			InQuantizationBoundary.Multiplier = 1.f;
 		}
 
 		// number of frames until the next occurrence of this boundary
 		int32 FramesUntilBoundary = FramesLeftInMusicalDuration[InQuantizationBoundary.Quantization];
-
-		// how many multiples actually exist until the boundary we care about?
-		int32 NumDurationsLeft = static_cast<int32>(InQuantizationBoundary.Multiplier) - 1;
 
 		// in the simple case that's all we need to know
 		bool bIsSimpleCase = FMath::IsNearlyEqual(InQuantizationBoundary.Multiplier, 1.f);
@@ -159,19 +141,13 @@ namespace Audio
 		// it is NOT the simple case if we are in Bar-Relative. // i.e. 1.f Beat here means "Beat 1 of the bar"
 		bIsSimpleCase &= (InQuantizationBoundary.CountingReferencePoint != EQuarztQuantizationReference::BarRelative);
 
-		if (CurrentTimeStamp.IsZero() && !InQuantizationBoundary.bFireOnClockStart)
-		{
-			FramesUntilBoundary = MusicalDurationsInFrames[InQuantizationBoundary.Quantization];
-
-			if (NumDurationsLeft == 0)
-			{
-				return FramesUntilBoundary;
-			}
-		}
-		else if (bIsSimpleCase || CurrentTimeStamp.IsZero())
+		if (bIsSimpleCase || CurrentTimeStamp.IsZero())
 		{
 			return FramesUntilBoundary;
 		}
+
+		// how many multiples actually exist until the boundary we care about?
+		int32 NumDurationsLeft = static_cast<int32>(InQuantizationBoundary.Multiplier) - 1;
 
 		// counting from the current point in time
 		if (InQuantizationBoundary.CountingReferencePoint == EQuarztQuantizationReference::CurrentTimeRelative)
@@ -333,14 +309,6 @@ namespace Audio
 	void FQuartzMetronome::ResetTransport()
 	{
 		CurrentTimeStamp.Reset();
-
-		for (int32& FrameCount : FramesLeftInMusicalDuration.FramesInTimeValueInternal)
-		{
-			FrameCount = 0;
-		}
-
-		TimeSinceStart = 0;
-		PulseDurationIndex = -1;
 	}
 
 	void FQuartzMetronome::RecalculateDurations()
@@ -419,8 +387,16 @@ namespace Audio
 	{
 		FQuartzMetronomeDelegateData Data;
 		Data.Bar = (CurrentTimeStamp.Bars);
-		Data.Beat = (CurrentTimeStamp.Beat);
-		Data.BeatFraction = (CurrentTimeStamp.BeatFraction);
+		Data.Beat = (CurrentTimeStamp.Beat + 1);
+
+		if (PulseDurations.Num())
+		{
+			Data.BeatFraction = 1.f - (FramesLeftInMusicalDuration[EQuartzCommandQuantization::Beat] / static_cast<float>(PulseDurations[PulseDurationIndex]));
+		}
+		else
+		{
+			Data.BeatFraction = 1.f - (FramesLeftInMusicalDuration[EQuartzCommandQuantization::Beat] / static_cast<float>(MusicalDurationsInFrames[EQuartzCommandQuantization::Beat]));
+		}
 
 		if (!(EventFlags &= ListenerFlags))
 		{

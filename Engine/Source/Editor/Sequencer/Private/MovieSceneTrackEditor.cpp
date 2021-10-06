@@ -36,7 +36,8 @@ bool FMovieSceneTrackEditor::bKeying;
 
 FFrameNumber FMovieSceneTrackEditor::GetTimeForKey()
 { 
-	if (bKeying && NextKeyTime.IsSet())
+	// When shift is down, enable adding keys/sections one after the other
+	if (bKeying && NextKeyTime.IsSet() && FSlateApplication::Get().GetModifierKeys().IsShiftDown())
 	{
 		return NextKeyTime.GetValue();
 	}
@@ -46,10 +47,10 @@ FFrameNumber FMovieSceneTrackEditor::GetTimeForKey()
 	return SequencerPin.IsValid() ? SequencerPin->GetLocalTime().Time.FrameNumber : FFrameNumber(0);
 }
 
-void FMovieSceneTrackEditor::BeginKeying(FFrameNumber InFrameNumber)
+void FMovieSceneTrackEditor::BeginKeying()
 {
 	bKeying = true;
-	NextKeyTime = InFrameNumber;
+	NextKeyTime.Reset();
 }
 
 void FMovieSceneTrackEditor::EndKeying()
@@ -91,16 +92,12 @@ void FMovieSceneTrackEditor::AnimatablePropertyChanged( FOnKeyProperty OnKeyProp
 
 		FKeyPropertyResult KeyPropertyResult = OnKeyProperty.Execute( KeyTime );
 
-		// When shift is down, enable adding keys/sections one after the other
-		if (FSlateApplication::Get().GetModifierKeys().IsShiftDown())
+		for (TWeakObjectPtr<UMovieSceneSection> NewSection : KeyPropertyResult.SectionsCreated)
 		{
-			for (TWeakObjectPtr<UMovieSceneSection> NewSection : KeyPropertyResult.SectionsCreated)
+			if (NewSection.IsValid())
 			{
-				if (NewSection.IsValid())
-				{
-					NextKeyTime = NewSection.Get()->GetExclusiveEndFrame();
-					break;
-				}
+				NextKeyTime = NewSection.Get()->GetExclusiveEndFrame();
+				break;
 			}
 		}
 
@@ -231,12 +228,12 @@ bool FMovieSceneTrackEditor::HandleAssetAdded(UObject* Asset, const FGuid& Targe
 	return false; 
 }
 
-bool FMovieSceneTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, FSequencerDragDropParams& DragDropParams)
+bool FMovieSceneTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, UMovieSceneTrack* Track, int32 RowIndex, const FGuid& TargetObjectGuid)
 {
 	return false;
 }
 
-FReply FMovieSceneTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, const FSequencerDragDropParams& DragDropParams)
+FReply FMovieSceneTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, UMovieSceneTrack* Track, int32 RowIndex, const FGuid& TargetObjectGuid)
 {
 	return FReply::Unhandled();
 }

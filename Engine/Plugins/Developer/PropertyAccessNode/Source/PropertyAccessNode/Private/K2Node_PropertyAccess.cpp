@@ -31,7 +31,7 @@ void UK2Node_PropertyAccess::CreateClassVariablesFromBlueprint(IAnimBlueprintVar
 	if(ResolvedPinType != FEdGraphPinType() && ResolvedPinType.PinCategory != UEdGraphSchema_K2::PC_Wildcard)
 	{
 		// Create internal generated destination property
-		if (FProperty* DestProperty = InCreationContext.CreateUniqueVariable(this, ResolvedPinType))
+		if(FProperty* DestProperty = InCreationContext.CreateVariable(GetFName(), ResolvedPinType))
 		{
 			GeneratedPropertyName = DestProperty->GetFName();
 		}

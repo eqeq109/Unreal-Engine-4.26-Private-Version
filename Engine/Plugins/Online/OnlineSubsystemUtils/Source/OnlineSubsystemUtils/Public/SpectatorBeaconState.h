@@ -377,7 +377,7 @@ protected:
 	UPROPERTY(Transient)
 		TArray<FSpectatorReservation> Reservations;
 	/** Players that are expected to join shortly */
-	TArray< FUniqueNetIdPtr > PlayersPendingJoin;
+	TArray< TSharedPtr<const FUniqueNetId> > PlayersPendingJoin;
 
 	/**
 	* Check that our reservations are in a good state

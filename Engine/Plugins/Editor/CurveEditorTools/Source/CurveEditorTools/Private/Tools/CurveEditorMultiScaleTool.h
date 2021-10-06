@@ -85,13 +85,13 @@ struct FMultiScaleToolOptions
 	GENERATED_BODY()
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float XScale = 1.f;
+	float XScale;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float YScale = 1.f;
+	float YScale;
 	
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	EMultiScalePivotType PivotType = EMultiScalePivotType::Average;
+	EMultiScalePivotType PivotType;
 };
 
 class FCurveEditorMultiScaleTool : public ICurveEditorToolExtension

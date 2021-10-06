@@ -74,7 +74,7 @@ struct FOnlineStatusUpdate
 	struct FImage* Image;
 
 	/** A list of friends which are included in the post */
-	TArray<FUniqueNetIdRef > TaggedFriends;
+	TArray<TSharedRef<const FUniqueNetId> > TaggedFriends;
 
 	/** The privacy of this post */
 	EOnlineStatusUpdatePrivacy PostPrivacy;

@@ -230,7 +230,7 @@ namespace UnFbx {
 		}
 	}
 
-	void FFbxCurvesAPI::GetCurveDataForSequencer(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative, float Scale) const
+	void FFbxCurvesAPI::GetCurveDataForSequencer(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative) const
 	{
 		const float DefaultCurveWeight = FbxAnimCurveDef::sDEFAULT_WEIGHT;
 		FbxAnimCurve* FbxCurve = CurveHandle.AnimCurve;
@@ -242,7 +242,6 @@ namespace UnFbx {
 				FbxAnimCurveKey Key = FbxCurve->KeyGet(KeyIndex);
 				FbxTime KeyTime = Key.GetTime();
 				float Value = bNegative ? -Key.GetValue() : Key.GetValue();
-				Value *= Scale;
 				FKeyHandle NewKeyHandle = RichCurve.AddKey(KeyTime.GetSecondDouble(), Value, false);
 
 				FbxAnimCurveDef::ETangentMode KeyTangentMode = Key.GetTangentMode();
@@ -377,7 +376,7 @@ namespace UnFbx {
 		RichCurve.AutoSetTangents();
 	}
 
-	void FFbxCurvesAPI::GetCurveData(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative,float Scale) const
+	void FFbxCurvesAPI::GetCurveData(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative) const
 	{
 		FbxAnimCurve* FbxCurve = CurveHandle.AnimCurve;
 		if (FbxCurve)
@@ -386,12 +385,12 @@ namespace UnFbx {
 			//Send a neutral timespan 0 to infinite, the ImportCurve, offset the keytime by doing: (KeyTime - TimeSpan.start), setting TimeSpan.start at zero will not affect the keys time value.
 			FbxTimeSpan AnimTimeSpan(FBXSDK_TIME_ZERO, FBXSDK_TIME_INFINITE);
 			const bool bAutoSetTangents = false;
-			UnFbx::FFbxImporter::ImportCurve(FbxCurve, RichCurve, AnimTimeSpan, Scale, bAutoSetTangents);
+			UnFbx::FFbxImporter::ImportCurve(FbxCurve, RichCurve, AnimTimeSpan, 1.0f, bAutoSetTangents);
 		}
 	}
 
 
-	void FFbxCurvesAPI::GetBakeCurveData(const FFbxAnimCurveHandle &CurveHandle, TArray<float>& CurveData, float PeriodTime, float StartTime /*= 0.0f*/, float StopTime /*= -1.0f*/, bool bNegative /*= false*/, float Scale /*=1.0f*/) const
+	void FFbxCurvesAPI::GetBakeCurveData(const FFbxAnimCurveHandle &CurveHandle, TArray<float>& CurveData, float PeriodTime, float StartTime /*= 0.0f*/, float StopTime /*= -1.0f*/, bool bNegative /*= false*/) const
 	{
 		//Make sure the parameter are ok
 		if (CurveHandle.AnimCurve == nullptr || CurveHandle.AnimationTimeSecond > StartTime || PeriodTime <= 0.0001f || (StopTime > 0.0f && StopTime < StartTime) )
@@ -409,7 +408,7 @@ namespace UnFbx {
 		{
 			FbxTime FbxStepTime;
 			FbxStepTime.SetSecondDouble(CurrentTime);
-			float CurveValue = CurveHandle.AnimCurve->Evaluate(FbxStepTime, &LastEvaluateKey) * Scale;
+			float CurveValue = CurveHandle.AnimCurve->Evaluate(FbxStepTime, &LastEvaluateKey);
 			if (bNegative)
 				CurveValue = -CurveValue;
 			CurveData.Add(CurveValue);
@@ -434,13 +433,13 @@ namespace UnFbx {
 		}
 	}
 
-	void FFbxCurvesAPI::GetCurveDataForSequencer(const FString& NodeName, const FString& PropertyName, int32 ChannelIndex, int32 CompositeIndex, FRichCurve& RichCurve, bool bNegative, float Scale) const
+	void FFbxCurvesAPI::GetCurveDataForSequencer(const FString& NodeName, const FString& PropertyName, int32 ChannelIndex, int32 CompositeIndex, FRichCurve& RichCurve, bool bNegative) const
 	{
 		FFbxAnimCurveHandle CurveHandle;
 		GetCurveHandle(NodeName, PropertyName, ChannelIndex, CompositeIndex, CurveHandle);
 		if (CurveHandle.AnimCurve != nullptr)
 		{
-			GetCurveDataForSequencer(CurveHandle, RichCurve, bNegative, Scale);
+			GetCurveDataForSequencer(CurveHandle, RichCurve, bNegative);
 		}
 		else
 		{
@@ -462,13 +461,13 @@ namespace UnFbx {
 		}
 	}
 
-	void FFbxCurvesAPI::GetBakeCurveData(const FString& NodeName, const FString& PropertyName, int32 ChannelIndex, int32 CompositeIndex, TArray<float>& CurveData, float PeriodTime, float StartTime /*= 0.0f*/, float StopTime /*= -1.0f*/, bool bNegative /*= false*/, float Scale /*=1.0f*/) const
+	void FFbxCurvesAPI::GetBakeCurveData(const FString& NodeName, const FString& PropertyName, int32 ChannelIndex, int32 CompositeIndex, TArray<float>& CurveData, float PeriodTime, float StartTime /*= 0.0f*/, float StopTime /*= -1.0f*/, bool bNegative /*= false*/) const
 	{
 		FFbxAnimCurveHandle CurveHandle;
 		GetCurveHandle(NodeName, PropertyName, ChannelIndex, CompositeIndex, CurveHandle);
 		if (CurveHandle.AnimCurve != nullptr)
 		{
-			GetBakeCurveData(CurveHandle, CurveData, PeriodTime, StartTime, StopTime, bNegative, Scale);
+			GetBakeCurveData(CurveHandle, CurveData, PeriodTime, StartTime, StopTime, bNegative);
 		}
 		else
 		{
@@ -665,7 +664,7 @@ namespace UnFbx {
 	void FFbxCurvesAPI::GetConvertedTransformCurveData(const FString& NodeName, FRichCurve& TranslationX, FRichCurve& TranslationY, FRichCurve& TranslationZ,
 		FRichCurve& EulerRotationX, FRichCurve& EulerRotationY, FRichCurve& EulerRotationZ,
 		FRichCurve& ScaleX, FRichCurve& ScaleY, FRichCurve& ScaleZ,
-		FTransform& DefaultTransform, bool bUseSequencerCurve, float UniformScale) const
+		FTransform& DefaultTransform, bool bUseSequencerCurve) const
 	{
 
 		for (TPair< uint64, FFbxAnimNodeHandle> AnimNodeKvp : CurvesData)
@@ -690,31 +689,31 @@ namespace UnFbx {
 				const bool bNegate = true;
 				if (bUseSequencerCurve)
 				{
-					GetCurveDataForSequencer(TransformCurves[0], TranslationX, !bNegate, UniformScale);
-					GetCurveDataForSequencer(TransformCurves[1], TranslationY, bNegate, UniformScale);
-					GetCurveDataForSequencer(TransformCurves[2], TranslationZ, !bNegate, UniformScale);
+					GetCurveDataForSequencer(TransformCurves[0], TranslationX, !bNegate);
+					GetCurveDataForSequencer(TransformCurves[1], TranslationY, bNegate);
+					GetCurveDataForSequencer(TransformCurves[2], TranslationZ, !bNegate);
 
 					GetCurveDataForSequencer(TransformCurves[3], EulerRotationX, !bNegate);
 					GetCurveDataForSequencer(TransformCurves[4], EulerRotationY, bNegate);
 					GetCurveDataForSequencer(TransformCurves[5], EulerRotationZ, bNegate);
 
-					GetCurveDataForSequencer(TransformCurves[6], ScaleX, !bNegate, UniformScale);
-					GetCurveDataForSequencer(TransformCurves[7], ScaleY, !bNegate, UniformScale);
-					GetCurveDataForSequencer(TransformCurves[8], ScaleZ, !bNegate, UniformScale);
+					GetCurveDataForSequencer(TransformCurves[6], ScaleX, !bNegate);
+					GetCurveDataForSequencer(TransformCurves[7], ScaleY, !bNegate);
+					GetCurveDataForSequencer(TransformCurves[8], ScaleZ, !bNegate);
 				}
 				else
 				{
-					GetCurveData(TransformCurves[0], TranslationX, !bNegate, UniformScale);
-					GetCurveData(TransformCurves[1], TranslationY, bNegate, UniformScale);
-					GetCurveData(TransformCurves[2], TranslationZ, !bNegate, UniformScale);
+					GetCurveData(TransformCurves[0], TranslationX, !bNegate);
+					GetCurveData(TransformCurves[1], TranslationY, bNegate);
+					GetCurveData(TransformCurves[2], TranslationZ, !bNegate);
 
 					GetCurveData(TransformCurves[3], EulerRotationX, !bNegate);
 					GetCurveData(TransformCurves[4], EulerRotationY, bNegate);
 					GetCurveData(TransformCurves[5], EulerRotationZ, bNegate);
 
-					GetCurveData(TransformCurves[6], ScaleX, !bNegate, UniformScale);
-					GetCurveData(TransformCurves[7], ScaleY, !bNegate, UniformScale);
-					GetCurveData(TransformCurves[8], ScaleZ, !bNegate, UniformScale);
+					GetCurveData(TransformCurves[6], ScaleX, !bNegate);
+					GetCurveData(TransformCurves[7], ScaleY, !bNegate);
+					GetCurveData(TransformCurves[8], ScaleZ, !bNegate);
 				}
 
 				if (bIsCamera || bIsLight)
@@ -805,8 +804,6 @@ namespace UnFbx {
 		if (Node)
 		{
 			DefaultTransform = TransformData[Node->GetUniqueID()];
-			DefaultTransform.SetLocation(DefaultTransform.GetLocation()* UniformScale);
-			DefaultTransform.SetScale3D(DefaultTransform.GetScale3D()* UniformScale);
 		}
 		
 	}

@@ -118,13 +118,6 @@ void UMovieSceneTrack::UpdateEasing()
 
 			if (!EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::AutomaticEasing))
 			{
-				if (CurrentSection->Easing.AutoEaseInDuration != 0 || CurrentSection->Easing.AutoEaseOutDuration != 0)
-				{
-					CurrentSection->Modify();
-
-					CurrentSection->Easing.AutoEaseInDuration = 0;
-					CurrentSection->Easing.AutoEaseOutDuration = 0;
-				}
 				continue;
 			}
 
@@ -271,23 +264,6 @@ bool UMovieSceneTrack::FixRowIndices()
 	return bFixesMade;
 }
 
-bool UMovieSceneTrack::IsRowEvalDisabled(int32 RowIndex) const
-{
-	return RowsDisabled.Contains(RowIndex);
-}
-
-void UMovieSceneTrack::SetRowEvalDisabled(bool bEvalDisabled, int32 RowIndex)
-{
-	if (bEvalDisabled)
-	{
-		RowsDisabled.AddUnique(RowIndex);
-	}
-	else
-	{
-		RowsDisabled.Remove(RowIndex);
-	}
-}
-
 FGuid UMovieSceneTrack::FindObjectBindingGuid() const
 {
 	const UMovieScene* MovieScene = GetTypedOuter<UMovieScene>();
@@ -353,7 +329,7 @@ void UMovieSceneTrack::AddSectionPrePostRollRangesToTree(TArrayView<UMovieSceneS
 
 				if (!SectionRange.GetUpperBound().IsOpen() && Section->GetPostRollFrames() > 0)
 				{
-					TRange<FFrameNumber> PostRollRange = UE::MovieScene::MakeDiscreteRangeFromLower(TRangeBound<FFrameNumber>(SectionRange.GetUpperBoundValue()), Section->GetPostRollFrames());
+					TRange<FFrameNumber> PostRollRange = UE::MovieScene::MakeDiscreteRangeFromLower(TRangeBound<FFrameNumber>::FlipInclusion(SectionRange.GetUpperBoundValue()), Section->GetPostRollFrames());
 					OutTree.Add(PostRollRange, FMovieSceneTrackEvaluationData::FromSection(Section).SetFlags(ESectionEvaluationFlags::PostRoll));
 				}
 			}
@@ -361,9 +337,9 @@ void UMovieSceneTrack::AddSectionPrePostRollRangesToTree(TArrayView<UMovieSceneS
 	}
 }
 
-void UMovieSceneTrack::PreCompile(FMovieSceneTrackPreCompileResult& OutPreCompileResult)
+void UMovieSceneTrack::PreCompile()
 {
-	PreCompileImpl(OutPreCompileResult);
+	PreCompileImpl();
 }
 
 const FMovieSceneTrackEvaluationField& UMovieSceneTrack::GetEvaluationField()

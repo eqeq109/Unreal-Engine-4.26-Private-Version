@@ -94,7 +94,6 @@ namespace Audio
 		, bProcedural(InWave.bProcedural)
 		, bIsBus(InWave.bIsSourceBus)
 		, bForceSyncDecode(bInForceSyncDecode)
-		, bHasError(false)
 	{
 		// TODO: remove the need to do this here. 1) remove need for decoders to depend on USoundWave and 2) remove need for procedural sounds to use USoundWaveProcedural
 		InWave.AddPlayingSource(this);
@@ -189,7 +188,7 @@ namespace Audio
 	{
 		FScopeTryLock Lock(&SoundWaveCritSec);
 
-		if (!Lock.IsLocked() || (NumBuffersQeueued == 0 && bBufferFinished) || (bProcedural && !SoundWave) || (bHasError))
+		if (!Lock.IsLocked() || (NumBuffersQeueued == 0 && bBufferFinished) || (bProcedural && !SoundWave))
 		{
 			return;
 		}
@@ -368,16 +367,6 @@ namespace Audio
 			return RawPCMDataBuffer.GetNextBuffer(SourceVoiceBuffers[BufferIndex].Get(), MaxSamples);
 		}
 
-		// Handle the case that the decoder has an error and can't continue.
-		if (InDecoder && InDecoder->HasError())
-		{			
-			UE_LOG(LogAudioMixer, Warning, TEXT("Decoder Error, stopping source [%s]"), 
-				*GetNameSafe(InDecoder->GetStreamingSoundWave()));
-			bHasError = true;
-			bBufferFinished = true;
-			return false;	
-		}
-
 		check(InDecoder != nullptr);
 
 		FDecodeAudioTaskData NewTaskData;
@@ -486,7 +475,7 @@ namespace Audio
 			const bool bLooped = ReadMoreRealtimeData(DecompressionState, CurrentBuffer, DataReadMode);
 
 			// If this was a synchronous read, then immediately write it
-			if (AsyncRealtimeAudioTask == nullptr && !bHasError)
+			if (AsyncRealtimeAudioTask == nullptr)
 			{
 				SubmitRealTimeSourceData(bLooped);
 			}

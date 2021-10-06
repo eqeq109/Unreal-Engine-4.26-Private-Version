@@ -18,86 +18,50 @@ void FStatsNode::ResetAggregatedStats()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FStatsNode::SetAggregatedStatsDouble(uint64 InCount, const TAggregatedStats<double>& InAggregatedStats)
+void FStatsNode::SetAggregatedStats(const FAggregatedStats& InAggregatedStats)
 {
-	AggregatedStats.Count = InCount;
-	AggregatedStats.DoubleStats = InAggregatedStats;
-	UpdateAggregatedStatsInt64FromDouble();
+	AggregatedStats = InAggregatedStats;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FStatsNode::SetAggregatedStatsInt64(uint64 InCount, const TAggregatedStats<int64>& InAggregatedStats)
+void FStatsNode::ResetAggregatedIntegerStats()
 {
-	AggregatedStats.Count = InCount;
-	AggregatedStats.Int64Stats = InAggregatedStats;
-	UpdateAggregatedStatsDoubleFromInt64();
+	AggregatedIntegerStats.Reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FStatsNode::UpdateAggregatedStatsInt64FromDouble()
+void FStatsNode::SetAggregatedIntegerStats(const FAggregatedIntegerStats& InAggregatedIntegerStats)
 {
-	TAggregatedStats<int64>& Int64Stats = AggregatedStats.Int64Stats;
-	TAggregatedStats<double>& DoubleStats = AggregatedStats.DoubleStats;
+	AggregatedIntegerStats = InAggregatedIntegerStats;
 
-	Int64Stats.Sum           = static_cast<int64>(DoubleStats.Sum);
-	Int64Stats.Min           = static_cast<int64>(DoubleStats.Min);
-	Int64Stats.Max           = static_cast<int64>(DoubleStats.Max);
-	Int64Stats.Average       = static_cast<int64>(DoubleStats.Average);
-	Int64Stats.Median        = static_cast<int64>(DoubleStats.Median);
-	Int64Stats.LowerQuartile = static_cast<int64>(DoubleStats.LowerQuartile);
-	Int64Stats.UpperQuartile = static_cast<int64>(DoubleStats.UpperQuartile);
+	// Sorting and display of Count value uses the "float" stats.
+	AggregatedStats.Count = AggregatedIntegerStats.Count;
+
+	AggregatedStats.Sum           = static_cast<double>(AggregatedIntegerStats.Sum);
+	AggregatedStats.Min           = static_cast<double>(AggregatedIntegerStats.Min);
+	AggregatedStats.Max           = static_cast<double>(AggregatedIntegerStats.Max);
+	AggregatedStats.Average       = static_cast<double>(AggregatedIntegerStats.Average);
+	AggregatedStats.Median        = static_cast<double>(AggregatedIntegerStats.Median);
+	AggregatedStats.LowerQuartile = static_cast<double>(AggregatedIntegerStats.LowerQuartile);
+	AggregatedStats.UpperQuartile = static_cast<double>(AggregatedIntegerStats.UpperQuartile);
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void FStatsNode::UpdateAggregatedStatsDoubleFromInt64()
-{
-	TAggregatedStats<double>& DoubleStats = AggregatedStats.DoubleStats;
-	TAggregatedStats<int64>& Int64Stats = AggregatedStats.Int64Stats;
-
-	DoubleStats.Sum           = static_cast<double>(Int64Stats.Sum);
-	DoubleStats.Min           = static_cast<double>(Int64Stats.Min);
-	DoubleStats.Max           = static_cast<double>(Int64Stats.Max);
-	DoubleStats.Average       = static_cast<double>(Int64Stats.Average);
-	DoubleStats.Median        = static_cast<double>(Int64Stats.Median);
-	DoubleStats.LowerQuartile = static_cast<double>(Int64Stats.LowerQuartile);
-	DoubleStats.UpperQuartile = static_cast<double>(Int64Stats.UpperQuartile);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct FStatsNodeDisplayHint
-{
-	static const FName Seconds;
-	static const FName Bytes;
-};
-
-const FName FStatsNodeDisplayHint::Seconds(TEXT("Seconds"));
-const FName FStatsNodeDisplayHint::Bytes(TEXT("Bytes"));
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct FStatsNodeMetaGroupName
-{
-	static const FName Time;
-	static const FName Memory;
-};
-
-const FName FStatsNodeMetaGroupName::Time(TEXT("Time"));
-const FName FStatsNodeMetaGroupName::Memory(TEXT("Memory"));
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::FormatAggregatedStatsValue(double ValueDbl, int64 ValueInt) const
 {
-	if (AggregatedStats.Count > 0)
+	if (GetType() == EStatsNodeType::Float)
 	{
-		if (GetDataType() == EStatsNodeDataType::Double)
+		if (AggregatedStats.Count == 0)
 		{
-			//TODO: if (GetDisplayHint() == FStatsNodeDisplayHint::Seconds)
-			if (GetMetaGroupName() == FStatsNodeMetaGroupName::Time)
+			return LOCTEXT("AggregatedStatsNA", "N/A");
+		}
+		else
+		{
+			//TODO: if (GetDisplayHint() == FName(TEXT("Seconds")))
+			if (GetMetaGroupName() == FName(TEXT("Time")))
 			{
 				return FText::FromString(TimeUtils::FormatTimeAuto(ValueDbl));
 			}
@@ -106,11 +70,17 @@ const FText FStatsNode::FormatAggregatedStatsValue(double ValueDbl, int64 ValueI
 				return FText::AsNumber(ValueDbl);
 			}
 		}
-		else
-		if (GetDataType() == EStatsNodeDataType::Int64)
+	}
+	else
+	{
+		if (AggregatedIntegerStats.Count == 0)
 		{
-			//TODO: if (GetDisplayHint() == FStatsNodeDisplayHint::Bytes)
-			if (GetMetaGroupName() == FStatsNodeMetaGroupName::Memory)
+			return LOCTEXT("AggregatedStatsNA", "N/A");
+		}
+		else
+		{
+			//TODO: if (GetDisplayHint() == FName(TEXT("Bytes")))
+			if (GetMetaGroupName() == FName(TEXT("Memory")))
 			{
 				if (ValueInt > 0)
 				{
@@ -131,57 +101,55 @@ const FText FStatsNode::FormatAggregatedStatsValue(double ValueDbl, int64 ValueI
 			}
 		}
 	}
-
-	return LOCTEXT("AggregatedStatsNA", "N/A");
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsSum() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.Sum, AggregatedStats.Int64Stats.Sum);
+	return FormatAggregatedStatsValue(AggregatedStats.Sum, AggregatedIntegerStats.Sum);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsMin() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.Min, AggregatedStats.Int64Stats.Min);
+	return FormatAggregatedStatsValue(AggregatedStats.Min, AggregatedIntegerStats.Min);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsMax() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.Max, AggregatedStats.Int64Stats.Max);
+	return FormatAggregatedStatsValue(AggregatedStats.Max, AggregatedIntegerStats.Max);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsAverage() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.Average, AggregatedStats.Int64Stats.Average);
+	return FormatAggregatedStatsValue(AggregatedStats.Average, AggregatedIntegerStats.Average);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsMedian() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.Median, AggregatedStats.Int64Stats.Median);
+	return FormatAggregatedStatsValue(AggregatedStats.Median, AggregatedIntegerStats.Median);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsLowerQuartile() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.LowerQuartile, AggregatedStats.Int64Stats.LowerQuartile);
+	return FormatAggregatedStatsValue(AggregatedStats.LowerQuartile, AggregatedIntegerStats.LowerQuartile);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 const FText FStatsNode::GetTextForAggregatedStatsUpperQuartile() const
 {
-	return FormatAggregatedStatsValue(AggregatedStats.DoubleStats.UpperQuartile, AggregatedStats.Int64Stats.UpperQuartile);
+	return FormatAggregatedStatsValue(AggregatedStats.UpperQuartile, AggregatedIntegerStats.UpperQuartile);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

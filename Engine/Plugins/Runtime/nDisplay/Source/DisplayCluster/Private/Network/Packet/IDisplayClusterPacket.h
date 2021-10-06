@@ -13,7 +13,8 @@ class FDisplayClusterSocketOperations;
 class IDisplayClusterPacket
 {
 public:
-	virtual ~IDisplayClusterPacket() = default;
+	virtual ~IDisplayClusterPacket() = 0
+	{ }
 
 public:
 	virtual bool SendPacket(FDisplayClusterSocketOperations& SocketOps) = 0;

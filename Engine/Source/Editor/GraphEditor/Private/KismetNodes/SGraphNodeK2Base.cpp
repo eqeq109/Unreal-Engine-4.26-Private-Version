@@ -38,7 +38,7 @@ void SGraphNodeK2Base::UpdateStandardNode()
 {
 	SGraphNode::UpdateGraphNode();
 	// clear the default tooltip, to make room for our custom "complex" tooltip
-	SetToolTip(nullptr);
+	SetToolTip(NULL);
 }
 
 void SGraphNodeK2Base::UpdateCompactNode()

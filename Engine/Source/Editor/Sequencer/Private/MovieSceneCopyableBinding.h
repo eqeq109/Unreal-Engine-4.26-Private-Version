@@ -42,7 +42,4 @@ public:
 
 	UPROPERTY()
 	FMovieScenePossessable Possessable;
-
-	UPROPERTY()
-	TArray<FName> FolderPath;
 };

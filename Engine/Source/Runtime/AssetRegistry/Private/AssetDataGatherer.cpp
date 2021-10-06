@@ -7,14 +7,15 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
-#include "AssetRegistryArchive.h"
 #include "AssetRegistryPrivate.h"
+#include "NameTableArchive.h"
 #include "PackageReader.h"
+#include "AssetRegistry.h"
 #include "Async/ParallelFor.h"
-#include "Algo/AnyOf.h"
 
 namespace AssetDataGathererConstants
 {
+	static const int32 CacheSerializationVersion = 15;
 	static const int32 MaxFilesToDiscoverBeforeFlush = 2500;
 	static const int32 MaxFilesToGatherBeforeFlush = 250;
 	static const int32 MinSecondsToElapseBeforeCacheWrite = 60;
@@ -502,31 +503,21 @@ bool FAssetDataGatherer::Init()
 uint32 FAssetDataGatherer::Run()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FAssetDataGatherer::Run)
+	int32 CacheSerializationVersion = AssetDataGathererConstants::CacheSerializationVersion;
 	
-	static constexpr uint32 RemovedCacheSerializationVersionMagic = 0xAF014867;
-
 	if ( bLoadAndSaveCache )
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(ReadAssetCacheFile)
-
 		// load the cached data
-		TUniquePtr<FArchive> FileAr(IFileManager::Get().CreateFileReader(*CacheFilename, FILEREAD_Silent));
-		if (FileAr && !FileAr->IsError() && FileAr->TotalSize() > 2 * sizeof(uint32))
+		FNameTableArchiveReader CachedAssetDataReader(CacheSerializationVersion, CacheFilename);
+		if (!CachedAssetDataReader.IsError())
 		{
-			uint32 MagicNumber = 0;
-			*FileAr << MagicNumber;
-
-			if (!FileAr->IsError() && MagicNumber == RemovedCacheSerializationVersionMagic)
+			FAssetRegistryVersion::Type Version = FAssetRegistryVersion::LatestVersion;
+			if (FAssetRegistryVersion::SerializeVersion(CachedAssetDataReader, Version))
 			{
-				FAssetRegistryVersion::Type RegistryVersion;
-				if (FAssetRegistryVersion::SerializeVersion(*FileAr, RegistryVersion) && RegistryVersion == FAssetRegistryVersion::LatestVersion)
-				{
-					FAssetRegistryReader RegistryReader(*FileAr);
-					if (!RegistryReader.IsError())
-					{
-						SerializeCache(RegistryReader);
-					}	
-				}
+				SerializeCache(CachedAssetDataReader);
+
+				DependencyResults.Reserve(DiskCachedAssetDataMap.Num());
+				AssetResults.Reserve(DiskCachedAssetDataMap.Num());
 			}
 		}
 	}
@@ -543,39 +534,13 @@ uint32 FAssetDataGatherer::Run()
 
 	auto WriteAssetCacheFile = [&]()
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(WriteAssetCacheFile);
+		TRACE_CPUPROFILER_EVENT_SCOPE(WriteAssetCacheFile)
+		FNameTableArchiveWriter CachedAssetDataWriter(CacheSerializationVersion, CacheFilename);
 
-		// Save to a temp file first, then move to the destination to avoid corruption
-		FString TempFilename(CacheFilename + TEXT(".tmp"));
+		FAssetRegistryVersion::Type Version = FAssetRegistryVersion::LatestVersion;
+		FAssetRegistryVersion::SerializeVersion(CachedAssetDataWriter, Version);
 
-		TUniquePtr<FArchive> FileAr(IFileManager::Get().CreateFileWriter(*TempFilename, 0));
-		if (FileAr)
-		{
-			int32 MagicNumber = RemovedCacheSerializationVersionMagic;
-			*FileAr << MagicNumber;
-
-			FAssetRegistryVersion::Type RegistryVersion = FAssetRegistryVersion::LatestVersion;
-			FAssetRegistryVersion::SerializeVersion(*FileAr, RegistryVersion);
-
-#if ALLOW_NAME_BATCH_SAVING
-			{
-				// We might be able to reduce load time by using AssetRegistry::SerializationOptions
-				// to save certain common tags as FName.
-				FAssetRegistryWriter Ar(FAssetRegistryWriterOptions(), *FileAr);
-				SerializeCache(Ar);
-			}
-#else		
-		checkf(false, TEXT("Cannot save asset registry cache in this configuration"));
-#endif
-
-			// Close file handle before moving temp file to target 
-			FileAr.Reset();
-			IFileManager::Get().Move(*CacheFilename, *TempFilename);
-		}
-		else
-		{
-			UE_LOG(LogAssetRegistry, Error, TEXT("Failed to open file for write %s"), *TempFilename);
-		}
+		SerializeCache(CachedAssetDataWriter);
 	};
 
 	while ( true )
@@ -647,7 +612,6 @@ uint32 FAssetDataGatherer::Run()
 			};
 
 			TArray<FReadContext> ReadContexts;
-			FString LongPackageNameString;
 			for (const FDiscoveredPackageFile& AssetFileData : LocalFilesToSearch)
 			{
 				if (StopTaskCounter.GetValue() != 0)
@@ -656,14 +620,7 @@ uint32 FAssetDataGatherer::Run()
 					break;
 				}
 
-				LongPackageNameString.Reset();
-				if (!FPackageName::TryConvertFilenameToLongPackageName(AssetFileData.PackageFilename, LongPackageNameString))
-				{
-					// Conversion is expected to fail when the path has recently been unmounted, fail silent instead of fatal crash
-					continue;
-				}
-
-				const FName PackageName = *LongPackageNameString;
+				const FName PackageName = FName(*FPackageName::FilenameToLongPackageName(AssetFileData.PackageFilename));
 				const FName Extension = FName(*FPaths::GetExtension(AssetFileData.PackageFilename));
 
 				bool bLoadedFromCache = false;
@@ -1001,7 +958,6 @@ bool FAssetDataGatherer::ReadAssetFile(const FString& AssetFilename, TArray<FAss
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FAssetDataGatherer::ReadAssetFile)
 	OutCanRetry = false;
-	AssetDataList.Reset();
 
 	FPackageReader PackageReader;
 
@@ -1039,27 +995,12 @@ bool FAssetDataGatherer::ReadAssetFile(const FString& AssetFilename, TArray<FAss
 		{
 			return false;
 		}
-
-		// DEPRECATION_TODO: Remove this fixup-on-load once we bump EUnrealEngineObjectUE4Version VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS and therefore all projects will resave each ObjectRedirector
-		// UObjectRedirectors were originally incorrectly marked as having editor-only imports, since UObjectRedirector is an editor-only class. But UObjectRedirectors are followed during cooking
-		// and so their imports should be considered used-in-game. Mark all dependencies in the package as used in game if the package has a UObjectRedirector object
-		FName RedirectorClassName = UObjectRedirector::StaticClass()->GetFName();
-		if (Algo::AnyOf(AssetDataList, [RedirectorClassName](FAssetData* AssetData) { return AssetData->AssetClass == RedirectorClassName; }))
-		{
-			TBitArray<>& ImportUsedInGame = DependencyData.ImportUsedInGame;
-			for (int32 ImportNum = ImportUsedInGame.Num(), Index = 0; Index < ImportNum; ++Index)
-			{
-				ImportUsedInGame[Index] = true;
-			}
-		}
-		// END DEPRECATION_TODO
 	}
 
 	return true;
 }
 
-template<class Archive>
-void FAssetDataGatherer::SerializeCache(Archive&& Ar)
+void FAssetDataGatherer::SerializeCache(FArchive& Ar)
 {
 	double SerializeStartTime = FPlatformTime::Seconds();
 
@@ -1085,8 +1026,6 @@ void FAssetDataGatherer::SerializeCache(Archive&& Ar)
 		}
 		else
 		{
-			FSoftObjectPathSerializationScope SerializationScope(NAME_None, NAME_None, ESoftObjectPathCollectType::NeverCollect, ESoftObjectPathSerializeType::AlwaysSerialize);
-
 			const int32 MinAssetEntrySize = sizeof(int32);
 			int32 MaxReservation = (Ar.TotalSize() - Ar.Tell()) / MinAssetEntrySize;
 			DiskCachedAssetDataMap.Empty(FMath::Min(LocalNumAssets, MaxReservation));

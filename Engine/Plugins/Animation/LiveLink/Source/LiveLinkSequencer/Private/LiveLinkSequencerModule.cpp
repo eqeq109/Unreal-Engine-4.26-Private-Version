@@ -14,7 +14,6 @@
 #include "LiveLinkRole.h"
 #include "LiveLinkRoleTrait.h"
 #include "LiveLinkSequencerPrivate.h"
-#include "MovieSceneLiveLinkControllerMapTrackRecorder.h"
 #include "PropertyEditorModule.h"
 #include "Sequencer/LiveLinkPropertyTrackEditor.h"
 #include "Styling/SlateStyle.h"
@@ -36,7 +35,6 @@ DEFINE_LOG_CATEGORY(LogLiveLinkSequencer);
 
 static const FName TakeRecorderModuleName(TEXT("TakeRecorder"));
 static const FName MovieSceneSectionRecorderFactoryName(TEXT("MovieSceneSectionRecorderFactory"));
-static const FName MovieSceneTrackRecorderFactoryName("MovieSceneTrackRecorderFactory");
 static TArray<TSubclassOf<ULiveLinkRole>> SupportedRecordingRoles;
 
 
@@ -86,8 +84,6 @@ public:
 
 		ISequencerModule& SequencerModule = FModuleManager::LoadModuleChecked<ISequencerModule>("Sequencer");
 		CreateLiveLinkPropertyTrackEditorHandle = SequencerModule.RegisterTrackEditor(FOnCreateTrackEditor::CreateStatic(&FLiveLinkPropertyTrackEditor::CreateTrackEditor));
-
-		IModularFeatures::Get().RegisterModularFeature(MovieSceneTrackRecorderFactoryName, &LiveLinkControllerMapTrackRecorderFactory);
 	}
 
 	void ModulesChangesCallback(FName ModuleName, EModuleChangeReason ReasonForChange)
@@ -109,8 +105,6 @@ public:
 		{
 			SequencerModule->UnRegisterTrackEditor(CreateLiveLinkPropertyTrackEditorHandle);
 		}
-
-		IModularFeatures::Get().UnregisterModularFeature(MovieSceneTrackRecorderFactoryName, &LiveLinkControllerMapTrackRecorderFactory);
 	}
 
 	virtual bool SupportsDynamicReloading() override
@@ -164,7 +158,7 @@ private:
 			ILiveLinkClient* LiveLinkClient = &IModularFeatures::Get().GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
 			
 			const bool bIncludeDisabledSubjects = false;
-			const bool bIncludeVirtualSubjects = true;
+			const bool bIncludeVirtualSubjects = false;
 			TArray<FLiveLinkSubjectKey> Subjects = LiveLinkClient->GetSubjects(bIncludeDisabledSubjects, bIncludeVirtualSubjects);
 			for (const FLiveLinkSubjectKey& SubjectKey : Subjects)
 			{
@@ -191,8 +185,6 @@ private:
 	FDelegateHandle ModulesChangedHandle;
 	FDelegateHandle CreateLiveLinkPropertyTrackEditorHandle;
 	FDelegateHandle SourcesMenuExtension;
-
-	FMovieSceneLiveLinkControllerMapTrackRecorderFactory LiveLinkControllerMapTrackRecorderFactory;
 };
 
 IMPLEMENT_MODULE(FLiveLinkSequencerModule, LiveLinkSequencer);

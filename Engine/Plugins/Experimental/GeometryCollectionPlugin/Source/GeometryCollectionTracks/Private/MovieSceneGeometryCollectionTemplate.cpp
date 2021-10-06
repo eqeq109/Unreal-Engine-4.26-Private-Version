@@ -28,11 +28,11 @@ struct FPreAnimatedGeometryCollectionTokenProducer : IMovieScenePreAnimatedToken
 				OriginalCacheMode = InComponent->CacheParameters.CacheMode;
 			}
 
-			virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params)
+			virtual void RestoreState(UObject& ObjectToRestore, IMovieScenePlayer& Player)
 			{
 				// This is called after Sequencer tears down, or stops evaluating the section (depending on user settings).
 				// Use this to restore any changes you made to the object.
-				UGeometryCollectionComponent* Component = CastChecked<UGeometryCollectionComponent>(&Object);
+				UGeometryCollectionComponent* Component = CastChecked<UGeometryCollectionComponent>(&ObjectToRestore);
 				Component->CacheParameters.TargetCache = OriginalCache;
 				Component->ObjectType = OriginalObjectType;
 				Component->CacheParameters.CacheMode = OriginalCacheMode;

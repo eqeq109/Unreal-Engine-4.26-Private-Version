@@ -64,12 +64,12 @@ struct FRollbackNetStartupActorInfo
 
 	FName		Name;
 	UPROPERTY()
-	UObject*	Archetype = nullptr;
+	UObject*	Archetype;
 	FVector		Location;
 	FRotator	Rotation;
 	FVector		Scale3D;
 	UPROPERTY()
-	ULevel*		Level = nullptr;
+	ULevel*		Level;
 
 	TSharedPtr<FRepState> RepState;
 	TMap<FString, TSharedPtr<FRepState>> SubObjRepState;
@@ -135,10 +135,10 @@ struct FMulticastRecordOptions
 	FString FuncPathName;
 
 	UPROPERTY()
-	bool bServerSkip = false;
+	bool bServerSkip;
 
 	UPROPERTY()
-	bool bClientSkip = false;
+	bool bClientSkip;
 };
 
 /**
@@ -429,7 +429,6 @@ public:
 	virtual bool IsServer() const override;
 	virtual bool ShouldReplicateFunction(AActor* Actor, UFunction* Function) const override;
 	virtual bool ShouldReplicateActor(AActor* Actor) const override;
-	virtual bool ShouldForwardFunction(AActor* Actor, UFunction* Function, void* Parms) const override;
 	virtual void NotifyActorChannelOpen(UActorChannel* Channel, AActor* Actor) override;
 	virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason) override;
 
@@ -439,9 +438,6 @@ public:
 	virtual void InitDestroyedStartupActors() override;
 
 	virtual void SetAnalyticsProvider(TSharedPtr<IAnalyticsProvider> InProvider) override;
-
-	virtual void LowLevelSend(TSharedPtr<const FInternetAddr> Address, void* Data, int32 CountBits, FOutPacketTraits& Traits) override {}
-	virtual class ISocketSubsystem* GetSocketSubsystem() override { return nullptr; }
 
 protected:
 	virtual UChannel* InternalCreateChannelByName(const FName& ChName) override;

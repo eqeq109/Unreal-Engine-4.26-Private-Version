@@ -6,45 +6,61 @@
 
 int32 FGenericPlatformRHIFramePacer::GetFramePaceFromSyncInterval()
 {
-	int32 SyncInterval = 0;
 	static IConsoleVariable* SyncIntervalCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("rhi.SyncInterval"));
 	if (ensure(SyncIntervalCVar != nullptr))
 	{
-		SyncInterval = SyncIntervalCVar->GetInt();
+		int SyncInterval = SyncIntervalCVar->GetInt();
+		if (SyncInterval > 0)
+		{
+			return 60 / SyncInterval;
+		}
 	}
 
-	if (SyncInterval <= 0)
-		return 0;
+	return 0;
+}
 
-	return FPlatformMisc::GetMaxRefreshRate() / FMath::Clamp(SyncInterval, 1, FPlatformMisc::GetMaxSyncInterval());
+int32 FGenericPlatformRHIFramePacer::GetFramePace()
+{
+	int32 SyncIntervalFramePace = GetFramePaceFromSyncInterval();
+	return SyncIntervalFramePace;
 }
 
 bool FGenericPlatformRHIFramePacer::SupportsFramePace(int32 QueryFramePace)
 {
-	if (QueryFramePace < 0)
-		return false;
+	// Support frame rates that are an integer multiple of max refresh rate, or 0 for no pacing
+	return QueryFramePace == 0 || (60 % QueryFramePace) == 0;
+}
 
-	if (QueryFramePace == 0)
-		return true; // No Vsync
-
-	if (FPlatformMisc::GetMaxRefreshRate() % QueryFramePace != 0)
-		return false; // Must be a multiple
-
-	int32 TargetSyncInterval = FPlatformMisc::GetMaxRefreshRate() / QueryFramePace;
-	return TargetSyncInterval <= FPlatformMisc::GetMaxSyncInterval();
+int32 FGenericPlatformRHIFramePacer::SetFramePace(int32 InFramePace)
+{
+	int32 NewFramePace = SetFramePaceToSyncInterval(InFramePace);
+	return NewFramePace;
 }
 
 int32 FGenericPlatformRHIFramePacer::SetFramePaceToSyncInterval(int32 InFramePace)
 {
-	static IConsoleVariable* SyncIntervalCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("rhi.SyncInterval"));
-	if (SupportsFramePace(InFramePace) && ensure(SyncIntervalCVar != nullptr))
-	{
-		int32 NewSyncInterval = InFramePace > 0
-			? FMath::Clamp(FPlatformMisc::GetMaxRefreshRate() / InFramePace, 1, FPlatformMisc::GetMaxSyncInterval())
-			: 0;
+	int32 NewPace = 0;
 
-		SyncIntervalCVar->Set(NewSyncInterval, ECVF_SetByCode);
+	// Disable frame pacing if an unsupported frame rate is requested
+	if (!SupportsFramePace(InFramePace))
+	{
+		InFramePace = 0;
 	}
 
-	return GetFramePace();
+	static IConsoleVariable* SyncIntervalCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("rhi.SyncInterval"));
+	if (ensure(SyncIntervalCVar != nullptr))
+	{
+		int32 NewSyncInterval = InFramePace > 0 ? 60 / InFramePace : 0;
+
+		SyncIntervalCVar->Set(NewSyncInterval, ECVF_SetByCode);
+
+		if (NewSyncInterval > 0)
+		{
+			NewPace = 60 / NewSyncInterval;
+		}
+	}
+
+	return NewPace;
 }
+
+

@@ -22,7 +22,7 @@
 #define LOCTEXT_NAMESPACE "MoviePipelinePIEExecutor"
 
 
-const TArray<FString> UMoviePipelinePIEExecutor::FValidationMessageGatherer::Whitelist = { "LogMovieRenderPipeline", "LogMovieRenderPipelineIO", "LogMoviePipelineExecutor", "LogImageWriteQueue", "LogAppleProResMedia", "LogAvidDNxMedia"};
+const TArray<FString> UMoviePipelinePIEExecutor::FValidationMessageGatherer::Whitelist = { "LogMovieRenderPipeline", "LogMoviePipelineExecutor" };
 
 UMoviePipelinePIEExecutor::FValidationMessageGatherer::FValidationMessageGatherer()
 	: FOutputDevice()
@@ -192,8 +192,7 @@ void UMoviePipelinePIEExecutor::OnPIEStartupFinished(bool)
 	FCoreDelegates::OnBeginFrame.AddUObject(this, &UMoviePipelinePIEExecutor::OnTick);
 
 	// Listen for when the pipeline thinks it has finished.
-	ActiveMoviePipeline->OnMoviePipelineWorkFinished().AddUObject(this, &UMoviePipelinePIEExecutor::OnPIEMoviePipelineFinished);
-	ActiveMoviePipeline->OnMoviePipelineShotWorkFinished().AddUObject(this, &UMoviePipelinePIEExecutor::OnJobShotFinished);
+	ActiveMoviePipeline->OnMoviePipelineFinished().AddUObject(this, &UMoviePipelinePIEExecutor::OnPIEMoviePipelineFinished);
 	
 	if (ExecutorSettings->InitialDelayFrameCount == 0)
 	{
@@ -229,11 +228,11 @@ void UMoviePipelinePIEExecutor::OnTick()
 	}
 }
 
-void UMoviePipelinePIEExecutor::OnPIEMoviePipelineFinished(FMoviePipelineOutputData InOutputData)
+void UMoviePipelinePIEExecutor::OnPIEMoviePipelineFinished(UMoviePipeline* InMoviePipeline, bool bFatalError)
 {
-	if (!InOutputData.bSuccess)
+	if (bFatalError)
 	{
-		OnPipelineErrored(InOutputData.Pipeline, true, FText());
+		OnPipelineErrored(InMoviePipeline, true, FText());
 	}
 
 	// Unsubscribe to the EndPIE event so we don't think the user canceled it.
@@ -242,25 +241,16 @@ void UMoviePipelinePIEExecutor::OnPIEMoviePipelineFinished(FMoviePipelineOutputD
 	if (ActiveMoviePipeline)
 	{
 		// Unsubscribe in the event that it gets called twice we don't have issues.
-		ActiveMoviePipeline->OnMoviePipelineWorkFinished().RemoveAll(this);
+		ActiveMoviePipeline->OnMoviePipelineFinished().RemoveAll(this);
 	}
 
 	// The End Play will happen on the next frame.
 	GEditor->RequestEndPlayMap();
 }
 
-void UMoviePipelinePIEExecutor::OnJobShotFinished(FMoviePipelineOutputData InOutputData)
-{
-	// Just re-broadcast the delegate to our listeners.
-	OnIndividualShotWorkFinishedDelegateNative.Broadcast(InOutputData);
-	OnIndividualShotWorkFinishedDelegate.Broadcast(InOutputData);
-}
-
 void UMoviePipelinePIEExecutor::OnPIEEnded(bool)
 {
 	FEditorDelegates::EndPIE.RemoveAll(this);
-
-	CachedOutputDataParams = FMoviePipelineOutputData();
 
 	// Only call Shutdown if the pipeline hasn't been finished.
 	if (ActiveMoviePipeline && ActiveMoviePipeline->GetPipelineState() != EMovieRenderPipelineState::Finished)
@@ -269,12 +259,8 @@ void UMoviePipelinePIEExecutor::OnPIEEnded(bool)
 
 		// This will flush any outstanding work on the movie pipeline (file writes) immediately
 		ActiveMoviePipeline->Shutdown(true);
+		
 		UE_LOG(LogMovieRenderPipeline, Log, TEXT("MoviePipelinePIEExecutor: Stalling finished, pipeline has shut down."));
-	}
-	if (ActiveMoviePipeline)
-	{
-		// Cache this off so we can use it in DelayedFinishNotification, at which point ActiveMoviePipeline is null.
-		CachedOutputDataParams = ActiveMoviePipeline->GetOutputDataParams();
 	}
 	// ToDo: bAnyJobHadFatalError
 
@@ -292,8 +278,7 @@ void UMoviePipelinePIEExecutor::OnPIEEnded(bool)
 
 void UMoviePipelinePIEExecutor::DelayedFinishNotification()
 {
-	// Get the params for the job (including output info) from the cache. ActiveMoviePipeline is null already.
-	OnIndividualJobFinishedImpl(CachedOutputDataParams);
+	OnIndividualJobFinishedImpl(Queue->GetJobs()[CurrentPipelineIndex]);
 
 	// Now that PIE has finished
 	UMoviePipeline* MoviePipeline = ActiveMoviePipeline;
@@ -305,17 +290,4 @@ void UMoviePipelinePIEExecutor::DelayedFinishNotification()
 	// Now that another frame has passed and we should be OK to start another PIE session, notify our owner.
 	OnIndividualPipelineFinished(MoviePipeline);
 }
-
-void UMoviePipelinePIEExecutor::OnIndividualJobFinishedImpl(FMoviePipelineOutputData InOutputData)
-{
-	// Broadcast to both Native and Python/BP
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	OnIndividualJobFinishedDelegateNative.Broadcast(InOutputData.Job, IsAnyJobErrored());
-	OnIndividualJobFinishedDelegate.Broadcast(InOutputData.Job, IsAnyJobErrored());
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-	OnIndividualJobWorkFinishedDelegateNative.Broadcast(InOutputData);
-	OnIndividualJobWorkFinishedDelegate.Broadcast(InOutputData);
-}
-
 #undef LOCTEXT_NAMESPACE // "MoviePipelinePIEExecutor"

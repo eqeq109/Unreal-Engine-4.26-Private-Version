@@ -27,7 +27,6 @@ FMovieSceneEntityID FImportedEntity::Manufacture(const FEntityImportParams& Para
 	auto BaseBuilder = FEntityBuilder()
 	.AddTag(Components->Tags.NeedsLink)
 	.AddTag(Components->Tags.ImportedEntity)
-	.AddConditional(Components->RootInstanceHandle, Params.Sequence.RootInstanceHandle, Params.Sequence.RootInstanceHandle.IsValid())
 	.AddConditional(Components->InstanceHandle, Params.Sequence.InstanceHandle, Params.Sequence.InstanceHandle.IsValid());
 
 	FComponentMask NewMask;

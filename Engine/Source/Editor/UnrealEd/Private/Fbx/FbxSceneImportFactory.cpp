@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/FbxSceneImportFactory.h"
-#include "Misc/CoreMisc.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "Misc/FeedbackContext.h"
@@ -39,6 +38,7 @@
 #include "Editor.h"
 #include "FileHelpers.h"
 #include "CineCameraComponent.h"
+#include "SkelImport.h"
 #include "Rendering/SkeletalMeshModel.h"
 
 #include "AssetSelection.h"
@@ -51,8 +51,6 @@
 #include "Fbx/SSceneImportNodeTreeView.h"
 #include "SFbxSceneOptionWindow.h"
 #include "Interfaces/IMainFrameModule.h"
-#include "Interfaces/ITargetPlatform.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
 #include "PackageTools.h"
 
 #include "Kismet2/KismetEditorUtilities.h"
@@ -586,11 +584,7 @@ TSharedPtr<FFbxSceneInfo> UFbxSceneImportFactory::ConvertSceneInfo(void* VoidFbx
 		MeshInfoPtr->OptionName = DefaultOptionName;
 
 		MeshInfoPtr->IsLod = MeshInfoPtr->LODLevel > 0;
-		MeshInfoPtr->IsCollision = MeshInfoPtr->Name.Contains(TEXT("UCX"), ESearchCase::IgnoreCase)
-			|| MeshInfoPtr->Name.Contains(TEXT("UBX"), ESearchCase::IgnoreCase)
-			|| MeshInfoPtr->Name.Contains(TEXT("MCDCX"), ESearchCase::IgnoreCase)
-			|| MeshInfoPtr->Name.Contains(TEXT("USP"), ESearchCase::IgnoreCase)
-			|| MeshInfoPtr->Name.Contains(TEXT("UCP"), ESearchCase::IgnoreCase);
+		MeshInfoPtr->IsCollision = MeshInfoPtr->Name.Contains(TEXT("UCX")) || MeshInfoPtr->Name.Contains(TEXT("UBX")) || MeshInfoPtr->Name.Contains(TEXT("MCDCX")) || MeshInfoPtr->Name.Contains(TEXT("USP")) || MeshInfoPtr->Name.Contains(TEXT("UCP"));
 
 		SceneInfoPtr->MeshInfo.Add(MeshInfoPtr);
 	}
@@ -1027,6 +1021,11 @@ FFeedbackContext*	Warn
 
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport(this, Class, InParent, Name, Type);
 	
+	//TODO verify if we really need this when instancing actor in a level from an import
+	//In that case we should change the variable name.
+	GEditor->IsImportingT3D = 1;
+	GIsImportingT3D = GEditor->IsImportingT3D;
+
 	// logger for all error/warnings
 	// this one prints all messages that are stored in FFbxImporter
 	UnFbx::FFbxImporter* FbxImporter = UnFbx::FFbxImporter::GetInstance();
@@ -1052,6 +1051,9 @@ FFeedbackContext*	Warn
 		Warn->Log(ELogVerbosity::Error, FbxImporter->GetErrorMessage());
 		FbxImporter->ReleaseScene();
 		FbxImporter = nullptr;
+		// Mark us as no longer importing a T3D.
+		GEditor->IsImportingT3D = 0;
+		GIsImportingT3D = false;
 		Warn->EndSlowTask();
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, World);
 		return nullptr;
@@ -1093,11 +1095,13 @@ FFeedbackContext*	Warn
 		FbxImporter = nullptr;
 		GlobalImportSettings = nullptr;
 		GlobalImportSettingsReference = nullptr;
+		// Mark us as no longer importing a T3D.
+		GEditor->IsImportingT3D = 0;
+		GIsImportingT3D = false;
 		Warn->EndSlowTask();
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, World);
 		return nullptr;
 	}
-
 
 	SFbxSceneOptionWindow::CopyFbxOptionsToFbxOptions(GlobalImportSettingsReference, GlobalImportSettings);
 
@@ -1122,6 +1126,9 @@ FFeedbackContext*	Warn
 			FbxImporter->ReleaseScene();
 			FbxImporter = nullptr;
 			GlobalImportSettings = nullptr;
+			// Mark us as no longer importing a T3D.
+			GEditor->IsImportingT3D = 0;
+			GIsImportingT3D = false;
 			Warn->EndSlowTask();
 			GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, World);
 			return nullptr;
@@ -1202,11 +1209,18 @@ FFeedbackContext*	Warn
 				FString AssetName = TEXT("FbxScene_") + FPaths::GetBaseFilename(UFactory::CurrentFilename);
 				UPackage *Pkg = CreatePackageForNode(FullnameBP, AssetName);
 
+				//IsImportingT3D will force a load of UObject when finding them, Openning the blueprint editor search for all UBlueprint class object and find them.
+				//This force load everything.
+				GEditor->IsImportingT3D = 0;
+				GIsImportingT3D = false;
 				//Create the blueprint from the actor and replace the actor with an instance of the created blueprint
 				FKismetEditorUtilities::FCreateBlueprintFromActorParams Params;
 				Params.bReplaceActor = true;
 				Params.bKeepMobility = true;
 				UBlueprint* SceneBlueprint = FKismetEditorUtilities::CreateBlueprintFromActor(Pkg->GetName(), HierarchyActor, Params);
+				//Put back the T3D state
+				GEditor->IsImportingT3D = 1;
+				GIsImportingT3D = GEditor->IsImportingT3D;
 
 				if (SceneBlueprint != nullptr && ReimportData != nullptr)
 				{
@@ -1233,6 +1247,9 @@ FFeedbackContext*	Warn
 	GlobalImportSettings = nullptr;
 	GlobalImportSettingsReference = nullptr;
 
+	// Mark us as no longer importing a T3D.
+	GEditor->IsImportingT3D = 0;
+	GIsImportingT3D = false;
 	ReimportData = nullptr;
 
 	Warn->EndSlowTask();
@@ -1245,7 +1262,7 @@ bool UFbxSceneImportFactory::SetStaticMeshComponentOverrideMaterial(UStaticMeshC
 {
 	bool bOverrideMaterial = false;
 	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
-	if (StaticMesh->GetStaticMaterials().Num() == NodeInfo->Materials.Num())
+	if (StaticMesh->StaticMaterials.Num() == NodeInfo->Materials.Num())
 	{
 		for (int32 MaterialIndex = 0; MaterialIndex < NodeInfo->Materials.Num(); ++MaterialIndex)
 		{
@@ -1999,7 +2016,7 @@ UObject* UFbxSceneImportFactory::ImportOneSkeletalMesh(void* VoidRootNodeToImpor
 				LODInfo.ReductionSettings.BaseLOD = 0;
 				LODInfo.bImportWithBaseMesh = true;
 				LODInfo.SourceImportFilename = FString(TEXT(""));
-				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform(), false);
+				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIndex, false);
 			}
 			else
 			{
@@ -2274,7 +2291,7 @@ UObject* UFbxSceneImportFactory::ImportANode(void* VoidFbxImporter, TArray<void*
 		ParentName.Empty();
 	}
 	
-	FString NodeName = FFbxImporter->MakeName(Nodes[0]->GetName());
+	FbxString NodeName(FFbxImporter->MakeName(Nodes[0]->GetName()));
 	//Find the scene node info in the hierarchy
 	if (!FindSceneNodeInfo(SceneInfo, Nodes[0]->GetUniqueID(), OutNodeInfo) || !OutNodeInfo->AttributeInfo.IsValid())
 	{
@@ -2296,8 +2313,8 @@ UObject* UFbxSceneImportFactory::ImportANode(void* VoidFbxImporter, TArray<void*
 
 	UObject* NewObject = nullptr;
 	// skip collision models
-	if (NodeName.Contains(TEXT("UCX"), ESearchCase::IgnoreCase) || NodeName.Contains(TEXT("MCDCX"), ESearchCase::IgnoreCase) ||
-		NodeName.Contains(TEXT("UBX"), ESearchCase::IgnoreCase) || NodeName.Contains(TEXT("USP"), ESearchCase::IgnoreCase) || NodeName.Contains(TEXT("UCP"), ESearchCase::IgnoreCase))
+	if (NodeName.Find("UCX") != -1 || NodeName.Find("MCDCX") != -1 ||
+		NodeName.Find("UBX") != -1 || NodeName.Find("USP") != -1 || NodeName.Find("UCP") != -1)
 	{
 		return nullptr;
 	}

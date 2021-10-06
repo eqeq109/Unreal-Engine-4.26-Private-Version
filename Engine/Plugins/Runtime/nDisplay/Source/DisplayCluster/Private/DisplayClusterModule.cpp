@@ -5,6 +5,7 @@
 #include "Cluster/DisplayClusterClusterManager.h"
 #include "Config/DisplayClusterConfigManager.h"
 #include "Game/DisplayClusterGameManager.h"
+#include "Input/DisplayClusterInputManager.h"
 #include "Render/DisplayClusterRenderManager.h"
 
 #include "DisplayClusterConfigurationTypes.h"
@@ -25,11 +26,25 @@ FDisplayClusterModule::FDisplayClusterModule()
 	Managers.Add(MgrCluster = new FDisplayClusterClusterManager);
 	Managers.Add(MgrGame    = new FDisplayClusterGameManager);
 	Managers.Add(MgrRender  = new FDisplayClusterRenderManager);
+	Managers.Add(MgrInput   = new FDisplayClusterInputManager);
 }
 
 FDisplayClusterModule::~FDisplayClusterModule()
 {
+#if 1
 	GDisplayCluster = nullptr;
+#else
+	// WORKAROUND
+	// UE4 does something like that:
+	// 1. inst1 = new FDisplayClusterModule
+	// 2. inst2 = new FDisplayClusterModule
+	// 3. delete inst1
+	// To store valid pointer (inst2) I need the check below.
+	if (GDisplayCluster == this)
+	{
+		GDisplayCluster = nullptr;
+	}
+#endif
 }
 
 
@@ -62,23 +77,23 @@ bool FDisplayClusterModule::Init(EDisplayClusterOperationMode OperationMode)
 
 	UE_LOG(LogDisplayClusterModule, Log, TEXT("Initializing subsystems to %s operation mode"), *DisplayClusterTypesConverter::template ToString(CurrentOperationMode));
 
-	bool bResult = true;
+	bool result = true;
 	auto it = Managers.CreateIterator();
-	while (bResult && it)
+	while (result && it)
 	{
-		bResult = bResult && (*it)->Init(CurrentOperationMode);
+		result = result && (*it)->Init(CurrentOperationMode);
 		++it;
 	}
 
-	if (!bResult)
+	if (!result)
 	{
 		UE_LOG(LogDisplayClusterModule, Error, TEXT("An error occurred during internal initialization"));
 	}
 
 	// Set internal initialization flag
-	bIsModuleInitialized = bResult;
+	bIsModuleInitialized = result;
 
-	return bResult;
+	return result;
 }
 
 void FDisplayClusterModule::Release()
@@ -94,26 +109,26 @@ void FDisplayClusterModule::Release()
 	Managers.Empty();
 }
 
-bool FDisplayClusterModule::StartSession(UDisplayClusterConfigurationData* InConfigData, const FString& NodeId)
+bool FDisplayClusterModule::StartSession(const UDisplayClusterConfigurationData* InConfigData, const FString& NodeId)
 {
 	UE_LOG(LogDisplayClusterModule, Log, TEXT("StartSession with node ID '%s'"), *NodeId);
 
-	bool bResult = true;
+	bool result = true;
 	auto it = Managers.CreateIterator();
-	while (bResult && it)
+	while (result && it)
 	{
-		bResult = bResult && (*it)->StartSession(InConfigData, NodeId);
+		result = result && (*it)->StartSession(InConfigData, NodeId);
 		++it;
 	}
 
 	DisplayClusterStartSessionEvent.Broadcast();
 
-	if (!bResult)
+	if (!result)
 	{
 		UE_LOG(LogDisplayClusterModule, Error, TEXT("An error occurred during session start"));
 	}
 
-	return bResult;
+	return result;
 }
 
 void FDisplayClusterModule::EndSession()
@@ -134,29 +149,25 @@ bool FDisplayClusterModule::StartScene(UWorld* InWorld)
 
 	check(InWorld);
 
-	DisplayClusterStartSceneEvent.Broadcast();
-
-	bool bResult = true;
+	bool result = true;
 	auto it = Managers.CreateIterator();
-	while (bResult && it)
+	while (result && it)
 	{
-		bResult = bResult && (*it)->StartScene(InWorld);
+		result = result && (*it)->StartScene(InWorld);
 		++it;
 	}
 
-	if (!bResult)
+	if (!result)
 	{
 		UE_LOG(LogDisplayClusterModule, Error, TEXT("An error occurred during game (level) start"));
 	}
 
-	return bResult;
+	return result;
 }
 
 void FDisplayClusterModule::EndScene()
 {
 	UE_LOG(LogDisplayClusterModule, Log, TEXT("Stopping game..."));
-
-	DisplayClusterEndSceneEvent.Broadcast();
 
 	for (auto pMgr : Managers)
 	{

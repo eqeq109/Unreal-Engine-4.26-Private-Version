@@ -12,7 +12,7 @@ namespace Electra
 		{
 			static uint32 GIndexToSampleRate[16] =
 			{
-				96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 0, 0, 0, 0
+			96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 0, 0, 0, 0
 			};
 
 			static uint32 GetAudioObjectType(FBitDataStream& Bitstream)
@@ -158,9 +158,7 @@ namespace Electra
 							}
 						}
 						if (bsp.GetRemainingBits() > 11 && bsp.GetBits(11) == 0x548)
-						{
 							PSSignal = bsp.GetBits(1);
-						}
 						break;
 					}
 					else
@@ -174,6 +172,11 @@ namespace Electra
 			MEDIA_UNUSED_VAR(remainingBits);
 			return true;
 		}
+
+
+
+
+
 	} // namespace MPEG
 } // namespace Electra
 
@@ -203,9 +206,7 @@ struct ADTSheader
 static bool GetADTSHeader(ADTSheader& header, const void* pData, int64 nDataSize)
 {
 	if (nDataSize < 7)
-	{
-		return false;
-	}
+		return(false);
 
 	FBitDataStream bs(pData, nDataSize);
 	header.mSyncWord = bs.GetBits(12);
@@ -224,10 +225,8 @@ static bool GetADTSHeader(ADTSheader& header, const void* pData, int64 nDataSize
 	header.mBufferFullness = bs.GetBits(11);
 	header.mNumFrames = bs.GetBits(2);
 	if (nDataSize >= 9 && !header.mProtAbsent)
-	{
 		header.mCRCifPresent = bs.GetBits(16);
-	}
-	return header.mSyncWord == 0xfff && header.mLayer == 0;
+	return(header.mSyncWord == 0xfff && header.mLayer == 0);
 }
 
 /*

@@ -30,7 +30,7 @@ public:
 
 	/** Jump to end of playback */
 	TSharedPtr< FUICommandInfo > JumpToEnd;
-	
+
 	/** Shuttle forward */
 	TSharedPtr< FUICommandInfo > ShuttleForward;
 
@@ -39,9 +39,6 @@ public:
 
 	/** Pause */
 	TSharedPtr< FUICommandInfo > Pause;
-	
-	/** Restores real time speed */
-	TSharedPtr< FUICommandInfo > RestorePlaybackSpeed;
 
 	/** Step forward */
 	TSharedPtr< FUICommandInfo > StepForward;
@@ -54,12 +51,6 @@ public:
 
 	/** Step backward */
 	TSharedPtr< FUICommandInfo > StepBackward2;
-
-	/** Jump forward */
-	TSharedPtr< FUICommandInfo > JumpForward;
-
-	/** Jump backward */
-	TSharedPtr< FUICommandInfo > JumpBackward;
 
 	/** Step to next key */
 	TSharedPtr< FUICommandInfo > StepToNextKey;
@@ -115,9 +106,6 @@ public:
 	/** Toggle locking the playback range. */
 	TSharedPtr< FUICommandInfo > TogglePlaybackRangeLocked;
 
-	/** Toggle clean playback mode. */
-	TSharedPtr< FUICommandInfo > ToggleCleanPlaybackMode;
-
 	/** Reruns construction scripts on bound actors every frame. */
 	TSharedPtr< FUICommandInfo > ToggleRerunConstructionScripts;
 
@@ -127,20 +115,23 @@ public:
 	/** Toggle constraining the time cursor to the playback range while scrubbing */
 	TSharedPtr< FUICommandInfo > ToggleKeepCursorInPlaybackRangeWhileScrubbing;
 
+	/** Toggle constraining the time cursor to the playback range during playback */
+	TSharedPtr< FUICommandInfo > ToggleKeepCursorInPlaybackRange;
+
 	/** Toggle constraining the playback range to the section bounds */
 	TSharedPtr< FUICommandInfo > ToggleKeepPlaybackRangeInSectionBounds;
+
+	/** Expand all nodes and descendants */
+	TSharedPtr< FUICommandInfo > ExpandAllNodesAndDescendants;
+
+	/** Collapse all nodes and descendants */
+	TSharedPtr< FUICommandInfo > CollapseAllNodesAndDescendants;
 
 	/** Expand/collapse nodes */
 	TSharedPtr< FUICommandInfo > ToggleExpandCollapseNodes;
 
 	/** Expand/collapse nodes and descendants */
 	TSharedPtr< FUICommandInfo > ToggleExpandCollapseNodesAndDescendants;
-
-	/** Expand all nodes */
-	TSharedPtr< FUICommandInfo > ExpandAllNodes;
-
-	/** Collapse all nodes */
-	TSharedPtr< FUICommandInfo > CollapseAllNodes;
 
 	/** Sort all nodes and descendants */
 	TSharedPtr< FUICommandInfo > SortAllNodesAndDescendants;
@@ -152,7 +143,7 @@ public:
 	TSharedPtr< FUICommandInfo > SetSelectionRangeStart;
 
 	/** Clear and reset the selection range */
-	TSharedPtr< FUICommandInfo > ClearSelectionRange;
+	TSharedPtr< FUICommandInfo > ResetSelectionRange;
 
 	/** Select all keys that fall into the selection range*/
 	TSharedPtr< FUICommandInfo > SelectKeysInSelectionRange;
@@ -162,12 +153,6 @@ public:
 
 	/** Select all keys and sections that fall into the selection range*/
 	TSharedPtr< FUICommandInfo > SelectAllInSelectionRange;
-
-	/** Select all keys and sections forward from the current time */
-	TSharedPtr< FUICommandInfo > SelectForward;
-
-	/** Select all keys and sections backward from the current time */
-	TSharedPtr< FUICommandInfo > SelectBackward;
 
 	/** Add selected actors to sequencer */
 	TSharedPtr< FUICommandInfo > AddActorsToSequencer;
@@ -198,12 +183,6 @@ public:
 
 	/** Trim section to the right, keeping the left portion */
 	TSharedPtr< FUICommandInfo > TrimSectionRight;
-
-	/** Trim or extend closest sections to the left for the selected tracks (or all tracks if none selected) to the current time */
-	TSharedPtr< FUICommandInfo > TrimOrExtendSectionLeft;
-
-	/** Trim or extend closest sections to the right for the selected tracks (or all tracks if none selected) to the current time */
-	TSharedPtr< FUICommandInfo > TrimOrExtendSectionRight;
 
 	/** Translate the selected keys and section to the left */
 	TSharedPtr< FUICommandInfo > TranslateLeft;
@@ -279,12 +258,6 @@ public:
 
 	/** Sets the tree search widget as the focused widget in Slate for easy typing. */
 	TSharedPtr< FUICommandInfo > QuickTreeSearch;
-
-	/** Move selected nodes to new folder. */
-	TSharedPtr< FUICommandInfo > MoveToNewFolder;
-
-	/** Remove selected nodes from folder. */
-	TSharedPtr< FUICommandInfo > RemoveFromFolder;
 
 	/** Bake transform. */
 	TSharedPtr< FUICommandInfo > BakeTransform;
@@ -385,6 +358,9 @@ public:
 	/** Rebinds all possessable references with their current bindings. */
 	TSharedPtr< FUICommandInfo > RebindPossessableReferences;
 
+	/** Record the selected actors into a sub sequence of the currently active sequence */
+	TSharedPtr< FUICommandInfo > RecordSelectedActors;
+
 	/** Imports animation from fbx. */
 	TSharedPtr< FUICommandInfo > ImportFBX;
 
@@ -409,8 +385,7 @@ public:
 	/** Sets a scale key at the current time for the selected actor */
 	TSharedPtr< FUICommandInfo > AddScaleKey;
 
-	/** Toggle piloting the last camera or the camera cut camera */
-	TSharedPtr< FUICommandInfo > TogglePilotCamera;
+
 
 	/**
 	 * Initialize commands

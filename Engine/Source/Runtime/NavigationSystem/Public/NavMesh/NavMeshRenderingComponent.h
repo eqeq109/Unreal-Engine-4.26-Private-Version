@@ -36,7 +36,6 @@ enum class ENavMeshDetailFlags : uint8
 	TileLabels,
 	PolygonLabels,
 	PolygonCost,
-	PolygonFlags,
 	PathLabels,
 	NavLinks,
 	FailedNavLinks,

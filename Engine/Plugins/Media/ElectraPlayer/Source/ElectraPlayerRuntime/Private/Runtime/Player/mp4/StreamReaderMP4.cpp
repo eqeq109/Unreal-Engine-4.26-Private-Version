@@ -15,7 +15,7 @@
 #include "Player/mp4/StreamReaderMP4.h"
 
 
-DECLARE_CYCLE_STAT(TEXT("FStreamReaderMP4_HandleRequest"), STAT_ElectraPlayer_MP4_StreamReader, STATGROUP_ElectraPlayer);
+
 
 
 namespace Electra
@@ -55,11 +55,6 @@ uint32 FStreamSegmentRequestMP4::GetPlaybackSequenceID() const
 EStreamType FStreamSegmentRequestMP4::GetType() const
 {
 	return  PrimaryStreamType;
-}
-
-void FStreamSegmentRequestMP4::SetExecutionDelay(const FTimeValue& ExecutionDelay)
-{
-	// No op for mp4.
 }
 
 void FStreamSegmentRequestMP4::GetDependentStreams(TArray<FDependentStreams>& OutDependentStreams) const
@@ -129,16 +124,20 @@ FStreamReaderMP4::~FStreamReaderMP4()
 
 UEMediaError FStreamReaderMP4::Create(IPlayerSessionServices* InPlayerSessionService, const CreateParam &InCreateParam)
 {
-	if (!InCreateParam.MemoryProvider || !InCreateParam.EventListener)
+	if (!InCreateParam.MemoryProvider ||
+		!InCreateParam.EventListener ||
+		!InCreateParam.PlayerSessionService)
 	{
 		return UEMEDIA_ERROR_BAD_ARGUMENTS;
 	}
 
-	PlayerSessionServices = InPlayerSessionService;
 	Parameters = InCreateParam;
 	bTerminate = false;
 	bIsStarted = true;
 
+	ThreadSetPriority(InCreateParam.ReaderConfig.ThreadParam.Priority);
+	ThreadSetCoreAffinity(InCreateParam.ReaderConfig.ThreadParam.CoreAffinity);
+	ThreadSetStackSize(InCreateParam.ReaderConfig.ThreadParam.StackSize);
 	ThreadSetName("ElectraPlayer::MP4 streamer");
 	ThreadStart(Electra::MakeDelegate(this, &FStreamReaderMP4::WorkerThread));
 
@@ -168,7 +167,10 @@ void FStreamReaderMP4::Close()
 
 void FStreamReaderMP4::LogMessage(IInfoLog::ELevel Level, const FString& Message)
 {
-	PlayerSessionServices->PostLog(Facility::EFacility::MP4StreamReader, Level, Message);
+	if (Parameters.PlayerSessionService)
+	{
+		Parameters.PlayerSessionService->PostLog(Facility::EFacility::MP4StreamReader, Level, Message);
+	}
 }
 
 IStreamReader::EAddResult FStreamReaderMP4::AddRequest(uint32 CurrentPlaybackSequenceID, TSharedPtrTS<IStreamSegment> InRequest)
@@ -192,15 +194,20 @@ IStreamReader::EAddResult FStreamReaderMP4::AddRequest(uint32 CurrentPlaybackSeq
 	return EAddResult::Added;
 }
 
-void FStreamReaderMP4::CancelRequest(EStreamType StreamType, bool bSilent)
-{
-	// No-op.
-}
-
 void FStreamReaderMP4::CancelRequests()
 {
 	bRequestCanceled = true;
 	ReadBuffer.Abort();
+}
+
+void FStreamReaderMP4::PauseDownload()
+{
+	// Not implemented.
+}
+
+void FStreamReaderMP4::ResumeDownload()
+{
+	// Not implemented.
 }
 
 bool FStreamReaderMP4::HasBeenAborted() const
@@ -251,40 +258,49 @@ void FStreamReaderMP4::HTTPUpdateStats(const FTimeValue& CurrentTime, const IEle
 	}
 }
 
-void FStreamReaderMP4::HandleRequest()
+void FStreamReaderMP4::WorkerThread()
 {
-	TSharedPtrTS<FStreamSegmentRequestMP4>	Request = CurrentRequest;
+	LLM_SCOPE(ELLMTag::ElectraPlayer);
+	while(!bTerminate)
+	{
+		WorkSignal.WaitAndReset();
+		if (bTerminate)
+		{
+			break;
+		}
 
-	FManifestMP4Internal::FTimelineAssetMP4* TimelineAsset = static_cast<FManifestMP4Internal::FTimelineAssetMP4*>(Request->MediaAsset.Get());
+		TSharedPtrTS<FStreamSegmentRequestMP4>	Request = CurrentRequest;
+		if (!Request.IsValid())
+		{
+			continue;
+		}
 
-	// Clear the active track map.
-	ActiveTrackMap.Reset();
+		FManifestMP4Internal::FTimelineAssetMP4* TimelineAsset = static_cast<FManifestMP4Internal::FTimelineAssetMP4*>(Request->MediaAsset.Get());
+
+		// Clear the active track map.
+		ActiveTrackMap.Reset();
 
 // FIXME: If looping to somewhere within the stream instead of the beginning at zero the offset here must be made relative to the DTS of the first sample we demux.
 //        Otherwise there would be a large jump ahead in time!
-	FTimeValue LoopTimestampOffset = Request->PlayerLoopState.LoopBasetime;
-	TSharedPtrTS<const FPlayerLoopState> PlayerLoopState = MakeSharedTS<const FPlayerLoopState>(Request->PlayerLoopState);
+		FTimeValue LoopTimestampOffset = Request->PlayerLoopState.LoopBasetime;
+		TSharedPtr<const FPlayerLoopState, ESPMode::ThreadSafe>		PlayerLoopState = MakeShared<const FPlayerLoopState, ESPMode::ThreadSafe>(Request->PlayerLoopState);
 
 
-	// Get the list of all the tracks that have been selected in the asset.
-	// This does not mean their data will be _used_ for playback, only that the track is usable by the player
-	// with regards to type and codec.
-	struct FPlaylistTrackMetadata
-	{
-		EStreamType		Type;
-		FString			Kind;
-		FString			Language;
-		FString			PeriodID;
-		FString			AdaptationSetID;
-		FString			RepresentationID;
-		int32			Bitrate;
-		int32			Index;
-	};
-	TMap<uint32, FPlaylistTrackMetadata>	SelectedTrackMap;
-	const EStreamType TypesOfSupportedTracks[] = { EStreamType::Video, EStreamType::Audio, EStreamType::Subtitle };
-	{
-		SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_StreamReader);
-		CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_StreamReader);
+		// Get the list of all the tracks that have been selected in the asset.
+		// This does not mean their data will be _used_ for playback, only that the track is usable by the player
+		// with regards to type and codec.
+		struct FPlaylistTrackMetadata
+		{
+			EStreamType		Type;
+			FString			Language;
+			FString			PeriodID;
+			FString			AdaptationSetID;
+			FString			RepresentationID;
+			FString			CDN;
+			int32			Bitrate;
+		};
+		TMap<uint32, FPlaylistTrackMetadata>	SelectedTrackMap;
+		const EStreamType TypesOfSupportedTracks[] = { EStreamType::Video, EStreamType::Audio, EStreamType::Subtitle };
 		for(int32 nStrType=0; nStrType<UE_ARRAY_COUNT(TypesOfSupportedTracks); ++nStrType)
 		{
 			int32 NumAdapt = Request->MediaAsset->GetNumberOfAdaptationSets(TypesOfSupportedTracks[nStrType]);
@@ -300,162 +316,154 @@ void FStreamReaderMP4::HandleRequest()
 					// Note: By definition the representations unique identifier is a string of the numeric track ID and can thus be parsed back into a number.
 					FString ReprID = Representation->GetUniqueIdentifier();
 					uint32 TrackId;
-					LexFromString(TrackId, *ReprID);
+					LexFromString(TrackId, *ReprID); 
 					FPlaylistTrackMetadata tmd;
 					tmd.Type			 = TypesOfSupportedTracks[nStrType];
 					tmd.Language		 = Language;
-					tmd.Kind			 = nRepr == 0 ? TEXT("main") : TEXT("translation");	// perhaps this should come from querying the metadata instead of doing this over here...
 					tmd.PeriodID		 = Request->MediaAsset->GetUniqueIdentifier();
 					tmd.AdaptationSetID  = AdaptID;
 					tmd.RepresentationID = ReprID;
 					tmd.Bitrate 		 = Representation->GetBitrate();
-					tmd.Index			 = nAdapt;
+					tmd.CDN 			 = Representation->GetCDN();
 					SelectedTrackMap.Emplace(TrackId, tmd);
 				}
 			}
 		}
-	}
 
 
-	Metrics::FSegmentDownloadStats& ds = Request->DownloadStats;
-	ds.StatsID = FMediaInterlockedIncrement(UniqueDownloadID);
+		Metrics::FSegmentDownloadStats& ds = Request->DownloadStats;
+		ds.StatsID = FMediaInterlockedIncrement(UniqueDownloadID);
 
-	check(Request->PrimaryTrackIterator.IsValid() && Request->PrimaryTrackIterator->GetTrack());
-	uint32 PrimaryTrackID = Request->PrimaryTrackIterator->GetTrack()->GetID();
-	const FPlaylistTrackMetadata* PrimaryTrackMetadata = SelectedTrackMap.Find(PrimaryTrackID);
-	check(PrimaryTrackMetadata);
-	if (PrimaryTrackMetadata)
-	{
-		ds.MediaAssetID 	= PrimaryTrackMetadata->PeriodID;
-		ds.AdaptationSetID  = PrimaryTrackMetadata->AdaptationSetID;
-		ds.RepresentationID = PrimaryTrackMetadata->RepresentationID;
-		ds.Bitrate  		= PrimaryTrackMetadata->Bitrate;
-	}
-
-	ds.FailureReason.Empty();
-	ds.bWasSuccessful      = true;
-	ds.bWasAborted  	   = false;
-	ds.bDidTimeout  	   = false;
-	ds.HTTPStatusCode      = 0;
-	ds.StreamType   	   = Request->GetType();
-	ds.SegmentType  	   = Metrics::ESegmentType::Media;
-	ds.PresentationTime    = (Request->FirstPTS + LoopTimestampOffset).GetAsSeconds();
-	ds.Duration 		   = Request->SegmentDuration.GetAsSeconds();
-	ds.DurationDownloaded  = 0.0;
-	ds.DurationDelivered   = 0.0;
-	ds.TimeToFirstByte     = 0.0;
-	ds.TimeToDownload      = 0.0;
-	ds.ByteSize 		   = -1;
-	ds.NumBytesDownloaded  = 0;
-	ds.ThroughputBps	   = 0;
-	ds.bInsertedFillerData = false;
-	ds.URL  			   = TimelineAsset->GetMediaURL();
-	ds.bIsMissingSegment   = false;
-	ds.bParseFailure	   = false;
-	ds.RetryNumber  	   = Request->NumOverallRetries;
-	ds.ABRState.Reset();
-
-	Parameters.EventListener->OnFragmentOpen(Request);
-
-	TSharedPtrTS<IElectraHttpManager::FProgressListener>	ProgressListener;
-	ProgressListener = MakeSharedTS<IElectraHttpManager::FProgressListener>();
-	ProgressListener->CompletionDelegate = Electra::MakeDelegate(this, &FStreamReaderMP4::HTTPCompletionCallback);
-	ProgressListener->ProgressDelegate   = Electra::MakeDelegate(this, &FStreamReaderMP4::HTTPProgressCallback);
-
-	ReadBuffer.Reset();
-	ReadBuffer.ReceiveBuffer = MakeSharedTS<IElectraHttpManager::FReceiveBuffer>();
-	// Set the receive buffer to an okay-ish size. Too small and the file I/O may block too often and get too slow.
-	ReadBuffer.ReceiveBuffer->Buffer.Reserve(4 << 20);
-	ReadBuffer.ReceiveBuffer->bEnableRingbuffer = true;
-	ReadBuffer.SetCurrentPos(Request->FileStartOffset);
-	TSharedPtrTS<IElectraHttpManager::FRequest> HTTP(new IElectraHttpManager::FRequest);
-	HTTP->Parameters.URL				= TimelineAsset->GetMediaURL();
-	HTTP->Parameters.Range.Start		= Request->FileStartOffset;
-	HTTP->Parameters.Range.EndIncluding = Request->FileEndOffset;
-	// Explicit range?
-	int64 NumRequestedBytes = HTTP->Parameters.Range.GetNumberOfBytes();
-	int32 SubRequestSize = 0;
-	if (NumRequestedBytes > 0)
-	{
-		if (Request->bIsFirstSegment && !Request->bIsLastSegment)
+		check(Request->PrimaryTrackIterator.IsValid() && Request->PrimaryTrackIterator->GetTrack());
+		uint32 PrimaryTrackID = Request->PrimaryTrackIterator->GetTrack()->GetID();
+		const FPlaylistTrackMetadata* PrimaryTrackMetadata = SelectedTrackMap.Find(PrimaryTrackID);
+		check(PrimaryTrackMetadata);
+		if (PrimaryTrackMetadata)
 		{
-			SubRequestSize = 512 << 10;
+			ds.MediaAssetID 	= PrimaryTrackMetadata->PeriodID;
+			ds.AdaptationSetID  = PrimaryTrackMetadata->AdaptationSetID;
+			ds.RepresentationID = PrimaryTrackMetadata->RepresentationID;
+			ds.Bitrate  		= PrimaryTrackMetadata->Bitrate;
+			ds.CDN  			= PrimaryTrackMetadata->CDN;
 		}
-		else if (Request->bIsFirstSegment && Request->bIsLastSegment)
+
+		ds.FailureReason.Empty();
+		ds.bWasSuccessful      = true;
+		ds.bWasAborted  	   = false;
+		ds.bDidTimeout  	   = false;
+		ds.HTTPStatusCode      = 0;
+		ds.StreamType   	   = Request->GetType();
+		ds.SegmentType  	   = Metrics::ESegmentType::Media;
+		ds.PresentationTime    = (Request->FirstPTS + LoopTimestampOffset).GetAsSeconds();
+		ds.Duration 		   = Request->SegmentDuration.GetAsSeconds();
+		ds.DurationDownloaded  = 0.0;
+		ds.DurationDelivered   = 0.0;
+		ds.TimeToFirstByte     = 0.0;
+		ds.TimeToDownload      = 0.0;
+		ds.ByteSize 		   = -1;
+		ds.NumBytesDownloaded  = 0;
+		ds.ThroughputBps	   = 0;
+		ds.bInsertedFillerData = false;
+		ds.URL  			   = TimelineAsset->GetMediaURL();
+		ds.bIsMissingSegment   = false;
+		ds.bParseFailure	   = false;
+		ds.RetryNumber  	   = Request->NumOverallRetries;
+
+		Parameters.EventListener->OnFragmentOpen(Request);
+
+		TSharedPtrTS<IElectraHttpManager::FProgressListener>	ProgressListener;
+		ProgressListener = MakeSharedTS<IElectraHttpManager::FProgressListener>();
+		ProgressListener->CompletionDelegate = Electra::MakeDelegate(this, &FStreamReaderMP4::HTTPCompletionCallback);
+		ProgressListener->ProgressDelegate   = Electra::MakeDelegate(this, &FStreamReaderMP4::HTTPProgressCallback);
+
+		ReadBuffer.Reset();
+		ReadBuffer.ReceiveBuffer = MakeSharedTS<IElectraHttpManager::FReceiveBuffer>();
+		// Set the receive buffer to an okay-ish size. Too small and the file I/O may block too often and get too slow.
+		ReadBuffer.ReceiveBuffer->Buffer.Reserve(4 << 20);
+		ReadBuffer.ReceiveBuffer->bEnableRingbuffer = true;
+		ReadBuffer.SetCurrentPos(Request->FileStartOffset);
+		TSharedPtrTS<IElectraHttpManager::FRequest> HTTP(new IElectraHttpManager::FRequest);
+		HTTP->Parameters.URL				= TimelineAsset->GetMediaURL();
+		HTTP->Parameters.Range.Start		= Request->FileStartOffset;
+		HTTP->Parameters.Range.EndIncluding = Request->FileEndOffset;
+		// Explicit range?
+		int64 NumRequestedBytes = HTTP->Parameters.Range.GetNumberOfBytes();
+		int32 SubRequestSize = 0;
+		if (NumRequestedBytes > 0)
 		{
-			SubRequestSize = 2 << 20;
-		}
-	}
-	else
-	{
-		if (Request->SegmentInternalSize < 0)
-		{
-			SubRequestSize = 2 << 20;
-		}
-	}
-	if (SubRequestSize)
-	{
-		HTTP->Parameters.SubRangeRequestSize = SubRequestSize;
-	}
-
-	HTTP->ReceiveBuffer 				= ReadBuffer.ReceiveBuffer;
-	HTTP->ProgressListener  			= ProgressListener;
-	PlayerSessionServices->GetHTTPManager()->AddRequest(HTTP, false);
-
-
-	FTimeValue DurationSuccessfullyDelivered(FTimeValue::GetZero());
-	FTimeValue DurationSuccessfullyRead(FTimeValue::GetZero());
-	FTimeValue NextLargestExpectedTimestamp(FTimeValue::GetZero());
-	bool bDone = false;
-	TSharedPtrTS<IParserISO14496_12::IAllTrackIterator> AllTrackIterator;
-	{
-		SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_StreamReader);
-		CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_StreamReader);
-		AllTrackIterator = TimelineAsset->GetMoovBoxParser()->CreateAllTrackIteratorByFilePos(Request->FileStartOffset);
-	}
-	while(!bDone && !HasErrored() && !HasBeenAborted() && !bTerminate)
-	{
-		auto UpdateSelectedTrack = [&SelectedTrackMap](const IParserISO14496_12::ITrackIterator* trkIt, TMap<uint32, FSelectedTrackData>& ActiveTrks) -> FSelectedTrackData&
-		{
-			const IParserISO14496_12::ITrack* Track = trkIt->GetTrack();
-			uint32 tkid = Track->GetID();
-
-			// Check if this track ID is already in our map of active tracks.
-			FSelectedTrackData& st = ActiveTrks.FindOrAdd(tkid);
-			if (!st.BufferSourceInfo.IsValid())
+			if (Request->bIsFirstSegment && !Request->bIsLastSegment)
 			{
-				auto meta = MakeShared<FBufferSourceInfo, ESPMode::ThreadSafe>();
+				SubRequestSize = 512 << 10;
+			}
+			else if (Request->bIsFirstSegment && Request->bIsLastSegment)
+			{
+				SubRequestSize = 2 << 20;
+			}
+		}
+		else
+		{
+			if (Request->SegmentInternalSize < 0)
+			{
+				SubRequestSize = 2 << 20;
+			}
+		}
+		if (SubRequestSize)
+		{
+			HTTP->Parameters.SubRangeRequestSize = SubRequestSize;
+		}
 
-				// Check if this track is in the list of selected tracks.
-				const FPlaylistTrackMetadata* SelectedTrackMetadata = SelectedTrackMap.Find(tkid);
-				if (SelectedTrackMetadata)
+		HTTP->ReceiveBuffer 				= ReadBuffer.ReceiveBuffer;
+		HTTP->ProgressListener  			= ProgressListener;
+		Parameters.PlayerSessionService->GetHTTPManager()->AddRequest(HTTP);
+
+
+		FTimeValue DurationSuccessfullyDelivered(FTimeValue::GetZero());
+		FTimeValue DurationSuccessfullyRead(FTimeValue::GetZero());
+		FTimeValue NextLargestExpectedTimestamp(FTimeValue::GetZero());
+		bool bDone = false;
+		TSharedPtr<IParserISO14496_12::IAllTrackIterator, ESPMode::ThreadSafe> AllTrackIterator = TimelineAsset->GetMoovBoxParser()->CreateAllTrackIteratorByFilePos(Request->FileStartOffset);
+		while(!bDone && !HasErrored() && !HasBeenAborted() && !bTerminate)
+		{
+			auto UpdateSelectedTrack = [&SelectedTrackMap](const IParserISO14496_12::ITrackIterator* trkIt, TMap<uint32, FSelectedTrackData>& ActiveTrks) -> FSelectedTrackData&
+			{
+				const IParserISO14496_12::ITrack* Track = trkIt->GetTrack();
+				uint32 tkid = Track->GetID();
+
+				// Check if this track ID is already in our map of active tracks.
+				FSelectedTrackData& st = ActiveTrks.FindOrAdd(tkid);
+				if (!st.StreamSourceInfo.IsValid())
 				{
-					st.bIsSelectedTrack = true;
-					st.StreamType = SelectedTrackMetadata->Type;
-					meta->Kind = SelectedTrackMetadata->Kind;
-					meta->Language = SelectedTrackMetadata->Language;
-					meta->PeriodAdaptationSetID = SelectedTrackMetadata->PeriodID + TEXT(".") + SelectedTrackMetadata->AdaptationSetID;
-					meta->HardIndex = SelectedTrackMetadata->Index;
-				}
-				st.BufferSourceInfo = MoveTemp(meta);
-			}
-			if (!st.CSD.IsValid())
-			{
-				TSharedPtrTS<FAccessUnit::CodecData> CSD(new FAccessUnit::CodecData);
-				CSD->CodecSpecificData = Track->GetCodecSpecificData();
-				CSD->RawCSD			   = Track->GetCodecSpecificDataRAW();
-				CSD->ParsedInfo		   = Track->GetCodecInformation();
-				st.CSD = MoveTemp(CSD);
-			}
-			return st;
-		};
+					auto meta = MakeShared<FStreamSourceInfo, ESPMode::ThreadSafe>();
+					meta->NumericTrackID = tkid;
 
-		// Handle all the new tracks that have reached EOS while iterating. We do this first here to
-		// handle the tracks that hit EOS before reaching the intended start position.
-		TArray<const IParserISO14496_12::ITrackIterator*> TracksAtEOS;
-		{
-			SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_StreamReader);
-			CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_StreamReader);
+					// Check if this track is in the list of selected tracks.
+					const FPlaylistTrackMetadata* SelectedTrackMetadata = SelectedTrackMap.Find(tkid);
+					if (SelectedTrackMetadata)
+					{
+						st.bIsSelectedTrack = true;
+						st.StreamType = SelectedTrackMetadata->Type;
+						//meta->Role			 = SelectedTrackMetadata->;
+						meta->Language  		 = SelectedTrackMetadata->Language;
+						meta->PeriodID  		 = SelectedTrackMetadata->PeriodID;
+						meta->AdaptationSetID    = SelectedTrackMetadata->AdaptationSetID;
+						meta->RepresentationID   = SelectedTrackMetadata->RepresentationID;
+					}
+					st.StreamSourceInfo = MoveTemp(meta);
+				}
+				if (!st.CSD.IsValid())
+				{
+					TSharedPtrTS<FAccessUnit::CodecData> CSD(new FAccessUnit::CodecData);
+					CSD->CodecSpecificData = Track->GetCodecSpecificData();
+					CSD->RawCSD			= Track->GetCodecSpecificDataRAW();
+					CSD->ParsedInfo 		= Track->GetCodecInformation();
+					st.CSD = MoveTemp(CSD);
+				}
+				return st;
+			};
+
+			// Handle all the new tracks that have reached EOS while iterating. We do this first here to
+			// handle the tracks that hit EOS before reaching the intended start position.
+			TArray<const IParserISO14496_12::ITrackIterator*> TracksAtEOS;
 			AllTrackIterator->GetNewEOSTracks(TracksAtEOS);
 			AllTrackIterator->ClearNewEOSTracks();
 			for(int32 nTrk=0; nTrk<TracksAtEOS.Num(); ++nTrk)
@@ -465,188 +473,187 @@ void FStreamReaderMP4::HandleRequest()
 				// Is this a track that is selected and we are interested in?
 				if (SelectedTrack.bIsSelectedTrack)
 				{
-					Parameters.EventListener->OnFragmentReachedEOS(SelectedTrack.StreamType, SelectedTrack.BufferSourceInfo);
+					Parameters.EventListener->OnFragmentReachedEOS(SelectedTrack.StreamType, SelectedTrack.StreamSourceInfo);
 				}
 			}
-		}
 
-		// Handle current track iterator
-		const IParserISO14496_12::ITrackIterator* TrackIt = AllTrackIterator->Current();
-		if (TrackIt)
-		{
-			FSelectedTrackData& SelectedTrack = UpdateSelectedTrack(TrackIt, ActiveTrackMap);
-
-			// Get the sample properties
-			uint32 SampleNumber    = TrackIt->GetSampleNumber();
-			int64 DTS   		   = TrackIt->GetDTS();
-			int64 PTS   		   = TrackIt->GetPTS();
-			int64 Duration  	   = TrackIt->GetDuration();
-			uint32 Timescale	   = TrackIt->GetTimescale();
-			bool bIsSyncSample     = TrackIt->IsSyncSample();
-			int64 SampleSize	   = TrackIt->GetSampleSize();
-			int64 SampleFileOffset = TrackIt->GetSampleFileOffset();
-
-			// Remember at which file position we are currently at. In case of failure this is where we will retry.
-			Request->CurrentIteratorBytePos = SampleFileOffset;
-
-			// Do we need to skip over some data?
-			if (SampleFileOffset > ReadBuffer.GetCurrentPos())
+			// Handle current track iterator
+			const IParserISO14496_12::ITrackIterator* TrackIt = AllTrackIterator->Current();
+			if (TrackIt)
 			{
-				int32 NumBytesToSkip = SampleFileOffset - ReadBuffer.GetCurrentPos();
-				int64 nr = ReadBuffer.ReadTo(nullptr, NumBytesToSkip);
-				if (nr != NumBytesToSkip)
+				FSelectedTrackData& SelectedTrack = UpdateSelectedTrack(TrackIt, ActiveTrackMap);
+
+				// Get the sample properties
+				uint32 SampleNumber    = TrackIt->GetSampleNumber();
+				int64 DTS   		   = TrackIt->GetDTS();
+				int64 PTS   		   = TrackIt->GetPTS();
+				int64 Duration  	   = TrackIt->GetDuration();
+				uint32 Timescale	   = TrackIt->GetTimescale();
+				bool bIsSyncSample     = TrackIt->IsSyncSample();
+				int64 SampleSize	   = TrackIt->GetSampleSize();
+				int64 SampleFileOffset = TrackIt->GetSampleFileOffset();
+
+				// Remember at which file position we are currently at. In case of failure this is where we will retry.
+				Request->CurrentIteratorBytePos = SampleFileOffset;
+
+				// Do we need to skip over some data?
+				if (SampleFileOffset > ReadBuffer.GetCurrentPos())
 				{
-					bDone = true;
-					break;
-				}
-			}
-			else if (SampleFileOffset < ReadBuffer.GetCurrentPos())
-			{
-				ds.bParseFailure  = true;
-				Request->ConnectionInfo.StatusInfo.ErrorDetail.SetMessage(FString::Printf(TEXT("Segment parse error. Sample offset %lld for sample #%u in track %u is before the current read position at %lld"), (long long int)SampleFileOffset, SampleNumber, TrackIt->GetTrack()->GetID(), (long long int)ReadBuffer.GetCurrentPos()));
-				bHasErrored = true;
-				break;
-			}
-
-			// Do we read the sample because the track is selected or do we discard it?
-			if (SelectedTrack.bIsSelectedTrack)
-			{
-				// Is this a sync sample?
-				if (bIsSyncSample && !SelectedTrack.bGotKeyframe)
-				{
-					SelectedTrack.bGotKeyframe = true;
-				}
-				// Do we need to skip samples from this track until we reach a sync sample?
-				bool bSkipUntilSyncSample = !SelectedTrack.bGotKeyframe && !Request->bIsContinuationSegment;
-
-				// Create an access unit.
-				FAccessUnit *AccessUnit = FAccessUnit::Create(Parameters.MemoryProvider);
-				if (AccessUnit)
-				{
-					AccessUnit->ESType = SelectedTrack.StreamType;
-					AccessUnit->PTS.SetFromND(PTS, Timescale);
-					AccessUnit->DTS.SetFromND(DTS, Timescale);
-					AccessUnit->Duration.SetFromND(Duration, Timescale);
-					AccessUnit->AUSize = (uint32) SampleSize;
-					AccessUnit->AUCodecData = SelectedTrack.CSD;
-					AccessUnit->DropState = FAccessUnit::EDropState::None;
-					// If this is a continuation then we must not tag samples as being too early.
-					if (!Request->bIsContinuationSegment)
+					int32 NumBytesToSkip = SampleFileOffset - ReadBuffer.GetCurrentPos();
+					int64 nr = ReadBuffer.ReadTo(nullptr, NumBytesToSkip);
+					if (nr != NumBytesToSkip)
 					{
-						if (AccessUnit->DTS < Request->FirstPTS)
-						{
-							AccessUnit->DropState |= FAccessUnit::EDropState::DtsTooEarly;
-						}
-						if (AccessUnit->PTS < Request->FirstPTS)
-						{
-							AccessUnit->DropState |= FAccessUnit::EDropState::PtsTooEarly;
-						}
-					}
-					// FIXME: if we only want to read a partial segment we could set drop state based on the sample being 'too late'.
-
-					// Apply timestamp offsets for looping after checking the timestamp limits.
-					AccessUnit->PTS += LoopTimestampOffset;
-					AccessUnit->DTS += LoopTimestampOffset;
-
-					AccessUnit->bIsFirstInSequence = SelectedTrack.bIsFirstInSequence;
-					AccessUnit->bIsSyncSample = bIsSyncSample;
-					AccessUnit->bIsDummyData = false;
-					AccessUnit->AUData = AccessUnit->AllocatePayloadBuffer(AccessUnit->AUSize);
-
-					// Set the associated stream metadata
-					AccessUnit->BufferSourceInfo = SelectedTrack.BufferSourceInfo;
-					AccessUnit->PlayerLoopState = PlayerLoopState;
-
-					SelectedTrack.bIsFirstInSequence = false;
-
-					int64 nr = ReadBuffer.ReadTo(AccessUnit->AUData, (int32)SampleSize);
-					if (nr == SampleSize)
-					{
-						SelectedTrack.DurationSuccessfullyRead += AccessUnit->Duration;
-
-						//LogMessage(IInfoLog::ELevel::Info, FString::Printf("[%u] %4u: DTS=%lld PTS=%lld dur=%lld sync=%d; %lld bytes @ %lld", tkid, SampleNumber, (long long int)AccessUnit->mDTS.GetAsMicroseconds(), (long long int)AccessUnit->mPTS.GetAsMicroseconds(), (long long int)AccessUnit->mDuration.GetAsMicroseconds(), bIsSyncSample?1:0, (long long int)SampleSize, (long long int)SampleFileOffset));
-
-						// Keep track of the next expected sample PTS and remember the largest value of all tracks.
-						FTimeValue NextExpectedPTS = AccessUnit->PTS + AccessUnit->Duration;
-						if (NextExpectedPTS > NextLargestExpectedTimestamp)
-						{
-							NextLargestExpectedTimestamp = NextExpectedPTS;
-						}
-
-						bool bSentOff = false;
-						while(!bSentOff && !HasBeenAborted() && !bTerminate)
-						{
-							if (Parameters.EventListener->OnFragmentAccessUnitReceived(AccessUnit))
-							{
-								SelectedTrack.DurationSuccessfullyDelivered += AccessUnit->Duration;
-								bSentOff = true;
-								AccessUnit = nullptr;
-
-								// Since we have delivered this access unit, if we are detecting an error now we need to then
-								// retry on the _next_ AU and not this one again!
-								Request->CurrentIteratorBytePos = SampleFileOffset + SampleSize;
-							}
-							else
-							{
-								FMediaRunnable::SleepMicroseconds(1000 * 10);
-							}
-						}
-
-						// Release the AU if we still have it.
-						FAccessUnit::Release(AccessUnit);
-						AccessUnit = nullptr;
-
-						// For error handling, if we managed to get additional data we reset the retry count.
-						if (ds.RetryNumber && SelectedTrack.DurationSuccessfullyRead.GetAsSeconds() > 2.0)
-						{
-							ds.RetryNumber = 0;
-							Request->NumOverallRetries = 0;
-						}
-					}
-					else
-					{
-						// Did not get the number of bytes we needed. Either because of a read error or because we got aborted.
-						FAccessUnit::Release(AccessUnit);
-						AccessUnit = nullptr;
 						bDone = true;
 						break;
 					}
 				}
-				else
+				else if (SampleFileOffset < ReadBuffer.GetCurrentPos())
 				{
-					// TODO: Throw OOM error
+					ds.bParseFailure  = true;
+					Request->ConnectionInfo.StatusInfo.ErrorDetail.SetMessage(FString::Printf(TEXT("Segment parse error. Sample offset %lld for sample #%u in track %u is before the current read position at %lld"), (long long int)SampleFileOffset, SampleNumber, TrackIt->GetTrack()->GetID(), (long long int)ReadBuffer.GetCurrentPos()));
+					bHasErrored = true;
+					break;
+				}
+
+				// Do we read the sample because the track is selected or do we discard it?
+				if (SelectedTrack.bIsSelectedTrack)
+				{
+					// Is this a sync sample?
+					if (bIsSyncSample && !SelectedTrack.bGotKeyframe)
+					{
+						SelectedTrack.bGotKeyframe = true;
+					}
+					// Do we need to skip samples from this track until we reach a sync sample?
+					bool bSkipUntilSyncSample = !SelectedTrack.bGotKeyframe && !Request->bIsContinuationSegment;
+
+					// Create an access unit.
+					FAccessUnit *AccessUnit = FAccessUnit::Create(Parameters.MemoryProvider);
+					if (AccessUnit)
+					{
+						AccessUnit->ESType = SelectedTrack.StreamType;
+						AccessUnit->PTS.SetFromND(PTS, Timescale);
+						AccessUnit->DTS.SetFromND(DTS, Timescale);
+						AccessUnit->Duration.SetFromND(Duration, Timescale);
+						AccessUnit->AUSize = (uint32) SampleSize;
+						AccessUnit->AUCodecData = SelectedTrack.CSD;
+						AccessUnit->DropState = FAccessUnit::EDropState::None;
+						// If this is a continuation then we must not tag samples as being too early.
+						if (!Request->bIsContinuationSegment)
+						{
+							if (AccessUnit->DTS < Request->FirstPTS)
+							{
+								AccessUnit->DropState |= FAccessUnit::EDropState::DtsTooEarly;
+							}
+							if (AccessUnit->PTS < Request->FirstPTS)
+							{
+								AccessUnit->DropState |= FAccessUnit::EDropState::PtsTooEarly;
+							}
+						}
+						// FIXME: if we only want to read a partial segment we could set drop state based on the sample being 'too late'.
+
+						// Apply timestamp offsets for looping after checking the timestamp limits.
+						AccessUnit->PTS += LoopTimestampOffset;
+						AccessUnit->DTS += LoopTimestampOffset;
+
+						AccessUnit->bIsFirstInSequence = SelectedTrack.bIsFirstInSequence;
+						AccessUnit->bIsSyncSample = bIsSyncSample;
+						AccessUnit->bIsDummyData = false;
+						AccessUnit->AUData = AccessUnit->AllocatePayloadBuffer(AccessUnit->AUSize);
+
+						// Set the associated stream metadata
+						AccessUnit->StreamSourceInfo = SelectedTrack.StreamSourceInfo;
+						AccessUnit->PlayerLoopState = PlayerLoopState;
+
+						SelectedTrack.bIsFirstInSequence = false;
+
+						int64 nr = ReadBuffer.ReadTo(AccessUnit->AUData, (int32)SampleSize);
+						if (nr == SampleSize)
+						{
+							SelectedTrack.DurationSuccessfullyRead += AccessUnit->Duration;
+
+							//LogMessage(IInfoLog::ELevel::Info, FString::Printf("[%u] %4u: DTS=%lld PTS=%lld dur=%lld sync=%d; %lld bytes @ %lld", tkid, SampleNumber, (long long int)AccessUnit->mDTS.GetAsMicroseconds(), (long long int)AccessUnit->mPTS.GetAsMicroseconds(), (long long int)AccessUnit->mDuration.GetAsMicroseconds(), bIsSyncSample?1:0, (long long int)SampleSize, (long long int)SampleFileOffset));
+
+							// Keep track of the next expected sample PTS and remember the largest value of all tracks.
+							FTimeValue NextExpectedPTS = AccessUnit->PTS + AccessUnit->Duration;
+							if (NextExpectedPTS > NextLargestExpectedTimestamp)
+							{
+								NextLargestExpectedTimestamp = NextExpectedPTS;
+							}
+
+							bool bSentOff = false;
+							while(!bSentOff && !HasBeenAborted() && !bTerminate)
+							{
+								if (Parameters.EventListener->OnFragmentAccessUnitReceived(AccessUnit))
+								{
+									SelectedTrack.DurationSuccessfullyDelivered += AccessUnit->Duration;
+									bSentOff = true;
+									AccessUnit = nullptr;
+
+									// Since we have delivered this access unit, if we are detecting an error now we need to then
+									// retry on the _next_ AU and not this one again!
+									Request->CurrentIteratorBytePos = SampleFileOffset + SampleSize;
+								}
+								else
+								{
+									FMediaRunnable::SleepMicroseconds(1000 * 10);
+								}
+							}
+
+							// Release the AU if we still have it.
+							FAccessUnit::Release(AccessUnit);
+							AccessUnit = nullptr;
+
+							// For error handling, if we managed to get additional data we reset the retry count.
+							if (ds.RetryNumber && SelectedTrack.DurationSuccessfullyRead.GetAsSeconds() > 2.0)
+							{
+								ds.RetryNumber = 0;
+								Request->NumOverallRetries = 0;
+							}
+						}
+						else
+						{
+							// Did not get the number of bytes we needed. Either because of a read error or because we got aborted.
+							FAccessUnit::Release(AccessUnit);
+							AccessUnit = nullptr;
+							bDone = true;
+							break;
+						}
+					}
+					else
+					{
+						// TODO: Throw OOM error
+					}
 				}
 			}
+			else
+			{
+				break;
+			}
+			AllTrackIterator->Next();
 		}
-		else
-		{
-			break;
-		}
-		AllTrackIterator->Next();
-	}
 
-	// Remove the download request.
-	ProgressListener.Reset();
-	PlayerSessionServices->GetHTTPManager()->RemoveRequest(HTTP, false);
-	Request->ConnectionInfo = HTTP->ConnectionInfo;
-	HTTP.Reset();
+		// Remove the download request.
+		ProgressListener.Reset();
+		Parameters.PlayerSessionService->GetHTTPManager()->RemoveRequest(HTTP);
+		Request->ConnectionInfo = HTTP->ConnectionInfo;
+		HTTP.Reset();
 
-	// Remember the next largest timestamp from all tracks.
-	Request->NextLargestExpectedTimestamp = NextLargestExpectedTimestamp;
+		// Remember the next largest timestamp from all tracks.
+		Request->NextLargestExpectedTimestamp = NextLargestExpectedTimestamp;
 
 
-	// Set downloaded and delivered duration from the primary track.
-	FSelectedTrackData& PrimaryTrack = ActiveTrackMap.FindOrAdd(PrimaryTrackID);
-	DurationSuccessfullyRead	  = PrimaryTrack.DurationSuccessfullyRead;
-	DurationSuccessfullyDelivered = PrimaryTrack.DurationSuccessfullyDelivered;
+		// Set downloaded and delivered duration from the primary track.
+		FSelectedTrackData& PrimaryTrack = ActiveTrackMap.FindOrAdd(PrimaryTrackID);
+		DurationSuccessfullyRead	  = PrimaryTrack.DurationSuccessfullyRead;
+		DurationSuccessfullyDelivered = PrimaryTrack.DurationSuccessfullyDelivered;
 
-	// Set up remaining download stat fields.
+		// Set up remaining download stat fields.
 // Note: currently commented out because of UE-88612.
 //       This must be reinstated once we set failure reasons in the loop above so they won't get replaced by this!
 //		if (ds.FailureReason.length() == 0)
-	{
-		ds.FailureReason = Request->ConnectionInfo.StatusInfo.ErrorDetail.GetMessage();
-	}
+		{
+			ds.FailureReason = Request->ConnectionInfo.StatusInfo.ErrorDetail.GetMessage();
+		}
 //		if (bAbortedByABR)
 //		{
 //			// If aborted set the reason as the download failure.
@@ -654,46 +661,30 @@ void FStreamReaderMP4::HandleRequest()
 //		}
 //		ds.bWasAborted  	  = bAbortedByABR;
 //		ds.bWasSuccessful     = !bHasErrored && !bAbortedByABR;
-	ds.bWasSuccessful     = !bHasErrored;
-	ds.URL  			  = Request->ConnectionInfo.EffectiveURL;
-	ds.HTTPStatusCode     = Request->ConnectionInfo.StatusInfo.HTTPStatus;
-	ds.DurationDownloaded = DurationSuccessfullyRead.GetAsSeconds();
-	ds.DurationDelivered  = DurationSuccessfullyDelivered.GetAsSeconds();
-	ds.TimeToFirstByte    = Request->ConnectionInfo.TimeUntilFirstByte;
-	ds.TimeToDownload     = (Request->ConnectionInfo.RequestEndTime - Request->ConnectionInfo.RequestStartTime).GetAsSeconds();
-	ds.ByteSize 		  = Request->ConnectionInfo.ContentLength;
-	ds.NumBytesDownloaded = Request->ConnectionInfo.BytesReadSoFar;
-	ds.ThroughputBps	  = Request->ConnectionInfo.Throughput.GetThroughput();
-	if (ds.ThroughputBps == 0)
-	{
-		ds.ThroughputBps = ds.TimeToDownload > 0.0 ? 8 * ds.NumBytesDownloaded / ds.TimeToDownload : 0;
-	}
-
-	ActiveTrackMap.Reset();
-
-	// Reset the current request so another one can be added immediately when we call OnFragmentClose()
-	CurrentRequest.Reset();
-	PlayerSessionServices->GetStreamSelector()->ReportDownloadEnd(ds);
-	Parameters.EventListener->OnFragmentClose(Request);
-}
-
-void FStreamReaderMP4::WorkerThread()
-{
-	LLM_SCOPE(ELLMTag::ElectraPlayer);
-	while(!bTerminate)
-	{
-		WorkSignal.WaitAndReset();
-		if (bTerminate)
+		ds.bWasSuccessful     = !bHasErrored;
+		ds.URL  			  = Request->ConnectionInfo.EffectiveURL;
+		ds.HTTPStatusCode     = Request->ConnectionInfo.StatusInfo.HTTPStatus;
+		ds.DurationDownloaded = DurationSuccessfullyRead.GetAsSeconds();
+		ds.DurationDelivered  = DurationSuccessfullyDelivered.GetAsSeconds();
+		ds.TimeToFirstByte    = Request->ConnectionInfo.TimeUntilFirstByte;
+		ds.TimeToDownload     = (Request->ConnectionInfo.RequestEndTime - Request->ConnectionInfo.RequestStartTime).GetAsSeconds();
+		ds.ByteSize 		  = Request->ConnectionInfo.ContentLength;
+		ds.NumBytesDownloaded = Request->ConnectionInfo.BytesReadSoFar;
+		ds.ThroughputBps	  = Request->ConnectionInfo.Throughput.GetThroughput();
+		if (ds.ThroughputBps == 0)
 		{
-			break;
+			ds.ThroughputBps = ds.TimeToDownload > 0.0 ? 8 * ds.NumBytesDownloaded / ds.TimeToDownload : 0;
 		}
-		TSharedPtrTS<FStreamSegmentRequestMP4>	Request = CurrentRequest;
-		if (Request.IsValid())
-		{
-			HandleRequest();
-		}
+
+		ActiveTrackMap.Reset();
+
+		// Reset the current request so another one can be added immediately when we call OnFragmentClose()
+		CurrentRequest.Reset();
+		Parameters.PlayerSessionService->GetStreamSelector()->ReportDownloadEnd(ds);
+		Parameters.EventListener->OnFragmentClose(Request);
 	}
 }
+
 
 
 int32 FStreamReaderMP4::FReadBuffer::ReadTo(void* ToBuffer, int32 NumBytes)
@@ -704,9 +695,6 @@ int32 FStreamReaderMP4::FReadBuffer::ReadTo(void* ToBuffer, int32 NumBytes)
 	// Do we have enough data in the ringbuffer to satisfy the read?
 	if (SourceBuffer.Num() >= NumBytes)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_StreamReader);
-		CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_StreamReader);
-
 		// Yes. Get the data and return.
 		int32 NumGot = SourceBuffer.PopData(OutputBuffer, NumBytes);
 		check(NumGot == NumBytes);
@@ -730,12 +718,7 @@ int32 FStreamReaderMP4::FReadBuffer::ReadTo(void* ToBuffer, int32 NumBytes)
 			}
 
 			// Get whatever amount of data is currently available to free up the buffer for receiving more data.
-			int32 NumGot;
-			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_StreamReader);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_StreamReader);
-				NumGot = SourceBuffer.PopData(OutputBuffer, NumBytesToGo);
-			}
+			int32 NumGot = SourceBuffer.PopData(OutputBuffer, NumBytesToGo);
 			if ((NumBytesToGo -= NumGot) > 0)
 			{
 				if (OutputBuffer)

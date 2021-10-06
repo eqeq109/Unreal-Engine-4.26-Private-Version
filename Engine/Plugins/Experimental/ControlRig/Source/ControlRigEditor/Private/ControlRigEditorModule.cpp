@@ -612,7 +612,7 @@ void FControlRigEditorModule::BakeToControlRig(UClass* ControlRigClass, UAnimSeq
 		FControlRigEditorModule::UnLinkLevelSequence(AnimSequence);
 
 		FString SequenceName = FString::Printf(TEXT("Driving_%s"), *AnimSequence->GetName());
-		FString PackagePath = AnimSequence->GetOutermost()->GetName();
+		FString PackagePath = AnimSequence->GetPathName();
 		
 		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
 		FString UniquePackageName;
@@ -621,8 +621,6 @@ void FControlRigEditorModule::BakeToControlRig(UClass* ControlRigClass, UAnimSeq
 
 		UPackage* Package = CreatePackage(*UniquePackageName);
 		ULevelSequence* LevelSequence = NewObject<ULevelSequence>(Package, *UniqueAssetName, RF_Public | RF_Standalone);
-					
-		FAssetRegistryModule::AssetCreated(LevelSequence);
 
 		LevelSequence->Initialize(); //creates movie scene
 		LevelSequence->MarkPackageDirty();
@@ -686,7 +684,7 @@ void FControlRigEditorModule::BakeToControlRig(UClass* ControlRigClass, UAnimSeq
 			if (Track)
 			{
 				USkeletalMesh* SkeletalMesh = MeshActor->GetSkeletalMeshComponent()->SkeletalMesh;
-				USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+				USkeleton* Skeleton = SkeletalMesh->Skeleton;
 
 				FString ObjectName = (ControlRigClass->GetName());
 				ObjectName.RemoveFromEnd(TEXT("_C"));

@@ -47,11 +47,6 @@ public:
 	 */
 	virtual void EnableHMD(bool bEnable = true) = 0;
 
-	/**
-	 * Retrieves the HMD name.
-	 */
-	virtual FName GetHMDName() const = 0;
-
 	struct MonitorInfo
 	{
 		FString MonitorName;

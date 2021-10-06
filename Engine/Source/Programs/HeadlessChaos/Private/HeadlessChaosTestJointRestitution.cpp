@@ -72,9 +72,9 @@ namespace ChaosTest {
 
 	}
 
-	GTEST_TEST(AllEvolutions, JointRestitutionTests_Cone)
+	TYPED_TEST(AllEvolutions, JointRestitutionTests_Cone)
 	{
-		JointRestitution_Cone<FPBDRigidsEvolutionGBF>();
+		JointRestitution_Cone<TypeParam>();
 	}
 
 }

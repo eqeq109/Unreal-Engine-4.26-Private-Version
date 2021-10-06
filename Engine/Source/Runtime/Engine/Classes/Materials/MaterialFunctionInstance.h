@@ -71,10 +71,8 @@ class UMaterialFunctionInstance : public UMaterialFunctionInterface
 #endif // WITH_EDITOR
 
 	//~ Begin UMaterialFunctionInterface interface
-#if WITH_EDITOR
 	virtual void UpdateFromFunctionResource() override;
 	virtual void GetInputsAndOutputs(TArray<struct FFunctionExpressionInput>& OutInputs, TArray<struct FFunctionExpressionOutput>& OutOutputs) const override;
-#endif
 	virtual bool ValidateFunctionUsage(class FMaterialCompiler* Compiler, const FFunctionExpressionOutput& Output) override;
 
 	virtual void PostLoad() override;
@@ -84,8 +82,9 @@ class UMaterialFunctionInstance : public UMaterialFunctionInterface
 	virtual void UnlinkFromCaller() override;
 #endif
 
-#if WITH_EDITORONLY_DATA
 	virtual bool IsDependent(UMaterialFunctionInterface* OtherFunction) override;
+
+#if WITH_EDITORONLY_DATA
 	ENGINE_API virtual bool IterateDependentFunctions(TFunctionRef<bool(UMaterialFunctionInterface*)> Predicate) const override;
 	ENGINE_API virtual void GetDependentFunctions(TArray<UMaterialFunctionInterface*>& DependentFunctions) const override;
 #endif

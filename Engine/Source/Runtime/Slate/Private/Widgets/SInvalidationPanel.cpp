@@ -13,22 +13,21 @@
 
 DECLARE_CYCLE_STAT(TEXT("SInvalidationPanel::Paint"), STAT_SlateInvalidationPaint, STATGROUP_Slate);
 
+DEFINE_LOG_CATEGORY_STATIC(LogSlateInvalidationPanel, Log, All);
+
 #if WITH_SLATE_DEBUGGING
 
-void ConsoleVariableEnableInvalidationPanelsChanged(IConsoleVariable*);
-
 /** True if we should allow widgets to be cached in the UI at all. */
-static bool bInvalidationPanelsEnabled = true;
+static int32 InvalidationPanelsEnabled = 1;
 FAutoConsoleVariableRef CVarEnableInvalidationPanels(
 	TEXT("Slate.EnableInvalidationPanels"),
-	bInvalidationPanelsEnabled,
-	TEXT("Whether to attempt to cache any widgets through invalidation panels."),
-	FConsoleVariableDelegate::CreateStatic(ConsoleVariableEnableInvalidationPanelsChanged));
+	InvalidationPanelsEnabled,
+	TEXT("Whether to attempt to cache any widgets through invalidation panels."));
 
-static bool bAlwaysInvalidate = false;
+static int32 AlwaysInvalidate = 0;
 FAutoConsoleVariableRef CVarAlwaysInvalidate(
 	TEXT("Slate.AlwaysInvalidate"),
-	bAlwaysInvalidate,
+	AlwaysInvalidate,
 	TEXT("Forces invalidation panels to cache, but to always invalidate."));
 
 #endif // WITH_SLATE_DEBUGGING
@@ -68,7 +67,7 @@ void SInvalidationPanel::Construct( const FArguments& InArgs )
 
 SInvalidationPanel::~SInvalidationPanel()
 {
-	InvalidateRootChildOrder();
+	InvalidateRoot();
 
 	if (FSlateApplicationBase::IsInitialized())
 	{
@@ -77,52 +76,32 @@ SInvalidationPanel::~SInvalidationPanel()
 }
 
 #if WITH_SLATE_DEBUGGING
-void ConsoleVariableEnableInvalidationPanelsChanged(IConsoleVariable*)
-{
-	// If the cache changed, the parent's InvalidationRoot need to rebuild its list
-	//since InvalidationPanel cannot be nested in regular mode.
-	if (!GSlateEnableGlobalInvalidation)
-	{
-		FSlateApplicationBase::Get().OnGlobalInvalidationToggled().Broadcast(GSlateEnableGlobalInvalidation);
-	}
-}
-
 bool SInvalidationPanel::AreInvalidationPanelsEnabled()
 {
-	return bInvalidationPanelsEnabled;
+	return InvalidationPanelsEnabled != 0;
 }
 
 void SInvalidationPanel::EnableInvalidationPanels(bool bEnable)
 {
-	if (bInvalidationPanelsEnabled != bEnable)
-	{
-		bInvalidationPanelsEnabled = bEnable;
-
-		// If the cache changed, the parent's InvalidationRoot need to rebuild its list
-		//since InvalidationPanel cannot be nested in regular mode.
-		if (!GSlateEnableGlobalInvalidation)
-		{
-			FSlateApplicationBase::Get().OnGlobalInvalidationToggled().Broadcast(GSlateEnableGlobalInvalidation);
-		}
-	}
+	InvalidationPanelsEnabled = bEnable;
 }
 #endif
 
 bool SInvalidationPanel::GetCanCache() const
 {
-	bool bDebugFlags = true;
-
+	// Note: checking for FastPathProxyHandle being valid prevents nested invalidation panels from being a thing.  They are not needed anymore since invalidation panels do not redraw everything inside it just because one thing invalidates
+	// In global invalidation this code makes no sense so we don't bother running it because everything is in an "invalidation panel" at the window level
 #if WITH_SLATE_DEBUGGING
 	// Disable invalidation panels if global invalidation is turned on
-	bDebugFlags = bInvalidationPanelsEnabled;
+	return bCanCache && !GSlateEnableGlobalInvalidation && !GetProxyHandle().IsValid() && InvalidationPanelsEnabled;
+#else
+	return bCanCache && !GSlateEnableGlobalInvalidation && !GetProxyHandle().IsValid();
 #endif
-
-	return bCanCache && !GSlateEnableGlobalInvalidation && !GetProxyHandle().HasValidInvalidationRootOwnership(this) && bDebugFlags;
 }
 
 void SInvalidationPanel::OnGlobalInvalidationToggled(bool bGlobalInvalidationEnabled)
 {
-	InvalidateRootChildOrder();
+	InvalidateRoot();
 
 	ClearAllFastPathData(true);
 }
@@ -130,9 +109,11 @@ void SInvalidationPanel::OnGlobalInvalidationToggled(bool bGlobalInvalidationEna
 bool SInvalidationPanel::UpdateCachePrequisites(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, int32 LayerId, const FWidgetStyle& InWidgetStyle) const
 {
 	bool bNeedsRecache = false;
-
 #if WITH_SLATE_DEBUGGING
-	bNeedsRecache = bAlwaysInvalidate;
+	if (AlwaysInvalidate == 1)
+	{
+		bNeedsRecache = true;
+	}
 #endif
 
 	// We only need to re-cache if the incoming layer is higher than the maximum layer Id we cached at,
@@ -176,21 +157,12 @@ bool SInvalidationPanel::UpdateCachePrequisites(FSlateWindowElementList& OutDraw
 
 void SInvalidationPanel::SetCanCache(bool InCanCache)
 {
-	if (bCanCache != InCanCache)
-	{
-		bCanCache = InCanCache;
-		// If the cache changed, invalidate the parent need to rebuild its list
-		//since InvalidationPanel cannot be nested in regular mode.
-		if (GetProxyHandle().IsValid(this) && !GSlateEnableGlobalInvalidation)
-		{
-			GetProxyHandle().GetInvalidationRootHandle().Advanced_GetInvalidationRootNoCheck()->InvalidateRootChildOrder(this);
-		}
-	}
+	bCanCache = InCanCache;
 }
 
 FChildren* SInvalidationPanel::GetChildren()
 {
-	if (GetCanCache())
+	if (GetCanCache() && !NeedsPrepass())
 	{
 		return &EmptyChildSlot;
 	}
@@ -218,7 +190,7 @@ int32 SInvalidationPanel::OnPaint( const FPaintArgs& Args, const FGeometry& Allo
 	const bool bCanCacheThisFrame = GetCanCache();
 	if (bCanCacheThisFrame != bWasCachable)
 	{
-		MutableThis->InvalidateRootChildOrder();
+		MutableThis->InvalidateRoot();
 
 		bWasCachable = bCanCacheThisFrame;
 	}
@@ -239,7 +211,7 @@ int32 SInvalidationPanel::OnPaint( const FPaintArgs& Args, const FGeometry& Allo
 		if (bHittestCleared || bRequiresRecache)
 		{
 			// @todo: Overly aggressive?
-			MutableThis->InvalidateRootChildOrder();
+			MutableThis->InvalidateRoot();
 		}
 
 		// The root widget is our child.  We are not the root because we could be in a parent invalidation panel.  If we are nested in another invalidation panel, our OnPaint was called by that panel
@@ -274,7 +246,7 @@ void SInvalidationPanel::SetContent(const TSharedRef< SWidget >& InContent)
 		InContent
 	];
 
-	InvalidateRootChildOrder();
+	InvalidateRoot();
 }
 
 bool SInvalidationPanel::CustomPrepass(float LayoutScaleMultiplier)
@@ -283,19 +255,9 @@ bool SInvalidationPanel::CustomPrepass(float LayoutScaleMultiplier)
 
 	if (GetCanCache())
 	{
-		// The InvalidationRoot that own this retainer will call the ProcessInvalidation.
-		//ProcessInvalidation will only be called when the GlobalInvalidation is off and the Retainer is not inside another InvalidationRoot.
-		if (!GetProxyHandle().HasValidInvalidationRootOwnership(this))
-		{
-			ProcessInvalidation();
-		}
+		ProcessInvalidation();
 
-		if (NeedsPrepass())
-		{
-			FChildren* Children = SCompoundWidget::GetChildren();
-			Prepass_ChildLoop(LayoutScaleMultiplier, Children);
-		}
-		return false;
+		return NeedsPrepass();
 	}
 	else
 	{
@@ -306,16 +268,6 @@ bool SInvalidationPanel::CustomPrepass(float LayoutScaleMultiplier)
 bool SInvalidationPanel::Advanced_IsInvalidationRoot() const
 {
 	return GetCanCache();
-}
-
-const FSlateInvalidationRoot* SInvalidationPanel::Advanced_AsInvalidationRoot() const
-{
-	return GetCanCache() ? this : nullptr;
-}
-
-TSharedRef<SWidget> SInvalidationPanel::GetRootWidget()
-{
-	return GetCanCache() ? SCompoundWidget::GetChildren()->GetChildAt(0) : EmptyChildSlot.GetChildAt(0);
 }
 
 int32 SInvalidationPanel::PaintSlowPath(const FSlateInvalidationContext& Context)

@@ -23,17 +23,11 @@ UObject* FInstancedPropertyPath::Resolve(const UObject* Container) const
 
 	for (int32 ChainIndex = 1; CurrentProp && ChainIndex < PropertyChain.Num(); ++ChainIndex)
 	{
-		const FPropertyLink& PropertyLink = PropertyChain[ChainIndex];
-
 		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(CurrentProp))
 		{
-			if (!PropertyLink.PropertyPtr->SameType(ArrayProperty->Inner))
-			{
-				CurrentProp = nullptr;
-				break;
-			}
+			check(PropertyChain[ChainIndex].PropertyPtr == ArrayProperty->Inner);
 
-			const int32 TargetIndex = PropertyLink.ArrayIndex;
+			int32 TargetIndex = PropertyChain[ChainIndex].ArrayIndex;
 			check(TargetIndex != INDEX_NONE);
 
 			FScriptArrayHelper ArrayHelper(ArrayProperty, ValuePtr);
@@ -48,50 +42,36 @@ UObject* FInstancedPropertyPath::Resolve(const UObject* Container) const
 		}
 		else if (const FSetProperty* SetProperty = CastField<FSetProperty>(CurrentProp))
 		{
-			if (!PropertyLink.PropertyPtr->SameType(SetProperty->ElementProp))
+			check(PropertyChain[ChainIndex].PropertyPtr == SetProperty->ElementProp);
+
+			int32 TargetIndex = PropertyChain[ChainIndex].ArrayIndex;
+			check(TargetIndex != INDEX_NONE);
+
+			FScriptSetHelper SetHelper(SetProperty, ValuePtr);
+			if (TargetIndex >= SetHelper.Num())
 			{
 				CurrentProp = nullptr;
 				break;
 			}
 
-			const int32 TargetIndex = PropertyLink.ArrayIndex;
-			check(TargetIndex != INDEX_NONE);
-
-			FScriptSetHelper SetHelper(SetProperty, ValuePtr);
-			if (SetHelper.IsValidIndex(TargetIndex))
-			{
-				CurrentProp = SetProperty->ElementProp;
-				ValuePtr = SetHelper.GetElementPtr(TargetIndex);
-			}
-			else
-			{
-				CurrentProp = nullptr;
-			}
+			CurrentProp = SetProperty->ElementProp;
+			ValuePtr    = SetHelper.GetElementPtr(TargetIndex);
 		}
 		else if (const FMapProperty* MapProperty = CastField<FMapProperty>(CurrentProp))
 		{
-			const int32 TargetIndex = PropertyLink.ArrayIndex;
+			int32 TargetIndex = PropertyChain[ChainIndex].ArrayIndex;
 			check(TargetIndex != INDEX_NONE);
 				
 			FScriptMapHelper MapHelper(MapProperty, ValuePtr);
-			if (!MapHelper.IsValidIndex(TargetIndex))
-			{
-				CurrentProp = nullptr;
-			}
-			else if (!PropertyLink.bIsMapValue && PropertyLink.PropertyPtr->SameType(MapProperty->KeyProp))
+			if(PropertyChain[ChainIndex].PropertyPtr == MapProperty->KeyProp)
 			{
 				ValuePtr = MapHelper.GetKeyPtr(TargetIndex);
-				CurrentProp = MapProperty->KeyProp;
 			}
-			else if (PropertyLink.bIsMapValue && PropertyLink.PropertyPtr->SameType(MapProperty->ValueProp))
+			else if(ensure(PropertyChain[ChainIndex].PropertyPtr == MapProperty->ValueProp))
 			{
 				ValuePtr = MapHelper.GetValuePtr(TargetIndex);
-				CurrentProp = MapProperty->ValueProp;
 			}
-			else
-			{
-				CurrentProp = nullptr;
-			}
+			CurrentProp = PropertyChain[ChainIndex].PropertyPtr;
 		}
 		else
 		{
@@ -113,8 +93,7 @@ UObject* FInstancedPropertyPath::Resolve(const UObject* Container) const
 	return nullptr;
 }
 
-template<typename T>
-void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstancedPropertyPath& PropertyPath, T ContainerAddress, TFunctionRef<void(const FInstancedSubObjRef&, T)> ObjRefFunc)
+void FFindInstancedReferenceSubobjectHelper::GetInstancedSubObjects_Inner(FInstancedPropertyPath& PropertyPath, const uint8* ContainerAddress, TFunctionRef<void(const FInstancedSubObjRef& Ref)> OutObjects)
 {
 	check(ContainerAddress);
 	const FProperty* TargetProp = PropertyPath.Head();
@@ -130,10 +109,10 @@ void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstance
 		FScriptArrayHelper ArrayHelper(ArrayProperty, ContainerAddress);
 		for (int32 ElementIndex = 0; ElementIndex < ArrayHelper.Num(); ++ElementIndex)
 		{
-			T ValueAddress = ArrayHelper.GetRawPtr(ElementIndex);
+			const uint8* ValueAddress = ArrayHelper.GetRawPtr(ElementIndex);
 
 			PropertyPath.Push(ArrayProperty->Inner, ElementIndex);
-			ForEachInstancedSubObject(PropertyPath, ValueAddress, ObjRefFunc);
+			GetInstancedSubObjects_Inner(PropertyPath, ValueAddress, OutObjects);
 			PropertyPath.Pop();
 		}
 	}
@@ -146,21 +125,18 @@ void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstance
 		}
 
 		FScriptMapHelper MapHelper(MapProperty, ContainerAddress);
-		for (int32 ElementIndex = 0; ElementIndex < MapHelper.GetMaxIndex(); ++ElementIndex)
+		for (int32 ElementIndex = 0; ElementIndex < MapHelper.Num(); ++ElementIndex)
 		{
-			if (MapHelper.IsValidIndex(ElementIndex))
-			{
-				T KeyAddress = MapHelper.GetKeyPtr(ElementIndex);
-				T ValueAddress = MapHelper.GetValuePtr(ElementIndex);
+			const uint8* KeyAddress = MapHelper.GetKeyPtr(ElementIndex);
+			const uint8* ValueAddress = MapHelper.GetValuePtr(ElementIndex);
 
-				PropertyPath.Push(MapProperty->KeyProp, ElementIndex);
-				ForEachInstancedSubObject(PropertyPath, KeyAddress, ObjRefFunc);
-				PropertyPath.Pop();
+			PropertyPath.Push(MapProperty->KeyProp, ElementIndex);
+			GetInstancedSubObjects_Inner(PropertyPath, KeyAddress, OutObjects);
+			PropertyPath.Pop();
 
-				PropertyPath.Push(MapProperty->ValueProp, ElementIndex, true);
-				ForEachInstancedSubObject(PropertyPath, ValueAddress, ObjRefFunc);
-				PropertyPath.Pop();
-			}
+			PropertyPath.Push(MapProperty->ValueProp, ElementIndex);
+			GetInstancedSubObjects_Inner(PropertyPath, ValueAddress, OutObjects);
+			PropertyPath.Pop();
 		}
 	}
 	else if (const FSetProperty* SetProperty = CastField<const FSetProperty>(TargetProp))
@@ -172,16 +148,13 @@ void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstance
 		}
 
 		FScriptSetHelper SetHelper(SetProperty, ContainerAddress);
-		for (int32 ElementIndex = 0; ElementIndex < SetHelper.GetMaxIndex(); ++ElementIndex)
+		for (int32 ElementIndex = 0; ElementIndex < SetHelper.Num(); ++ElementIndex)
 		{
-			if (SetHelper.IsValidIndex(ElementIndex))
-			{
-				T ValueAddress = SetHelper.GetElementPtr(ElementIndex);
+			const uint8* ValueAddress = SetHelper.GetElementPtr(ElementIndex);
 
-				PropertyPath.Push(SetProperty->ElementProp, ElementIndex);
-				ForEachInstancedSubObject(PropertyPath, ValueAddress, ObjRefFunc);
-				PropertyPath.Pop();
-			}
+			PropertyPath.Push(SetProperty->ElementProp, ElementIndex);
+			GetInstancedSubObjects_Inner(PropertyPath, ValueAddress, OutObjects);
+			PropertyPath.Pop();
 		}
 	}
 	else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(TargetProp))
@@ -196,10 +169,10 @@ void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstance
 		{
 			for (int32 ArrayIdx = 0; ArrayIdx < StructProp->ArrayDim; ++ArrayIdx)
 			{
-				T ValueAddress = StructProp->ContainerPtrToValuePtr<uint8>(ContainerAddress, ArrayIdx);
+				const uint8* ValueAddress = StructProp->ContainerPtrToValuePtr<uint8>(ContainerAddress, ArrayIdx);
 
 				PropertyPath.Push(StructProp, ArrayIdx);
-				ForEachInstancedSubObject(PropertyPath, ValueAddress, ObjRefFunc);
+				GetInstancedSubObjects_Inner(PropertyPath, ValueAddress, OutObjects);
 				PropertyPath.Pop();
 			}
 		}
@@ -212,14 +185,11 @@ void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject(FInstance
 			if (UObject* ObjectValue = ObjectProperty->GetObjectPropertyValue(ContainerAddress))
 			{
 				// don't need to push to PropertyPath, since this property is already at its head
-				ObjRefFunc(FInstancedSubObjRef(ObjectValue, PropertyPath), ContainerAddress);
+				OutObjects(FInstancedSubObjRef(ObjectValue, PropertyPath));
 			}
 		}
 	}
 }
-
-template ENGINE_API void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject<void*>(FInstancedPropertyPath& PropertyPath, void* ContainerAddress, TFunctionRef<void(const FInstancedSubObjRef&, void*)> ObjRefFunc);
-template ENGINE_API void FFindInstancedReferenceSubobjectHelper::ForEachInstancedSubObject<const void*>(FInstancedPropertyPath& PropertyPath, const void* ContainerAddress, TFunctionRef<void(const FInstancedSubObjRef&, const void*)> ObjRefFunc);
 
 void FFindInstancedReferenceSubobjectHelper::Duplicate(UObject* OldObject, UObject* NewObject, TMap<UObject*, UObject*>& ReferenceReplacementMap, TArray<UObject*>& DuplicatedObjects)
 {

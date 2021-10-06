@@ -458,25 +458,19 @@ void FRenderAssetInstanceAsyncView::UpdateBoundSizes_Async(
 
 		// Store results
 		FBoundsViewInfo* BoundsVieWInfo = &BoundsViewInfo[Bounds4Index * 4];
-		MS_ALIGN(16) float MaxNormalizedSizeScalar[4] GCC_ALIGN(16);
-		VectorStoreAligned(MaxNormalizedSize, MaxNormalizedSizeScalar);
-		MS_ALIGN(16) float MaxNormalizedSize_VisibleOnlyScalar[4] GCC_ALIGN(16);
-		VectorStoreAligned(MaxNormalizedSize_VisibleOnly, MaxNormalizedSize_VisibleOnlyScalar);
 		for (int32 SubIndex = 0; SubIndex < 4; ++SubIndex)
 		{
-			BoundsVieWInfo[SubIndex].MaxNormalizedSize = MaxNormalizedSizeScalar[SubIndex];
-			BoundsVieWInfo[SubIndex].MaxNormalizedSize_VisibleOnly = MaxNormalizedSize_VisibleOnlyScalar[SubIndex];
+			BoundsVieWInfo[SubIndex].MaxNormalizedSize = VectorGetComponent(MaxNormalizedSize, SubIndex);
+			BoundsVieWInfo[SubIndex].MaxNormalizedSize_VisibleOnly = VectorGetComponent(MaxNormalizedSize_VisibleOnly, SubIndex);
 		}
 	}
 
 	if (Settings.MinLevelRenderAssetScreenSize > 0)
 	{
 		float ViewMaxNormalizedSizeResult = VectorGetComponent(ViewMaxNormalizedSize, 0);
-		MS_ALIGN(16) float ViewMaxNormalizedSizeScalar[4] GCC_ALIGN(16);
-		VectorStoreAligned(ViewMaxNormalizedSize, ViewMaxNormalizedSizeScalar);
 		for (int32 SubIndex = 1; SubIndex < 4; ++SubIndex)
 		{
-			ViewMaxNormalizedSizeResult = FMath::Max(ViewMaxNormalizedSizeResult, ViewMaxNormalizedSizeScalar[SubIndex]);
+			ViewMaxNormalizedSizeResult = FMath::Max(ViewMaxNormalizedSizeResult, VectorGetComponent(ViewMaxNormalizedSize, SubIndex));
 		}
 		MaxLevelRenderAssetScreenSize = View->GetMaxTexelFactor() * ViewMaxNormalizedSizeResult;
 	}

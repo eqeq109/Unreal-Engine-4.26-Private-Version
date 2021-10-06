@@ -22,7 +22,7 @@ public:
 	~FNiagaraScriptOutputCollectionViewModel();
 
 	/** Sets this view model to a new script. */
-	void SetScripts(TArray<FVersionedNiagaraScript>& InScript);
+	void SetScripts(TArray<UNiagaraScript*> InScript);
 
 
 	//~ INiagaraParameterCollectionViewModel interface
@@ -61,7 +61,7 @@ private:
 	TArray<TSharedRef<INiagaraParameterViewModel>> ParameterViewModels;
 
 	/** The script which provides the output node which owns the output parameters. */
-	TArray<FVersionedNiagaraScriptWeakPtr> Scripts;
+	TArray<TWeakObjectPtr<UNiagaraScript>> Scripts;
 
 	/** The graph which owns the output node which owns the output paramters. */
 	TWeakObjectPtr<UNiagaraGraph> Graph;

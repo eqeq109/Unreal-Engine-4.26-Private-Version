@@ -210,8 +210,7 @@ private:
 	bool ReadAssetFile(const FString& AssetFilename, TArray<FAssetData*>& AssetDataList, FPackageDependencyData& DependencyData, TArray<FString>& CookedPackagesToLoadUponDiscovery, bool& OutCanRetry) const;
 
 	/** Serializes the timestamped cache of discovered assets. Used for quick loading of data for assets that have not changed on disk */
-	template<class Archive>
-	void SerializeCache(Archive&& Ar);
+	void SerializeCache(FArchive& Ar);
 
 	/* Adds the given PackageName,DiskCachedAssetData pair into NewCachedAssetDataMap, and detects collisions for multiple files with the same PackageName */
 	void AddToCache(FName PackageName, FDiskCachedAssetData* DiskCachedAssetData);

@@ -36,6 +36,7 @@ UDatasmithImportOptions::UDatasmithImportOptions(const FObjectInitializer& Objec
 	, CameraImportPolicy(EDatasmithImportActorPolicy::Update)
 	, OtherActorImportPolicy(EDatasmithImportActorPolicy::Update)
 	, MaterialQuality(EDatasmithImportMaterialQuality::UseNoFresnelCurves)
+	, HierarchyHandling(EDatasmithImportHierarchy::UseMultipleActors)
 	, bUseSameOptions(false)
 {
 }

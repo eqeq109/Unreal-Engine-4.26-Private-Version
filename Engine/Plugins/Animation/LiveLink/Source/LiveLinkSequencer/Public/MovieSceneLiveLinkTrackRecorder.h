@@ -98,9 +98,6 @@ private:
 	/** Cached Key Reduction from Live Link Source Properties*/
 	bool bReduceKeys;
 
-	/** Whether the Subject is Virtual or not*/
-	bool bIsVirtualSubject = false;
-
 	/** Delegates registered during recording to receive live link data as it comes in*/
 	FDelegateHandle OnStaticDataReceivedHandle;
 	FDelegateHandle OnFrameDataReceivedHandle;

@@ -30,15 +30,13 @@ public:
 	void SetIsEnabled(bool bInIsEnabled);
 
 	bool GetHasAdvancedContent() const;
-	void SetHasAdvancedContent(bool bHInHasAdvancedRows, bool bHasChangedAdvancedContent);
+	void SetHasAdvancedContent(bool bHInHasAdvancedRows);
 
 	void SetOnToggleShowAdvanced(FOnToggleShowAdvanced OnToggleShowAdvanced);
 
 	bool GetShowAdvanced() const;
 
 	void ToggleShowAdvanced();
-
-	bool HasChangedAdvancedContent() const { return bHasChangedAdvancedContent; }
 
 private:
 	FString OwnerStackItemEditorDataKey;
@@ -48,6 +46,4 @@ private:
 	bool bIsEnabled;
 
 	bool bHasAdvancedContent;
-
-	bool bHasChangedAdvancedContent;
 };

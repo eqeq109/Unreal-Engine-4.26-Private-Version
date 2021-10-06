@@ -2,7 +2,6 @@
 
 #include "USDSchemaTranslator.h"
 
-#include "USDErrorUtils.h"
 #include "USDSchemasModule.h"
 #include "USDTypesConversion.h"
 
@@ -23,7 +22,6 @@ int32 FRegisteredSchemaTranslatorHandle::CurrentSchemaTranslatorId = 0;
 #include "USDIncludesStart.h"
 	#include "pxr/base/tf/token.h"
 	#include "pxr/usd/usd/typed.h"
-	#include "pxr/usd/usdShade/tokens.h"
 #include "USDIncludesEnd.h"
 
 #endif // #if USE_USD_SDK
@@ -42,7 +40,7 @@ TSharedPtr< FUsdSchemaTranslator > FUsdSchemaTranslatorRegistry::CreateTranslato
 		pxr::TfToken RegisteredSchemaToken( UnrealToUsd::ConvertString( *RegisteredSchemasStack.Key ).Get() );
 		pxr::TfType RegisteredSchemaType = pxr::UsdSchemaRegistry::GetTypeFromName( RegisteredSchemaToken );
 
-		if ( !RegisteredSchemaType.IsUnknown() &&  Prim.Get().IsA( RegisteredSchemaType ) && RegisteredSchemasStack.Value.Num() > 0 )
+		if ( Prim.Get().IsA( RegisteredSchemaType ) && RegisteredSchemasStack.Value.Num() > 0 )
 		{
 			return RegisteredSchemasStack.Value.Top().CreateFunction( InTranslationContext, InSchema );
 		}
@@ -50,14 +48,6 @@ TSharedPtr< FUsdSchemaTranslator > FUsdSchemaTranslatorRegistry::CreateTranslato
 #endif // #if USE_USD_SDK
 
 	return {};
-}
-
-FUsdRenderContextRegistry::FUsdRenderContextRegistry()
-{
-#if USE_USD_SDK
-	UniversalRenderContext = FName( UsdToUnreal::ConvertToken( pxr::UsdShadeTokens->universalRenderContext ) );
-	Register( UniversalRenderContext );
-#endif // #if USE_USD_SDK
 }
 
 FRegisteredSchemaTranslatorHandle FUsdSchemaTranslatorRegistry::Register( const FString& SchemaName, FCreateTranslator CreateFunction )
@@ -124,14 +114,6 @@ void FUsdSchemaTranslatorRegistry::Unregister( const FRegisteredSchemaTranslator
 	}
 }
 
-FUsdSchemaTranslationContext::FUsdSchemaTranslationContext( const UE::FUsdStage& InStage, UUsdAssetCache& InAssetCache )
-	: Stage( InStage )
-	, AssetCache( &InAssetCache )
-{
-	IUsdSchemasModule& UsdSchemasModule = FModuleManager::Get().LoadModuleChecked< IUsdSchemasModule >( TEXT("USDSchemas") );
-	RenderContext = UsdSchemasModule.GetRenderContextRegistry().GetUniversalRenderContext();
-}
-
 FUsdSchemaTranslatorRegistry::FSchemaTranslatorsStack* FUsdSchemaTranslatorRegistry::FindSchemaTranslatorStack( const FString& SchemaName )
 {
 	TPair< FString, FSchemaTranslatorsStack >* Result = Algo::FindByPredicate( RegisteredSchemaTranslators,
@@ -171,7 +153,6 @@ void FUsdSchemaTranslationContext::CompleteTasks()
 			for ( TArray< TSharedPtr< FUsdSchemaTranslatorTaskChain > >::TIterator TaskChainIterator = TranslatorTasks.CreateIterator(); TaskChainIterator; ++TaskChainIterator )
 			{
 				TSharedPtr< FUsdSchemaTranslatorTaskChain >& TaskChain = *TaskChainIterator;
-
 				ESchemaTranslationStatus TaskChainStatus = TaskChain->Execute( bExclusiveSyncTasks );
 
 				if ( TaskChainStatus == ESchemaTranslationStatus::Done )
@@ -230,12 +211,7 @@ void FSchemaTranslatorTask::Start()
 {
 	if ( LaunchPolicy == ESchemaTranslationLaunchPolicy::Async && IsInGameThread() )
 	{
-		Result = Async(
-#if WITH_EDITOR
-			EAsyncExecution::LargeThreadPool,
-#else
-			EAsyncExecution::ThreadPool,
-#endif // WITH_EDITOR
+		Result = Async( EAsyncExecution::LargeThreadPool,
 			[ this ]() -> bool
 			{
 				return DoWork();

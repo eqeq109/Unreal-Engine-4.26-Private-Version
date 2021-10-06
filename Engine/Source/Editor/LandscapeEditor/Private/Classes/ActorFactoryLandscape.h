@@ -9,7 +9,6 @@
 
 class AActor;
 class ULevel;
-struct FActorSpawnParameters;
 
 UCLASS(MinimalAPI, config=Editor)
 class UActorFactoryLandscape : public UActorFactory
@@ -17,6 +16,6 @@ class UActorFactoryLandscape : public UActorFactory
 	GENERATED_UCLASS_BODY()
 
 	//~ Begin UActorFactory Interface
-	virtual AActor* SpawnActor( UObject* Asset, ULevel* InLevel, const FTransform& Transform, const FActorSpawnParameters& InSpawnParams) override;
+	virtual AActor* SpawnActor( UObject* Asset, ULevel* InLevel, const FTransform& Transform, EObjectFlags ObjectFlags, const FName Name ) override;
 	//~ End UActorFactory Interface
 };

@@ -142,15 +142,21 @@ public:
 		FDatasmithFacadeActor* InChild
 	);
 
-	/**
-	 *	Returns a new FDatasmithFacadeActor pointing to the parent Actor of the actor
-	 *	If there is no parent of if actor is directly under the scene root, the returned value is nullptr.
-	 *	The caller is responsible of deleting the returned object pointer.
-	 */
-	FDatasmithFacadeActor* GetNewParentActor() const
-	{
-		return GetNewFacadeActorFromSharedPtr( GetDatasmithActorElement()->GetParentActor() );
-	}
+	// Set a mesh actor as a switch or not
+	void SetAsSelector(
+		bool bInIsASelector
+	);
+
+	// Get if a mesh actor is a switch or not
+	bool IsASelector() const;
+
+	// Set the index of the visible child of a mesh actor which is a selector
+	void SetSelectionIndex(
+		int32 InSelectionID
+	);
+
+	// Get the index of the visible child of a mesh actor which is a selector
+	int32 GetSelectionIndex() const;
 
 	// Get a mesh actor's visibility
 	void SetVisibility(
@@ -183,6 +189,9 @@ protected:
 		const float InSourceMatrix[16],
 		bool bRowMajor
 	) const;
+
+	// Build a Datasmith actor element and add it to the Datasmith scene.
+	virtual void BuildScene( FDatasmithFacadeScene& SceneRef ) override;
 
 	TSharedRef<IDatasmithActorElement> GetDatasmithActorElement() const;
 };

@@ -4,8 +4,6 @@
 #include "Widgets/SWidget.h"
 #include "Rendering/DrawElements.h"
 #include "Widgets/SWindow.h"
-#include "FastUpdate/SlateInvalidationWidgetHeap.h"
-#include "FastUpdate/SlateInvalidationWidgetList.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "Types/ReflectionMetadata.h"
 #include "Input/HittestGrid.h"
@@ -14,166 +12,152 @@
 
 const FSlateWidgetPersistentState FSlateWidgetPersistentState::NoState;
 
-FWidgetProxy::FWidgetProxy(TSharedRef<SWidget>& InWidget)
-#if UE_SLATE_WITH_WIDGETPROXY_WEAKPTR
-	: Widget(InWidget)
-#else
-	: Widget(&InWidget.Get())
-#endif
-	, Index(FSlateInvalidationWidgetIndex::Invalid)
-	, ParentIndex(FSlateInvalidationWidgetIndex::Invalid)
-	, LeafMostChildIndex(FSlateInvalidationWidgetIndex::Invalid)
+FWidgetProxy::FWidgetProxy(SWidget& InWidget)
+	: Widget(&InWidget)
+	, Index(INDEX_NONE)
+	, ParentIndex(INDEX_NONE)
+	, NumChildren(0)
+	, LeafMostChildIndex(INDEX_NONE)
 	, UpdateFlags(EWidgetUpdateFlags::None)
 	, CurrentInvalidateReason(EInvalidateWidgetReason::None)
 	// Potentially unsafe to update visibility from the widget due to attribute bindings.  This is updated later when the widgets are sorted in ProcessInvalidation
 	, Visibility(EVisibility::Collapsed) 
 	, bUpdatedSinceLastInvalidate(false)
-	, bContainedByWidgetHeap(false)
-	, bDebug_LastFrameVisible(true)
-	, bDebug_LastFrameVisibleSet(false)
+	, bInUpdateList(false)
+	, bInvisibleDueToParentOrSelfVisibility(false)
+	, bChildOrderInvalid(false)
 {
-#if UE_SLATE_WITH_WIDGETPROXY_WIDGETTYPE
-	WidgetName = GetWidget()->GetType();
-#endif
 }
 
-TSharedPtr<SWidget> FWidgetProxy::GetWidgetAsShared() const
-{
-#if UE_SLATE_WITH_WIDGETPROXY_WEAKPTR
-	return Widget.Pin();
-#else
-	return Widget ? Widget->AsShared() : TSharedPtr<SWidget>();
-#endif
-}
-
-int32 FWidgetProxy::Update(const FPaintArgs& PaintArgs, FSlateWindowElementList& OutDrawElements)
+int32 FWidgetProxy::Update(const FPaintArgs& PaintArgs, int32 MyIndex, FSlateWindowElementList& OutDrawElements)
 {
 // Commenting this since it could be triggered in specific cases where Widgte->UpdateFlags in reset but the Widget Proxy is still in the  update list
 //#if WITH_SLATE_DEBUGGING
 //	ensure(UpdateFlags == Widget->UpdateFlags);
 //#endif
 
-	TSharedPtr<SWidget> CurrentWidget = GetWidgetAsShared();
-
 	// If Outgoing layer id remains index none, there was no change
 	int32 OutgoingLayerId = INDEX_NONE;
 	if (EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsRepaint|EWidgetUpdateFlags::NeedsVolatilePaint))
 	{
-		check(CurrentWidget->IsFastPathVisible());
-		OutgoingLayerId = Repaint(PaintArgs, OutDrawElements);
+		ensure(!bInvisibleDueToParentOrSelfVisibility);
+		OutgoingLayerId = Repaint(PaintArgs, MyIndex, OutDrawElements);
 	}
-	else if(CurrentWidget->IsFastPathVisible())
+	else if(!bInvisibleDueToParentOrSelfVisibility)
 	{
 		EWidgetUpdateFlags PreviousUpdateFlag = UpdateFlags;
+
 		if (EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsActiveTimerUpdate))
 		{
 			SCOPE_CYCLE_COUNTER(STAT_SlateExecuteActiveTimers);
-			CurrentWidget->ExecuteActiveTimers(PaintArgs.GetCurrentTime(), PaintArgs.GetDeltaTime());
+			Widget->ExecuteActiveTimers(PaintArgs.GetCurrentTime(), PaintArgs.GetDeltaTime());
 		}
 
 		if (EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsTick))
 		{
-			const FSlateWidgetPersistentState& MyState = CurrentWidget->GetPersistentState();
+			const FSlateWidgetPersistentState& MyState = Widget->GetPersistentState();
 
 			INC_DWORD_STAT(STAT_SlateNumTickedWidgets);
 			SCOPE_CYCLE_COUNTER(STAT_SlateTickWidgets);
 
-			CurrentWidget->Tick(MyState.DesktopGeometry, PaintArgs.GetCurrentTime(), PaintArgs.GetDeltaTime());
+			Widget->Tick(MyState.DesktopGeometry, PaintArgs.GetCurrentTime(), PaintArgs.GetDeltaTime());
 		}
 
 #if WITH_SLATE_DEBUGGING
-		FSlateDebugging::BroadcastWidgetUpdated(CurrentWidget.Get(), PreviousUpdateFlag);
+		FSlateDebugging::BroadcastWidgetUpdated(Widget, PreviousUpdateFlag);
 #endif
-		UE_TRACE_SLATE_WIDGET_UPDATED(CurrentWidget.Get(), PreviousUpdateFlag);
+		UE_TRACE_SLATE_WIDGET_UPDATED(Widget, PreviousUpdateFlag);
 	}
 
 	return OutgoingLayerId;
 }
 
-bool FWidgetProxy::ProcessInvalidation(FSlateInvalidationWidgetHeap& UpdateList, FSlateInvalidationWidgetList& FastWidgetPathList, FSlateInvalidationRoot& Root)
+bool FWidgetProxy::ProcessInvalidation(FWidgetUpdateList& UpdateList, TArray<FWidgetProxy>& FastWidgetPathList, FSlateInvalidationRoot& Root)
 {
 	bool bWidgetNeedsRepaint = false;
-	SWidget* WidgetPtr = GetWidget();
-
-	if (WidgetPtr->IsFastPathVisible() && ParentIndex != FSlateInvalidationWidgetIndex::Invalid && !WidgetPtr->PrepassLayoutScaleMultiplier.IsSet())
+	if (!bInvisibleDueToParentOrSelfVisibility && ParentIndex != INDEX_NONE && !Widget->PrepassLayoutScaleMultiplier.IsSet())
 	{
-		SCOPE_CYCLE_SWIDGET(WidgetPtr);
+		SCOPE_CYCLE_SWIDGET(Widget);
 		// If this widget has never been prepassed make sure the parent prepasses it to set the correct multiplier
 		FWidgetProxy& ParentProxy = FastWidgetPathList[ParentIndex];
-		if (SWidget* ParentWidgetPtr = ParentProxy.GetWidget())
+		if (ParentProxy.Widget)
 		{
-			ParentWidgetPtr->InvalidatePrepass();
+			ParentProxy.Widget->InvalidatePrepass();
 			ParentProxy.CurrentInvalidateReason |= EInvalidateWidgetReason::Layout;
 #if WITH_SLATE_DEBUGGING
-			FSlateDebugging::BroadcastWidgetInvalidate(ParentWidgetPtr, WidgetPtr, EInvalidateWidgetReason::Layout);
+			FSlateDebugging::BroadcastWidgetInvalidate(ParentProxy.Widget, Widget, EInvalidateWidgetReason::Layout);
 #endif
-			UE_TRACE_SLATE_WIDGET_INVALIDATED(ParentWidgetPtr, WidgetPtr, EInvalidateWidgetReason::Layout);
-			UpdateList.PushUnique(ParentProxy);
+			UE_TRACE_SLATE_WIDGET_INVALIDATED(ParentProxy.Widget, Widget, EInvalidateWidgetReason::Layout);
+			UpdateList.Push(ParentProxy);
 		}
 		bWidgetNeedsRepaint = true;
 	}
 	else if (EnumHasAnyFlags(CurrentInvalidateReason, EInvalidateWidgetReason::RenderTransform | EInvalidateWidgetReason::Layout | EInvalidateWidgetReason::Visibility | EInvalidateWidgetReason::ChildOrder))
 	{
-		SCOPE_CYCLE_SWIDGET(WidgetPtr);
+		SCOPE_CYCLE_SWIDGET(Widget);
 		// When layout changes compute a new desired size for this widget
-		FVector2D CurrentDesiredSize = WidgetPtr->GetDesiredSize();
+		FVector2D CurrentDesiredSize = Widget->GetDesiredSize();
 		FVector2D NewDesiredSize = FVector2D::ZeroVector;
 		if (Visibility != EVisibility::Collapsed)
 		{
-			if (WidgetPtr->NeedsPrepass())
+			if (Widget->NeedsPrepass() || (!GSlateEnableGlobalInvalidation && Widget->Advanced_IsInvalidationRoot()))
 			{
-				WidgetPtr->SlatePrepass(WidgetPtr->PrepassLayoutScaleMultiplier.Get(1.0f));
+				Widget->SlatePrepass(Widget->PrepassLayoutScaleMultiplier.Get(1.0f));
 			}
 			else
 			{
-				WidgetPtr->CacheDesiredSize(WidgetPtr->PrepassLayoutScaleMultiplier.Get(1.0f));
+				Widget->CacheDesiredSize(Widget->PrepassLayoutScaleMultiplier.Get(1.0f));
 			}
 
-			NewDesiredSize = WidgetPtr->GetDesiredSize();
+			NewDesiredSize = Widget->GetDesiredSize();
 		}
 
 		// Note even if volatile we need to recompute desired size. We do not need to invalidate parents though if they are volatile since they will naturally redraw this widget
-		if (!WidgetPtr->IsVolatileIndirectly() && Visibility.IsVisible())
+		if (!Widget->IsVolatileIndirectly() && Visibility.IsVisible())
 		{
 			// Set the value directly instead of calling AddUpdateFlags as an optimization
-			WidgetPtr->UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
+			Widget->UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
 			UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
 		}
 
 		// If the desired size changed, invalidate the parent if it is visible
 		if (NewDesiredSize != CurrentDesiredSize || EnumHasAnyFlags(CurrentInvalidateReason, EInvalidateWidgetReason::Visibility|EInvalidateWidgetReason::RenderTransform))
 		{
-			if (ParentIndex != FSlateInvalidationWidgetIndex::Invalid)
+			if (ParentIndex != INDEX_NONE)
 			{
 				FWidgetProxy& ParentProxy = FastWidgetPathList[ParentIndex];
-				if (ParentIndex == FastWidgetPathList.FirstIndex())
+				if (ParentIndex == 0)
 				{
 					// root of the invalidation panel just invalidate the whole thing
-					Root.InvalidateRootLayout(WidgetPtr);
+					Root.InvalidateRoot(Widget);
 				}
 				else if (ParentProxy.Visibility.IsVisible())
 				{
 					ParentProxy.CurrentInvalidateReason |= EInvalidateWidgetReason::Layout;
 #if WITH_SLATE_DEBUGGING
-					FSlateDebugging::BroadcastWidgetInvalidate(ParentProxy.GetWidget(), WidgetPtr, EInvalidateWidgetReason::Layout);
+					FSlateDebugging::BroadcastWidgetInvalidate(ParentProxy.Widget, Widget, EInvalidateWidgetReason::Layout);
 #endif
-					UE_TRACE_SLATE_WIDGET_INVALIDATED(ParentProxy.GetWidget(), WidgetPtr, EInvalidateWidgetReason::Layout);
-					UpdateList.PushUnique(ParentProxy);
+					UE_TRACE_SLATE_WIDGET_INVALIDATED(ParentProxy.Widget, Widget, EInvalidateWidgetReason::Layout);
+					UpdateList.Push(ParentProxy);
 				}
 			}
-			else if (TSharedPtr<SWidget> ParentWidget = WidgetPtr->GetParentWidget())
+			else if (!GSlateEnableGlobalInvalidation && Widget->IsParentValid())
 			{
-				ParentWidget->Invalidate(EInvalidateWidgetReason::Layout);
+				TSharedPtr<SWidget> ParentWidget = Widget->GetParentWidget();
+				if (ParentWidget->Advanced_IsInvalidationRoot())
+				{
+					Root.InvalidateRoot(Widget);
+				}
 			}
 		}
 
 		bWidgetNeedsRepaint = true;
 	}
-	else if (EnumHasAnyFlags(CurrentInvalidateReason, EInvalidateWidgetReason::Paint) && !WidgetPtr->IsVolatileIndirectly())
+	else if (EnumHasAnyFlags(CurrentInvalidateReason, EInvalidateWidgetReason::Paint) && !Widget->IsVolatileIndirectly())
 	{
-		SCOPE_CYCLE_SWIDGET(WidgetPtr);
+		SCOPE_CYCLE_SWIDGET(Widget);
 		// Set the value directly instead of calling AddUpdateFlags as an optimization
-		WidgetPtr->UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
+		Widget->UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
 		UpdateFlags |= EWidgetUpdateFlags::NeedsRepaint;
 
 		bWidgetNeedsRepaint = true;
@@ -184,31 +168,31 @@ bool FWidgetProxy::ProcessInvalidation(FSlateInvalidationWidgetHeap& UpdateList,
 	return bWidgetNeedsRepaint;
 }
 
-void FWidgetProxy::MarkProxyUpdatedThisFrame(FSlateInvalidationWidgetHeap& UpdateList)
+void FWidgetProxy::MarkProxyUpdatedThisFrame(FWidgetUpdateList& UpdateList)
 {
 	bUpdatedSinceLastInvalidate = true;
 
 	if(EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::AnyUpdate))
 	{
-		SWidget* WidgetPtr = GetWidget();
-		if (WidgetPtr && WidgetPtr->IsFastPathVisible())
+		if (!bInUpdateList && !bInvisibleDueToParentOrSelfVisibility)
 		{
 			// If there are any updates still needed add them to the next update list
-			UpdateList.PushUnique(*this);
+			UpdateList.Push(*this);
 		}
+	}
+	else
+	{
+		bInUpdateList = false;
 	}
 }
 
-int32 FWidgetProxy::Repaint(const FPaintArgs& PaintArgs, FSlateWindowElementList& OutDrawElements) const
+int32 FWidgetProxy::Repaint(const FPaintArgs& PaintArgs, int32 MyIndex, FSlateWindowElementList& OutDrawElements) const
 {
-	SWidget* WidgetPtr = GetWidget();
-	check(WidgetPtr);
-
 #if WITH_SLATE_DEBUGGING
-	SCOPED_NAMED_EVENT_FSTRING(FReflectionMetaData::GetWidgetDebugInfo(WidgetPtr), EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsRepaint) ? FColor::Orange : FColor::Red);
+	SCOPED_NAMED_EVENT_FSTRING(FReflectionMetaData::GetWidgetDebugInfo(Widget), EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsRepaint) ? FColor::Orange : FColor::Red);
 #endif
 
-	const FSlateWidgetPersistentState& MyState = WidgetPtr->GetPersistentState();
+	const FSlateWidgetPersistentState& MyState = Widget->GetPersistentState();
 
 	const int32 StartingClipIndex = OutDrawElements.GetClippingIndex();
 
@@ -233,14 +217,14 @@ int32 FWidgetProxy::Repaint(const FPaintArgs& PaintArgs, FSlateWindowElementList
 	{
 		if (EnumHasAnyFlags(UpdateFlags, EWidgetUpdateFlags::NeedsVolatilePaint))
 		{
-			if (WidgetPtr->ShouldInvalidatePrepassDueToVolatility())
+			if (Widget->ShouldInvalidatePrepassDueToVolatility())
 			{
-				WidgetPtr->InvalidatePrepass();
+				Widget->InvalidatePrepass();
 			}
-			WidgetPtr->SlatePrepass(WidgetPtr->GetPrepassLayoutScaleMultiplier());
+			Widget->SlatePrepass(Widget->GetPrepassLayoutScaleMultiplier());
 		}
 	}
-	const int32 NewLayerId = WidgetPtr->Paint(UpdatedArgs, MyState.AllottedGeometry, MyState.CullingBounds, OutDrawElements, MyState.LayerId, MyState.WidgetStyle, MyState.bParentEnabled);
+	const int32 NewLayerId = Widget->Paint(UpdatedArgs, MyState.AllottedGeometry, MyState.CullingBounds, OutDrawElements, MyState.LayerId, MyState.WidgetStyle, MyState.bParentEnabled);
 
 	PaintArgs.GetHittestGrid().SetUserIndex(PrevUserIndex);
 
@@ -254,69 +238,57 @@ int32 FWidgetProxy::Repaint(const FPaintArgs& PaintArgs, FSlateWindowElementList
 	return NewLayerId;
 }
 
-FWidgetProxyHandle::FWidgetProxyHandle(const FSlateInvalidationRootHandle& InInvalidationRoot, FSlateInvalidationWidgetIndex InIndex, FSlateInvalidationWidgetSortOrder InSortIndex, int32 InGenerationNumber)
-	: InvalidationRootHandle(InInvalidationRoot)
-	, WidgetIndex(InIndex)
-	, WidgetSortOrder(InSortIndex)
-	, GenerationNumber(InGenerationNumber)
-{
-}
-
-FWidgetProxyHandle::FWidgetProxyHandle(FSlateInvalidationWidgetIndex InIndex)
-	: InvalidationRootHandle()
-	, WidgetIndex(InIndex)
-	, WidgetSortOrder()
-	, GenerationNumber(INDEX_NONE)
+FWidgetProxyHandle::FWidgetProxyHandle(FSlateInvalidationRoot& InInvalidationRoot, int32 InIndex)
+	: InvalidationRootHandle(InInvalidationRoot.GetInvalidationRootHandle())
+	, MyIndex(InIndex)
+	, GenerationNumber(InInvalidationRoot.GetFastPathGenerationNumber())
 {
 
 }
 
-bool FWidgetProxyHandle::IsValid(const SWidget* Widget) const
+bool FWidgetProxyHandle::IsValid() const
 {
 	FSlateInvalidationRoot* InvalidationRoot = InvalidationRootHandle.GetInvalidationRoot();
-	return InvalidationRoot
-		&& InvalidationRoot->GetFastPathGenerationNumber() == GenerationNumber
-		&& InvalidationRoot->GetFastPathWidgetList().IsValidIndex(WidgetIndex)
-		&& InvalidationRoot->GetFastPathWidgetList()[WidgetIndex].GetWidget() == Widget;
-}
-
-bool FWidgetProxyHandle::HasValidInvalidationRootOwnership(const SWidget* Widget) const
-{
-	FSlateInvalidationRoot* InvalidationRoot = InvalidationRootHandle.GetInvalidationRoot();
-	return InvalidationRoot
-		&& InvalidationRoot->GetFastPathWidgetList().GetGenerationNumber() == GenerationNumber
-		&& InvalidationRoot->GetFastPathWidgetList().IsValidIndex(WidgetIndex)
-		&& InvalidationRoot->GetFastPathWidgetList()[WidgetIndex].GetWidget() == Widget;
+	return InvalidationRoot && InvalidationRoot->GetFastPathGenerationNumber() == GenerationNumber && MyIndex != INDEX_NONE;
 }
 
 FWidgetProxy& FWidgetProxyHandle::GetProxy()
 {
-	return GetInvalidationRoot()->GetFastPathWidgetList()[WidgetIndex];
+	check(IsValid());
+	return GetInvalidationRoot()->FastWidgetPathList[MyIndex];
 }
 
 const FWidgetProxy& FWidgetProxyHandle::GetProxy() const
 {
-	return GetInvalidationRoot()->GetFastPathWidgetList()[WidgetIndex];
+	check(IsValid());
+	return GetInvalidationRoot()->FastWidgetPathList[MyIndex];
 }
 
 void FWidgetProxyHandle::MarkWidgetUpdatedThisFrame()
 {
-	GetInvalidationRoot()->GetFastPathWidgetList()[WidgetIndex].MarkProxyUpdatedThisFrame(*GetInvalidationRoot()->WidgetsNeedingUpdate);
+	check(IsValid());
+	GetInvalidationRoot()->FastWidgetPathList[MyIndex].MarkProxyUpdatedThisFrame(GetInvalidationRoot()->WidgetsNeedingUpdate);
 }
 
 void FWidgetProxyHandle::MarkWidgetDirty(EInvalidateWidgetReason InvalidateReason)
 {
-	FWidgetProxy& Proxy = GetInvalidationRoot()->GetFastPathWidgetList()[WidgetIndex];
-	SWidget* WidgetPtr = Proxy.GetWidget();
+	check(IsValid());
+	FWidgetProxy& Proxy = GetInvalidationRoot()->FastWidgetPathList[MyIndex];
 
 	if (EnumHasAnyFlags(InvalidateReason, EInvalidateWidgetReason::ChildOrder))
 	{
-		GetInvalidationRoot()->InvalidateWidgetChildOrder(WidgetPtr->AsShared());
+		/*
+				CSV_EVENT_GLOBAL(TEXT("Slow Path Needed"));
+		#if WITH_SLATE_DEBUGGING
+				UE_LOG(LogSlate, Log, TEXT("Slow Widget Path Needed: %s %s"), *Proxy.Widget->ToString(), *Proxy.Widget->GetTag().ToString());
+		#endif*/
+		Proxy.bChildOrderInvalid = true;
+		GetInvalidationRoot()->InvalidateChildOrder(Proxy.Widget);
 	}
 
 	if (Proxy.CurrentInvalidateReason == EInvalidateWidgetReason::None)
 	{
-		GetInvalidationRoot()->WidgetsNeedingUpdate->PushUnique(Proxy);
+		GetInvalidationRoot()->WidgetsNeedingUpdate.Push(Proxy);
 	}
 #if 0
 	else
@@ -326,26 +298,24 @@ void FWidgetProxyHandle::MarkWidgetDirty(EInvalidateWidgetReason InvalidateReaso
 #endif
 	Proxy.CurrentInvalidateReason |= InvalidateReason;
 #if WITH_SLATE_DEBUGGING
-	FSlateDebugging::BroadcastWidgetInvalidate(WidgetPtr, nullptr, InvalidateReason);
+	FSlateDebugging::BroadcastWidgetInvalidate(Proxy.Widget, nullptr, InvalidateReason);
 #endif
-	UE_TRACE_SLATE_WIDGET_INVALIDATED(WidgetPtr, nullptr, InvalidateReason);
+	UE_TRACE_SLATE_WIDGET_INVALIDATED(Proxy.Widget, nullptr, InvalidateReason);
 }
 
-void FWidgetProxyHandle::UpdateWidgetFlags(const SWidget* Widget, EWidgetUpdateFlags NewFlags)
+void FWidgetProxyHandle::UpdateWidgetFlags(EWidgetUpdateFlags NewFlags)
 {
-	if (IsValid(Widget))
+	check(IsValid());
+	FWidgetProxy& Proxy = GetInvalidationRoot()->FastWidgetPathList[MyIndex];
+
+	if (!Proxy.bInvisibleDueToParentOrSelfVisibility)
 	{
-		FWidgetProxy& Proxy = GetInvalidationRoot()->GetFastPathWidgetList()[WidgetIndex];
+		Proxy.UpdateFlags = NewFlags;
 
-		if (Widget->IsFastPathVisible())
+		// Add to update list if the widget is now tickable or has an active timer.  Disregard if dirty, it was already in the list
+		if (!Proxy.bInUpdateList && EnumHasAnyFlags(NewFlags, EWidgetUpdateFlags::AnyUpdate))
 		{
-			Proxy.UpdateFlags = NewFlags;
-
-			// Add to update list if the widget is now tickable or has an active timer.
-			if (EnumHasAnyFlags(NewFlags, EWidgetUpdateFlags::AnyUpdate))
-			{
-				GetInvalidationRoot()->WidgetsNeedingUpdate->PushUnique(Proxy);
-			}
+			GetInvalidationRoot()->WidgetsNeedingUpdate.Push(Proxy);
 		}
 	}
 }

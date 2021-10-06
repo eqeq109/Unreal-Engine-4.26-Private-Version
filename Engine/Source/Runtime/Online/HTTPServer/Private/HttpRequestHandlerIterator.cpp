@@ -6,22 +6,15 @@
 
 FHttpRequestHandlerIterator::FHttpRequestHandlerIterator(
 	TSharedPtr<FHttpServerRequest> InRequest, 
-	const FHttpRequestHandlerRegistrar& InRequestHandlerRegistrar,
-	TArray<FHttpRequestHandler> InRequestPreprocessors)
+	const FHttpRequestHandlerRegistrar& InRequestHandlerRegistrar)
 	: HttpPathIterator(InRequest->RelativePath)
 	, Request(MoveTemp(InRequest))
 	, RequestHandlerRegistrar(InRequestHandlerRegistrar)
-	, RequestPreprocessors(MoveTemp(InRequestPreprocessors)) 
 {
 }
 
 const FHttpRequestHandler* const FHttpRequestHandlerIterator::Next()
 {
-	if (RequestPreprocessors.IsValidIndex(CurrentPreprocessorIndex))
-	{
-		return &RequestPreprocessors[CurrentPreprocessorIndex++];
-	}
-	
 	while (HttpPathIterator.HasNext())
 	{
 		// Determine if we have a matching handler for the next route

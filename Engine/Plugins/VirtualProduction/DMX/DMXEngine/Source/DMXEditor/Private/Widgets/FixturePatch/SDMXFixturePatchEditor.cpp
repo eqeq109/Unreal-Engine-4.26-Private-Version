@@ -123,10 +123,10 @@ void SDMXFixturePatchEditor::OnEntitiyListChangedAutoAssignAddress(TArray<UDMXEn
 
 	const bool bAllPatchesInSameUniverse = [&ChangedPatches]()
 	{
-		const int32 FirstUniverseId = ChangedPatches[0]->GetUniverseID();
+		const int32 FirstUniverseId = ChangedPatches[0]->UniverseID;
 		for (UDMXEntityFixturePatch* Patch : ChangedPatches)
 		{
-			if(Patch->GetUniverseID() != FirstUniverseId)
+			if(Patch->UniverseID != FirstUniverseId)
 			{
 				return false;
 			}
@@ -134,9 +134,9 @@ void SDMXFixturePatchEditor::OnEntitiyListChangedAutoAssignAddress(TArray<UDMXEn
 		return true;
 	}();
 	if(bAllPatchesInSameUniverse
-		&& ChangedPatches[0]->GetUniverseID() != INDEX_NONE)
+		&& ChangedPatches[0]->UniverseID != INDEX_NONE)
 	{
-		SelectUniverse(ChangedPatches[0]->GetUniverseID());
+		SelectUniverse(ChangedPatches[0]->UniverseID);
 	}
 }
 

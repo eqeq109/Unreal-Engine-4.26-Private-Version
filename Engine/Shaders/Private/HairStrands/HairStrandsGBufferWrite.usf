@@ -80,7 +80,7 @@ void MainPS(
 			Samples_Specular	+= Sample.Specular;
 			Samples_BaseColor	+= Sample.BaseColor;
 			Samples_Roughnesss	+= Sample.Roughness;
-			Samples_Backlit		+= Sample.Backlit;
+			Samples_Backlit		+= Sample.Tangent;
 			if (NodeIt == 0)
 			{
 				Samples_LightChannelMask = Sample.LightChannelMask;

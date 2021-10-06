@@ -812,33 +812,33 @@ FSceneView* FEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily, c
 	const ELevelViewportType EffectiveViewportType = GetViewportType();
 
 	// Apply view modifiers.
-	FEditorViewportViewModifierParams ViewModifierParams;
+	FMinimalViewInfo ModifiedViewInfo;
 	{
-		ViewModifierParams.ViewInfo.Location = ViewTransform.GetLocation();
-		ViewModifierParams.ViewInfo.Rotation = ViewTransform.GetRotation();
+		ModifiedViewInfo.Location = ViewTransform.GetLocation();
+		ModifiedViewInfo.Rotation = ViewTransform.GetRotation();
 
 		if (bUseControllingActorViewInfo)
 		{
-			ViewModifierParams.ViewInfo.FOV = ControllingActorViewInfo.FOV;
+			ModifiedViewInfo.FOV = ControllingActorViewInfo.FOV;
 		}
 		else
 		{
-			ViewModifierParams.ViewInfo.FOV = ViewFOV;
+			ModifiedViewInfo.FOV = ViewFOV;
 		}
 
 		if (bShouldApplyViewModifiers)
 		{
-			ViewModifiers.Broadcast(ViewModifierParams);
+			ViewModifiers.Broadcast(ModifiedViewInfo);
 		}
 	}
-	const FVector ModifiedViewLocation = ViewModifierParams.ViewInfo.Location;
-	FRotator ModifiedViewRotation = ViewModifierParams.ViewInfo.Rotation;
-	const float ModifiedViewFOV = ViewModifierParams.ViewInfo.FOV;
+	const FVector ModifiedViewLocation = ModifiedViewInfo.Location;
+	FRotator ModifiedViewRotation = ModifiedViewInfo.Rotation;
+	const float ModifiedViewFOV = ModifiedViewInfo.FOV;
 	if (bUseControllingActorViewInfo)
 	{
-		ControllingActorViewInfo.Location = ViewModifierParams.ViewInfo.Location;
-		ControllingActorViewInfo.Rotation = ViewModifierParams.ViewInfo.Rotation;
-		ControllingActorViewInfo.FOV = ViewModifierParams.ViewInfo.FOV;
+		ControllingActorViewInfo.Location = ModifiedViewInfo.Location;
+		ControllingActorViewInfo.Rotation = ModifiedViewInfo.Rotation;
+		ControllingActorViewInfo.FOV = ModifiedViewInfo.FOV;
 	}
 
 	ViewInitOptions.ViewOrigin = ModifiedViewLocation;
@@ -889,11 +889,7 @@ FSceneView* FEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily, c
 	TimeForForceRedraw = 0.0;
 
 	const bool bConstrainAspectRatio = bUseControllingActorViewInfo && ControllingActorViewInfo.bConstrainAspectRatio;
-	EAspectRatioAxisConstraint AspectRatioAxisConstraint = GetDefault<ULevelEditorViewportSettings>()->AspectRatioAxisConstraint;
-	if (bUseControllingActorViewInfo && ControllingActorAspectRatioAxisConstraint.IsSet())
-	{
-		AspectRatioAxisConstraint = ControllingActorAspectRatioAxisConstraint.GetValue();
-	}
+	const EAspectRatioAxisConstraint AspectRatioAxisConstraint = GetDefault<ULevelEditorViewportSettings>()->AspectRatioAxisConstraint;
 
 	AWorldSettings* WorldSettings = nullptr;
 	if( GetScene() != nullptr && GetScene()->GetWorld() != nullptr )
@@ -1115,12 +1111,6 @@ FSceneView* FEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily, c
 		}
 	}
 
-	if (!ViewInitOptions.IsValidViewRectangle())
-	{
-		// Zero sized rects are invalid, so fake to 1x1 to avoid asserts later on
-		ViewInitOptions.SetViewRectangle(FIntRect(0, 0, 1, 1));
-	}
-
 	// Allocate our stereo view state on demand, so that only viewports that actually use stereo features have one
 	const int32 ViewStateIndex = (StereoPass > eSSP_RIGHT_EYE) ? StereoPass - eSSP_RIGHT_EYE : 0;
 	if (bStereoRendering)
@@ -1187,18 +1177,6 @@ FSceneView* FEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily, c
 	else
 	{
 		OverridePostProcessSettings(*View);
-	}
-
-	if (ViewModifierParams.ViewInfo.PostProcessBlendWeight > 0.f)
-	{
-		View->OverridePostProcessSettings(ViewModifierParams.ViewInfo.PostProcessSettings, ViewModifierParams.ViewInfo.PostProcessBlendWeight);
-	}
-	const int32 PPNum = FMath::Min(ViewModifierParams.PostProcessSettings.Num(), ViewModifierParams.PostProcessBlendWeights.Num());
-	for (int32 PPIndex = 0; PPIndex < PPNum; ++PPIndex)
-	{
-		const FPostProcessSettings& PPSettings = ViewModifierParams.PostProcessSettings[PPIndex];
-		const float PPWeight = ViewModifierParams.PostProcessBlendWeights[PPIndex];
-		View->OverridePostProcessSettings(PPSettings, PPWeight);
 	}
 
 	View->EndFinalPostprocessSettings(ViewInitOptions);
@@ -3799,6 +3777,8 @@ void FEditorViewportClient::Draw(FViewport* InViewport, FCanvas* Canvas)
 
 	ViewFamily.bIsHDR = Viewport->IsHDRViewport();
 
+	UpdateDebugViewModeShaders();
+
 	if( ModeTools->GetActiveMode( FBuiltinEditorModes::EM_InterpEdit ) == 0 || !AllowsCinematicControl() )
 	{
 		if( !UseEngineShowFlags.Game )
@@ -3815,7 +3795,7 @@ void FEditorViewportClient::Draw(FViewport* InViewport, FCanvas* Canvas)
 		}
 	}
 
-	ViewFamily.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(FSceneViewExtensionContext(InViewport));
+	ViewFamily.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(InViewport);
 
 	for (auto ViewExt : ViewFamily.ViewExtensions)
 	{
@@ -5969,14 +5949,7 @@ const TArray<FString>* FEditorViewportClient::GetEnabledStats() const
 
 void FEditorViewportClient::SetEnabledStats(const TArray<FString>& InEnabledStats)
 {
-	HandleViewportStatDisableAll(true);
-
 	EnabledStats = InEnabledStats;
-	if (EnabledStats.Num())
-	{
-		SetShowStats(true);
-		AddRealtimeOverride(true, LOCTEXT("RealtimeOverrideMessage_Stats", "Stats Display"));
-	}
 
 #if ENABLE_AUDIO_DEBUG
 	if (GEngine)

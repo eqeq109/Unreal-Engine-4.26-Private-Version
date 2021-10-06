@@ -139,7 +139,7 @@ const UConcertAssetContainer& FConcertClientPresenceManager::GetAssetContainer()
 
 bool FConcertClientPresenceManager::IsPresenceVisible(const FConcertClientPresenceState& InPresenceState) const
 {
-	return InPresenceState.bVisible && IsPIEPresenceEnabled(InPresenceState) && !IsInGame();
+	return InPresenceState.bVisible && IsPIEPresenceEnabled(InPresenceState);
 }
 
 bool FConcertClientPresenceManager::IsPresenceVisible(const FGuid& InEndpointId) const

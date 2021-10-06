@@ -1,13 +1,11 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertDataStore.h"
-#include "ConcertLogGlobal.h"
 
 FConcertDataStoreResult FConcertDataStore::FetchOrAdd(const FName& Key, const FName& TypeName, const FConcertSessionSerializedPayload& SerializedValue)
 {
-	SCOPED_CONCERT_TRACE(FConcertDataStore_FetchOrAdd);
 	check(!Key.IsNone() && !TypeName.IsNone());
-	check(SerializedValue.PayloadSize > 0);
+	check(SerializedValue.UncompressedPayloadSize > 0);
 
 	if (FConcertDataStoreValueRef* StoredValue = KeyValueMap.Find(Key))
 	{
@@ -29,9 +27,8 @@ FConcertDataStoreResult FConcertDataStore::FetchOrAdd(const FName& Key, const FN
 
 FConcertDataStoreResult FConcertDataStore::Store(const FName& Key, const FName& TypeName, const FConcertSessionSerializedPayload& SerializedValue, const TOptional<uint32>& Version)
 {
-	SCOPED_CONCERT_TRACE(FConcertDataStore_Store);
 	check(!Key.IsNone() && !TypeName.IsNone());
-	check(SerializedValue.PayloadSize > 0);
+	check(SerializedValue.UncompressedPayloadSize > 0);
 
 	if (FConcertDataStoreValueRef* StoredValue = KeyValueMap.Find(Key))
 	{
@@ -64,7 +61,6 @@ FConcertDataStoreResult FConcertDataStore::Store(const FName& Key, const FName& 
 
 FConcertDataStoreResult FConcertDataStore::Fetch(const FName& Key, const FName& TypeName) const
 {
-	SCOPED_CONCERT_TRACE(FConcertDataStore_Fetch);
 	check(!Key.IsNone() && !TypeName.IsNone());
 
 	if (const FConcertDataStoreValueRef* StoredValue = KeyValueMap.Find(Key))

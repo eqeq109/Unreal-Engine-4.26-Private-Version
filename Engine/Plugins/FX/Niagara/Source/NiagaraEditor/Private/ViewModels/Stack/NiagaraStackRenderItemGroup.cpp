@@ -24,9 +24,9 @@ public:
 	{
 	}
 
-	virtual TArray<FString> GetCategories() const override
+	virtual FText GetCategory() const override
 	{
-		return {};
+		return LOCTEXT("AddRendererCategory", "Add Renderer");
 	}
 
 	virtual FText GetDisplayName() const override
@@ -189,7 +189,7 @@ void UNiagaraStackRenderItemGroup::EmitterRenderersChanged()
 	if (IsFinalized() == false)
 	{
 		// With undo/redo sometimes it's not possible to unbind this delegate, so we have to check to insure safety in those cases.
-		OnDataObjectModified().Broadcast(TArray<UObject*>(), ENiagaraDataObjectChange::Unknown);
+		OnDataObjectModified().Broadcast(nullptr);
 		RefreshChildren();
 	}
 }

@@ -359,7 +359,7 @@ FReply SObjectWidget::OnDragDetected(const FGeometry& MyGeometry, const FPointer
 		if ( Operation )
 		{
 			FVector2D ScreenCursorPos = PointerEvent.GetScreenSpacePosition();
-			FVector2D ScreenDrageePosition = MyGeometry.GetAbsolutePosition();
+			FVector2D ScreenDrageePosition = MyGeometry.AbsolutePosition;
 
 			float DPIScale = UWidgetLayoutLibrary::GetViewportScale(WidgetObject);
 

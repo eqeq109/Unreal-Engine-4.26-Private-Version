@@ -40,30 +40,30 @@ public:
 
 protected:
 	/** protected constructor - for use by the template only(FSubsystemCollection<TBaseType>) */
-	FSubsystemCollectionBase(UClass* InBaseType);
+	FSubsystemCollectionBase(TSubclassOf<USubsystem> InBaseType);
 
 	/** protected constructor - Use the FSubsystemCollection<TBaseType> class */
 	FSubsystemCollectionBase();
 
 	/** Get a Subsystem by type */
-	USubsystem* GetSubsystemInternal(UClass* SubsystemClass) const;
+	USubsystem* GetSubsystemInternal(TSubclassOf<USubsystem> SubsystemClass) const;
 
 	/** Get a list of Subsystems by type */
-	const TArray<USubsystem*>& GetSubsystemArrayInternal(UClass* SubsystemClass) const;
+	const TArray<USubsystem*>& GetSubsystemArrayInternal(TSubclassOf<USubsystem> SubsystemClass) const;
 
 	/** Get the collection BaseType */
-	const UClass* GetBaseType() const { return BaseType; }
+	const TSubclassOf<USubsystem>& GetBaseType() const { return BaseType; }
 
 private:
 	USubsystem* AddAndInitializeSubsystem(UClass* SubsystemClass);
 
 	void RemoveAndDeinitializeSubsystem(USubsystem* Subsystem);
 
-	TMap<UClass*, USubsystem*> SubsystemMap;
+	TMap<TSubclassOf<USubsystem>, USubsystem*> SubsystemMap;
 
-	mutable TMap<UClass*, TArray<USubsystem*>> SubsystemArrayMap;
+	mutable TMap<TSubclassOf<USubsystem>, TArray<USubsystem*>> SubsystemArrayMap;
 
-	UClass* BaseType;
+	TSubclassOf<USubsystem> BaseType;
 
 	UObject* Outer;
 
@@ -88,17 +88,15 @@ class FSubsystemCollection : public FSubsystemCollectionBase
 public:
 	/** Get a Subsystem by type */
 	template <typename TSubsystemClass>
-	TSubsystemClass* GetSubsystem(const TSubclassOf<TSubsystemClass>& SubsystemClass) const
+	TSubsystemClass* GetSubsystem(TSubclassOf<TSubsystemClass> SubsystemClass) const
 	{
 		static_assert(TIsDerivedFrom<TSubsystemClass, TBaseType>::IsDerived, "TSubsystemClass must be derived from TBaseType");
-
-		// A static cast is safe here because we know SubsystemClass derives from TSubsystemClass if it is not null
-		return static_cast<TSubsystemClass*>(GetSubsystemInternal(SubsystemClass));
+		return Cast<TSubsystemClass>(GetSubsystemInternal(SubsystemClass));
 	}
 
 	/** Get a list of Subsystems by type */
 	template <typename TSubsystemClass>
-	const TArray<TSubsystemClass*>& GetSubsystemArray(const TSubclassOf<TSubsystemClass>& SubsystemClass) const
+	const TArray<TSubsystemClass*>& GetSubsystemArray(TSubclassOf<TSubsystemClass> SubsystemClass) const
 	{
 		// Force a compile time check that TSubsystemClass derives from TBaseType, the internal code only enforces it's a USubsystem
 		TSubclassOf<TBaseType> SubsystemBaseClass = SubsystemClass;

@@ -34,7 +34,7 @@ public:
 	FName PanelID;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Virtual Production UI")
-	AActor* ParentActor = nullptr;
+	AActor* ParentActor;
 
 	/** Optional offset from HMD where the window opens. Pass FTransform::Identity for default logic - window will open at controller location. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Mode UI")
@@ -42,7 +42,7 @@ public:
 
 	/** Panel size. Should match the size of the UMG passed in. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Mode UI")
-	FVector2D PanelSize = FVector2D(0.0f);
+	FVector2D PanelSize;
 
 	/** Optional custom mesh to use for the VR window. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Mode UI")
@@ -50,19 +50,19 @@ public:
 
 	/** Optional override for "VREd.EditorUISize". Leave at 0 for default. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Mode UI")
-	float EditorUISize = 0.0f;
+	float EditorUISize;
 
 	/** Turn off handles under window? (X-To-Close, movement bar...) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR Mode UI")
-	bool bHideWindowHandles = false;
+	bool bHideWindowHandles;
 
 	/** Turn off the widget's background to create a see-through look. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Virtual Production UI")
-	bool bMaskOutWidgetBackground = false;
+	bool bMaskOutWidgetBackground;
 
 	/** If bHideWindowHandles is false, this window doesn't have a close button. (*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Virtual Production UI")
-	bool bNoCloseButton = false;
+	bool bNoCloseButton;
 };
 
 

@@ -2,14 +2,12 @@
 
 #include "Chaos/PBDPositionConstraints.h"
 
+
 namespace Chaos
 {
-	TVector<FGeometryParticleHandle*, 2> FPBDPositionConstraintHandle::GetConstrainedParticles() const 
-	{ 
-		return ConstraintContainer->GetConstrainedParticles(ConstraintIndex); 
-	}
 
-	bool FPBDPositionConstraints::Apply(const FReal Dt, const TArray<FConstraintContainerHandle*>& ConstraintHandles, const int32 It, const int32 NumIts) const
+	template<class T, int d>
+	bool TPBDPositionConstraints<T, d>::Apply(const T Dt, const TArray<FConstraintContainerHandle*>& ConstraintHandles, const int32 It, const int32 NumIts) const
 	{
 		for (FConstraintContainerHandle* ConstraintHandle : ConstraintHandles)
 		{
@@ -19,4 +17,9 @@ namespace Chaos
 		// TODO: Return true only if more iteration are needed
 		return true;
 	}
+
+
+
+	template class TPBDPositionConstraintHandle<float, 3>;
+	template class TPBDPositionConstraints<float, 3>;
 }

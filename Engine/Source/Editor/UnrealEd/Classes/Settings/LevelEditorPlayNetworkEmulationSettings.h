@@ -46,10 +46,10 @@ struct FLevelEditorPlayNetworkEmulationSettings
 
 	// When true will apply the emulation settings when launching the game
 	UPROPERTY(EditAnywhere, Category = "Network Settings", meta = (DisplayName = "Enable Network Emulation"))
-	bool bIsNetworkEmulationEnabled = false;
+	bool bIsNetworkEmulationEnabled;
 
 	UPROPERTY(EditAnywhere, Category = "Network Settings", meta = (DisplayName = "Emulation Target"))
-	NetworkEmulationTarget EmulationTarget = NetworkEmulationTarget::Server;
+	NetworkEmulationTarget EmulationTarget;
 
 	// The profile name of the settings currently applied
 	UPROPERTY(EditAnywhere, Category = "Network Settings")

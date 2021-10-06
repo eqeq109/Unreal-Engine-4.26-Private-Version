@@ -7,7 +7,6 @@
 #include "UObject/ScriptMacros.h"
 #include "IMovieScenePlayer.h"
 #include "MovieScene.h"
-#include "MovieSceneSequenceTickManager.h"
 #include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
 #include "IMovieScenePlaybackClient.h"
 #include "Misc/QualifiedFrameTime.h"
@@ -52,7 +51,7 @@ struct FMovieSceneSequenceLoopCount
 	/** Serialize this count from an int */
 	bool SerializeFromMismatchedTag(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot );
 
-	/** Whether or not to loop playback. If Loop Exactly is chosen, you can specify the number of times to loop */
+	/** Number of times to loop playback. -1 for infinite, else the number of times to loop before stopping */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playback", meta=(UIMin=1, DisplayName="Loop"))
 	int32 Value;
 };
@@ -237,42 +236,42 @@ public:
 	virtual ~UMovieSceneSequencePlayer();
 
 	/** Start playback forwards from the current time cursor position, using the current play rate. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void Play();
 
 	/** Reverse playback. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void PlayReverse();
 
 	/** Changes the direction of playback (go in reverse if it was going forward, or vice versa) */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void ChangePlaybackDirection();
 
 	/**
 	 * Start playback from the current time cursor position, looping the specified number of times.
 	 * @param NumLoops - The number of loops to play. -1 indicates infinite looping.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void PlayLooping(int32 NumLoops = -1);
 	
 	/** Pause playback. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void Pause();
 	
 	/** Scrub playback. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void Scrub();
 
 	/** Stop playback and move the cursor to the end (or start, for reversed playback) of the sequence. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void Stop();
 
 	/** Stop playback without moving the cursor. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void StopAtCurrentTime();
 
 	/** Go to end and stop. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", meta = (ToolTip = "Go to end of the sequence and stop. Adheres to 'When Finished' section rules."))
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", meta = (ToolTip = "Go to end of the sequence and stop. Adheres to 'When Finished' section rules."))
 	void GoToEndAndStop();
 
 public:
@@ -281,43 +280,43 @@ public:
 	 * Get the current playback position
 	 * @return The current playback position
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	FQualifiedFrameTime GetCurrentTime() const;
 
 	/**
 	 * Get the total duration of the sequence
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	FQualifiedFrameTime GetDuration() const;
 
 	/**
 	 * Get this sequence's duration in frames
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	int32 GetFrameDuration() const;
 
 	/**
 	 * Get this sequence's display rate.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	FFrameRate GetFrameRate() const { return PlayPosition.GetInputRate(); }
 
 	/**
 	 * Set the frame-rate that this player should play with, making all frame numbers in the specified time-space
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void SetFrameRate(FFrameRate FrameRate);
 
 	/**
 	 * Get the offset within the level sequence to start playing
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	FQualifiedFrameTime GetStartTime() const { return FQualifiedFrameTime(StartTime, PlayPosition.GetInputRate()); }
 
 	/**
 	 * Get the offset within the level sequence to finish playing
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	FQualifiedFrameTime GetEndTime() const { return FQualifiedFrameTime(StartTime + DurationFrames, PlayPosition.GetInputRate()); }
 
 public:
@@ -328,7 +327,7 @@ public:
 	 * @param StartFrame      The frame number to start playing back the sequence
 	 * @param Duration        The number of frames to play
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName="Set Play Range (Frames)")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", DisplayName="Set Play Range (Frames)")
 	void SetFrameRange( int32 StartFrame, int32 Duration, float SubFrames = 0.f );
 
 	/**
@@ -337,7 +336,7 @@ public:
 	 * @param StartTime       The time to start playing back the sequence in seconds
 	 * @param Duration        The length to play for
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName="Set Play Range (Seconds)")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", DisplayName="Set Play Range (Seconds)")
 	void SetTimeRange( float StartTime, float Duration );
 
 public:
@@ -349,7 +348,7 @@ public:
 	 *
 	 * @param PlaybackParams The position settings (ie. the position to play to)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void PlayTo(FMovieSceneSequencePlaybackParams PlaybackParams);
 
 	/**
@@ -358,84 +357,78 @@ public:
 	 *
 	 * @param PlaybackParams The position settings (ie. the position to set playback to)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
-	void SetPlaybackPosition(FMovieSceneSequencePlaybackParams PlaybackParams);
-
-	/**
-	 * Restore any changes made by this player to their original state
-	 */
 	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
-	void RestoreState();
+	void SetPlaybackPosition(FMovieSceneSequencePlaybackParams PlaybackParams);
 
 public:
 
 	UE_DEPRECATED(4.26, "PlayToFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName = "Play To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="PlayToFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", DisplayName = "Play To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="PlayToFrame is deprecated, use SetPlaybackPosition."))
 	void PlayToFrame(FFrameTime NewPosition) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(NewPosition, EUpdatePositionMethod::Play)); }
 
 	UE_DEPRECATED(4.26, "ScrubToFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName = "Scrub To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="ScrubToFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", DisplayName = "Scrub To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="ScrubToFrame is deprecated, use SetPlaybackPosition."))
 	void ScrubToFrame(FFrameTime NewPosition) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(NewPosition, EUpdatePositionMethod::Scrub)); }
 
 	UE_DEPRECATED(4.26, "JumpToFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName="Jump To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="JumpToFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", DisplayName="Jump To (Frames)", meta=(DeprecatedFunction, DeprecationMessage="JumpToFrame is deprecated, use SetPlaybackPosition."))
 	void JumpToFrame(FFrameTime NewPosition) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(NewPosition, EUpdatePositionMethod::Jump)); }
 
 	UE_DEPRECATED(4.26, "PlayToSeconds is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName = "Play To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="PlayToSeconds is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", DisplayName = "Play To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="PlayToSeconds is deprecated, use SetPlaybackPosition."))
 	void PlayToSeconds(float TimeInSeconds) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(TimeInSeconds, EUpdatePositionMethod::Play)); }
 
 	UE_DEPRECATED(4.26, "ScrubToSeconds is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName = "Scrub To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="ScrubToSeconds is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", DisplayName = "Scrub To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="ScrubToSeconds is deprecated, use SetPlaybackPosition."))
 	void ScrubToSeconds(float TimeInSeconds) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(TimeInSeconds, EUpdatePositionMethod::Scrub)); }
 
 	UE_DEPRECATED(4.26, "JumpToSeconds is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", DisplayName = "Jump To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="JumpToSeconds is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", DisplayName = "Jump To (Seconds)", meta=(DeprecatedFunction, DeprecationMessage="JumpToSeconds is deprecated, use SetPlaybackPosition."))
 	void JumpToSeconds(float TimeInSeconds) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(TimeInSeconds, EUpdatePositionMethod::Jump)); }
 
 	UE_DEPRECATED(4.26, "PlayToMarkedFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", meta=(DeprecatedFunction, DeprecationMessage="PlayToMarkedFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", meta=(DeprecatedFunction, DeprecationMessage="PlayToMarkedFrame is deprecated, use SetPlaybackPosition."))
 	bool PlayToMarkedFrame(const FString& InLabel) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(InLabel, EUpdatePositionMethod::Play)); return true; }
 
 	UE_DEPRECATED(4.26, "ScrubToMarkedFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", meta=(DeprecatedFunction, DeprecationMessage="ScrubToMarkedFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", meta=(DeprecatedFunction, DeprecationMessage="ScrubToMarkedFrame is deprecated, use SetPlaybackPosition."))
 	bool ScrubToMarkedFrame(const FString& InLabel) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(InLabel, EUpdatePositionMethod::Scrub)); return true; }
 
 	UE_DEPRECATED(4.26, "JumpToMarkedFrame is deprecated, use SetPlaybackPosition.")
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player", meta=(DeprecatedFunction, DeprecationMessage="JumpToMarkedFrame is deprecated, use SetPlaybackPosition."))
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic", meta=(DeprecatedFunction, DeprecationMessage="JumpToMarkedFrame is deprecated, use SetPlaybackPosition."))
 	bool JumpToMarkedFrame(const FString& InLabel) { SetPlaybackPosition(FMovieSceneSequencePlaybackParams(InLabel, EUpdatePositionMethod::Jump)); return true; }
 
 public:
 
 	/** Check whether the sequence is actively playing. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	bool IsPlaying() const;
 
 	/** Check whether the sequence is paused. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	bool IsPaused() const;
 
 	/** Check whether playback is reversed. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	bool IsReversed() const;
 
 	/** Get the playback rate of this player. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	float GetPlayRate() const;
 
 	/**
 	 * Set the playback rate of this player. Negative values will play the animation in reverse.
 	 * @param PlayRate - The new rate of playback for the animation.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void SetPlayRate(float PlayRate);
 
 	/** Set whether to disable camera cuts */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void SetDisableCameraCuts(bool bInDisableCameraCuts) { PlaybackSettings.bDisableCameraCuts = bInDisableCameraCuts; }
 
 	/** Set whether to disable camera cuts */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	bool GetDisableCameraCuts() { return PlaybackSettings.bDisableCameraCuts; }
 
 	/** An event that is broadcast each time this level sequence player is updated */
@@ -443,40 +436,37 @@ public:
 	FOnMovieSceneSequencePlayerUpdated& OnSequenceUpdated() const { return OnMovieSceneSequencePlayerUpdate; }
 
 	/** Event triggered when the level sequence player is played */
-	UPROPERTY(BlueprintAssignable, Category = "Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category="Game|Cinematic")
 	FOnMovieSceneSequencePlayerEvent OnPlay;
 
 	/** Event triggered when the level sequence player is played in reverse */
-	UPROPERTY(BlueprintAssignable, Category = "Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category="Game|Cinematic")
 	FOnMovieSceneSequencePlayerEvent OnPlayReverse;
 
 	/** Event triggered when the level sequence player is stopped */
-	UPROPERTY(BlueprintAssignable, Category = "Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category="Game|Cinematic")
 	FOnMovieSceneSequencePlayerEvent OnStop;
 
 	/** Event triggered when the level sequence player is paused */
-	UPROPERTY(BlueprintAssignable, Category = "Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category="Game|Cinematic")
 	FOnMovieSceneSequencePlayerEvent OnPause;
 
 	/** Event triggered when the level sequence player finishes naturally (without explicitly calling stop) */
-	UPROPERTY(BlueprintAssignable, Category = "Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category = "Game|Cinematic")
 	FOnMovieSceneSequencePlayerEvent OnFinished;
 
 
 public:
 
 	/** Retrieve all objects currently bound to the specified binding identifier */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	TArray<UObject*> GetBoundObjects(FMovieSceneObjectBindingID ObjectBinding);
 
 	/** Get the object bindings for the requested object */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	TArray<FMovieSceneObjectBindingID> GetObjectBindings(UObject* InObject);
 
 public:
-
-	/** Ensure that this player's tick manager is set up correctly for the specified context */
-	void InitializeForTick(UObject* Context);
 
 	/** Initialize this player with a sequence and some settings */
 	void Initialize(UMovieSceneSequence* InSequence, const FMovieSceneSequencePlaybackSettings& InSettings);
@@ -490,13 +480,7 @@ public:
 	 * Access the sequence this player is playing
 	 * @return the sequence currently assigned to this player
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Player")
 	UMovieSceneSequence* GetSequence() const { return Sequence; }
-
-	/**
-	 * Access this player's tick manager
-	 */
-	UMovieSceneSequenceTickManager* GetTickManager() const { return TickManager; }
 
 	/**
 	 * Assign a playback client interface for this sequence player, defining instance data and binding overrides
@@ -531,15 +515,13 @@ protected:
 	FFrameTime GetLastValidTime() const;
 
 	bool NeedsQueueLatentAction() const;
-	void QueueLatentAction(FMovieSceneSequenceLatentActionDelegate Delegate);
+	void QueueLatentAction(FMovieSceneSequenceLatentActionDelegate Delegate) const;
 	void RunLatentActions();
 
-public:
+protected:
+
 	//~ IMovieScenePlayer interface
 	virtual FMovieSceneRootEvaluationTemplateInstance& GetEvaluationTemplate() override { return RootTemplateInstance; }
-
-protected:
-	//~ IMovieScenePlayer interface
 	virtual UMovieSceneEntitySystemLinker* ConstructEntitySystemLinker() override;
 	virtual EMovieScenePlayerStatus::Type GetPlaybackStatus() const override;
 	virtual FMovieSceneSpawnRegister& GetSpawnRegister() override;
@@ -621,9 +603,6 @@ protected:
 	/** Set to true when the player is currently in the main level update */
 	uint32 bIsMainLevelUpdate : 1;
 
-	/** Flag that allows the player to tick its time controller without actually evaluating the sequence */
-	uint32 bSkipNextUpdate : 1;
-
 	/** The sequence to play back */
 	UPROPERTY(transient)
 	UMovieSceneSequence* Sequence;
@@ -667,9 +646,6 @@ protected:
 	/** Global tick manager, held here to keep it alive while world sequences are in play */
 	UPROPERTY(transient)
 	UMovieSceneSequenceTickManager* TickManager;
-
-	/** Local latent action manager for when we're running a blocking sequence */
-	FMovieSceneLatentActionManager LatentActionManager;
 
 	/** (Optional) Externally supplied time controller */
 	TSharedPtr<FMovieSceneTimeController> TimeController;

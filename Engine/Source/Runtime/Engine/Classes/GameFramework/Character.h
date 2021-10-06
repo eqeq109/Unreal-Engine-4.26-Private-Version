@@ -41,15 +41,15 @@ struct FRepRootMotionMontage
 
 	/** Whether this has useful/active data. */
 	UPROPERTY()
-	bool bIsActive = false;
+	bool bIsActive;
 
 	/** AnimMontage providing Root Motion */
 	UPROPERTY()
-	UAnimMontage* AnimMontage = nullptr;
+	UAnimMontage* AnimMontage;
 
 	/** Track position of Montage */
 	UPROPERTY()
-	float Position = 0.f;
+	float Position;
 
 	/** Location */
 	UPROPERTY()
@@ -57,11 +57,11 @@ struct FRepRootMotionMontage
 
 	/** Rotation */
 	UPROPERTY()
-	FRotator Rotation = FRotator(0.f);
+	FRotator Rotation;
 
 	/** Movement Relative to Base */
 	UPROPERTY()
-	UPrimitiveComponent* MovementBase = nullptr;
+	UPrimitiveComponent* MovementBase;
 
 	/** Bone on the MovementBase, if a skeletal mesh. */
 	UPROPERTY()
@@ -69,11 +69,11 @@ struct FRepRootMotionMontage
 
 	/** Additional replicated flag, if MovementBase can't be resolved on the client. So we don't use wrong data. */
 	UPROPERTY()
-	bool bRelativePosition = false;
+	bool bRelativePosition;
 
 	/** Whether rotation is relative or absolute. */
 	UPROPERTY()
-	bool bRelativeRotation = false;
+	bool bRelativeRotation;
 
 	/** State of Root Motion Sources on Authority */
 	UPROPERTY()
@@ -109,7 +109,7 @@ struct FSimulatedRootMotionReplicatedMove
 
 	/** Local time when move was received on client and saved. */
 	UPROPERTY()
-	float Time = 0.f;
+	float Time;
 
 	/** Root Motion information */
 	UPROPERTY()
@@ -156,7 +156,7 @@ struct FBasedMovementInfo
 
 	/** Component we are based on */
 	UPROPERTY()
-	UPrimitiveComponent* MovementBase = nullptr;
+	UPrimitiveComponent* MovementBase;
 
 	/** Bone name on component, for skeletal meshes. NAME_None if not a skeletal mesh or if bone is invalid. */
 	UPROPERTY()
@@ -168,19 +168,19 @@ struct FBasedMovementInfo
 
 	/** Rotation: relative to MovementBase if HasRelativeRotation() is true, absolute otherwise. */
 	UPROPERTY()
-	FRotator Rotation = FRotator(0.f);
+	FRotator Rotation;
 
 	/** Whether the server says that there is a base. On clients, the component may not have resolved yet. */
 	UPROPERTY()
-	bool bServerHasBaseComponent = false;
+	bool bServerHasBaseComponent;
 
 	/** Whether rotation is relative to the base or absolute. It can only be relative if location is also relative. */
 	UPROPERTY()
-	bool bRelativeRotation = false;
+	bool bRelativeRotation;
 
 	/** Whether there is a velocity on the server. Used for forcing replication when velocity goes to zero. */
 	UPROPERTY()
-	bool bServerHasVelocity = false;
+	bool bServerHasVelocity;
 
 	/** Is location relative? */
 	FORCEINLINE bool HasRelativeLocation() const
@@ -621,10 +621,10 @@ public:
 	/** 
 	 * Make the character jump on the next update.	 
 	 * If you want your character to jump according to the time that the jump key is held,
-	 * then you can set JumpMaxHoldTime to some non-zero value. Make sure in this case to
+	 * then you can set JumpKeyHoldTime to some non-zero value. Make sure in this case to
 	 * call StopJumping() when you want the jump's z-velocity to stop being applied (such 
 	 * as on a button up event), otherwise the character will carry on receiving the 
-	 * velocity until JumpKeyHoldTime reaches JumpMaxHoldTime.
+	 * velocity until JumpKeyHoldTime is reached.
 	 */
 	UFUNCTION(BlueprintCallable, Category=Character)
 	virtual void Jump();

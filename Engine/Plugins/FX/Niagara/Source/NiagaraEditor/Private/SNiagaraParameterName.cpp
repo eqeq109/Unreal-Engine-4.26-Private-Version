@@ -152,7 +152,7 @@ void SNiagaraParameterName::UpdateContent(FName InDisplayedParameterName, int32 
 							SAssignNew(EditableModifierTextBlock, SInlineEditableTextBlock)
 							.Style(EditableTextStyle)
 							.Text(FText::FromName(NameParts[NamePartIndex]))
-							.OnVerifyTextChanged(this, &SNiagaraParameterName::VerifyNamespaceModifierTextChange, NameParts[NamePartIndex])
+							.OnVerifyTextChanged(this, &SNiagaraParameterName::VerifyNamespaceModifierTextChange)
 							.OnTextCommitted(this, &SNiagaraParameterName::NamespaceModifierTextCommitted)
 						]
 					];
@@ -204,7 +204,7 @@ void SNiagaraParameterName::UpdateContent(FName InDisplayedParameterName, int32 
 				.Style(EditableTextStyle)
 				.Text(FText::FromName(NameParts.Last()))
 				.IsSelected(IsSelected)
-				.OnVerifyTextChanged(this, &SNiagaraParameterName::VerifyNameTextChange, NameParts.Last())
+				.OnVerifyTextChanged(this, &SNiagaraParameterName::VerifyNameTextChange)
 				.OnTextCommitted(this, &SNiagaraParameterName::NameTextCommitted)
 				.HighlightText(HighlightText);
 		}
@@ -217,7 +217,7 @@ void SNiagaraParameterName::UpdateContent(FName InDisplayedParameterName, int32 
 		];
 	}
 
-	if (Decorator.IsValid() && Decorator != SNullWidget::NullWidget)
+	if (Decorator.IsValid())
 	{
 		ContentBox->AddSlot()
 		.VAlign(VAlign_Center)
@@ -245,22 +245,9 @@ FName SNiagaraParameterName::ReconstructNameFromEditText(const FText& InEditText
 	return *NewParameterNameString;
 }
 
-bool SNiagaraParameterName::VerifyNameTextChange(const FText& InNewName, FText& OutErrorMessage, FName InOriginalName)
+bool SNiagaraParameterName::VerifyNameTextChange(const FText& InNewNameText, FText& OutErrorMessage)
 {
-	if (InNewName.IsEmpty())
-	{
-		OutErrorMessage = NSLOCTEXT("NiagaraParameterName", "EmptyNameErrorMessage", "Parameter name can not be empty.");
-		return false;
-	}
-
-	int32 NewLength = ParameterName.Get().GetStringLength() - InOriginalName.GetStringLength() + InNewName.ToString().Len();
-	if (NewLength > FNiagaraConstants::MaxParameterLength)
-	{
-		OutErrorMessage = FText::Format(NSLOCTEXT("NiagaraParameterName", "NameTooLongErrorFormat", "The name entered is too long.\nThe maximum parameter length is {0}."), FText::AsNumber(FNiagaraConstants::MaxParameterLength));
-		return false;
-	}
-
-	FName NewParameterName = ReconstructNameFromEditText(InNewName);
+	FName NewParameterName = ReconstructNameFromEditText(InNewNameText);
 	if (OnVerifyNameChangeDelegate.IsBound())
 	{
 		return OnVerifyNameChangeDelegate.Execute(NewParameterName, OutErrorMessage);
@@ -277,17 +264,10 @@ void SNiagaraParameterName::NameTextCommitted(const FText& InNewNameText, ETextC
 	}
 }
 
-bool SNiagaraParameterName::VerifyNamespaceModifierTextChange(const FText& InNewNamespaceModifier, FText& OutErrorMessage, FName InOriginalNamespaceModifier)
+bool SNiagaraParameterName::VerifyNamespaceModifierTextChange(const FText& InNewNameText, FText& OutErrorMessage)
 {
-	int32 NewLength = ParameterName.Get().GetStringLength() - InOriginalNamespaceModifier.GetStringLength() + InNewNamespaceModifier.ToString().Len();
-	if (NewLength > FNiagaraConstants::MaxParameterLength)
-	{
-		OutErrorMessage = FText::Format(NSLOCTEXT("NiagaraParameterName", "NamespaceModifierTooLongErrorFormat", "The namespace modifier entered is too long.\nThe maximum parameter length is {0}."), FText::AsNumber(FNiagaraConstants::MaxParameterLength));
-		return false;
-	}
-
-	FName NewNamespaceModifierName = *InNewNamespaceModifier.ToString().Replace(TEXT("."), TEXT(""));
-	FName NewParameterName = FNiagaraParameterUtilities::SetSpecificNamespaceModifier(ParameterName.Get(), NewNamespaceModifierName);
+	FName NewNamespaceModifier = *InNewNameText.ToString().Replace(TEXT("."), TEXT(""));
+	FName NewParameterName = FNiagaraParameterUtilities::SetSpecificNamespaceModifier(ParameterName.Get(), NewNamespaceModifier);
 	if (NewParameterName != NAME_None && OnVerifyNameChangeDelegate.IsBound())
 	{
 		return OnVerifyNameChangeDelegate.Execute(NewParameterName, OutErrorMessage);
@@ -331,12 +311,6 @@ void SNiagaraParameterName::EnterNamespaceModifierEditingMode()
 	}
 }
 
-void SNiagaraParameterName::UpdateDecorator(TSharedRef<SWidget> InDecorator)
-{
-	Decorator = InDecorator;
-	UpdateContent(ParameterName.Get());
-}
-
 void SNiagaraParameterNameTextBlock::Construct(const FArguments& InArgs)
 {
 	ParameterText = InArgs._ParameterText;
@@ -347,7 +321,6 @@ void SNiagaraParameterNameTextBlock::Construct(const FArguments& InArgs)
 	[
 		SAssignNew(ParameterName, SNiagaraParameterName)
 		.EditableTextStyle(InArgs._EditableTextStyle)
-		.ReadOnlyTextStyle(InArgs._ReadOnlyTextStyle)
 		.ParameterName(this, &SNiagaraParameterNameTextBlock::GetParameterName)
 		.IsReadOnly(InArgs._IsReadOnly)
 		.HighlightText(InArgs._HighlightText)

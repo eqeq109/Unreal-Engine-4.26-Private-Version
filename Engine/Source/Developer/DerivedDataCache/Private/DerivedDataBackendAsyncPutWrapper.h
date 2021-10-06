@@ -70,10 +70,10 @@ public:
 	}
 
 	/** return true if this cache is writable **/
-	virtual bool IsWritable() const override;
+	virtual bool IsWritable() override;
 
 	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() const override;
+	virtual ESpeedClass GetSpeedClass() override;
 
 	/**
 	 * Synchronous test for the existence of a cache item
@@ -116,7 +116,7 @@ public:
 
 	virtual void RemoveCachedData(const TCHAR* CacheKey, bool bTransient) override;
 
-	virtual TSharedRef<FDerivedDataCacheStatsNode> GatherUsageStats() const override;
+	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override;
 
 	virtual bool ApplyDebugOptions(FBackendDebugOptions& InOptions) override;
 

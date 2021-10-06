@@ -9,7 +9,7 @@
 
 class FLevelEditorViewportClient;
 class UCameraModifier_CameraShake;
-struct FEditorViewportViewModifierParams;
+struct FMinimalViewInfo;
 
 /**
  * A class that owns a gameplay camera shake manager, so that we can us it to preview shakes in editor.
@@ -32,7 +32,7 @@ private:
 	virtual FString GetReferencerName() const override { return TEXT("SCameraShakePreviewer"); }
 
 private:
-	void OnModifyView(FEditorViewportViewModifierParams& Params);
+	void OnModifyView(FMinimalViewInfo& InOutPOV);
 	void OnLevelViewportClientListChanged();
 
 private:

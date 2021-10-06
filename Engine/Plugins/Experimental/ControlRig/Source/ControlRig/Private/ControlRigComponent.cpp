@@ -50,7 +50,6 @@ UControlRigComponent::UControlRigComponent(const FObjectInitializer& ObjectIniti
 	bUpdateRigOnTick = true;
 	bUpdateInEditor = true;
 	bDrawBones = true;
-	bShowDebugDrawing = false;
 }
 
 #if WITH_EDITOR
@@ -167,23 +166,19 @@ FBoxSphereBounds UControlRigComponent::CalcBounds(const FTransform& LocalToWorld
 {
 	FBox BBox(ForceInit);
 
+	for (int32 InstructionIndex = 0; InstructionIndex < DrawInterface.Num(); InstructionIndex++)
+	{
+		const FControlRigDrawInstruction& Instruction = DrawInterface[InstructionIndex];
+
+		FTransform Transform = Instruction.Transform * GetComponentToWorld();
+		for (const FVector& Position : Instruction.Positions)
+		{
+			BBox += Transform.TransformPosition(Position);
+		}
+	}
+
 	if (ControlRig)
 	{
-		// Get bounding box for the debug drawings if they are drawn 
-		if (bShowDebugDrawing)
-		{
-			const FControlRigDrawInterface& DrawInterface = ControlRig->GetDrawInterface();
-			for (int32 InstructionIndex = 0; InstructionIndex < DrawInterface.Num(); InstructionIndex++)
-			{
-				const FControlRigDrawInstruction& Instruction = DrawInterface[InstructionIndex];
-				FTransform Transform = Instruction.Transform * GetComponentToWorld();
-				for (const FVector& Position : Instruction.Positions)
-				{
-					BBox += Transform.TransformPosition(Position);
-				}
-			}
-		}
-
 		FTransform Transform = GetComponentToWorld();
 
 		const FRigBoneHierarchy& BoneHierarchy = ControlRig->GetBoneHierarchy();
@@ -267,6 +262,8 @@ void UControlRigComponent::Initialize()
 
 void UControlRigComponent::Update(float DeltaTime)
 {
+	DrawInterface.Reset();
+
 	if(UControlRig* CR = SetupControlRigIfRequired())
 	{
 		if (CR->IsExecuting() || CR->IsInitializing())
@@ -300,14 +297,13 @@ void UControlRigComponent::Update(float DeltaTime)
 
 			CR->Evaluate_AnyThread();
 
-			if (bShowDebugDrawing)
-			{
-				if (CR->DrawInterface.Instructions.Num() > 0)
-				{
-					MarkRenderStateDirty();
-				}
-			}
+			CR->DrawInterface.Reset();
 		}
+	}
+
+	if (DrawInterface.Instructions.Num() > 0)
+	{
+		MarkRenderStateDirty();
 	}
 }
 
@@ -467,7 +463,7 @@ void UControlRigComponent::AddMappedSkeletalMesh(USkeletalMeshComponent* Skeleta
 	{
 		if (USkeletalMesh* SkeletalMesh = SkeletalMeshComponent->SkeletalMesh)
 		{
-			if (USkeleton* Skeleton = SkeletalMesh->GetSkeleton())
+			if (USkeleton* Skeleton = SkeletalMesh->Skeleton)
 			{
 				for (const FRigBone& RigBone : CR->GetBoneHierarchy())
 				{
@@ -492,7 +488,7 @@ void UControlRigComponent::AddMappedSkeletalMesh(USkeletalMeshComponent* Skeleta
 	{
 		if (USkeletalMesh* SkeletalMesh = SkeletalMeshComponent->SkeletalMesh)
 		{
-			if (USkeleton* Skeleton = SkeletalMesh->GetSkeleton())
+			if (USkeleton* Skeleton = SkeletalMesh->Skeleton)
 			{
 				for (const FRigCurve& RigCurve : CR->GetCurveContainer())
 				{
@@ -1231,9 +1227,13 @@ void UControlRigComponent::ValidateMappingData()
 				{
 					if (USkeletalMesh* SkeletalMesh = SkeletalMeshComponent->SkeletalMesh)
 					{
-						if (USkeleton* Skeleton = SkeletalMesh->GetSkeleton())
+						if (USkeleton* Skeleton = SkeletalMesh->Skeleton)
 						{
-							if (MappedElement.ElementType == ERigElementType::Curve)
+							if (MappedElement.ElementType == ERigElementType::Bone)
+							{
+								MappedElement.SubIndex = Skeleton->GetReferenceSkeleton().FindBoneIndex(MappedElement.TransformName);
+							}
+							else if (MappedElement.ElementType == ERigElementType::Curve)
 							{
 								const FSmartNameMapping* CurveNameMapping = Skeleton->GetSmartNameContainer(USkeleton::AnimCurveMappingName);
 								if (CurveNameMapping)
@@ -1244,10 +1244,6 @@ void UControlRigComponent::ValidateMappingData()
 										MappedElement.SubIndex = (int32)SmartName.UID;
 									}
 								}
-							} 
-							else
-							{
-								MappedElement.SubIndex = Skeleton->GetReferenceSkeleton().FindBoneIndex(MappedElement.TransformName);
 							}
 						}
 						else
@@ -1729,6 +1725,7 @@ void UControlRigComponent::ReportError(const FString& InMessage)
 FControlRigSceneProxy::FControlRigSceneProxy(const UControlRigComponent* InComponent)
 : FPrimitiveSceneProxy(InComponent)
 , ControlRigComponent(InComponent)
+, DrawInterface(InComponent->DrawInterface)
 {
 	bWillEverBeLit = false;
 }
@@ -1804,49 +1801,44 @@ void FControlRigSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView
 				}
 			}
 
-			if (ControlRigComponent->bShowDebugDrawing)
+			for (int32 InstructionIndex = 0; InstructionIndex < DrawInterface.Num(); InstructionIndex++)
 			{
-				const FControlRigDrawInterface& DrawInterface = ControlRigComponent->ControlRig->GetDrawInterface();
-
-				for (int32 InstructionIndex = 0; InstructionIndex < DrawInterface.Num(); InstructionIndex++)
+				const FControlRigDrawInstruction& Instruction = DrawInterface[InstructionIndex];
+				if (Instruction.Positions.Num() == 0)
 				{
-					const FControlRigDrawInstruction& Instruction = DrawInterface[InstructionIndex];
-					if (Instruction.Positions.Num() == 0)
-					{
-						continue;
-					}
+					continue;
+				}
 
-					FTransform InstructionTransform = Instruction.Transform * ControlRigComponent->GetComponentToWorld();
-					switch (Instruction.PrimitiveType)
+				FTransform InstructionTransform = Instruction.Transform * ControlRigComponent->GetComponentToWorld();
+				switch (Instruction.PrimitiveType)
+				{
+					case EControlRigDrawSettings::Points:
 					{
-						case EControlRigDrawSettings::Points:
+						for (const FVector& Point : Instruction.Positions)
 						{
-							for (const FVector& Point : Instruction.Positions)
-							{
-								PDI->DrawPoint(InstructionTransform.TransformPosition(Point), Instruction.Color, Instruction.Thickness, SDPG_Foreground);
-							}
-							break;
+							PDI->DrawPoint(InstructionTransform.TransformPosition(Point), Instruction.Color, Instruction.Thickness, SDPG_Foreground);
 						}
-						case EControlRigDrawSettings::Lines:
+						break;
+					}
+					case EControlRigDrawSettings::Lines:
+					{
+						const TArray<FVector>& Points = Instruction.Positions;
+						PDI->AddReserveLines(SDPG_Foreground, Points.Num() / 2, false, Instruction.Thickness > SMALL_NUMBER);
+						for (int32 PointIndex = 0; PointIndex < Points.Num() - 1; PointIndex += 2)
 						{
-							const TArray<FVector>& Points = Instruction.Positions;
-							PDI->AddReserveLines(SDPG_Foreground, Points.Num() / 2, false, Instruction.Thickness > SMALL_NUMBER);
-							for (int32 PointIndex = 0; PointIndex < Points.Num() - 1; PointIndex += 2)
-							{
-								PDI->DrawLine(InstructionTransform.TransformPosition(Points[PointIndex]), InstructionTransform.TransformPosition(Points[PointIndex + 1]), Instruction.Color, SDPG_Foreground, Instruction.Thickness);
-							}
-							break;
+							PDI->DrawLine(InstructionTransform.TransformPosition(Points[PointIndex]), InstructionTransform.TransformPosition(Points[PointIndex + 1]), Instruction.Color, SDPG_Foreground, Instruction.Thickness);
 						}
-						case EControlRigDrawSettings::LineStrip:
+						break;
+					}
+					case EControlRigDrawSettings::LineStrip:
+					{
+						const TArray<FVector>& Points = Instruction.Positions;
+						PDI->AddReserveLines(SDPG_Foreground, Points.Num() - 1, false, Instruction.Thickness > SMALL_NUMBER);
+						for (int32 PointIndex = 0; PointIndex < Points.Num() - 1; PointIndex++)
 						{
-							const TArray<FVector>& Points = Instruction.Positions;
-							PDI->AddReserveLines(SDPG_Foreground, Points.Num() - 1, false, Instruction.Thickness > SMALL_NUMBER);
-							for (int32 PointIndex = 0; PointIndex < Points.Num() - 1; PointIndex++)
-							{
-								PDI->DrawLine(InstructionTransform.TransformPosition(Points[PointIndex]), InstructionTransform.TransformPosition(Points[PointIndex + 1]), Instruction.Color, SDPG_Foreground, Instruction.Thickness);
-							}
-							break;
+							PDI->DrawLine(InstructionTransform.TransformPosition(Points[PointIndex]), InstructionTransform.TransformPosition(Points[PointIndex + 1]), Instruction.Color, SDPG_Foreground, Instruction.Thickness);
 						}
+						break;
 					}
 				}
 			}
@@ -1876,5 +1868,5 @@ uint32 FControlRigSceneProxy::GetMemoryFootprint(void) const
 
 uint32 FControlRigSceneProxy::GetAllocatedSize(void) const
 {
-	return FPrimitiveSceneProxy::GetAllocatedSize();
+	return FPrimitiveSceneProxy::GetAllocatedSize() + DrawInterface.GetAllocatedSize();
 }

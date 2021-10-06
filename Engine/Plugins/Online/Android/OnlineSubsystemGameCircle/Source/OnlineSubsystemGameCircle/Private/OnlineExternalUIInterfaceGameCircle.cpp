@@ -95,7 +95,7 @@ void FOnlineExternalUIGameCircle::GameActivityOnResume()
 				if (!PlayerId.IsValid())
 				{
 					FPlatformMisc::LowLevelOutputDebugString(TEXT("PlayerId from Identity Interface is Invalid"));
-					PlayerId = FUniqueNetIdGameCircle::Create();
+					PlayerId = MakeShareable(new FUniqueNetIdGameCircle());
 					Subsystem->GetIdentityGameCircle()->SetCurrentUserId(PlayerId);
 				}
 				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Executing ShowLoginUI Delegate if safe. PlayerId - %s  Index=%d"), *PlayerId->ToString(), ShowLoginControllerIndex);

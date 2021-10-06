@@ -5,8 +5,6 @@
 #include "DataprepAsset.h"
 #include "DataprepAssetInstance.h"
 #include "DataprepContentConsumer.h"
-#include "DataprepCoreLogCategory.h"
-#include "Shared/DataprepCorePrivateUtils.h"
 
 #include "AssetRegistryModule.h"
 #include "AssetTypeCategories.h"
@@ -24,7 +22,19 @@ UDataprepAssetFactory::UDataprepAssetFactory()
 
 bool UDataprepAssetFactory::ShouldShowInNewMenu() const
 {
-	return true;
+	// If there is no consumer don't show this factory
+	TArray< UClass* > PotentialClasses;
+	GetDerivedClasses( UDataprepContentConsumer::StaticClass(), PotentialClasses, true );
+
+	for ( UClass* ChildClass : PotentialClasses )
+	{
+		if ( ChildClass && !ChildClass->HasAnyClassFlags( CLASS_CompiledFromBlueprint | CLASS_Deprecated | CLASS_NewerVersionExists | CLASS_Abstract ) && ChildClass->HasAllClassFlags( CLASS_Native ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 UObject * UDataprepAssetFactory::FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext *Warn)
@@ -54,35 +64,31 @@ UObject * UDataprepAssetFactory::FactoryCreateNew(UClass* InClass, UObject* InPa
 		}
 	}
 
+	if(ConsumerClasses.Num() == 0)
+	{
+		return nullptr;
+	}
+
 	UDataprepAsset* DataprepAsset = NewObject<UDataprepAsset>(InParent, InClass, InName, Flags | RF_Transactional);
 	check(DataprepAsset);
 
-	if(ConsumerClasses.Num() > 0)
+	// Initialize Dataprep asset's consumer
+	if(ConsumerClasses.Num() == 1)
 	{
-		// Initialize Dataprep asset's consumer
-		if(ConsumerClasses.Num() == 1)
-		{
-			DataprepAsset->SetConsumer( ConsumerClasses[0], /* bNotifyChanges = */ false );
-		}
-		else
-		{
-			// #ueent_todo: Propose user to choose from the list of Consumers.
-			DataprepAsset->SetConsumer( ConsumerClasses[0], /* bNotifyChanges = */ false );
-		}
-		check( DataprepAsset->GetConsumer() );
+		DataprepAsset->SetConsumer( ConsumerClasses[0], /* bNotifyChanges = */ false );
 	}
 	else
 	{
-		UE_LOG( LogDataprepCore, Warning, TEXT("no Dataprep content consumers found") );
+		// #ueent_todo: Propose user to choose from the list of Consumers.
+		DataprepAsset->SetConsumer( ConsumerClasses[0], /* bNotifyChanges = */ false );
 	}
+	check( DataprepAsset->GetConsumer() );
 
 	DataprepAsset->CreateParameterization();
 
 	FAssetRegistryModule::AssetCreated( DataprepAsset );
 	DataprepAsset->MarkPackageDirty();
 
-	DataprepCorePrivateUtils::Analytics::DataprepAssetCreated( DataprepAsset );
-	
 	return DataprepAsset;
 }
 
@@ -101,19 +107,12 @@ UObject* UDataprepAssetInstanceFactory::FactoryCreateNew(UClass* InClass, UObjec
 	{
 		UDataprepAssetInstance* DataprepAssetInstance = NewObject<UDataprepAssetInstance>(InParent, InClass, InName, Flags);
 
-		if(DataprepAssetInstance)
+		if(DataprepAssetInstance && Parent->GetConsumer())
 		{
-			if (!Parent->GetConsumer())
-			{
-				UE_LOG( LogDataprepCore, Warning, TEXT("no Dataprep content consumers found") );
-			}
-
 			if(DataprepAssetInstance->SetParent(Parent, /* bNotifyChanges = */ false))
 			{
 				FAssetRegistryModule::AssetCreated( DataprepAssetInstance );
 				DataprepAssetInstance->MarkPackageDirty();
-
-				DataprepCorePrivateUtils::Analytics::DataprepAssetCreated( DataprepAssetInstance );
 
 				return DataprepAssetInstance;
 			}

@@ -19,7 +19,7 @@ class MOVIERENDERPIPELINESETTINGS_API UMoviePipelineBurnInSetting : public UMovi
 	GENERATED_BODY()
 
 	UMoviePipelineBurnInSetting()
-		: BurnInClass(DefaultBurnInWidgetAsset)
+		: BurnInClass(TEXT("/MovieRenderPipeline/Blueprints/DefaultBurnIn.DefaultBurnIn_C"))
 		, bCompositeOntoFinalImage(true)
 	{
 	}
@@ -43,8 +43,6 @@ public:
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(MetaClass="MoviePipelineBurnInWidget"), Category = "Widget Settings")
 	FSoftClassPath BurnInClass;
-
-	/** If true, the Burn In image will be composited into the Final Image pass. Doesn't apply to multi-layer EXR files. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (MetaClass = "MoviePipelineBurnInWidget"), Category = "Widget Settings")
 	bool bCompositeOntoFinalImage;
 
@@ -58,6 +56,4 @@ private:
 
 	UPROPERTY(Transient)
 	UMoviePipelineBurnInWidget* BurnInWidgetInstance;
-public:
-	static FString DefaultBurnInWidgetAsset;
 };

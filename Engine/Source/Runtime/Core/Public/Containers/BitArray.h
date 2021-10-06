@@ -987,7 +987,8 @@ public:
 		const int32 LocalNumBits = NumBits;
 
 		// Get the correct mask for the last word
-		uint32 Mask = GetLastWordMask();
+		uint32 SlackIndex = ((LocalNumBits - 1) % NumBitsPerDWORD) + 1;
+		uint32 Mask = ~0u >> (NumBitsPerDWORD - SlackIndex);
 
 		// Iterate over the array until we see a word with a zero bit.
 		uint32 DwordIndex = FBitSet::CalculateNumWords(LocalNumBits);
@@ -1065,7 +1066,8 @@ public:
 		const int32 LocalNumBits = NumBits;
 
 		// Get the correct mask for the last word
-		uint32 Mask = GetLastWordMask();
+		uint32 SlackIndex = ((LocalNumBits - 1) % NumBitsPerDWORD) + 1;
+		uint32 Mask = ~0u >> (NumBitsPerDWORD - SlackIndex);
 
 		// Iterate over the array until we see a word with a zero bit.
 		uint32 DwordIndex = FBitSet::CalculateNumWords(LocalNumBits);

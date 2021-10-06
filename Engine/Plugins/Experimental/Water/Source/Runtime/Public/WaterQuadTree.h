@@ -5,7 +5,6 @@
 #include "ConvexVolume.h"
 #include "Templates/RefCounting.h"
 
-class FMaterialRenderProxy;
 class UMaterialInterface;
 class HHitProxy;
 
@@ -177,7 +176,7 @@ struct FWaterQuadTree
 	/** Max depth of the tree */
 	int32 GetTreeDepth() const { return TreeDepth; }
 
-	const TArray<FMaterialRenderProxy*>& GetWaterMaterials() const { return WaterMaterials; }
+	const TArray<UMaterialInterface*>& GetWaterMaterials() const { return WaterMaterials; }
 
 	/** Calculate the world distance to a LOD */
 	static float GetLODDistance(int32 InLODLevel, float InLODScale)
@@ -274,7 +273,7 @@ private:
 		TArray<FWaterBodyRenderData> WaterBodyRenderData;
 	} NodeData;
 
-	TArray<FMaterialRenderProxy*> WaterMaterials;
+	TArray<UMaterialInterface*> WaterMaterials;
 
 	/** If true, the tree may not change */
 	bool bIsReadOnly = true;

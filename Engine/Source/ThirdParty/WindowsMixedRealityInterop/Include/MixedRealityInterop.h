@@ -82,10 +82,6 @@ struct MIXEDREALITYINTEROP_API MeshUpdate :
 	int NumIndices = 0;
 	/** The indices for the mesh */
 	void* Indices = nullptr;
-	int NumNormals = 0;
-	void* Normals = nullptr;
-
-	bool IsRightHandMesh = false;
 };
 
 /**
@@ -505,19 +501,12 @@ namespace WindowsMixedReality
 		wchar_t* GetFailureString();
 
 		// Spatial Mapping
-		bool StartSpatialMapping(float InTriangleDensity, float InVolumeSize, void(*StartFunctionPointer)(),
+		void StartSpatialMapping(float InTriangleDensity, float InVolumeSize, void(*StartFunctionPointer)(),
 			void(*AllocFunctionPointer)(MeshUpdate*),
 			void(*RemovedMeshPointer)(MeshUpdate*),
 			void(*FinishFunctionPointer)());
-		bool StopSpatialMapping();
+		void StopSpatialMapping();
 		//~ Spatial Mapping
-
-		// Hand Mesh
-		bool StartHandMesh(void(*StartFunctionPointer)(),
-			void(*AllocFunctionPointer)(MeshUpdate*),
-			void(*FinishFunctionPointer)());
-		void StopHandMesh();
-		//~ Hand Mesh
 
 		// Scene understanding
 		void StartSceneUnderstanding(
@@ -540,8 +529,8 @@ namespace WindowsMixedReality
 		WindowsMixedReality::HMDSpatialLocatability GetTrackingState();
 
 		// QR code tracking
-		bool StartQRCodeTracking(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*));
-		bool StopQRCodeTracking();
+		void StartQRCodeTracking(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*));
+		void StopQRCodeTracking();
 
 #if PLATFORM_HOLOLENS
 		void SetHolographicSpace(Windows::Graphics::Holographic::HolographicSpace^ inHolographicSpace);
@@ -620,8 +609,8 @@ public:
 	/** To route logging messages back to the UE_LOG() macros */
 	void SetOnLog(void(*FunctionPointer)(const wchar_t* LogMsg));
 
-	bool StartCameraCapture(void(*FunctionPointer)(void*, DirectX::XMFLOAT4X4), int DesiredWidth, int DesiredHeight, int DesiredFPS);
-	bool StopCameraCapture();
+	void StartCameraCapture(void(*FunctionPointer)(void*, DirectX::XMFLOAT4X4), int DesiredWidth, int DesiredHeight, int DesiredFPS);
+	void StopCameraCapture();
 
 	void NotifyReceivedFrame(void* handle, DirectX::XMFLOAT4X4 CamToTracking);
 

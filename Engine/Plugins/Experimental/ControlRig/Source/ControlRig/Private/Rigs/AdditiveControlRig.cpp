@@ -143,8 +143,8 @@ void UAdditiveControlRig::CreateRigElements(const USkeletalMesh* InReferenceMesh
 {
 	if (InReferenceMesh)
 	{
-		const USkeleton* Skeleton = InReferenceMesh->GetSkeleton();
-		CreateRigElements(InReferenceMesh->GetRefSkeleton(), (Skeleton) ? Skeleton->GetSmartNameContainer(USkeleton::AnimCurveMappingName) : nullptr);
+		USkeleton* Skeleton = InReferenceMesh->Skeleton;
+		CreateRigElements(InReferenceMesh->RefSkeleton, (Skeleton) ? Skeleton->GetSmartNameContainer(USkeleton::AnimCurveMappingName) : nullptr);
 	}
 }
 

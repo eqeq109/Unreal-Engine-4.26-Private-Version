@@ -3,22 +3,15 @@
 using Rhino;
 using Rhino.DocObjects;
 using Rhino.Geometry;
-using Rhino.Runtime;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace DatasmithRhino.Utils
+namespace DatasmithRhino
 {
-	public static class DatasmithRhinoUtilities
+	public static class FDatasmithRhinoUtilities
 	{
-		public static string GetNamedViewHash(ViewInfo NamedView)
-		{
-			return ComputeHashStringFromBytes(SerializeNamedView(NamedView));
-		}
-		
 		public static string GetMaterialHash(Material RhinoMaterial)
 		{
 			return ComputeHashStringFromBytes(SerializeMaterial(RhinoMaterial));
@@ -56,25 +49,6 @@ namespace DatasmithRhino.Utils
 			}
 
 			return Builder.ToString();
-		}
-
-		private static byte[] SerializeNamedView(ViewInfo NamedView)
-		{
-			using (MemoryStream Stream = new MemoryStream())
-			{
-				using (BinaryWriter Writer = new BinaryWriter(Stream))
-				{
-					Writer.Write(NamedView.Name);
-
-					ViewportInfo Viewport = NamedView.Viewport;
-					Writer.Write(Viewport.FrustumAspect);
-					SerializeVector3d(Writer, new Vector3d(Viewport.CameraLocation));
-					SerializeVector3d(Writer, Viewport.CameraDirection);
-					SerializeVector3d(Writer, Viewport.CameraUp);
-					Writer.Write(Viewport.Camera35mmLensLength);
-				}
-				return Stream.ToArray();
-			}
 		}
 
 		private static byte[] SerializeMaterial(Material RhinoMaterial)
@@ -149,13 +123,6 @@ namespace DatasmithRhino.Utils
 			SerializeTransform(Writer, RhinoTexture.UvwTransform);
 		}
 
-		private static void SerializeVector3d(BinaryWriter Writer, Vector3d Vector)
-		{
-			Writer.Write(Vector.X);
-			Writer.Write(Vector.Y);
-			Writer.Write(Vector.Z);
-		}
-
 		private static void SerializeTransform(BinaryWriter Writer, Rhino.Geometry.Transform RhinoTransform)
 		{
 			Writer.Write(RhinoTransform.M00);
@@ -181,9 +148,9 @@ namespace DatasmithRhino.Utils
 			return Radian * (180 / Math.PI);
 		}
 
-		public static Transform GetCommonObjectTransform(CommonObject InCommonObject)
+		public static Transform GetModelComponentTransform(ModelComponent RhinoModelComponent)
 		{
-			switch (InCommonObject)
+			switch (RhinoModelComponent)
 			{
 				case InstanceObject InInstance:
 					return InInstance.InstanceXform;
@@ -194,9 +161,6 @@ namespace DatasmithRhino.Utils
 
 				case LightObject InLightObject:
 					return GetLightTransform(InLightObject.LightGeometry);
-
-				case ViewportInfo InViewportInfo:
-					return Transform.Translation(new Vector3d(InViewportInfo.CameraLocation));
 
 				default:
 					return Transform.Identity;
@@ -239,40 +203,7 @@ namespace DatasmithRhino.Utils
 			return TranslationTransform * RotationTransform;
 		}
 
-		/// <summary>
-		/// Center the given meshes on the pivot determined from the union of their bounding boxes. Returns the pivot point.
-		/// </summary>
-		/// <param name="RhinoMeshes"></param>
-		/// <returns>The pivot point on which the Mesh was centered</returns>
-		public static Vector3d CenterMeshesOnPivot(IEnumerable<Mesh> RhinoMeshes)
-		{
-			BoundingBox MeshesBoundingBox = BoundingBox.Empty;
-
-			foreach (Mesh CurrentMesh in RhinoMeshes)
-			{
-				const bool bAccurate = true;
-
-				if(MeshesBoundingBox.IsValid)
-				{
-					MeshesBoundingBox.Union(CurrentMesh.GetBoundingBox(bAccurate));
-				}
-				else
-				{
-					MeshesBoundingBox = CurrentMesh.GetBoundingBox(bAccurate);
-				}
-			}
-
-			Vector3d PivotPoint = new Vector3d(MeshesBoundingBox.Center.X, MeshesBoundingBox.Center.Y, MeshesBoundingBox.Center.Z);
-			
-			foreach (Mesh CurrentMesh in RhinoMeshes)
-			{
-				CurrentMesh.Translate(-PivotPoint);
-			}
-
-			return PivotPoint;
-		}
-
-		public static string EvaluateAttributeUserText(DatasmithActorInfo InNode, string ValueFormula)
+		public static string EvaluateAttributeUserText(RhinoSceneHierarchyNode InNode, string ValueFormula)
 		{
 			if (!ValueFormula.StartsWith("%<") || !ValueFormula.EndsWith(">%"))
 			{
@@ -280,19 +211,19 @@ namespace DatasmithRhino.Utils
 				return ValueFormula;
 			}
 
-			RhinoObject NodeObject = InNode.RhinoCommonObject as RhinoObject;
+			RhinoObject NodeObject = InNode.Info.RhinoModelComponent as RhinoObject;
 			RhinoObject ParentObject = null;
-			DatasmithActorInfo CurrentNode = InNode;
-			while (CurrentNode.DefinitionNode != null)
+			RhinoSceneHierarchyNode CurrentNode = InNode;
+			while (CurrentNode.LinkedNode != null)
 			{
-				CurrentNode = CurrentNode.DefinitionNode;
-				ParentObject = CurrentNode.RhinoCommonObject as RhinoObject;
+				CurrentNode = CurrentNode.LinkedNode;
+				ParentObject = CurrentNode.Info.RhinoModelComponent as RhinoObject;
 			}
 
 			// In case this is an instance of a block sub-object, the ID held in the formula may not have been updated
 			// with the definition object ID. We need to replace the ID with the definition object ID, otherwise the formula
 			// will not evaluate correctly.
-			if (InNode.DefinitionNode != null && !InNode.DefinitionNode.bIsRoot)
+			if (InNode.LinkedNode != null && !InNode.LinkedNode.bIsRoot)
 			{
 				int IdStartIndex = ValueFormula.IndexOf("(\"") + 2;
 				int IdEndIndex = ValueFormula.IndexOf("\")");

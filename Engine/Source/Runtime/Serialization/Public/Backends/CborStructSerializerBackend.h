@@ -42,7 +42,6 @@ public:
 	virtual void EndStructure(const FStructSerializerState& State) override;
 	virtual void WriteComment(const FString& Comment) override;
 	virtual void WriteProperty(const FStructSerializerState& State, int32 ArrayIndex = 0) override;
-	virtual bool WritePODArray(const FStructSerializerState& State) override;
 
 private:
 	/** Holds the Cbor writer used for the actual serialization. */

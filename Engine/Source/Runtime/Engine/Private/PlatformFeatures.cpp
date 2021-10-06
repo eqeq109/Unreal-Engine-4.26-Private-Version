@@ -19,6 +19,11 @@ IDVRStreamingSystem* IPlatformFeaturesModule::GetStreamingSystem()
 	return &GenericStreamingSystem;
 }
 
+TSharedPtr<const class FJsonObject> IPlatformFeaturesModule::GetTitleSettings()
+{
+	return nullptr;
+}
+
 FString IPlatformFeaturesModule::GetUniqueAppId()
 {
 	return FString();

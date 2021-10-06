@@ -14,22 +14,17 @@ public:
 
 	FDisplayClusterConfiguratorTreeItemCluster(const FName& InName,
 		const TSharedRef<IDisplayClusterConfiguratorViewTree>& InViewTree,
-		const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit,
+		const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit,
 		UObject* InObjectToEdit,
 		FString InIconStyle,
 		bool InbRoot = false);
 
 	//~ Begin IDisplayClusterConfiguratorTreeItem Interface
-	virtual void OnItemDoubleClicked() override;
-	virtual void OnMouseEnter() override;
-	virtual void OnMouseLeave() override;
-	virtual bool IsHovered() const override;
-
 	virtual FName GetRowItemName() const override { return Name; }
 	virtual FString GetIconStyle() const override { return IconStyle; }
 	//~ End IDisplayClusterConfiguratorTreeItem Interface
 
-protected:
+private:
 	FName Name;
 	FString IconStyle;
 };

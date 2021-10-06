@@ -22,7 +22,7 @@ public:
 	}
 
 public:
-	FUniqueNetIdPtr UserID;
+	TSharedPtr<const FUniqueNetId> UserID;
 	IOnlineSubsystem* const OnlineSub;
 	const TCHAR* FunctionContext;
 };

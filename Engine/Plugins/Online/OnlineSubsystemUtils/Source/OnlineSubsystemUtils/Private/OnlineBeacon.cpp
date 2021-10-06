@@ -34,14 +34,7 @@ void AOnlineBeacon::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (NetDriver)
 	{
-		if (NetDriver->IsInTick())
-		{
-			NetDriver->SetPendingDestruction(true);
-		}
-		else
-		{
-			GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
-		}
+		GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
 		NetDriver = nullptr;
 	}
 
@@ -61,14 +54,7 @@ void AOnlineBeacon::DestroyBeacon()
 
 	if (NetDriver)
 	{
-		if (NetDriver->IsInTick())
-		{
-			NetDriver->SetPendingDestruction(true);
-		}
-		else
-		{ 
-			GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
-		}
+		GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
 		NetDriver = nullptr;
 	}
 
@@ -90,14 +76,7 @@ void AOnlineBeacon::OnFailure()
 	
 	if (NetDriver)
 	{
-		if (NetDriver->IsInTick())
-		{
-			NetDriver->SetPendingDestruction(true);
-		}
-		else
-		{
-			GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
-		}
+		GEngine->DestroyNamedNetDriver(GetWorld(), NetDriverName);
 		NetDriver = nullptr;
 	}
 }

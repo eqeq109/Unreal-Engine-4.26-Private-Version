@@ -6,6 +6,7 @@
 #if RHI_RAYTRACING
 
 #include "ClearQuad.h"
+#include "PathTracingUniformBuffers.h"
 #include "SceneRendering.h"
 #include "RenderGraphBuilder.h"
 #include "RenderTargetPool.h"
@@ -42,16 +43,16 @@ static TAutoConsoleVariable<int32> CVarRayTracingShadowsEnableTwoSidedGeometry(
 
 static TAutoConsoleVariable<int32> CVarRayTracingTransmissionSamplingDistanceCulling(
 	TEXT("r.RayTracing.Transmission.TransmissionSamplingDistanceCulling"),
-	1,
-	TEXT("Enables visibility testing to cull transmission sampling distance (default = 1)"),
+	0,
+	TEXT("Enables visibility testing to cull transmission sampling distance (default = 0)"),
 	ECVF_RenderThreadSafe
 );
 
 static TAutoConsoleVariable<int32> CVarRayTracingTransmissionSamplingTechnique(
 	TEXT("r.RayTracing.Transmission.SamplingTechnique"),
-	1,
-	TEXT("0: Uses constant tracking of an infinite homogeneous medium\n")
-	TEXT("1: Uses constant tracking of a finite homogeneous medium whose extent is determined by transmission sampling distance (default)"),
+	0,
+	TEXT("0: Uses constant tracking of an infinite homogeneous medium (default)\n")
+	TEXT("1: Uses constant tracking of a finite homogeneous medium whose extent is determined by transmission sampling distance"),
 	ECVF_RenderThreadSafe
 );
 
@@ -82,14 +83,6 @@ static TAutoConsoleVariable<int32> CVarRayTracingShadowsLODTransitionEnd(
 	TEXT("The end of an LOD transition range (default = 5000)"),
 	ECVF_RenderThreadSafe
 );
-
-static TAutoConsoleVariable<int32> CVarRayTracingShadowsAcceptFirstHit(
-	TEXT("r.RayTracing.Shadows.AcceptFirstHit"),
-	0,
-	TEXT("Whether to allow shadow rays to terminate early, on first intersected primitive. This may result in worse denoising quality in some cases. (default = 0)"),
-	ECVF_RenderThreadSafe
-);
-
 
 bool EnableRayTracingShadowTwoSidedGeometry()
 {
@@ -149,7 +142,6 @@ class FOcclusionRGS : public FGlobalShader
 		SHADER_PARAMETER(uint32, bTransmissionSamplingDistanceCulling)
 		SHADER_PARAMETER(uint32, TransmissionSamplingTechnique)
 		SHADER_PARAMETER(uint32, RejectionSamplingTrials)
-		SHADER_PARAMETER(uint32, bAcceptFirstHit)
 
 		SHADER_PARAMETER_STRUCT(FLightShaderParameters, Light)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
@@ -283,7 +275,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingShadows(
 		PassParameters->TraceDistance = LightSceneProxy->GetTraceDistance();
 		PassParameters->LODTransitionStart = CVarRayTracingShadowsLODTransitionStart.GetValueOnRenderThread();
 		PassParameters->LODTransitionEnd = CVarRayTracingShadowsLODTransitionEnd.GetValueOnRenderThread();
-		PassParameters->bAcceptFirstHit = CVarRayTracingShadowsAcceptFirstHit.GetValueOnRenderThread();
 		PassParameters->TLAS = View.RayTracingScene.RayTracingSceneRHI->GetShaderResourceView();
 		PassParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTextures;

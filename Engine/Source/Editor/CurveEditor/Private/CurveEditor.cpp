@@ -300,11 +300,6 @@ void FCurveEditor::SetTreeSelection(TArray<FCurveEditorTreeItemID>&& TreeItems)
 	Tree.SetDirectSelection(MoveTemp(TreeItems), this);
 }
 
-void FCurveEditor::RemoveFromTreeSelection(TArrayView<const FCurveEditorTreeItemID> TreeItems)
-{
-	Tree.RemoveFromSelection(TreeItems, this);
-}
-
 ECurveEditorTreeSelectionState FCurveEditor::GetTreeSelectionState(FCurveEditorTreeItemID InTreeItemID) const
 {
 	return Tree.GetSelectionState(InTreeItemID);
@@ -329,19 +324,16 @@ bool FCurveEditor::ShouldAutoFrame() const
 void FCurveEditor::BindCommands()
 {
 	UCurveEditorSettings* CurveSettings = Settings;
-		
+
 	CommandList->MapAction(FGenericCommands::Get().Undo,   FExecuteAction::CreateLambda([]{ GEditor->UndoTransaction(); }));
 	CommandList->MapAction(FGenericCommands::Get().Redo,   FExecuteAction::CreateLambda([]{ GEditor->RedoTransaction(); }));
 	CommandList->MapAction(FGenericCommands::Get().Delete, FExecuteAction::CreateSP(this, &FCurveEditor::DeleteSelection));
 
 	CommandList->MapAction(FGenericCommands::Get().Cut, FExecuteAction::CreateSP(this, &FCurveEditor::CutSelection));
 	CommandList->MapAction(FGenericCommands::Get().Copy, FExecuteAction::CreateSP(this, &FCurveEditor::CopySelection));
-	CommandList->MapAction(FGenericCommands::Get().Paste, FExecuteAction::CreateSP(this, &FCurveEditor::PasteKeys, TSet<FCurveModelID>()));
+	CommandList->MapAction(FGenericCommands::Get().Paste, FExecuteAction::CreateSP(this, &FCurveEditor::PasteKeys));
 
 	CommandList->MapAction(FCurveEditorCommands::Get().ZoomToFit, FExecuteAction::CreateSP(this, &FCurveEditor::ZoomToFit, EAxisList::All));
-
-	CommandList->MapAction(FCurveEditorCommands::Get().ToggleExpandCollapseNodes, FExecuteAction::CreateSP(this, &FCurveEditor::ToggleExpandCollapseNodes, false));
-	CommandList->MapAction(FCurveEditorCommands::Get().ToggleExpandCollapseNodesAndDescendants, FExecuteAction::CreateSP(this, &FCurveEditor::ToggleExpandCollapseNodes, true));
 
 	CommandList->MapAction(FCurveEditorCommands::Get().StepToNextKey, FExecuteAction::CreateSP(this, &FCurveEditor::StepToNextKey));
 	CommandList->MapAction(FCurveEditorCommands::Get().StepToPreviousKey, FExecuteAction::CreateSP(this, &FCurveEditor::StepToPreviousKey));
@@ -349,10 +341,6 @@ void FCurveEditor::BindCommands()
 	CommandList->MapAction(FCurveEditorCommands::Get().StepBackward, FExecuteAction::CreateSP(this, &FCurveEditor::StepBackward), EUIActionRepeatMode::RepeatEnabled);
 	CommandList->MapAction(FCurveEditorCommands::Get().JumpToStart, FExecuteAction::CreateSP(this, &FCurveEditor::JumpToStart));
 	CommandList->MapAction(FCurveEditorCommands::Get().JumpToEnd, FExecuteAction::CreateSP(this, &FCurveEditor::JumpToEnd));
-
-	CommandList->MapAction(FCurveEditorCommands::Get().SetSelectionRangeStart, FExecuteAction::CreateSP(this, &FCurveEditor::SetSelectionRangeStart));
-	CommandList->MapAction(FCurveEditorCommands::Get().SetSelectionRangeEnd, FExecuteAction::CreateSP(this, &FCurveEditor::SetSelectionRangeEnd));
-	CommandList->MapAction(FCurveEditorCommands::Get().ClearSelectionRange, FExecuteAction::CreateSP(this, &FCurveEditor::ClearSelectionRange));
 
 	{
 		FExecuteAction   ToggleInputSnapping     = FExecuteAction::CreateSP(this,   &FCurveEditor::ToggleInputSnapping);
@@ -399,9 +387,7 @@ void FCurveEditor::BindCommands()
 
 	// Deactivate Current Tool
 	CommandList->MapAction(FCurveEditorCommands::Get().DeactivateCurrentTool,
-		FExecuteAction::CreateSP(this, &FCurveEditor::MakeToolActive, FCurveEditorToolID::Unset()),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateLambda( [this]{ return ActiveTool.IsSet() == false; } ) );
+		FExecuteAction::CreateSP(this, &FCurveEditor::MakeToolActive, FCurveEditorToolID::Unset()));
 		
 	// Bind commands for Editor Extensions
 	for (TSharedRef<ICurveEditorExtension> Extension : EditorExtensions)
@@ -787,55 +773,6 @@ void FCurveEditor::JumpToEnd()
 	WeakTimeSliderController.Pin()->SetScrubPosition(WeakTimeSliderController.Pin()->GetPlayRange().GetUpperBoundValue());
 }
 
-void FCurveEditor::SetSelectionRangeStart()
-{
-	if (!WeakTimeSliderController.IsValid())
-	{
-		return;
-	}
-
-	FFrameNumber LocalTime = WeakTimeSliderController.Pin()->GetScrubPosition().FrameNumber;
-	FFrameNumber UpperBound = WeakTimeSliderController.Pin()->GetSelectionRange().GetUpperBoundValue();
-	if (UpperBound <= LocalTime)
-	{
-		WeakTimeSliderController.Pin()->SetSelectionRange(TRange<FFrameNumber>(LocalTime, LocalTime + 1));
-	}
-	else
-	{
-		WeakTimeSliderController.Pin()->SetSelectionRange(TRange<FFrameNumber>(LocalTime, UpperBound));
-	}
-}
-
-void FCurveEditor::SetSelectionRangeEnd()
-{
-	if (!WeakTimeSliderController.IsValid())
-	{
-		return;
-	}
-
-	FFrameNumber LocalTime = WeakTimeSliderController.Pin()->GetScrubPosition().FrameNumber;
-	FFrameNumber LowerBound = WeakTimeSliderController.Pin()->GetSelectionRange().GetLowerBoundValue();
-	if (LowerBound >= LocalTime)
-	{
-		WeakTimeSliderController.Pin()->SetSelectionRange(TRange<FFrameNumber>(LocalTime - 1, LocalTime));
-	}
-	else
-	{
-		WeakTimeSliderController.Pin()->SetSelectionRange(TRange<FFrameNumber>(LowerBound, LocalTime));
-	}
-}
-
-void FCurveEditor::ClearSelectionRange()
-{
-	if (!WeakTimeSliderController.IsValid())
-	{
-		return;
-	}
-
-	WeakTimeSliderController.Pin()->SetSelectionRange(TRange<FFrameNumber>::Empty());
-}
-
-
 bool FCurveEditor::IsInputSnappingEnabled() const
 {
 	return InputSnapEnabledAttribute.Get();
@@ -872,12 +809,6 @@ void FCurveEditor::ToggleOutputSnapping()
 	{
 		OnOutputSnapEnabledChanged.ExecuteIfBound(NewValue);
 	}
-}
-
-void
-FCurveEditor::ToggleExpandCollapseNodes(bool bRecursive)
-{
-	Tree.ToggleExpansionState(bRecursive);
 }
 
 FCurveEditorScreenSpaceH FCurveEditor::GetPanelInputSpace() const
@@ -1107,7 +1038,7 @@ void FCurveEditor::ImportCopyBufferFromText(const FString& TextToImport, /*out*/
 	TempPackage->RemoveFromRoot();
 }
 
-void FCurveEditor::PasteKeys(TSet<FCurveModelID> CurveModelIDs)
+void FCurveEditor::PasteKeys()
 {
 	// Grab the text to paste from the clipboard
 	FString TextToImport;
@@ -1119,25 +1050,6 @@ void FCurveEditor::PasteKeys(TSet<FCurveModelID> CurveModelIDs)
 	if (ImportedCopyBuffers.Num() == 0)
 	{
 		return;
-	}
-
-	// Determine whether all the copied keys are from the same curve, if yes, they can all be pasted to the target curves without name matching
-	bool bAllCopiedCurvesLongNameEqual = true;
-	FString AllCopiedCurvesLongName;
-	for (UCurveEditorCopyBuffer* CopyBuffer : ImportedCopyBuffers)
-	{
-		for (UCurveEditorCopyableCurveKeys* CopyableCurveKeys : CopyBuffer->Curves)
-		{
-			if (AllCopiedCurvesLongName.IsEmpty())
-			{
-				AllCopiedCurvesLongName = CopyableCurveKeys->LongDisplayName;
-			}
-			else if (CopyableCurveKeys->LongDisplayName != AllCopiedCurvesLongName)
-			{
-				bAllCopiedCurvesLongNameEqual = false;
-				break;
-			}			
-		}
 	}
 
 	bool bSelectionNeedsLongNames = false;
@@ -1165,67 +1077,16 @@ void FCurveEditor::PasteKeys(TSet<FCurveModelID> CurveModelIDs)
 		}
 	}
 
-	if (CurveModelIDs.Num() == 0)
+	TArray<FCurveEditorTreeItemID> NodesToSearch;
+	if (GetTreeSelection().GetKeys(NodesToSearch) == 0)
 	{
-		TOptional<FCurveModelID> HoveredID;
-		if (WeakPanel.IsValid())
+		// If no curves are selected, paste to the entire tree using fully qualifed long names
+		bSelectionNeedsLongNames = true;
+		if (Tree.GetAllItems().GetKeys(NodesToSearch) == 0)
 		{
-			for (TSharedPtr<SCurveEditorView> View : WeakPanel.Pin()->GetViews())
-			{
-				if (View.IsValid() && View->GetHoveredCurve().IsSet())
-				{
-					HoveredID = View->GetHoveredCurve().GetValue();
-					break;
-				}
-			}
+			// If we don't have any curves to paste in to, exit now
+			return;
 		}
-	
-		if (HoveredID.IsSet())
-		{
-			CurveModelIDs.Add(HoveredID.GetValue());
-		}
-		else
-		{
-			TArray<FCurveEditorTreeItemID> NodesToSearch;
-
-			// Try nodes with selected keys
-			GetTreeSelection().GetKeys(NodesToSearch);
-
-			// Try selected nodes
-			if (NodesToSearch.Num() == 0)
-			{
-				for (const TTuple<FCurveEditorTreeItemID, ECurveEditorTreeSelectionState>& Pair : GetTreeSelection())
-				{
-					NodesToSearch.Add(Pair.Key);
-				}
-			}
-
-			// If no curves are selected, paste to the entire tree using fully qualified long names
-			if (NodesToSearch.Num() == 0)
-			{
-				bSelectionNeedsLongNames = true;
-				bAllCopiedCurvesLongNameEqual = false;
-				if (Tree.GetAllItems().GetKeys(NodesToSearch) == 0)
-				{
-					// If we don't have any curves to paste in to, exit now
-					return;
-				}
-			}
-
-			for (const FCurveEditorTreeItemID& TreeItemID: NodesToSearch)
-			{
-				FCurveEditorTreeItem& TreeItem = GetTreeItem(TreeItemID);
-				for (const FCurveModelID& CurveModelID : TreeItem.GetCurves())
-				{
-					CurveModelIDs.Add(CurveModelID);
-				}
-			}
-		}
-	}
-	
-	if (CurveModelIDs.Num() == 0)
-	{
-		return;
 	}
 
 	FScopedTransaction Transaction(LOCTEXT("PasteKeys", "Paste Keys"));
@@ -1273,18 +1134,18 @@ void FCurveEditor::PasteKeys(TSet<FCurveModelID> CurveModelIDs)
 			}
 		}
 
-		for (FCurveModelID CurveID : CurveModelIDs)
+		for (const FCurveEditorTreeItemID& TreeItemID: NodesToSearch)
 		{
-			FCurveModel* Curve = FindCurve(CurveID);
-			if (Curve)
+			FCurveEditorTreeItem& TreeItem = GetTreeItem(TreeItemID);
+			for (const FCurveModelID& CurveModelID : TreeItem.GetCurves())
 			{
+				FCurveModel* Curve = FindCurve(CurveModelID);
 				const FString CurveLongDisplayName = Curve->GetLongDisplayName().ToString();
 				const FString CurveIntentionName = Curve->GetIntentionName();
 
 				for (UCurveEditorCopyableCurveKeys* CopyableCurveKeys : CopyBuffer->Curves)
 				{
-					if (bAllCopiedCurvesLongNameEqual ||
-						(!bUseLongDisplayName && CurveIntentionName.Equals(CopyableCurveKeys->IntentionName))
+					if ((!bUseLongDisplayName && CurveIntentionName.Equals(CopyableCurveKeys->IntentionName))
 						|| (bUseLongDisplayName && CurveLongDisplayName.Equals(CopyableCurveKeys->LongDisplayName)))
 					{
 						for (int32 Index = 0; Index < CopyableCurveKeys->KeyPositions.Num(); ++Index)
@@ -1298,7 +1159,7 @@ void FCurveEditor::PasteKeys(TSet<FCurveModelID> CurveModelIDs)
 							TOptional<FKeyHandle> KeyHandle = Curve->AddKey(KeyPosition, CopyableCurveKeys->KeyAttributes[Index]);
 							if (KeyHandle.IsSet())
 							{
-								Selection.Add(FCurvePointHandle(CurveID, ECurvePointType::Key, KeyHandle.GetValue()));
+								Selection.Add(FCurvePointHandle(CurveModelID, ECurvePointType::Key, KeyHandle.GetValue()));
 							}
 						}
 					}

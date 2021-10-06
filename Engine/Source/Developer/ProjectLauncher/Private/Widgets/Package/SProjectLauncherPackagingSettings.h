@@ -53,9 +53,6 @@ private:
 	void HandleUseIoStoreCheckStateChanged(ECheckBoxState NewState);
 	ECheckBoxState HandleUseIoStoreCheckBoxIsChecked() const;
 
-	void HandleMakeBinaryConfigCheckStateChanged(ECheckBoxState NewState);
-	ECheckBoxState HandleMakeBinaryConfigCheckBoxIsChecked() const;
-
 	// Callback for getting the content text of the 'Directory' label.
 	FText HandleDirectoryTitleText() const;
 	FText HandleDirectoryPathText() const;

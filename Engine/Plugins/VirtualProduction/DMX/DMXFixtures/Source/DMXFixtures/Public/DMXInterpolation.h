@@ -26,8 +26,6 @@ struct FInterpolationData
 	float SpeedIncMax;
 	float SpeedMinimum;
 	
-	bool bFirstValueWasSet;
-
 	FInterpolationData()
 	{
 		IsUpdating = false;
@@ -46,24 +44,22 @@ struct FInterpolationData
 		SpeedIncMin = 15.0f;
 		SpeedIncMid = 20.0f;
 		SpeedIncMax = 30.0f;
-
-		bFirstValueWasSet = false;
 	}
 
-	bool IsTargetValid(float Value, float SkipThreshold) const
+	bool IsTargetValid(float Value, float SkipThreshold)
 	{
-		return FMath::Abs(TargetValue - Value) >= SkipThreshold;
+		return (FMath::Abs(TargetValue - Value) >= SkipThreshold);
 	}
 
-	void SetValueNoInterp(float NewValue)
+	void SetTarget(float NewValue)
 	{
 		CurrentValue = NewValue;
 		TargetValue = NewValue;
 	}
 
-	bool IsInterpolationDone() const
+	bool IsInterpolationDone()
 	{
-		return ToTravel < 0.05f;
+		return (ToTravel < 0.05f);
 	}
 
 	void EndInterpolation()
@@ -164,6 +160,8 @@ struct FInterpolationData
 	}
 
 };
+
+
 
 struct FCell
 {

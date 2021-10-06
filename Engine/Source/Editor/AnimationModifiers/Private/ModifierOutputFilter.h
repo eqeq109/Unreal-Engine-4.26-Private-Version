@@ -40,7 +40,7 @@ public:
 	{
 		if (CategoryNames.Contains(Category))
 		{
-			FString::operator+=(ToString(Verbosity));
+			FString::operator+=(FOutputDeviceHelper::VerbosityToString(Verbosity));
 			FString::operator+=((TCHAR*)TEXT(": "));
 			Super::Serialize(InData, Verbosity, Category);
 

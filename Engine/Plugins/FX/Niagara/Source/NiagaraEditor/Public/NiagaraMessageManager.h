@@ -126,7 +126,7 @@ public:
 
 	NIAGARAEDITOR_API void RegisterMessageTopic(FName TopicName);
 	NIAGARAEDITOR_API void RegisterAdditionalMessageLogTopic(FName MessageLogTopicName);
-	uint32 GetMessageTopicBitflag(FName TopicName);
+	uint32 GetMessageTopicBitflag(FName TopicName) const;
 
 	NIAGARAEDITOR_API FNiagaraMessageTopicRegistrationHandle::FOnRequestRefresh& SubscribeToAssetMessagesByTopic(
 		  const FText& DebugNameText

@@ -1,18 +1,18 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneFloatSection.h"
+#include "Tracks/MovieSceneFloatTrack.h"
+#include "UObject/SequencerObjectVersion.h"
 #include "Channels/MovieSceneChannelProxy.h"
-#include "EntitySystem/BuiltInComponentTypes.h"
-#include "EntitySystem/MovieSceneEntityBuilder.h"
-#include "EntitySystem/MovieSceneEntityManager.h"
-#include "Evaluation/MovieSceneEvaluationCustomVersion.h"
-#include "Evaluation/MovieScenePropertyTemplate.h"
 #include "MovieSceneCommonHelpers.h"
+#include "Evaluation/MovieScenePropertyTemplate.h"
+#include "Evaluation/MovieSceneEvaluationCustomVersion.h"
+
+#include "EntitySystem/MovieSceneEntityManager.h"
+#include "EntitySystem/MovieSceneEntityBuilder.h"
+#include "EntitySystem/BuiltInComponentTypes.h"
 #include "MovieSceneTracksComponentTypes.h"
 #include "Systems/MovieSceneFloatPropertySystem.h"
-#include "Tracks/MovieSceneFloatTrack.h"
-#include "Tracks/MovieScenePropertyTrack.h"
-#include "UObject/SequencerObjectVersion.h"
 
 UMovieSceneFloatSection::UMovieSceneFloatSection( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )
@@ -42,12 +42,6 @@ EMovieSceneChannelProxyType UMovieSceneFloatSection::CacheChannelProxy()
 	return EMovieSceneChannelProxyType::Static;
 }
 
-bool UMovieSceneFloatSection::PopulateEvaluationFieldImpl(const TRange<FFrameNumber>& EffectiveRange, const FMovieSceneEvaluationFieldEntityMetaData& InMetaData, FMovieSceneEntityComponentFieldBuilder* OutFieldBuilder)
-{
-	FMovieScenePropertyTrackEntityImportHelper::PopulateEvaluationField(*this, EffectiveRange, InMetaData, OutFieldBuilder);
-	return true;
-}
-
 void UMovieSceneFloatSection::ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity)
 {
 	using namespace UE::MovieScene;
@@ -57,10 +51,28 @@ void UMovieSceneFloatSection::ImportEntityImpl(UMovieSceneEntitySystemLinker* En
 		return;
 	}
 
-	const FBuiltInComponentTypes* Components = FBuiltInComponentTypes::Get();
-	const FMovieSceneTracksComponentTypes* TracksComponents = FMovieSceneTracksComponentTypes::Get();
+	FGuid ObjectBindingID = Params.GetObjectBindingID();
 
-	FPropertyTrackEntityImportHelper(TracksComponents->Float)
-		.Add(Components->FloatChannel[0], &FloatCurve)
-		.Commit(this, Params, OutImportedEntity);
+	FBuiltInComponentTypes* Components = FBuiltInComponentTypes::Get();
+	FMovieSceneTracksComponentTypes* TracksComponents = FMovieSceneTracksComponentTypes::Get();
+
+	if (UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(GetOuter()))
+	{
+		OutImportedEntity->AddBuilder(
+			FEntityBuilder()
+			.Add(Components->FloatChannel[0], &FloatCurve)
+			.Add(Components->PropertyBinding, PropertyTrack->GetPropertyBinding())
+			.AddConditional(Components->GenericObjectBinding, ObjectBindingID, ObjectBindingID.IsValid())
+			.AddTag(TracksComponents->Float.PropertyTag)
+		);
+	}
+	else
+	{
+		OutImportedEntity->AddBuilder(
+			FEntityBuilder()
+			.Add(Components->FloatChannel[0], &FloatCurve)
+			.AddConditional(Components->GenericObjectBinding, ObjectBindingID, ObjectBindingID.IsValid())
+			.AddTag(TracksComponents->Float.PropertyTag)
+		);
+	}
 }

@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/STakeRecorderCockpit.h"
-#include "Widgets/SOverlay.h"
 #include "Widgets/TakeRecorderWidgetConstants.h"
 #include "Widgets/STakeRecorderTabContent.h"
 #include "TakesCoreBlueprintLibrary.h"
@@ -132,8 +131,6 @@ void STakeRecorderCockpit::Construct(const FArguments& InArgs)
 
 	LevelSequenceAttribute = InArgs._LevelSequence;
 
-	TakeRecorderModeAttribute = InArgs._TakeRecorderMode;
-
 	CacheMetaData();
 
 	if (TakeMetaData && !TakeMetaData->IsLocked())
@@ -158,8 +155,6 @@ void STakeRecorderCockpit::Construct(const FArguments& InArgs)
 
 	int32 Column[] = { 0, 1, 2 };
 	int32 Row[]    = { 0, 1, 2 };
-
-	TSharedPtr<SOverlay> OverlayHolder;
 
 	ChildSlot
 	[
@@ -275,7 +270,7 @@ void STakeRecorderCockpit::Construct(const FArguments& InArgs)
 				.VAlign(VAlign_Center)
 				.AutoWidth()
 				[
-					SAssignNew(OverlayHolder,SOverlay)
+					SNew(SOverlay)
 
 					+ SOverlay::Slot()
 					[
@@ -446,27 +441,14 @@ void STakeRecorderCockpit::Construct(const FArguments& InArgs)
 		]
 		]
 	];
-
-	ITakeRecorderModule& TakeRecorderModule = FModuleManager::Get().LoadModuleChecked<ITakeRecorderModule>("TakeRecorder");
-	TArray<TSharedRef<SWidget>> OutExtensions;
-	TakeRecorderModule.GetRecordButtonExtensionGenerators().Broadcast(OutExtensions);
-	for (const TSharedRef<SWidget>& Widget : OutExtensions)
-	{
-		OverlayHolder->AddSlot()
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				Widget
-			];
-	}
 }
 
-bool STakeRecorderCockpit::CanStartRecording(FText& OutErrorText) const
+bool STakeRecorderCockpit::CanStartRecording(FText* OutErrorText) const
 {
 	bool bCanRecord = CanRecord();
-	if (!bCanRecord)
+	if (!bCanRecord && OutErrorText)
 	{
-		OutErrorText = RecordErrorText;
+		*OutErrorText = RecordErrorText;
 	}
 	return bCanRecord;
 }
@@ -508,7 +490,7 @@ void STakeRecorderCockpit::UpdateRecordError()
 		return;
 	}
 
-	if (!Sequence->HasAnyFlags(RF_Transient) && TakeRecorderModeAttribute.Get() != ETakeRecorderMode::RecordIntoSequence)
+	if (!Sequence->HasAnyFlags(RF_Transient))
 	{
 		RecordErrorText = FText();
 		return;
@@ -546,8 +528,6 @@ void STakeRecorderCockpit::UpdateRecordError()
 		RecordErrorText = FText::Format(LOCTEXT("ErrorWidget_TooLong", "The path to the asset is too long ({0} characters), the maximum is {1}.\nPlease choose a shorter name for the slate or create it in a shallower folder structure with shorter folder names."), FText::AsNumber(PackageName.Len()), FText::AsNumber(MaxLength));
 		return;
 	}
-	ITakeRecorderModule& TakeRecorderModule = FModuleManager::Get().LoadModuleChecked<ITakeRecorderModule>("TakeRecorder");
-	TakeRecorderModule.GetRecordErrorCheckGenerator().Broadcast(RecordErrorText);
 }
 
 void STakeRecorderCockpit::UpdateTakeError()
@@ -871,32 +851,11 @@ FReply STakeRecorderCockpit::OnAddMarkedFrame()
 		FFrameNumber ElapsedFrame = FFrameNumber(static_cast<int32>(FrameRate.AsDecimal() * RecordingDuration.GetTotalSeconds()));
 		
 		ULevelSequence* LevelSequence = LevelSequenceAttribute.Get();
-		if (!LevelSequence)
-		{
-			return FReply::Handled();
-		}
-
 		UMovieScene* MovieScene = LevelSequence->GetMovieScene();
-		if (!MovieScene)
-		{
-			return FReply::Handled();
-		}
-
-		FFrameRate DisplayRate = MovieScene->GetDisplayRate();
-		FFrameRate TickResolution = MovieScene->GetTickResolution();
 
 		FMovieSceneMarkedFrame MarkedFrame;
+		MarkedFrame.FrameNumber = ConvertFrameTime(ElapsedFrame, MovieScene->GetDisplayRate(), MovieScene->GetTickResolution()).CeilToFrame();
 
-		UTakeRecorderSources* Sources = LevelSequence->FindMetaData<UTakeRecorderSources>();
-		if (Sources && Sources->GetSettings().bStartAtCurrentTimecode)
-		{
-			MarkedFrame.FrameNumber = FFrameRate::TransformTime(FFrameTime(FApp::GetTimecode().ToFrameNumber(DisplayRate)), DisplayRate, TickResolution).FloorToFrame();
-		}
-		else
-		{
-			MarkedFrame.FrameNumber = ConvertFrameTime(ElapsedFrame, DisplayRate, TickResolution).CeilToFrame();
-		}
-		
 		int32 MarkedFrameIndex = MovieScene->AddMarkedFrame(MarkedFrame);
 		UTakeRecorderBlueprintLibrary::OnTakeRecorderMarkedFrameAdded(MovieScene->GetMarkedFrames()[MarkedFrameIndex]);
 	}
@@ -906,7 +865,7 @@ FReply STakeRecorderCockpit::OnAddMarkedFrame()
 
 bool STakeRecorderCockpit::Reviewing() const 
 {
-	return bool(!Recording() && (TakeMetaData->Recorded() && TakeRecorderModeAttribute.Get() != ETakeRecorderMode::RecordIntoSequence));
+	return bool(!Recording() && (TakeMetaData->Recorded()));
 }
 
 bool STakeRecorderCockpit::Recording() const
@@ -977,7 +936,6 @@ void STakeRecorderCockpit::StartRecording()
 		FTakeRecorderParameters Parameters;
 		Parameters.User    = GetDefault<UTakeRecorderUserSettings>()->Settings;
 		Parameters.Project = GetDefault<UTakeRecorderProjectSettings>()->Settings;
-		Parameters.TakeRecorderMode = TakeRecorderModeAttribute.Get();
 
 		FText ErrorText = LOCTEXT("UnknownError", "An unknown error occurred when trying to start recording");
 
@@ -1142,7 +1100,7 @@ TSharedRef<SWidget> STakeRecorderCockpit::OnCreateMenu()
 		}
 	}
 	MenuBuilder.EndSection();
-
+	
 	MenuBuilder.AddMenuSeparator();
 	FFrameRate TimecodeFrameRate = FApp::GetTimecodeFrameRate();
 	FText DisplayName = FText::Format(LOCTEXT("TimecodeFrameRate", "Timecode ({0})"), TimecodeFrameRate.ToPrettyText());

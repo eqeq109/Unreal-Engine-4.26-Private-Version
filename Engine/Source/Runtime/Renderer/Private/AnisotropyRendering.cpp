@@ -16,17 +16,23 @@ static FAutoConsoleVariableRef CVarAnisotropicMaterials(
 	ECVF_Scalability | ECVF_RenderThreadSafe
 	);
 
+static TAutoConsoleVariable<int32> CVarSupportAnisotropicMaterials(
+	TEXT("r.SupportAnisotropicMaterials"),
+	1,
+	TEXT("If true, allow use of anisotropic materials."),
+	ECVF_ReadOnly | ECVF_RenderThreadSafe
+	);
+
 bool SupportsAnisotropicMaterials(ERHIFeatureLevel::Type FeatureLevel, EShaderPlatform ShaderPlatform)
 {
 	return GAnisotropicMaterials
 		&& FeatureLevel >= ERHIFeatureLevel::SM5
-		&& FDataDrivenShaderPlatformInfo::GetSupportsAnisotropicMaterials(ShaderPlatform);
+		&& (CVarSupportAnisotropicMaterials->GetBool() != 0);
 }
 
-static bool IsAnisotropyPassCompatible(const EShaderPlatform Platform, FMaterialShaderParameters MaterialParameters)
+static bool IsAnisotropyPassCompatible(FMaterialShaderParameters MaterialParameters)
 {
 	return 
-		FDataDrivenShaderPlatformInfo::GetSupportsAnisotropicMaterials(Platform) &&
 		MaterialParameters.bHasAnisotropyConnected &&
 		!IsTranslucentBlendMode(MaterialParameters.BlendMode) && 
 		MaterialParameters.ShadingModels.HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat });
@@ -44,7 +50,7 @@ public:
 
 		return 
 			bIsFeatureSupported && 
-			IsAnisotropyPassCompatible(Parameters.Platform, Parameters.MaterialParameters) &&
+			IsAnisotropyPassCompatible(Parameters.MaterialParameters) && 
 			FMeshMaterialShader::ShouldCompilePermutation(Parameters);
 	}
 
@@ -223,21 +229,18 @@ void FAnisotropyMeshProcessor::AddMeshBatch(
 	int32 StaticMeshId /* = -1 */ 
 	)
 {
-	if (SupportsAnisotropicMaterials(FeatureLevel, GShaderPlatformForFeatureLevel[FeatureLevel]))
+	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
+	const FMaterial* Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
+	const EBlendMode BlendMode = Material->GetBlendMode();
+	const bool bIsNotTranslucent = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
+
+	if (MeshBatch.bUseForMaterial && Material->MaterialUsesAnisotropy_RenderThread() && bIsNotTranslucent && Material->GetShadingModels().HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }))
 	{
-		const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-		const FMaterial* Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
-		const EBlendMode BlendMode = Material->GetBlendMode();
-		const bool bIsNotTranslucent = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
 
-		if (MeshBatch.bUseForMaterial && Material->MaterialUsesAnisotropy_RenderThread() && bIsNotTranslucent && Material->GetShadingModels().HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }))
-		{
-			const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-			const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-			const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
-
-			Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
-		}
+		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
 	}
 }
 

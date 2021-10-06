@@ -8,46 +8,50 @@
 
 namespace Chaos
 {
-	class FPBDRigidDynamicSpringConstraints;
+	template<class T, int d>
+	class TPBDRigidDynamicSpringConstraints;
 
-	class CHAOS_API FPBDRigidDynamicSpringConstraintHandle : public TContainerConstraintHandle<FPBDRigidDynamicSpringConstraints>
+	template<class T, int d>
+	class CHAOS_API TPBDRigidDynamicSpringConstraintHandle : public TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>
 	{
 	public:
-		using Base = TContainerConstraintHandle<FPBDRigidDynamicSpringConstraints>;
-		using FConstraintContainer = FPBDRigidDynamicSpringConstraints;
+		using Base = TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>;
+		using FConstraintContainer = TPBDRigidDynamicSpringConstraints<T, d>;
 
-		FPBDRigidDynamicSpringConstraintHandle() 
+		TPBDRigidDynamicSpringConstraintHandle() 
 		{
 		}
 
-		FPBDRigidDynamicSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) 
-			: TContainerConstraintHandle<FPBDRigidDynamicSpringConstraints>(StaticType(),InConstraintContainer, InConstraintIndex) 
+		TPBDRigidDynamicSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) 
+			: TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>(StaticType(),InConstraintContainer, InConstraintIndex) 
 		{
 		}
 
 		static FConstraintHandle::EType StaticType() { return FConstraintHandle::EType::DynamicSpring; }
-		TVec2<FGeometryParticleHandle*> GetConstrainedParticles() const;
+		TVector<TGeometryParticleHandle<T, d>*, 2> GetConstrainedParticles() const;
 
 	protected:
 		using Base::ConstraintIndex;
 		using Base::ConstraintContainer;
 	};
 
-	class CHAOS_API FPBDRigidDynamicSpringConstraints : public FPBDConstraintContainer
+	template<class T, int d>
+	class CHAOS_API TPBDRigidDynamicSpringConstraints : public FPBDConstraintContainer
 	{
 	public:
 		using Base = FPBDConstraintContainer;
-		using FConstrainedParticlePair = TVec2<FGeometryParticleHandle*>;
-		//static const int Dimensions = 3;
-		using FConstraintContainerHandle = FPBDRigidDynamicSpringConstraintHandle;
-		using FConstraintHandleAllocator = TConstraintHandleAllocator<FPBDRigidDynamicSpringConstraints>;
+		using FConstrainedParticlePair = TVector<TGeometryParticleHandle<T, d>*, 2>;
+		using FReal = T;
+		static const int Dimensions = d;
+		using FConstraintContainerHandle = TPBDRigidDynamicSpringConstraintHandle<FReal, Dimensions>;
+		using FConstraintHandleAllocator = TConstraintHandleAllocator<TPBDRigidDynamicSpringConstraints<FReal, Dimensions>>;
 		using FHandles = TArray<FConstraintContainerHandle*>;
 
-		FPBDRigidDynamicSpringConstraints(const FReal InStiffness = (FReal)1.)
+		TPBDRigidDynamicSpringConstraints(const T InStiffness = (T)1)
 			: CreationThreshold(1), MaxSprings(1), Stiffness(InStiffness) 
 		{}
 
-		FPBDRigidDynamicSpringConstraints(TArray<FConstrainedParticlePair>&& InConstraints, const FReal InCreationThreshold = (FReal)1., const int32 InMaxSprings = 1, const FReal InStiffness = (FReal)1.)
+		TPBDRigidDynamicSpringConstraints(TArray<FConstrainedParticlePair>&& InConstraints, const T InCreationThreshold = (T)1, const int32 InMaxSprings = 1, const T InStiffness = (T)1)
 			: Constraints(MoveTemp(InConstraints)), CreationThreshold(InCreationThreshold), MaxSprings(InMaxSprings), Stiffness(InStiffness)
 		{
 			if (Constraints.Num() > 0)
@@ -64,7 +68,7 @@ namespace Chaos
 			}
 		}
 
-		virtual ~FPBDRigidDynamicSpringConstraints() {}
+		virtual ~TPBDRigidDynamicSpringConstraints() {}
 
 		//
 		// Constraint Container API
@@ -120,7 +124,7 @@ namespace Chaos
 		/**
 		 * Disabled the specified constraint.
 		 */
-		void DisableConstraints(const TSet<FGeometryParticleHandle*>& RemovedParticles)
+		void DisableConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles)
 		{
 			// @todo(chaos)
 		}
@@ -129,7 +133,7 @@ namespace Chaos
 		/**
 		 * Set the distance threshold below which springs get created between particles.
 		 */
-		void SetCreationThreshold(const FReal InCreationThreshold)
+		void SetCreationThreshold(const T InCreationThreshold)
 		{
 			CreationThreshold = InCreationThreshold;
 		}
@@ -137,7 +141,7 @@ namespace Chaos
 		/**
 		 * Set the maximum number of springs
 		 */
-		void SetMaxSprings(const FReal InMaxSprings)
+		void SetMaxSprings(const T InMaxSprings)
 		{
 			MaxSprings = InMaxSprings;
 		}
@@ -189,9 +193,9 @@ namespace Chaos
 
 		void UnprepareIteration(FReal Dt) {}
 
-		void UpdatePositionBasedState(const FReal Dt);
+		void UpdatePositionBasedState(const T Dt);
 
-		bool Apply(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
+		bool Apply(const T Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
 		{
 			for (FConstraintContainerHandle* ConstraintHandle : InConstraintHandles)
 			{
@@ -202,7 +206,7 @@ namespace Chaos
 			return true;
 		}
 
-		bool ApplyPushOut(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
+		bool ApplyPushOut(const T Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
 		{
 			return false;
 		}
@@ -212,24 +216,18 @@ namespace Chaos
 		using Base::SetConstraintIndex;
 
 	private:
-		void ApplySingle(const FReal Dt, int32 ConstraintIndex) const;
+		void ApplySingle(const T Dt, int32 ConstraintIndex) const;
 
-		FVec3 GetDelta(const FVec3& WorldSpaceX1, const FVec3& WorldSpaceX2, const int32 ConstraintIndex, const int32 SpringIndex) const;
+		TVector<T, d> GetDelta(const TVector<T, d>& WorldSpaceX1, const TVector<T, d>& WorldSpaceX2, const int32 ConstraintIndex, const int32 SpringIndex) const;
 
 		TArray<FConstrainedParticlePair> Constraints;
-		TArray<TArray<TVec2<FVec3>>> Distances;
-		TArray<TArray<FReal>> SpringDistances;
-		FReal CreationThreshold;
+		TArray<TArray<TVector<TVector<T, 3>, 2>>> Distances;
+		TArray<TArray<T>> SpringDistances;
+		T CreationThreshold;
 		int32 MaxSprings;
-		FReal Stiffness;
+		T Stiffness;
 
 		FHandles Handles;
 		FConstraintHandleAllocator HandleAllocator;
 	};
-
-	template<class T, int d>
-	using TPBDRigidDynamicSpringConstraintHandle UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPBDRigidDynamicSpringConstraintHandle instead") = FPBDRigidDynamicSpringConstraintHandle;
-
-	template<class T, int d>
-	using TPBDRigidDynamicSpringConstraints UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPBDRigidDynamicSpringConstraints instead") = FPBDRigidDynamicSpringConstraints;
 }

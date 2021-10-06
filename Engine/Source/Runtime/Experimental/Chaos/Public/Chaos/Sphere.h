@@ -2,8 +2,6 @@
 #pragma once
 
 #include "Chaos/Box.h"
-#include "Chaos/GJKShape.h"
-#include "Chaos/ImplicitFwd.h"
 #include "Chaos/ImplicitObject.h"
 #include "ChaosArchive.h"
 
@@ -14,7 +12,7 @@ namespace Chaos
 	template<typename T, int d>
 	struct TSphereSpecializeSamplingHelper
 	{
-		static FORCEINLINE void ComputeSamplePoints(TArray<TVec3<T>>& Points, const class TSphere<T, 3>& Sphere, const int32 NumPoints)
+		static FORCEINLINE void ComputeSamplePoints(TArray<TVector<T, 3>>& Points, const class TSphere<T, 3>& Sphere, const int32 NumPoints)
 		{
 			check(false);
 		}
@@ -67,11 +65,6 @@ namespace Chaos
 			return ImplicitObjectType::Sphere; 
 		}
 
-		FReal GetRadius() const
-		{
-			return Margin;
-		}
-
 		virtual T PhiWithNormal(const TVector<T, d>& InSamplePoint, TVector<T, d>& OutNormal) const override
 		{
 			OutNormal = InSamplePoint - Center;
@@ -87,7 +80,7 @@ namespace Chaos
 
 		TVector<T, d> FindClosestPoint(const TVector<T, d>& StartPoint, const T Thickness = (T)0) const
 		{
-			TVector<T, d> Result = Center + (StartPoint - Center).GetSafeNormal() * (GetRadius() + Thickness);
+			TVector<T, 3> Result = Center + (StartPoint - Center).GetSafeNormal() * (GetRadius() + Thickness);
 			return Result;
 		}
 
@@ -196,17 +189,7 @@ namespace Chaos
 			return Center + Normalized * (GetRadius() + Thickness);
 		}
 
-		FORCEINLINE const TVector<T, d>& SupportCore(const TVector<T, d>& Direction, FReal InMargin) const
-		{
-			// Note: ignores InMargin, assumed Radius
-			return Center;
-		}
-
-		FORCEINLINE TVector<T, d> SupportCoreScaled(const TVector<T, d>& Direction, FReal InMargin, const TVector<T, d>& Scale) const
-		{
-			// Note: ignores InMargin, assumed Radius
-			return Center * Scale;
-		}
+		FORCEINLINE const TVector<T, d>& SupportCore(const TVector<T, d>& Direction) const { return Center; }
 
 		virtual const TAABB<T, d> BoundingBox() const
 		{
@@ -245,6 +228,11 @@ namespace Chaos
 		const TVector<T, d>& GetCenterOfMass() const 
 		{ 
 			return Center; 
+		}
+
+		T GetRadius() const 
+		{ 
+			return GetMargin(); 
 		}
 
 		virtual FString ToString() const
@@ -329,9 +317,9 @@ namespace Chaos
 			return PMatrix<T, d, d>(Diagonal, Diagonal, Diagonal);
 		}
 
-		TRotation<T, d> GetRotationOfMass() const
-		{
-			return TRotation<T, d>::FromIdentity();
+		static TRotation<T, d> GetRotationOfMass()
+		{ 
+			return TRotation<T, d>::FromIdentity(); 
 		}
 
 		virtual uint32 GetTypeHash() const override
@@ -364,7 +352,7 @@ namespace Chaos
 	template<typename T>
 	struct TSphereSpecializeSamplingHelper<T, 2>
 	{
-		static FORCEINLINE void ComputeSamplePoints(TArray<TVec2<T>>& Points, const TSphere<T, 2>& Sphere, const int32 NumPoints)
+		static FORCEINLINE void ComputeSamplePoints(TArray<TVector<T, 2>>& Points, const TSphere<T, 2>& Sphere, const int32 NumPoints)
 		{
 			if (NumPoints <= 1 || Sphere.GetRadius() < KINDA_SMALL_NUMBER)
 			{
@@ -378,14 +366,14 @@ namespace Chaos
 		/**
 		 * Returns \c NumPoints points evenly distributed on a 2D \c Sphere (disk).
 		 */
-		static FORCEINLINE void ComputeGoldenSpiralPoints(TArray<TVec2<T>>& Points, const TSphere<T, 2>& Sphere, const int32 NumPoints)
+		static FORCEINLINE void ComputeGoldenSpiralPoints(TArray<TVector<T, 2>>& Points, const TSphere<T, 2>& Sphere, const int32 NumPoints)
 		{
 			ComputeGoldenSpiralPoints(Points, Sphere.Center(), Sphere.GetRadius(), NumPoints);
 		}
 
 		static FORCEINLINE void ComputeGoldenSpiralPoints(
-		    TArray<TVec2<T>>& Points,
-		    const TVec2<T>& Center,
+		    TArray<TVector<T, 2>>& Points,
+		    const TVector<T, 2>& Center,
 		    const T Radius,
 		    const int32 NumPoints,
 		    const int32 SpiralSeed = 0)
@@ -411,7 +399,7 @@ namespace Chaos
 
 				// Convert polar coordinates to Cartesian, offset by the Sphere's location.
 				const int32 Index = i + Offset;
-				Points[Index] = Center +TVec2<T>(R * FMath::Cos(Theta), R * FMath::Sin(Theta));
+				Points[Index] = Center + TVector<T, 2>(R * FMath::Cos(Theta), R * FMath::Sin(Theta));
 
 				// Check to make sure the point is inside the sphere
 				checkSlow((Points[Index] - Center).Size() - Radius < KINDA_SMALL_NUMBER);
@@ -422,7 +410,7 @@ namespace Chaos
 	template<typename T>
 	struct TSphereSpecializeSamplingHelper<T, 3>
 	{
-		static FORCEINLINE void ComputeSamplePoints(TArray<TVec3<T>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints)
+		static FORCEINLINE void ComputeSamplePoints(TArray<TVector<T, 3>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints)
 		{
 			if (NumPoints <= 1 || Sphere.GetRadius() < KINDA_SMALL_NUMBER)
 			{
@@ -437,7 +425,7 @@ namespace Chaos
 		 * Returns \c NumPoints points evenly distributed on a 3D \c Sphere.
 		 */
 		static FORCEINLINE void ComputeGoldenSpiralPoints(
-		    TArray<TVec3<T>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints,
+		    TArray<TVector<T, 3>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints,
 		    const bool FirstHalf = true, const bool SecondHalf = true, const int32 SpiralSeed = 0)
 		{
 			ComputeGoldenSpiralPoints(Points, Sphere.GetCenter(), Sphere.GetRadius(), NumPoints, FirstHalf, SecondHalf, SpiralSeed);
@@ -466,8 +454,8 @@ namespace Chaos
 		 *    should equal the number of particles already created.
 		 */
 		static FORCEINLINE void ComputeGoldenSpiralPoints(
-		    TArray<TVec3<T>>& Points,
-		    const TVec3<T>& Center,
+		    TArray<TVector<T, 3>>& Points,
+		    const TVector<T, 3>& Center,
 		    const T Radius,
 		    const int32 NumPoints,
 		    const bool BottomHalf = true,
@@ -511,9 +499,9 @@ namespace Chaos
 
 					// Convert spherical coordinates to Cartesian, scaled by the radius of our Sphere, and offset by its location.
 					const T SinPhi = FMath::Sin(Phi);
-					TVec3<T>& Pt = Points[Index++];
+					TVector<T, 3>& Pt = Points[Index++];
 					Pt = Center +
-					    TVec3<T>(
+					    TVector<T, 3>(
 					        Radius * FMath::Cos(Theta) * SinPhi,
 					        Radius * FMath::Sin(Theta) * SinPhi,
 					        Radius * FMath::Cos(Phi));
@@ -534,9 +522,9 @@ namespace Chaos
 
 					// Convert spherical coordinates to Cartesian, scaled by the radius of our Sphere, and offset by its location.
 					const T SinPhi = FMath::Sin(Phi);
-					TVec3<T>& Pt = Points[Index++];
+					TVector<T, 3>& Pt = Points[Index++];
 					Pt = Center +
-					    TVec3<T>(
+					    TVector<T, 3>(
 					        Radius * FMath::Cos(Theta) * SinPhi,
 					        Radius * FMath::Sin(Theta) * SinPhi,
 					        Radius * FMath::Cos(Phi));
@@ -561,9 +549,9 @@ namespace Chaos
 
 					// Convert spherical coordinates to Cartesian, scaled by the radius of our Sphere, and offset by its location.
 					const T SinPhi = FMath::Sin(Phi);
-					TVec3<T>& Pt = Points[Index++];
+					TVector<T, 3>& Pt = Points[Index++];
 					Pt = Center +
-					    TVec3<T>(
+					    TVector<T, 3>(
 					        Radius * FMath::Cos(Theta) * SinPhi,
 					        Radius * FMath::Sin(Theta) * SinPhi,
 					        Radius * FMath::Cos(Phi));
@@ -574,13 +562,13 @@ namespace Chaos
 		}
 
 		static FORCEINLINE void ComputeBottomHalfSemiSphere(
-		    TArray<TVec3<T>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints, const int32 SpiralSeed = 0)
+		    TArray<TVector<T, 3>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints, const int32 SpiralSeed = 0)
 		{
 			ComputeGoldenSpiralPoints(Points, Sphere, NumPoints, true, false, SpiralSeed);
 		}
 
 		static FORCEINLINE void ComputeTopHalfSemiSphere(
-		    TArray<TVec3<T>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints, const int32 SpiralSeed = 0)
+		    TArray<TVector<T, 3>>& Points, const TSphere<T, 3>& Sphere, const int32 NumPoints, const int32 SpiralSeed = 0)
 		{
 			ComputeGoldenSpiralPoints(Points, Sphere, NumPoints, false, true, SpiralSeed);
 		}

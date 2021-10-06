@@ -85,3 +85,5 @@ private:
 	TSharedPtr<SButton> ImportButton;
 	bool bShouldCreate;
 };
+
+class UGroomBindingAsset* CreateGroomBindinAsset(class UGroomAsset* GroomAsset, class USkeletalMesh* SourceSkelMesh, class USkeletalMesh* TargetSkelMesh, const int32 NumInterpolationPoints, const int32 MatchingSection);

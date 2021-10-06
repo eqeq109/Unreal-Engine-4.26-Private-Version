@@ -227,14 +227,14 @@ UActorComponent* FComponentVisualizer::GetComponentFromPropertyName(const AActor
 	return ResultComp;
 }
 
-void FComponentVisualizer::NotifyPropertyModified(UActorComponent* Component, FProperty* Property, EPropertyChangeType::Type PropertyChangeType)
+void FComponentVisualizer::NotifyPropertyModified(UActorComponent* Component, FProperty* Property)
 {
 	TArray<FProperty*> Properties;
 	Properties.Add(Property);
-	NotifyPropertiesModified(Component, Properties, PropertyChangeType);
+	NotifyPropertiesModified(Component, Properties);
 }
 
-void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, const TArray<FProperty*>& Properties, EPropertyChangeType::Type PropertyChangeType)
+void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, const TArray<FProperty*>& Properties)
 {
 	if (Component == nullptr)
 	{
@@ -344,7 +344,7 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 			// Rerun construction script on instance
 			if (InstanceOwner)
 			{
-				InstanceOwner->PostEditMove(PropertyChangeType == EPropertyChangeType::ValueSet);
+				InstanceOwner->PostEditMove(false);
 			}
 		}
 	}
@@ -352,6 +352,6 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 	// Rerun construction script on preview actor
 	if (Owner)
 	{
-		Owner->PostEditMove(PropertyChangeType == EPropertyChangeType::ValueSet);
+		Owner->PostEditMove(false);
 	}
 }

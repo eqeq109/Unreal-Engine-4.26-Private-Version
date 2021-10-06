@@ -2,40 +2,15 @@
 
 #pragma once
 
-#include "CoreTypes.h"
-#include "Misc/TVariant.h"
+#include "CoreMinimal.h"
 #include "Evaluation/MovieSceneAnimTypeID.h"
+#include "MovieSceneExecutionToken.h"
+#include "MovieSceneSection.h"
 #include "Evaluation/MovieSceneEvaluationKey.h"
-#include "Evaluation/MovieSceneCompletionMode.h"
-#include "Evaluation/IMovieSceneEvaluationHook.h"
-#include "EntitySystem/TrackInstance/MovieSceneTrackInstance.h"
-#include "EntitySystem/MovieSceneSequenceInstanceHandle.h"
-#include "EntitySystem/MovieScenePropertySystemTypes.h"
+#include "UObject/ObjectKey.h"
 
-
-class UObject;
 class IMovieScenePlayer;
 class FMovieScenePreAnimatedState;
-class UMovieSceneEntitySystemLinker;
-
-struct IMovieScenePreAnimatedTokenProducer;
-struct IMovieScenePreAnimatedGlobalTokenProducer;
-
-namespace UE
-{
-namespace MovieScene
-{
-
-struct FPreAnimatedStateEntry;
-struct FPreAnimatedStateExtension;
-struct FPreAnimatedTemplateCaptureSources;
-struct FAnimTypePreAnimatedStateObjectStorage;
-struct FAnimTypePreAnimatedStateMasterStorage;
-struct FPreAnimatedTrackInstanceCaptureSources;
-struct FPreAnimatedEvaluationHookCaptureSources;
-
-}
-}
 
 /** Enumeration that defines at what level to capture animating state for */
 enum class ECapturePreAnimatedState : uint8
@@ -48,50 +23,146 @@ enum class ECapturePreAnimatedState : uint8
 	Entity,
 };
 
-
-/**
- * Scoped structure that can be used to wrap a call to SavePreAnimatedState to associate the capture with a specific capture source.
- */
-struct FScopedPreAnimatedCaptureSource
+/** Structure that defines an entity key and animation type identifier combination */
+struct FMovieSceneEntityAndAnimTypeID
 {
-	/**
-	 * Construct this capture source from a template (FMovieSceneEvalTemplate) evaluation key, and whether this should restore state when the template is finished
-	 */
-	MOVIESCENE_API explicit FScopedPreAnimatedCaptureSource(FMovieScenePreAnimatedState* InPreAnimatedState, const FMovieSceneEvaluationKey& InEvalKey, bool bInWantsRestoreState);
+	/** The entity that produced the aniamtion */
+	FMovieSceneEvaluationKey EntityKey;
+	/** The type of animation that was produced */
+	FMovieSceneAnimTypeID AnimTypeID;
 
-	/**
-	 * Construct this capture source from an evaluation hook (UMovieSceneEvaluationHookSection), its SequenceID, and whether this should restore state when the template is finished
-	 */
-	MOVIESCENE_API explicit FScopedPreAnimatedCaptureSource(FMovieScenePreAnimatedState* InPreAnimatedState, const UObject* InEvalHook, FMovieSceneSequenceID SequenceID, bool bInWantsRestoreState);
-
-	/**
-	 * Construct this capture source from a track instance (UMovieSceneTrackInstance) and whether this should restore state when the template is finished
-	 */
-	MOVIESCENE_API explicit FScopedPreAnimatedCaptureSource(FMovieScenePreAnimatedState* InPreAnimatedState, UMovieSceneTrackInstance* InTrackInstance, bool bInWantsRestoreState);
-
-	FScopedPreAnimatedCaptureSource(const FScopedPreAnimatedCaptureSource&) = delete;
-	void operator=(const FScopedPreAnimatedCaptureSource&) = delete;
-
-	FScopedPreAnimatedCaptureSource(FScopedPreAnimatedCaptureSource&&) = delete;
-	void operator=(FScopedPreAnimatedCaptureSource&&) = delete;
-
-	MOVIESCENE_API ~FScopedPreAnimatedCaptureSource();
-
-private:
-	friend class FMovieScenePreAnimatedState;
-	struct FEvalHookType
+	friend bool operator==(const FMovieSceneEntityAndAnimTypeID& A, const FMovieSceneEntityAndAnimTypeID& B)
 	{
-		const UObject* EvalHook;
-		FMovieSceneSequenceID SequenceID;
-	};
-	using CaptureSourceType = TVariant<FMovieSceneEvaluationKey, FEvalHookType, UMovieSceneTrackInstance*>;
-
-	CaptureSourceType Variant;
-	FMovieScenePreAnimatedState* PreAnimatedState;
-	FScopedPreAnimatedCaptureSource* PrevCaptureSource;
-	bool bWantsRestoreState;
+		return A.AnimTypeID == B.AnimTypeID && A.EntityKey == B.EntityKey;
+	}
 };
 
+/**
+ * Internal structure that defines a pre animated token, and how many entities have referenced it.
+ * Templated on token type in order to share logic between tokens that represent global state, and those that represent objects
+ */
+template<typename TokenType>
+struct MOVIESCENE_API TPreAnimatedToken
+{
+	TPreAnimatedToken(TokenType&& InToken);
+
+	TPreAnimatedToken(TPreAnimatedToken&&) = default;
+	TPreAnimatedToken& operator=(TPreAnimatedToken&&) = default;
+
+	/** Non-copyable */
+	TPreAnimatedToken(const TPreAnimatedToken&) = delete;
+	TPreAnimatedToken& operator=(const TPreAnimatedToken&) = delete;
+
+	/** The number of entities that are referencing this token (can be 0 where only global state has been saved) */
+	uint32 EntityRefCount;
+
+	/** The token that defines how to globally restore this object's state. This token should always be valid. */
+	TokenType Token;
+
+	/** An optional token that is valid when the current entity scope should restore to a different state than defined by Token. */
+	TokenType OptionalEntityToken;
+};
+
+/** Template helper type definitions */
+namespace MovieSceneImpl
+{
+	struct FNull
+	{
+		FNull Get(bool) const { return *this; }
+	};
+
+	template<typename TokenType> struct TProducerType;
+	template<typename TokenType> struct TPayloadType;
+
+	template<> struct TProducerType<IMovieScenePreAnimatedTokenPtr> { typedef IMovieScenePreAnimatedTokenProducer Type; };
+	template<> struct TProducerType<IMovieScenePreAnimatedGlobalTokenPtr> { typedef IMovieScenePreAnimatedGlobalTokenProducer Type; };
+
+	template<> struct TPayloadType<IMovieScenePreAnimatedTokenPtr> { typedef TWeakObjectPtr<UObject> Type; };
+	template<> struct TPayloadType<IMovieScenePreAnimatedGlobalTokenPtr> { typedef FNull Type; };
+}
+
+/**
+ * Saved state for animation bound to a particular animated object
+ */
+template<typename TokenType>
+struct MOVIESCENE_API TMovieSceneSavedTokens
+{
+	typedef typename MovieSceneImpl::TProducerType<TokenType>::Type ProducerType;
+	typedef typename MovieSceneImpl::TPayloadType<TokenType>::Type PayloadType;
+
+	TMovieSceneSavedTokens(PayloadType&& InPayload)
+		: Payload(MoveTemp(InPayload))
+	{}
+
+	TMovieSceneSavedTokens(TMovieSceneSavedTokens&&) = default;
+	TMovieSceneSavedTokens& operator=(TMovieSceneSavedTokens&&) = default;
+
+	// Non-copyable
+	TMovieSceneSavedTokens(const TMovieSceneSavedTokens&) = delete;
+	TMovieSceneSavedTokens& operator=(const TMovieSceneSavedTokens&) = delete;
+
+	/**
+	 * Called when animation is about to happen to cache of any existing state
+	 *
+	 * @param InCaptureMode 		Whether to capture for the specified associated key, globally, or not at all
+	 * @param InAnimTypeID 			ID that uniquely iudentifies the type of animation token to store
+	 * @param InAssociatedKey		When InCaptureMode == ECapturePreAnimatedState::Entity, defines the entity that is attempting to save the token
+	 * @param InProducer			The producer responsible for creating the token, if necessary
+	 * @param InParent				The pre animated state container that is making this request
+	 */
+	void OnPreAnimated(ECapturePreAnimatedState InCaptureMode, FMovieSceneAnimTypeID InAnimTypeID, FMovieSceneEvaluationKey InAssociatedKey, const ProducerType& InProducer, FMovieScenePreAnimatedState& InParent);
+
+	/**
+	 * Forcefully restore all pre animated state tokens held by this container
+	*
+	 * @param Player 				Movie scene player that is restoring the tokens
+	 */
+	void Restore(IMovieScenePlayer& Player);
+
+	/**
+	 * Restore all pre animated state tokens held by this container that pass the specified filter predicate
+	*
+	 * @param Player 				Movie scene player that is restoring the tokens
+	 * @param InFilter				Filter predicate that, when true, will restore tokens based on their animation type identifier
+	 */
+	void Restore(IMovieScenePlayer& Player, TFunctionRef<bool(FMovieSceneAnimTypeID)> InFilter);
+
+	/**
+	 * Restore any pre animated state for the specified entity key, based on an optional filter
+	 * @param Player			The movie scene player responsible for playing back the sequence
+	 * @param EntityKey			A key for the specific entity (section or track) to restore data for
+	 * @param InFilter			(optional) Filter that can optionally include/exclude specific types of animation
+	 * @return True if the entity's pre-animated state was entirely restored, false if some state remains (ie, if it failed the filter)
+	 */
+	bool RestoreEntity(IMovieScenePlayer& Player, FMovieSceneEvaluationKey EntityKey, TOptional<TFunctionRef<bool(FMovieSceneAnimTypeID)>> InFilter = TOptional<TFunctionRef<bool(FMovieSceneAnimTypeID)>>());
+
+	/**
+	 * Discard any tokens that relate to entity animation (ie sections or tracks) without restoring the values.
+	 * Any global pre-animated state tokens (that reset the animation when saving a map, for instance) will remain.
+	 */
+	void DiscardEntityTokens();
+
+	/**
+	 * Reset all containers without applying or restoring any tokens
+	 */
+	void Reset();
+
+	void CopyFrom(TMovieSceneSavedTokens& Other);
+
+private:
+
+	/** Array defining how whether (and how) particular entities have evaluated */
+	TArray<FMovieSceneEntityAndAnimTypeID, TInlineAllocator<8>> AnimatedEntities;
+
+	/** Array of anim type IDs whose indices correspond to PreAnimatedTokens for efficient lookup */
+	TArray<FMovieSceneAnimTypeID, TInlineAllocator<8>> AllAnimatedTypeIDs;
+
+	/** Array of tokens stored at the end of the class - these are rarely accessed */
+	TArray<TPreAnimatedToken<TokenType>> PreAnimatedTokens;
+
+	/** Payload stored with tokens */
+	PayloadType Payload;
+};
 
 /**
  * Class that caches pre-animated state for objects that were manipulated by sequencer
@@ -100,54 +171,107 @@ class FMovieScenePreAnimatedState
 {
 public:
 
-	FMovieScenePreAnimatedState() = default;
+	/**
+	 * Default construction
+	 */
+	FMovieScenePreAnimatedState()
+		: MasterTokens(MovieSceneImpl::FNull())
+	{
+		DefaultGlobalCaptureMode = ECapturePreAnimatedState::None;
+	}
 
 	FMovieScenePreAnimatedState(const FMovieScenePreAnimatedState&) = delete;
 	FMovieScenePreAnimatedState& operator=(const FMovieScenePreAnimatedState&) = delete;
 
-	MOVIESCENE_API ~FMovieScenePreAnimatedState();
-
-	MOVIESCENE_API void Initialize(UMovieSceneEntitySystemLinker* Linker, UE::MovieScene::FInstanceHandle InstanceHandle);
+	/**
+	 * Check whether we're currently caching pre-animated state at a global level
+	 */
+	bool IsGlobalCaptureEnabled() const
+	{
+		return DefaultGlobalCaptureMode == ECapturePreAnimatedState::Global;
+	}
 
 	/**
-	 * Called when global capture has been enabled for this player
+	 * Enable this cache and allow it to start caching state
 	 */
-	void OnEnableGlobalCapture(TSharedPtr<UE::MovieScene::FPreAnimatedStateExtension> InExtension);
-
+	void EnableGlobalCapture()
+	{
+		DefaultGlobalCaptureMode = ECapturePreAnimatedState::Global;
+		if (CurrentCaptureState == ECapturePreAnimatedState::None)
+		{
+			CurrentCaptureState = DefaultGlobalCaptureMode;
+		}
+	}
+	
 	/**
-	 * Called when global capture has been disabled for this player
+	 * Disable this cache, preventing it from caching state
 	 */
-	void OnDisableGlobalCapture();
+	void DisableGlobalCapture()
+	{
+		DefaultGlobalCaptureMode = ECapturePreAnimatedState::None;
+		if (CurrentCaptureState == ECapturePreAnimatedState::Global)
+		{
+			CurrentCaptureState = DefaultGlobalCaptureMode;
+		}
+	}
 
 public:
 
-	/**
-	 * Save the current state of an object as defined by the specified token producer, identified by a specific anim type ID
-	 * This will use the currently evaluating track template, evaluation hook or track instance (and its 'When Finished' property) as the capture source
-	 */
-	MOVIESCENE_API void SavePreAnimatedState(UObject& InObject, FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedTokenProducer& Producer);
+	FORCEINLINE void SavePreAnimatedState(FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedTokenProducer& Producer, UObject& InObject)
+	{
+		SavePreAnimatedState(InTokenType, Producer, InObject, CurrentCaptureState, CapturingStateFor);
+	}
 
-	/**
-	 * Save the current state of the environment as defined by the specified token producer, identified by a specific anim type ID
-	 * This will use the currently evaluating track template, evaluation hook or track instance (and its 'When Finished' property) as the capture source
-	 */
-	MOVIESCENE_API void SavePreAnimatedState(FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedGlobalTokenProducer& Producer);
+	FORCEINLINE void SavePreAnimatedState(FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedGlobalTokenProducer& Producer)
+	{
+		SavePreAnimatedState(InTokenType, Producer, CurrentCaptureState, CapturingStateFor);
+	}
 
-public:
+	void SavePreAnimatedState(FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedTokenProducer& Producer, UObject& InObject, ECapturePreAnimatedState CaptureState, FMovieSceneEvaluationKey CaptureEntity)
+	{
+		if (CaptureState == ECapturePreAnimatedState::None)
+		{
+			return;
+		}
 
-	MOVIESCENE_API void OnFinishedEvaluating(const FMovieSceneEvaluationKey& Key);
+		FObjectKey ObjectKey(&InObject);
 
-	MOVIESCENE_API void OnFinishedEvaluating(const UObject* EvaluationHook, FMovieSceneSequenceID SequenceID);
+		auto* Container = ObjectTokens.Find(ObjectKey);
+		if (!Container)
+		{
+			Container = &ObjectTokens.Add(ObjectKey, TMovieSceneSavedTokens<IMovieScenePreAnimatedTokenPtr>(&InObject));
+		}
 
-public:
+		Container->OnPreAnimated(CaptureState, InTokenType, CaptureEntity, Producer, *this);
+	}
 
-	MOVIESCENE_API void RestorePreAnimatedState();
+	void SavePreAnimatedState(FMovieSceneAnimTypeID InTokenType, const IMovieScenePreAnimatedGlobalTokenProducer& Producer, ECapturePreAnimatedState CaptureState, FMovieSceneEvaluationKey CaptureEntity)
+	{
+		if (CaptureState == ECapturePreAnimatedState::None)
+		{
+			return;
+		}
 
-	MOVIESCENE_API void RestorePreAnimatedState(UObject& Object);
+		MasterTokens.OnPreAnimated(CaptureState, InTokenType, CaptureEntity, Producer, *this);
+	}
 
-	MOVIESCENE_API void RestorePreAnimatedState(UClass* GeneratedClass);
+	void RestorePreAnimatedState(IMovieScenePlayer& Player, const FMovieSceneEvaluationKey& Key)
+	{
+		RestorePreAnimatedStateImpl(Player, Key, TOptional<TFunctionRef<bool(FMovieSceneAnimTypeID)>>());
+	}
 
-	MOVIESCENE_API void RestorePreAnimatedState(UObject& Object, TFunctionRef<bool(FMovieSceneAnimTypeID)> InFilter);
+	void RestorePreAnimatedState(IMovieScenePlayer& Player, const FMovieSceneEvaluationKey& Key, TFunctionRef<bool(FMovieSceneAnimTypeID)> InFilter)
+	{
+		RestorePreAnimatedStateImpl(Player, Key, InFilter);
+	}
+
+	MOVIESCENE_API void RestorePreAnimatedState(IMovieScenePlayer& Player);
+
+	MOVIESCENE_API void RestorePreAnimatedState(IMovieScenePlayer& Player, UObject& Object);
+
+	MOVIESCENE_API void RestorePreAnimatedState(IMovieScenePlayer& Player, UClass* GeneratedClass);
+
+	MOVIESCENE_API void RestorePreAnimatedState(IMovieScenePlayer& Player, UObject& Object, TFunctionRef<bool(FMovieSceneAnimTypeID)> InFilter);
 
 	/**
 	 * Discard any tokens that relate to entity animation (ie sections or tracks) without restoring the values.
@@ -168,49 +292,48 @@ public:
 
 public:
 
-	/**
-	 * Search the global pre-animated state extension for any captured state that originated from this sequence
-	 * WARNING: This is a linear search across all state, and so is potentially very slow
-	 */
-	MOVIESCENE_API bool ContainsAnyStateForSequence() const;
+	void SetCaptureEntity(FMovieSceneEvaluationKey InEntity, EMovieSceneCompletionMode InCompletionMode)
+	{
+		CapturingStateFor = InEntity;
+
+		switch(InCompletionMode)
+		{
+		case EMovieSceneCompletionMode::RestoreState: 	CurrentCaptureState = ECapturePreAnimatedState::Entity;	break;
+		case EMovieSceneCompletionMode::KeepState: 		CurrentCaptureState = DefaultGlobalCaptureMode;	break;
+		}
+	}
+
+	void EntityHasAnimatedObject(FMovieSceneEvaluationKey EntityKey, FObjectKey ObjectKey)
+	{
+		EntityToAnimatedObjects.FindOrAdd(EntityKey).Add(ObjectKey);
+	}
+
+	void EntityHasAnimatedMaster(FMovieSceneEvaluationKey EntityKey)
+	{
+		EntityToAnimatedObjects.FindOrAdd(EntityKey).Add(FObjectKey());
+	}
+
+protected:
+
+	MOVIESCENE_API void RestorePreAnimatedStateImpl(IMovieScenePlayer& Player, const FMovieSceneEvaluationKey& Key, TOptional<TFunctionRef<bool(FMovieSceneAnimTypeID)>> InFilter);
 
 private:
 
-	void ConditionalInitializeEntityStorage(bool bOverrideWantsRestoreState);
+	/** Map from object key to preanimated tokens that restore it back to its previous state */
+	TMap<FObjectKey, TMovieSceneSavedTokens<IMovieScenePreAnimatedTokenPtr>> ObjectTokens;
 
-	void InitializeStorage(TSharedPtr<UE::MovieScene::FPreAnimatedStateExtension> Extension);
+	/** Global pre animated tokens that aren't bound to particular objects */
+	TMovieSceneSavedTokens<IMovieScenePreAnimatedGlobalTokenPtr> MasterTokens;
 
-	void AddSourceMetaData(const UE::MovieScene::FPreAnimatedStateEntry& Entry);
+	/** Map from evaluation key to objects that it has animated (used for efficient restoration of entities) */
+	TMap<FMovieSceneEvaluationKey, TArray<FObjectKey, TInlineAllocator<4>>> EntityToAnimatedObjects;
 
-private:
+	/** Entity key that is currently being evaluated. */
+	FMovieSceneEvaluationKey CapturingStateFor;
 
-	friend FScopedPreAnimatedCaptureSource;
+	/** Whether we are to capture state for the current entity, globally, or not at all. */
+	ECapturePreAnimatedState CurrentCaptureState;
 
-	/** Weak pointer to the linker that we're associated with */
-	TWeakObjectPtr<UMovieSceneEntitySystemLinker> WeakLinker;
-
-	/**
-	 * Weak pointer to a pre-animated state extension in the linker.
-	 * This is kept alive either by FSequenceInstance::GlobalPreAnimatedState if global state capture is active,
-	 * or by EntityExtensionRef if there are entries that have captured state that need restoring when done
-	 */
-	TWeakPtr<UE::MovieScene::FPreAnimatedStateExtension> WeakExtension;
-	/** Strong pointer to the extension that keeps it alive while state needs restoring on completion */
-	TSharedPtr<UE::MovieScene::FPreAnimatedStateExtension> EntityExtensionRef;
-
-	/** Pointers to the storage for state bound to objects, organized by FMovieSceneAnimTypeID */
-	TWeakPtr<UE::MovieScene::FAnimTypePreAnimatedStateObjectStorage> WeakObjectStorage;
-	/** Pointers to the storage for state created from master tracks, or otherwise not bound to objects */
-	TWeakPtr<UE::MovieScene::FAnimTypePreAnimatedStateMasterStorage> WeakMasterStorage;
-
-	/** Meta-data ledger for any pre-animated state that originates from track templates */
-	TSharedPtr<UE::MovieScene::FPreAnimatedTemplateCaptureSources> TemplateMetaData;
-	/** Meta-data ledger for any pre-animated state that originates from evaluation hooks */
-	TSharedPtr<UE::MovieScene::FPreAnimatedEvaluationHookCaptureSources> EvaluationHookMetaData;
-
-	/** The instance handle for the root sequence instance */
-	UE::MovieScene::FInstanceHandle InstanceHandle;
-
-	/** Current capture source, if any */
-	FScopedPreAnimatedCaptureSource* CaptureSource = nullptr;
+	/** Defines whether we should capture state globally or not */
+	ECapturePreAnimatedState DefaultGlobalCaptureMode;
 };

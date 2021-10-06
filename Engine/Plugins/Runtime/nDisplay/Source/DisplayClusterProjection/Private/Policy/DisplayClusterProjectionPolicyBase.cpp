@@ -8,76 +8,59 @@
 #include "Game/IDisplayClusterGameManager.h"
 
 #include "DisplayClusterRootActor.h"
-
-#include "Render/Viewport/IDisplayClusterViewportManager.h"
-#include "Render/Viewport/IDisplayClusterViewport.h"
+#include "Components/DisplayClusterSceneComponent.h"
 
 
-FDisplayClusterProjectionPolicyBase::FDisplayClusterProjectionPolicyBase(const FString& InProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
-	: ProjectionPolicyId(InProjectionPolicyId)
+FDisplayClusterProjectionPolicyBase::FDisplayClusterProjectionPolicyBase(const FString& InViewportId, const TMap<FString, FString>& InParameters)
+	: PolicyViewportId(InViewportId)
+	, Parameters(InParameters)
 {
-	Parameters.Append(InConfigurationProjectionPolicy->Parameters);
 }
 
 FDisplayClusterProjectionPolicyBase::~FDisplayClusterProjectionPolicyBase()
 {
 }
 
-bool FDisplayClusterProjectionPolicyBase::IsConfigurationChanged(const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy) const
+
+void FDisplayClusterProjectionPolicyBase::InitializeOriginComponent(const FString& OriginCompId)
 {
-	if (InConfigurationProjectionPolicy->Parameters.Num() != Parameters.Num()) {
+	UE_LOG(LogDisplayClusterProjection, Log, TEXT("Looking for an origin component '%s'..."), *OriginCompId);
 
-		return true;
-	}
-
-	for (const TPair<FString, FString>& NewParamIt : InConfigurationProjectionPolicy->Parameters) {
-
-		const FString* CurrentValue = Parameters.Find(NewParamIt.Key);
-		if (CurrentValue==nullptr || CurrentValue->Compare(NewParamIt.Value, ESearchCase::IgnoreCase) != 0) {
-			return true;
-		}
-	}
-
-	// Parameters not changed
-	return false;
-}
-
-void FDisplayClusterProjectionPolicyBase::InitializeOriginComponent(IDisplayClusterViewport* InViewport, const FString& OriginCompId)
-{
 	// Reset previous one
 	PolicyOriginComponentRef.ResetSceneComponent();
 
-	if (InViewport)
+	IDisplayClusterGameManager* const GameMgr = IDisplayCluster::Get().GetGameMgr();
+	if (!GameMgr)
 	{
-		USceneComponent* PolicyOriginComp = nullptr;
-		ADisplayClusterRootActor* RootActor = InViewport->GetOwner().GetRootActor();
-		if (RootActor)
-		{
-			// default use root actor as Origin
-			PolicyOriginComp = RootActor->GetRootComponent();
-
-			// Try to get a node specified in the config file
-			if (!OriginCompId.IsEmpty())
-			{
-				UE_LOG(LogDisplayClusterProjection, Log, TEXT("Looking for an origin component '%s'..."), *OriginCompId);
-				PolicyOriginComp = RootActor->GetComponentByName<USceneComponent>(OriginCompId);
-
-				if (PolicyOriginComp == nullptr)
-				{
-					UE_LOG(LogDisplayClusterProjection, Error, TEXT("No custom origin set or component '%s' not found for policy '%s'. VR root will be used."), *OriginCompId, *GetId());
-					PolicyOriginComp = RootActor->GetRootComponent();
-				}
-			}
-		}
-
-		if (!PolicyOriginComp)
-		{
-			UE_LOG(LogDisplayClusterProjection, Error, TEXT("Couldn't set origin component"));
-			return;
-		}
-
-		PolicyOriginComponentRef.SetSceneComponent(PolicyOriginComp);
+		UE_LOG(LogDisplayClusterProjection, Warning, TEXT("No DisplayCluster game manager available"));
+		return;
 	}
+
+	USceneComponent* PolicyOriginComp = nullptr;
+	ADisplayClusterRootActor* const RootActor = GameMgr->GetRootActor();
+	if (RootActor)
+	{
+		// Try to get a node specified in the config file
+		if (!OriginCompId.IsEmpty())
+		{
+			PolicyOriginComp = RootActor->GetComponentById(OriginCompId);
+		}
+
+		// If no origin component found, use the root component as the origin
+		if (PolicyOriginComp == nullptr)
+		{
+			UE_LOG(LogDisplayClusterProjection, Log, TEXT("No custom origin set or component '%s' not found for viewport '%s'. VR root will be used."), *OriginCompId, *PolicyViewportId);
+			PolicyOriginComp = RootActor->GetRootComponent();
+		}
+	}
+
+	if (!PolicyOriginComp)
+	{
+		UE_LOG(LogDisplayClusterProjection, Error, TEXT("Couldn't set origin component"));
+		return;
+	}
+
+	PolicyOriginComponentRef.SetSceneComponent(PolicyOriginComp);
 }
 
 void FDisplayClusterProjectionPolicyBase::ReleaseOriginComponent()

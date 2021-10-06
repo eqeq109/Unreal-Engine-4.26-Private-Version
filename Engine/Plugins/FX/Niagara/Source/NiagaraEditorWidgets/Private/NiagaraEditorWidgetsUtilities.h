@@ -5,7 +5,6 @@
 #include "Templates/SharedPointer.h"
 #include "UObject/NameTypes.h"
 #include "ViewModels/Stack/NiagaraStackEntry.h"
-#include "ViewModels/Stack/NiagaraStackFunctionInput.h"
 #include "NiagaraTypes.h"
 
 class FMenuBuilder;
@@ -21,12 +20,8 @@ namespace FNiagaraStackEditorWidgetsUtilities
 	FName GetIconNameForExecutionSubcategory(FName ExecutionSubcategoryName, bool bIsHighlighted);
 
 	FName GetIconColorNameForExecutionCategory(FName ExecutionCategoryName);
-
-	FText GetIconTextForInputMode(UNiagaraStackFunctionInput::EValueMode InputValueMode);
-
-	FText GetIconToolTipForInputMode(UNiagaraStackFunctionInput::EValueMode InputValueMode);
-
-	FName GetIconColorNameForInputMode(UNiagaraStackFunctionInput::EValueMode InputValueMode);
+	
+	FName GetColorNameForParameterScope(ENiagaraParameterScope ParameterScope);
 
 	bool AddStackEntryAssetContextMenuActions(FMenuBuilder& MenuBuilder, UNiagaraStackEntry& StackEntry);
 

@@ -40,7 +40,7 @@ namespace Generator
 		UMaterial*                                 CurrentMaterial;
 		const mi::neuraylib::ICompiled_material*   CurrentMDLMaterial;
 		const mi::neuraylib::IMaterial_definition* CurrentMDLMaterialDefinition;
-		bool bProcessingNormapMap;
+		bool ProcessingNormapMap;
 
 		mutable TArray<MDLImporterLogging::FLogMessage>        LogMessages;
 	};
@@ -49,7 +49,7 @@ namespace Generator
 	    : CurrentMaterial(nullptr)
 	    , CurrentMDLMaterial(nullptr)
 	    , CurrentMDLMaterialDefinition(nullptr)
-		, bProcessingNormapMap(false)
+		, ProcessingNormapMap(false)
 	{
 	}
 
@@ -75,9 +75,9 @@ namespace Generator
 		CurrentMDLMaterialDefinition = nullptr;
 	}
 
-	inline void FBaseExpressionFactory::SetProcessingNormapMap(bool bInProcessingNormapMap)
+	inline void FBaseExpressionFactory::SetProcessingNormapMap(bool InProcessingNormapMap)
 	{
-		bProcessingNormapMap = bInProcessingNormapMap;
+		ProcessingNormapMap = InProcessingNormapMap;
 	}
 
 }  // namespace Generator

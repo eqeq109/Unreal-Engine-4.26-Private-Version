@@ -108,22 +108,22 @@ DECLARE_GPU_STAT_NAMED(RayTracingTranslucency, TEXT("Ray Tracing Translucency"))
 
 #if RHI_RAYTRACING
 
-FRayTracingPrimaryRaysOptions GetRayTracingTranslucencyOptions(const FViewInfo& View)
+FRayTracingPrimaryRaysOptions GetRayTracingTranslucencyOptions()
 {
 	FRayTracingPrimaryRaysOptions Options;
 
 	Options.bEnabled = ShouldRenderRayTracingEffect(CVarRayTracingTranslucency.GetValueOnRenderThread() != 0);
-	Options.SamplerPerPixel = GRayTracingTranslucencySamplesPerPixel >= 0 ? GRayTracingTranslucencySamplesPerPixel : View.FinalPostProcessSettings.RayTracingTranslucencySamplesPerPixel;
+	Options.SamplerPerPixel = GRayTracingTranslucencySamplesPerPixel;
 	Options.ApplyHeightFog = GRayTracingTranslucencyHeightFog;
 	Options.PrimaryRayBias = GRayTracingTranslucencyPrimaryRayBias;
-	Options.MaxRoughness = GRayTracingTranslucencyMaxRoughness >= 0 ? GRayTracingTranslucencyMaxRoughness : View.FinalPostProcessSettings.RayTracingTranslucencyMaxRoughness;
-	Options.MaxRefractionRays = GRayTracingTranslucencyMaxRefractionRays >= 0 ? GRayTracingTranslucencyMaxRefractionRays : View.FinalPostProcessSettings.RayTracingTranslucencyRefractionRays;
+	Options.MaxRoughness = GRayTracingTranslucencyMaxRoughness;
+	Options.MaxRefractionRays = GRayTracingTranslucencyMaxRefractionRays;
 	Options.EnableEmmissiveAndIndirectLighting = GRayTracingTranslucencyEmissiveAndIndirectLighting;
 	Options.EnableDirectLighting = GRayTracingTranslucencyDirectLighting;
-	Options.EnableShadows = GRayTracingTranslucencyShadows >= 0 ? GRayTracingTranslucencyShadows : (int) View.FinalPostProcessSettings.RayTracingTranslucencyShadows;
+	Options.EnableShadows = GRayTracingTranslucencyShadows;
 	Options.MinRayDistance = GRayTracingTranslucencyMinRayDistance;
 	Options.MaxRayDistance = GRayTracingTranslucencyMaxRayDistance;
-	Options.EnableRefraction = GRayTracingTranslucencyRefraction >= 0 ? GRayTracingTranslucencyRefraction : View.FinalPostProcessSettings.RayTracingTranslucencyRefraction;;
+	Options.EnableRefraction = GRayTracingTranslucencyRefraction;
 
 	return Options;
 }

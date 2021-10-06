@@ -47,42 +47,41 @@ namespace Chaos
 		}
 	}
 
-	void FIgnoreCollisionManager::PopStorageData_Internal(int32 ExternalTimestamp)
+	void FIgnoreCollisionManager::FlipBufferPreSolve()
 	{
-		FStorageData* StorageData;
-		while(StorageDataQueue.Peek(StorageData) && StorageData->ExternalTimestamp <= ExternalTimestamp)
+		BufferedData->FlipProducer();
+
+		// Merge
+		for (auto& Elem : BufferedData->GetConsumerBuffer()->PendingActivations)
 		{
-			for (auto& Elem : StorageData->PendingActivations)
+			if( PendingActivations.Contains(Elem.Key) )
 			{
-				if (PendingActivations.Contains(Elem.Key))
+				// the case where the key already existed should be avoided
+				// but the implementation is here for completeness. 
+				for (auto& Val : Elem.Value)
 				{
-					// the case where the key already existed should be avoided
-					// but the implementation is here for completeness. 
-					for (auto& Val : Elem.Value)
+					if (!PendingActivations[Elem.Key].Contains(Val))
 					{
-						if (!PendingActivations[Elem.Key].Contains(Val))
-						{
-							PendingActivations[Elem.Key].Add(Val);
-						}
+						PendingActivations[Elem.Key].Add(Val);
 					}
 				}
-				else
-				{
-					PendingActivations.Add(Elem.Key, Elem.Value);
-				}
 			}
-
-			for (auto& Item : StorageData->PendingDeactivations)
+			else
 			{
-				if (!PendingDeactivations.Contains(Item))
-				{
-					PendingDeactivations.Add(Item);
-				}
+				PendingActivations.Add(Elem.Key, Elem.Value);
 			}
-
-			StorageDataQueue.Pop();
-			ReleaseStorageData(StorageData);
 		}
+
+		for (auto& Item : BufferedData->GetConsumerBuffer()->PendingDeactivations)
+		{
+			if (!PendingDeactivations.Contains(Item))
+			{
+				PendingDeactivations.Add(Item);
+			}
+		}
+
+		BufferedData->GetConsumerBufferMutable()->PendingActivations.Empty();
+		BufferedData->GetConsumerBufferMutable()->PendingDeactivations.Empty();
 	}
 
 	void FIgnoreCollisionManager::ProcessPendingQueues()
@@ -90,10 +89,10 @@ namespace Chaos
 
 		// remove particles that have been created and destroyed
 		// before the queue was ever processed. 
-		TArray<FHandleID> PreculledParticles;
+		TArray<FGeometryParticle*> PreculledParticles;
 		if (PendingActivations.Num() && PendingDeactivations.Num())
 		{
-			TArray<FHandleID> DeletionList;
+			TArray<FGeometryParticle*> DeletionList;
 			for (auto& Elem : PendingActivations)
 			{
 				int32 DeactiveIndex = PendingDeactivations.Find(Elem.Key);
@@ -104,7 +103,7 @@ namespace Chaos
 					PendingDeactivations.RemoveAtSwap(DeactiveIndex, 1);
 				}
 			}
-			for (FHandleID Del : DeletionList)
+			for (auto* Del : DeletionList)
 				PendingActivations.Remove(Del);
 		}
 
@@ -113,32 +112,53 @@ namespace Chaos
 		// simulation. 
 		if (PendingActivations.Num())
 		{
-			TArray<FHandleID> DeletionList;
+			TArray<FGeometryParticle*> DeletionList;
 			for (auto& Elem : PendingActivations)
 			{
-				for (int Index = Elem.Value.Num() - 1; Index >= 0; Index--)
+				if (Elem.Key)
 				{
-					if (PreculledParticles.Contains(Elem.Value[Index]))
+					if (Elem.Key->IsParticleValid())
 					{
-						Elem.Value.RemoveAtSwap(Index, 1);
-					}
-					else
-					{
-						FUniqueIdx ID0 = Elem.Key;
-						FUniqueIdx ID1 = Elem.Value[Index];
-						if (!IgnoresCollision(ID0, ID1))
+						if (TGeometryParticleHandle<FReal, 3>* Handle0 = Elem.Key->Handle())
 						{
-							AddIgnoreCollisionsFor(ID0, ID1);
-							AddIgnoreCollisionsFor(ID1, ID0);
-						}
+							for (int Index = Elem.Value.Num() - 1; Index >= 0; Index--)
+							{
+								if (TGeometryParticle<FReal, 3>* Val = Elem.Value[Index])
+								{
+									if (Val->IsParticleValid())
+									{
+										if (PreculledParticles.Contains(Val))
+										{
+											Elem.Value.RemoveAtSwap(Index, 1);
+										}
+										else if (TGeometryParticleHandle<FReal, 3>* Handle1 = Val->Handle())
+										{
+											FUniqueIdx ID0 = Handle0->UniqueIdx();
+											FUniqueIdx ID1 = Handle1->UniqueIdx();
+											if (!IgnoresCollision(ID0, ID1))
+											{
+												Chaos::TPBDRigidParticleHandle<FReal, 3>* ParticleHandle0 = Handle0->CastToRigidParticle();
+												Chaos::TPBDRigidParticleHandle<FReal, 3>* ParticleHandle1 = Handle1->CastToRigidParticle();
 
-						Elem.Value.RemoveAtSwap(Index, 1);
+												ParticleHandle0->AddCollisionConstraintFlag(Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
+												AddIgnoreCollisionsFor(ID0, ID1);
+
+												ParticleHandle1->AddCollisionConstraintFlag(Chaos::ECollisionConstraintFlags::CCF_BroadPhaseIgnoreCollisions);
+												AddIgnoreCollisionsFor(ID1, ID0);
+											}
+
+											Elem.Value.RemoveAtSwap(Index, 1);
+										}
+									}
+								}
+							}
+						}
+						if (!Elem.Value.Num())
+							DeletionList.Add(Elem.Key);
 					}
 				}
-				if (!Elem.Value.Num())
-					DeletionList.Add(Elem.Key);
 			}
-			for (FHandleID Del : DeletionList)
+			for (auto* Del : DeletionList)
 				PendingActivations.Remove(Del);
 		}
 
@@ -147,7 +167,14 @@ namespace Chaos
 		{
 			for (auto Index = PendingDeactivations.Num() - 1; Index >= 0; Index--)
 			{
-				IgnoreCollisionsList.Remove(PendingDeactivations[Index]);
+				if (PendingDeactivations[Index])
+				{
+					FUniqueIdx ID0 = PendingDeactivations[Index]->UniqueIdx();
+					if (IgnoreCollisionsList.Contains(ID0))
+					{
+						IgnoreCollisionsList.Remove(ID0);
+					}
+				}
 			}
 			PendingDeactivations.Empty();
 		}

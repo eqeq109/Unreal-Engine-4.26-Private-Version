@@ -1,4 +1,4 @@
-// Copyright 2009-2021 Intel Corporation
+// Copyright 2009-2020 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "oidn.h"
 
-OIDN_NAMESPACE_BEGIN
+namespace oidn {
 
   // ---------------------------------------------------------------------------
   // Buffer
@@ -215,30 +215,12 @@ OIDN_NAMESPACE_BEGIN
                                bytePixelStride, byteRowStride);
     }
 
-    // Removes an image parameter of the filter that was previously set.
-    void removeImage(const char* name)
-    {
-      oidnRemoveFilterImage(handle, name);
-    }
-
     // Sets an opaque data parameter of the filter (owned by the user).
     void setData(const char* name,
                  void* ptr, size_t byteSize)
     {
       oidnSetSharedFilterData(handle, name,
                               ptr, byteSize);
-    }
-
-    // Notifies the filter that the contents of an opaque data parameter has been changed.
-    void updateData(const char* name)
-    {
-      oidnUpdateFilterData(handle, name);
-    }
-
-    // Removes an opaque data parameter of the filter that was previously set.
-    void removeData(const char* name)
-    {
-      oidnRemoveFilterData(handle, name);
     }
 
     // Sets a boolean parameter of the filter.
@@ -478,4 +460,4 @@ OIDN_NAMESPACE_BEGIN
     return DeviceRef(oidnNewDevice((OIDNDeviceType)type));
   }
 
-OIDN_NAMESPACE_END
+} // namespace oidn

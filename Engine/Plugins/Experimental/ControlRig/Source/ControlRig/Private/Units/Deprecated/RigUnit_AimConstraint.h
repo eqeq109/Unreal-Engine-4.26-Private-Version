@@ -38,7 +38,7 @@ struct FAimTarget
 
 	// # Target Weight
 	UPROPERTY(EditAnywhere, Category = FAimTarget)
-	float Weight = 0.f;
+	float Weight;
 
 	// # Aim at/Align to this Transform
 	UPROPERTY(EditAnywhere, Category = FAimTarget)
@@ -46,7 +46,7 @@ struct FAimTarget
 
 	//# Orient To Target Transforms mode only : Vector in the space of Target Transform to which the Aim Vector will be aligned
 	UPROPERTY(EditAnywhere, Category = FAimTarget)
-	FVector AlignVector = FVector(0.f);
+	FVector AlignVector;
 };
 
 USTRUCT()
@@ -72,19 +72,19 @@ struct FRigUnit_AimConstraint : public FRigUnitMutable
 
 	//# How to perform an aim
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
-	EAimMode AimMode = EAimMode::AimAtTarget;
+	EAimMode AimMode;
 
 	//# How to perform an upvector stabilization
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
-	EAimMode UpMode = EAimMode::AimAtTarget;
+	EAimMode UpMode;
 
 	// # Vector in the space of Named joint which will be aligned to the aim target
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
-	FVector AimVector = FVector(0.f);
+	FVector AimVector;
 
 	//# Vector in the space of Named joint which will be aligned to the up target for stabilization
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
-	FVector UpVector = FVector(0.f);
+	FVector UpVector;
 
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
 	TArray<FAimTarget> AimTargets;

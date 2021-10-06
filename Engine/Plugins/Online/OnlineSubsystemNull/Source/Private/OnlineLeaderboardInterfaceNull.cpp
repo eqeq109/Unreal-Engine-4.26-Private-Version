@@ -4,7 +4,7 @@
 #include "OnlineSubsystemNull.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 
-bool FOnlineLeaderboardsNull::ReadLeaderboards(const TArray< FUniqueNetIdRef >& Players, FOnlineLeaderboardReadRef& ReadObject)
+bool FOnlineLeaderboardsNull::ReadLeaderboards(const TArray< TSharedRef<const FUniqueNetId> >& Players, FOnlineLeaderboardReadRef& ReadObject)
 {
 	// Clear out any existing data
 	ReadObject->ReadState = EOnlineAsyncTaskState::Failed;
@@ -20,10 +20,10 @@ bool FOnlineLeaderboardsNull::ReadLeaderboards(const TArray< FUniqueNetIdRef >& 
 		{
 			for (int32 RowIdx=0; RowIdx<Leaderboard->Rows.Num(); ++RowIdx)
 			{
-				FUniqueNetIdPtr RowPlayerID = Leaderboard->Rows[RowIdx].PlayerId;
+				TSharedPtr<const FUniqueNetId> RowPlayerID = Leaderboard->Rows[RowIdx].PlayerId;
 				for (int32 PlayerIdIdx = 0; PlayerIdIdx < NumPlayerIds; ++PlayerIdIdx)
 				{
-					FUniqueNetIdPtr PlayerID = Players[PlayerIdIdx];
+					TSharedPtr<const FUniqueNetId> PlayerID = Players[PlayerIdIdx];
 					if (PlayerID.IsValid() && RowPlayerID.IsValid() && (*PlayerID.Get() == *RowPlayerID.Get()))
 					{
 						ReadObject->Rows.Add(Leaderboard->Rows[RowIdx]);
@@ -51,7 +51,7 @@ bool FOnlineLeaderboardsNull::ReadLeaderboards(const TArray< FUniqueNetIdRef >& 
 
 bool FOnlineLeaderboardsNull::ReadLeaderboardsForFriends(int32 LocalUserNum, FOnlineLeaderboardReadRef& ReadObject)
 {
-	TArray< FUniqueNetIdRef > FriendsList;
+	TArray< TSharedRef<const FUniqueNetId> > FriendsList;
 
 	// always add a UniqueNetId for local user
 	check(NullSubsystem);
@@ -85,7 +85,7 @@ bool FOnlineLeaderboardsNull::ReadLeaderboardsAroundRank(int32 Rank, uint32 Rang
 	UE_LOG_ONLINE_LEADERBOARD(Warning, TEXT("FOnlineLeaderboardsNull::ReadLeaderboardsAroundRank is currently not supported."));
 	return false;
 }
-bool FOnlineLeaderboardsNull::ReadLeaderboardsAroundUser(FUniqueNetIdRef Player, uint32 Range, FOnlineLeaderboardReadRef& ReadObject)
+bool FOnlineLeaderboardsNull::ReadLeaderboardsAroundUser(TSharedRef<const FUniqueNetId> Player, uint32 Range, FOnlineLeaderboardReadRef& ReadObject)
 {
 	UE_LOG_ONLINE_LEADERBOARD(Warning, TEXT("FOnlineLeaderboardsNull::ReadLeaderboardsAroundUser is currently not supported."));
 	return false;

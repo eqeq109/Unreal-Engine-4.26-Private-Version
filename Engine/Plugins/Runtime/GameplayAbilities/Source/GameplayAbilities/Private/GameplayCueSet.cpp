@@ -7,9 +7,6 @@
 #include "GameplayCueNotify_Actor.h"
 #include "GameplayCueNotify_Static.h"
 #include "GameplayCueManager.h"
-#include "NativeGameplayTags.h"
-
-UE_DEFINE_GAMEPLAY_TAG_STATIC(StaticTag_GameplayCue, TEXT("GameplayCue"));
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
 //
@@ -354,5 +351,5 @@ void UGameplayCueSet::BuildAccelerationMap_Internal()
 FGameplayTag UGameplayCueSet::BaseGameplayCueTag()
 {
 	// Note we should not cache this off as a static variable, since for new projects the GameplayCue tag will not be found until one is created.
-	return StaticTag_GameplayCue.GetTag();
+	return FGameplayTag::RequestGameplayTag(TEXT("GameplayCue"), false);
 }

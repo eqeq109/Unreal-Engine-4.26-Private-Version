@@ -49,7 +49,7 @@ bool FComponentVisualizerManager::HandleClick(FEditorViewportClient* InViewportC
 		}
 	}
 
-	return bHandled;
+	return false;
 }
 
 bool FComponentVisualizerManager::HandleProxyForComponentVis(FEditorViewportClient* InViewportClient, HHitProxy* HitProxy, const FViewportClick& Click)

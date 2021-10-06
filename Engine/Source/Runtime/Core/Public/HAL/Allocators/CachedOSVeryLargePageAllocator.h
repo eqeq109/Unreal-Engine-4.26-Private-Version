@@ -24,11 +24,6 @@
 #define UE_VERYLARGEPAGEALLOCATOR_TAKEONALL64KBALLOCATIONS 0
 #endif
 
-#ifndef UE_VERYLARGEPAGEALLOCATOR_RESERVED_SIZE_IN_GB
-#define UE_VERYLARGEPAGEALLOCATOR_RESERVED_SIZE_IN_GB 2	//default to 2GB
-#endif
-
-
 #ifndef UE_VERYLARGEPAGEALLOCATOR_PAGESIZE_KB
 #define UE_VERYLARGEPAGEALLOCATOR_PAGESIZE_KB 4096	//default to 4MB
 #endif
@@ -36,11 +31,9 @@ class FCachedOSVeryLargePageAllocator
 {
 	// we make the address space twice as big as we need and use the 1st have for small pool allocations, the 2nd half is used for other allocations that are still == SizeOfSubPage
 #if UE_VERYLARGEPAGEALLOCATOR_TAKEONALL64KBALLOCATIONS
-	static const uint64 AddressSpaceToReserve = ((1024LL * 1024LL * 1024LL) * UE_VERYLARGEPAGEALLOCATOR_RESERVED_SIZE_IN_GB * 2LL);
-	static const uint64 AddressSpaceToReserveSmall = AddressSpaceToReserve / 2;
+	static const uint64 AddressSpaceToReserve = ((1024 * 1024) * 2048LL * 2LL);
 #else
-	static const uint64 AddressSpaceToReserve = ((1024 * 1024 * 1024LL) * UE_VERYLARGEPAGEALLOCATOR_RESERVED_SIZE_IN_GB);
-	static const uint64 AddressSpaceToReserveSmall = AddressSpaceToReserve;
+	static const uint64 AddressSpaceToReserve = ((1024 * 1024) * 2048LL);
 #endif
 	static const uint64 SizeOfLargePage = (UE_VERYLARGEPAGEALLOCATOR_PAGESIZE_KB * 1024);
 	static const uint64 SizeOfSubPage = (1024 * 64);
@@ -60,11 +53,11 @@ public:
 		// this leaks everything!
 	}
 
-	void* Allocate(SIZE_T Size, uint32 AllocationHint = 0, FCriticalSection* Mutex = nullptr);
+	void* Allocate(SIZE_T Size, uint32 AllocationHint = 0);
 
-	void Free(void* Ptr, SIZE_T Size, FCriticalSection* Mutex = nullptr);
+	void Free(void* Ptr, SIZE_T Size);
 
-	void FreeAll(FCriticalSection* Mutex = nullptr);
+	void FreeAll();
 
 	uint64 GetCachedFreeTotal()
 	{
@@ -73,7 +66,7 @@ public:
 
 	FORCEINLINE bool IsPartOf(const void* Ptr)
 	{
-		if (((uintptr_t)Ptr - AddressSpaceReserved) < AddressSpaceToReserveSmall)
+		if ((uintptr_t)Ptr >= AddressSpaceReserved && (uintptr_t)Ptr < AddressSpaceReservedEndSmallPool)
 		{
 			return true;
 		}

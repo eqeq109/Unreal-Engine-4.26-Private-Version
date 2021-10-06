@@ -16,12 +16,19 @@ namespace UnrealBuildTool.Rules
 					"DatasmithFacadeCSharp",
 				}
 			);
+
+			PrivateIncludePaths.AddRange(
+				new string[]
+				{
+					ModuleDirectory
+				}
+			);
 		}
 
 		public abstract string GetRhinoVersion();
 	}
 
-	[SupportedPlatforms("Win64", "Mac")]
+	[SupportedPlatforms("Win64")]
 	public class DatasmithRhino6 : DatasmithRhinoBase
 	{
 		public DatasmithRhino6(ReadOnlyTargetRules Target)

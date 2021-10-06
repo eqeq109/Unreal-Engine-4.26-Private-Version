@@ -223,9 +223,7 @@ namespace Gauntlet
 			{
 				Globals.LogDir = LogDir;
 			}
-			// Normalize paths
-			LogDir = Path.GetFullPath(LogDir);
-			TempDir = Path.GetFullPath(TempDir);
+
 
 			// normalize the project name and get the path
 			if (File.Exists(Project))

@@ -7,14 +7,14 @@
 #include "Widgets/SWidget.h"
 
 /**
- * Implements a details view customization for the FOpenColorIOColorConversionSettings
+ * Implements a details view customization for the FOpenColorIOColorSpaceConversion
  */
-class FOpenColorIOColorConversionSettingsCustomization : public IPropertyTypeCustomization
+class FOpenColorIOColorSpaceConversionCustomization : public IPropertyTypeCustomization
 {
 public:
 	static TSharedRef<IPropertyTypeCustomization> MakeInstance()
 	{
-		return MakeShareable(new FOpenColorIOColorConversionSettingsCustomization);
+		return MakeShareable(new FOpenColorIOColorSpaceConversionCustomization);
 	}
 
 	/** IPropertyTypeCustomization interface */

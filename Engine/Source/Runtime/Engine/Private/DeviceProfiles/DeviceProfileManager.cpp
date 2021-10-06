@@ -19,7 +19,6 @@
 #endif
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "DeviceProfiles/DeviceProfileFragment.h"
-#include "GenericPlatform/GenericPlatformCrashContext.h"
 
 static TAutoConsoleVariable<FString> CVarDeviceProfileOverride(
 	TEXT("dp.Override"),
@@ -110,23 +109,9 @@ static void GetFragmentCvars(const FString& CurrentSectionName, const FString& C
 	}
 }
 
-void UDeviceProfileManager::InitializeCVarsForActiveDeviceProfile(bool bPushSettings, bool bIsDeviceProfilePreview, bool bForceReload)
+void UDeviceProfileManager::InitializeCVarsForActiveDeviceProfile(bool bPushSettings, bool bForceDeviceProfilePriority)
 {
-	FString ActiveProfileName;
-	
-	if(DeviceProfileManagerSingleton)
-	{
-		ActiveProfileName = DeviceProfileManagerSingleton->ActiveDeviceProfile->GetName();
-
-		//Ensure we've loaded the device profiles for the active platform.
-		//This can be needed when overriding the device profile.
-		FString ActivePlatformName = DeviceProfileManagerSingleton->ActiveDeviceProfile->DeviceType;
-		FConfigCacheIni::LoadGlobalIniFile(GDeviceProfilesIni, TEXT("DeviceProfiles"), *ActivePlatformName, bForceReload);
-	}
-	else
-	{
-		ActiveProfileName = GetPlatformDeviceProfileName();
-	}
+	FString ActiveProfileName = DeviceProfileManagerSingleton ? DeviceProfileManagerSingleton->ActiveDeviceProfile->GetName() : GetPlatformDeviceProfileName();
 
 	UE_LOG(LogInit, Log, TEXT("Applying CVar settings loaded from the selected device profile: [%s]"), *ActiveProfileName);
 
@@ -207,42 +192,13 @@ void UDeviceProfileManager::InitializeCVarsForActiveDeviceProfile(bool bPushSett
 		}
 	}
 
-	FString SectionSuffix = *FString::Printf(TEXT(" %s"), *UDeviceProfile::StaticClass()->GetName());
-
-#if WITH_EDITOR
-	TSet<FString> PreviewAllowlistCVars;
-	TSet<FString> PreviewDenylistCVars;
-	bool bFoundAllowDeny = false;
-	if (bIsDeviceProfilePreview)
-	{
-		// Walk up the device profile tree to find the most specific device profile with a Denylist or Allowlist of cvars to apply, and use those Allow/Denylists.
-		for(FString CurrentProfileName = ActiveProfileName, CurrentSectionName = ActiveProfileName + SectionSuffix;
-			PreviewAllowlistCVars.Num()==0 && PreviewDenylistCVars.Num()==0 && !CurrentProfileName.IsEmpty() && AvailableProfiles.Contains(CurrentSectionName);
-			CurrentProfileName = GConfig->GetStr(*CurrentSectionName, TEXT("BaseProfileName"), GDeviceProfilesIni), CurrentSectionName = CurrentProfileName + SectionSuffix)
-		{
-			TArray<FString> TempAllowlist;
-			GConfig->GetArray(*CurrentSectionName, TEXT("PreviewAllowlistCVars"), TempAllowlist, GDeviceProfilesIni);
-			for( FString& Item : TempAllowlist)
-			{
-				PreviewAllowlistCVars.Add(Item);
-			}
-
-			TArray<FString> TempDenylist;
-			GConfig->GetArray(*CurrentSectionName, TEXT("PreviewDenylistCVars"), TempDenylist, GDeviceProfilesIni);
-			for (FString& Item : TempDenylist)
-			{
-				PreviewDenylistCVars.Add(Item);
-			}
-		}
-	}
-#endif
 	// For each device profile, starting with the selected and working our way up the BaseProfileName tree,
 	// Find all CVars and set them 
 	FString BaseDeviceProfileName = ActiveProfileName;
 	bool bReachedEndOfTree = BaseDeviceProfileName.IsEmpty();
 	while( bReachedEndOfTree == false ) 
 	{
-		FString CurrentSectionName = BaseDeviceProfileName + SectionSuffix;
+		FString CurrentSectionName = FString::Printf( TEXT("%s %s"), *BaseDeviceProfileName, *UDeviceProfile::StaticClass()->GetName() );
 		
 		// Check the profile was available.
 		bool bProfileExists = AvailableProfiles.Contains( CurrentSectionName );
@@ -313,22 +269,6 @@ void UDeviceProfileManager::InitializeCVarsForActiveDeviceProfile(bool bPushSett
 					{
 						if (!CVarsAlreadySetList.Find(CVarKey))
 						{
-#if WITH_EDITOR
-							if (bIsDeviceProfilePreview)
-							{
-								if (PreviewDenylistCVars.Contains(CVarKey))
-								{
-									UE_LOG(LogInit, Log, TEXT("Skipping Device Profile CVar due to PreviewDenylistCVars: [[%s]]"), *CVarKey);
-									continue;
-								}
-
-								if (PreviewAllowlistCVars.Num() > 0 && !PreviewAllowlistCVars.Contains(CVarKey))
-								{
-									UE_LOG(LogInit, Log, TEXT("Skipping Device Profile CVar due to PreviewAllowlistCVars: [[%s]]"), *CVarKey);
-									continue;
-								}
-							}
-#endif
 							IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(*CVarKey);
 							if (CVar)
 							{
@@ -359,9 +299,7 @@ void UDeviceProfileManager::InitializeCVarsForActiveDeviceProfile(bool bPushSett
 								}
 							}
 
-							//If this is a dp preview then we set cvars with their existing priority so that we don't cause future issues when setting by scalability levels etc.
-							uint32 BaseCVarPriority = bIsDeviceProfilePreview ? ECVF_SetByMask : ECVF_SetByDeviceProfile;
-							uint32 CVarPriority = bIsScalabilityBucket ? ECVF_SetByScalability : BaseCVarPriority;
+							uint32 CVarPriority = (bIsScalabilityBucket && !bForceDeviceProfilePriority) ? ECVF_SetByScalability : ECVF_SetByDeviceProfile;
 							OnSetCVarFromIniEntry(*GDeviceProfilesIni, *CVarKey, *CVarValue, CVarPriority);
 							CVarsAlreadySetList.Add(CVarKey, CVarValue);
 						}
@@ -432,7 +370,7 @@ bool UDeviceProfileManager::DoActiveProfilesReference(const TSet<FString>& Devic
 	return bDoActiveProfilesReferenceQuerySet;
 }
 
-void UDeviceProfileManager::ReapplyDeviceProfile(bool bForceReload)
+void UDeviceProfileManager::ReapplyDeviceProfile()
 {	
 	UDeviceProfile* OverrideProfile = DeviceProfileManagerSingleton->BaseDeviceProfile ? DeviceProfileManagerSingleton->GetActiveProfile() : nullptr;
 	UDeviceProfile* BaseProfile = DeviceProfileManagerSingleton->BaseDeviceProfile ? DeviceProfileManagerSingleton->BaseDeviceProfile : DeviceProfileManagerSingleton->GetActiveProfile();
@@ -444,7 +382,7 @@ void UDeviceProfileManager::ReapplyDeviceProfile(bool bForceReload)
 
 	// Set base profile and re-apply cvars.
 	SetActiveDeviceProfile(BaseProfile);
-	InitializeCVarsForActiveDeviceProfile(false, false, bForceReload);
+	InitializeCVarsForActiveDeviceProfile();
 
 	if (OverrideProfile)
 	{
@@ -588,12 +526,6 @@ FOnDeviceProfileManagerUpdated& UDeviceProfileManager::OnManagerUpdated()
 }
 
 
-FOnActiveDeviceProfileChanged& UDeviceProfileManager::OnActiveDeviceProfileChanged()
-{
-	return ActiveDeviceProfileChangedDelegate;
-}
-
-
 void UDeviceProfileManager::LoadProfiles()
 {
 	if( !HasAnyFlags( RF_ClassDefaultObject ) )
@@ -705,7 +637,7 @@ void UDeviceProfileManager::SaveProfiles(bool bSaveToDefaults)
 /**
 * Overrides the device profile. The original profile can be restored with RestoreDefaultDeviceProfile
 */
-void UDeviceProfileManager::SetOverrideDeviceProfile(UDeviceProfile* DeviceProfile, bool bIsDeviceProfilePreview)
+void UDeviceProfileManager::SetOverrideDeviceProfile(UDeviceProfile* DeviceProfile, bool bForceDeviceProfilePriority)
 {
 	// pop any pushed settings
 	HandleDeviceProfileOverridePop();
@@ -715,7 +647,7 @@ void UDeviceProfileManager::SetOverrideDeviceProfile(UDeviceProfile* DeviceProfi
 
 	// activate new one!
 	DeviceProfileManagerSingleton->SetActiveDeviceProfile(DeviceProfile);
-	InitializeCVarsForActiveDeviceProfile(true, bIsDeviceProfilePreview);
+	InitializeCVarsForActiveDeviceProfile(true, bForceDeviceProfilePriority);
 
 	// broadcast cvar sinks now that we are done
 	IConsoleManager::Get().CallAllConsoleVariableSinks();
@@ -733,12 +665,10 @@ void UDeviceProfileManager::RestoreDefaultDeviceProfile()
 		if (CVar)
 		{
 			// restore it!
-			CVar->SetWithCurrentPriority(*It.Value());			
+			CVar->Set(*It.Value(), ECVF_SetByDeviceProfile);
 			UE_LOG(LogInit, Log, TEXT("Popping Device Profile CVar: [[%s:%s]]"), *It.Key(), *It.Value());
 		}
 	}
-
-	PushedSettings.Reset();
 
 	if(BaseDeviceProfile)
 	{
@@ -870,14 +800,9 @@ void UDeviceProfileManager::SetActiveDeviceProfile( UDeviceProfile* DeviceProfil
 	UE_LOG(LogInit, Log, TEXT("Active device profile: [%p][%p %d] %s"), ActiveDeviceProfile, TextureLODGroupsAddr, NumTextureLODGroups, ActiveDeviceProfile ? *ActiveDeviceProfile->GetName() : TEXT("None"));
 	UE_LOG(LogInit, Log, TEXT("Profiles: %s"), *ProfileNames);
 
-	ActiveDeviceProfileChangedDelegate.Broadcast();
-
 #if CSV_PROFILER
 	CSV_METADATA(TEXT("DeviceProfile"), *GetActiveDeviceProfileName());
 #endif
-
-	// Update the crash context 
-	FGenericCrashContext::SetEngineData(TEXT("DeviceProfile.Name"), GetActiveDeviceProfileName());
 }
 
 

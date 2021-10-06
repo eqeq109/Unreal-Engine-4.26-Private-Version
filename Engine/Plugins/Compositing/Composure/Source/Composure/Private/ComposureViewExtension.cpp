@@ -41,7 +41,7 @@ int32 FComposureViewExtension::GetPriority() const
 }
 
 //------------------------------------------------------------------------------
-bool FComposureViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext&) const
+bool FComposureViewExtension::IsActiveThisFrame(FViewport* InViewport) const
 {
 	bool bActive = false;
 	if (AssociatedPipelineObj.IsValid())

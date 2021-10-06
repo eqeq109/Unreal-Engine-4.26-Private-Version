@@ -23,7 +23,7 @@ void SDataprepSelectionTransform::Construct(const FArguments& InArgs, UDataprepS
 
 FSlateColor SDataprepSelectionTransform::GetOutlineColor() const
 {
-	return FDataprepEditorStyle::GetColor("DataprepActionStep.SelectionTransform.OutlineColor");
+	return FDataprepEditorStyle::GetColor("DataprepActionStep.Operation.OutlineColor");
 }
 
 FText SDataprepSelectionTransform::GetBlockTitle() const

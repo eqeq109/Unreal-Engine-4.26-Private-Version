@@ -44,7 +44,6 @@
 #include "PhysicsInterfaceUtilsCore.h"
 #include "PhysicalMaterials/PhysicalMaterialMask.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
-#include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 
 #if PHYSICS_INTERFACE_PHYSX
 #include "geometry/PxConvexMesh.h"
@@ -105,14 +104,16 @@ Chaos::FChaosPhysicsMaterial* GetMaterialFromInternalFaceIndex(const FPhysicsSha
 		{
 			if(Materials.Num() == 1)
 			{
-				return Solver->GetQueryMaterials_External().Get(Materials[0].InnerHandle);
+				Chaos::TSolverQueryMaterialScope<Chaos::ELockType::Read> Scope(Solver);
+				return Solver->GetQueryMaterials().Get(Materials[0].InnerHandle);
 			}
 
 			uint8 Index = Shape.GetGeometry()->GetMaterialIndex(InternalFaceIndex);
 
 			if(Materials.IsValidIndex(Index))
 			{
-				return Solver->GetQueryMaterials_External().Get(Materials[Index].InnerHandle);
+				Chaos::TSolverQueryMaterialScope<Chaos::ELockType::Read> Scope(Solver);
+				return Solver->GetQueryMaterials().Get(Materials[Index].InnerHandle);
 			}
 		}
 	}
@@ -159,7 +160,8 @@ Chaos::FChaosPhysicsMaterial* GetMaterialFromInternalFaceIndexAndHitLocation(con
 							{
 								Chaos::FChaosPhysicsMaterialMask* Mask = nullptr;
 								{
-									Mask = Solver->GetQueryMaterialMasks_External().Get(Shape.GetMaterialMasks()[Index].InnerHandle);
+									Chaos::TSolverQueryMaterialScope<Chaos::ELockType::Read> Scope(Solver);
+									Mask = Solver->GetQueryMaterialMasks().Get(Shape.GetMaterialMasks()[Index].InnerHandle);
 								}
 
 								if (Mask && InternalFaceIndex < (uint32)BodySetup->FaceRemap.Num())
@@ -177,7 +179,8 @@ Chaos::FChaosPhysicsMaterial* GetMaterialFromInternalFaceIndexAndHitLocation(con
 											uint32 MaterialIdx = Shape.GetMaterialMaskMaps()[AdjustedMapIdx];
 											if (Shape.GetMaterialMaskMapMaterials().IsValidIndex(MaterialIdx))
 											{
-												return Solver->GetQueryMaterials_External().Get(Shape.GetMaterialMaskMapMaterials()[MaterialIdx].InnerHandle);
+												Chaos::TSolverQueryMaterialScope<Chaos::ELockType::Read> Scope(Solver);
+												return Solver->GetQueryMaterials().Get(Shape.GetMaterialMaskMapMaterials()[MaterialIdx].InnerHandle);
 											}
 										}
 									}
@@ -229,7 +232,10 @@ bool FPhysInterface_Chaos::IsInScene(const FPhysicsActorHandle& InActorReference
 
 void FPhysInterface_Chaos::FlushScene(FPhysScene* InScene)
 {
-	InScene->Flush();
+	FPhysicsCommand::ExecuteWrite(InScene, [&]()
+	{
+		InScene->Flush_AssumesLocked();
+	});
 }
 
 Chaos::EJointMotionType ConvertMotionType(ELinearConstraintMotion InEngineType)
@@ -391,10 +397,7 @@ void FPhysInterface_Chaos::UpdateLinearDrive_AssumesLocked(const FPhysicsConstra
 				Constraint->SetLinearPositionDriveXEnabled(InDriveParams.XDrive.bEnablePositionDrive);
 				Constraint->SetLinearPositionDriveYEnabled(InDriveParams.YDrive.bEnablePositionDrive);
 				Constraint->SetLinearPositionDriveZEnabled(InDriveParams.ZDrive.bEnablePositionDrive);
-				if (FMath::IsNearlyEqual(Constraint->GetLinearPlasticityLimit(), FLT_MAX))
-				{
-					Constraint->SetLinearDrivePositionTarget(InDriveParams.PositionTarget);
-				}
+				Constraint->SetLinearDrivePositionTarget(InDriveParams.PositionTarget);
 			}
 
 			bool bVelocityDriveEnabled = InDriveParams.IsVelocityDriveEnabled();
@@ -440,11 +443,7 @@ void FPhysInterface_Chaos::UpdateAngularDrive_AssumesLocked(const FPhysicsConstr
 					Constraint->SetAngularSLerpPositionDriveEnabled(InDriveParams.SlerpDrive.bEnablePositionDrive);
 				}
 
-				if (FMath::IsNearlyEqual(Constraint->GetAngularPlasticityLimit(),FLT_MAX) )
-				{
-					// Plastic joints should not be re-targeted after initialization. 
-					Constraint->SetAngularDrivePositionTarget(Chaos::FRotation3(InDriveParams.OrientationTarget.Quaternion()));
-				}
+				Constraint->SetAngularDrivePositionTarget(Chaos::FRotation3(InDriveParams.OrientationTarget.Quaternion()));
 			}
 
 			bool bVelocityDriveEnabled = InDriveParams.IsVelocityDriveEnabled();
@@ -460,18 +459,7 @@ void FPhysInterface_Chaos::UpdateAngularDrive_AssumesLocked(const FPhysicsConstr
 					Constraint->SetAngularSLerpVelocityDriveEnabled(InDriveParams.SlerpDrive.bEnableVelocityDrive);
 				}
 
-				if (!FMath::IsNearlyEqual(Constraint->GetAngularPlasticityLimit(),FLT_MAX))
-				{
-					// Plasticity requires a zero relative velocity.
-					if (!Constraint->GetAngularDriveVelocityTarget().IsZero())
-					{
-						Constraint->SetAngularDriveVelocityTarget(FVector(ForceInitToZero));
-					}
-				}
-				else
-				{
-					Constraint->SetAngularDriveVelocityTarget(InDriveParams.AngularVelocityTarget);
-				}
+				Constraint->SetAngularDriveVelocityTarget(InDriveParams.AngularVelocityTarget);
 			}
 
 			Constraint->SetAngularDriveForceMode(Chaos::EJointForceMode::Acceleration);
@@ -503,8 +491,7 @@ struct FScopedSceneLock_Chaos
 	FScopedSceneLock_Chaos(FPhysicsActorHandle const * InActorHandle, EPhysicsInterfaceScopedLockType InLockType)
 		: LockType(InLockType)
 	{
-		auto Scene = GetSceneForActor(InActorHandle);
-		Solver = Scene ? Scene->GetSolver() : nullptr;
+		Scene = GetSceneForActor(InActorHandle);
 		LockScene();
 	}
 
@@ -513,7 +500,6 @@ struct FScopedSceneLock_Chaos
 	{
 		FPhysScene_Chaos* SceneA = GetSceneForActor(InActorHandleA);
 		FPhysScene_Chaos* SceneB = GetSceneForActor(InActorHandleB);
-		FPhysScene_Chaos* Scene = nullptr;
 
 		if(SceneA == SceneB)
 		{
@@ -528,21 +514,19 @@ struct FScopedSceneLock_Chaos
 			UE_LOG(LogPhysics, Warning, TEXT("Attempted to aquire a physics scene lock for two paired actors that were not in the same scene. Skipping lock"));
 		}
 
-		Solver = Scene ? Scene->GetSolver() : nullptr;
 		LockScene();
 	}
 
 	FScopedSceneLock_Chaos(FPhysicsConstraintHandle const * InConstraintHandle, EPhysicsInterfaceScopedLockType InLockType)
-		: Solver(nullptr)
+		: Scene(nullptr)
 		, LockType(InLockType)
 	{
 		if (InConstraintHandle)
 		{
-			auto Scene = GetSceneForActor(InConstraintHandle);
-			Solver = Scene ? Scene->GetSolver() : nullptr;
+			Scene = GetSceneForActor(InConstraintHandle);
 		}
 #if CHAOS_CHECKED
-		if (!Solver)
+		if (!Scene)
 		{
 			UE_LOG(LogPhysics, Warning, TEXT("Failed to find Scene for constraint. Skipping lock"));
 		}
@@ -553,16 +537,15 @@ struct FScopedSceneLock_Chaos
 	FScopedSceneLock_Chaos(USkeletalMeshComponent* InSkelMeshComp, EPhysicsInterfaceScopedLockType InLockType)
 		: LockType(InLockType)
 	{
-		Solver = nullptr;
+		Scene = nullptr;
 
 		if(InSkelMeshComp)
 		{
 			for(FBodyInstance* BI : InSkelMeshComp->Bodies)
 			{
-				auto Scene = GetSceneForActor(&BI->GetPhysicsActorHandle());
+				Scene = GetSceneForActor(&BI->GetPhysicsActorHandle());
 				if(Scene)
 				{
-					Solver = Scene->GetSolver();
 					break;
 				}
 			}
@@ -572,7 +555,7 @@ struct FScopedSceneLock_Chaos
 	}
 
 	FScopedSceneLock_Chaos(FPhysScene_Chaos* InScene, EPhysicsInterfaceScopedLockType InLockType)
-		: Solver(InScene ? InScene->GetSolver() : nullptr)
+		: Scene(InScene)
 		, LockType(InLockType)
 	{
 		LockScene();
@@ -587,7 +570,7 @@ private:
 
 	void LockScene()
 	{
-		if(!Solver)
+		if(!Scene)
 		{
 			return;
 		}
@@ -595,17 +578,17 @@ private:
 		switch(LockType)
 		{
 		case EPhysicsInterfaceScopedLockType::Read:
-			Solver->GetExternalDataLock_External().ReadLock();
+			Scene->ExternalDataLock.ReadLock();
 			break;
 		case EPhysicsInterfaceScopedLockType::Write:
-			Solver->GetExternalDataLock_External().WriteLock();
+			Scene->ExternalDataLock.WriteLock();
 			break;
 		}
 	}
 
 	void UnlockScene()
 	{
-		if(!Solver)
+		if(!Scene)
 		{
 			return;
 		}
@@ -613,21 +596,23 @@ private:
 		switch(LockType)
 		{
 		case EPhysicsInterfaceScopedLockType::Read:
-			Solver->GetExternalDataLock_External().ReadUnlock();
+			Scene->ExternalDataLock.ReadUnlock();
 			break;
 		case EPhysicsInterfaceScopedLockType::Write:
-			Solver->GetExternalDataLock_External().WriteUnlock();
+			Scene->ExternalDataLock.WriteUnlock();
 			break;
 		}
 	}
 
 	FPhysScene_Chaos* GetSceneForActor(FPhysicsActorHandle const * InActorHandle)
 	{
-		if(InActorHandle)
+		FBodyInstance* ActorInstance = (*InActorHandle) ? FPhysicsUserData_Chaos::Get<FBodyInstance>((*InActorHandle)->UserData()) : nullptr;
+
+		if(ActorInstance)
 		{
-			return static_cast<FPhysScene*>(FChaosEngineInterface::GetCurrentScene(*InActorHandle));
+			return ActorInstance->GetPhysicsScene();
 		}
-		
+
 		return nullptr;
 	}
 
@@ -647,7 +632,7 @@ private:
 		return nullptr;
 	}
 
-	Chaos::FPBDRigidsSolver* Solver;
+	FPhysScene_Chaos* Scene;
 	EPhysicsInterfaceScopedLockType LockType;
 };
 
@@ -856,24 +841,24 @@ void FPhysInterface_Chaos::AddGeometry(FPhysicsActorHandle& InActor, const FGeom
 		//todo: we should not be creating unique geometry per actor
 		// we always have a union so we can support any future welding operations. (Non-trivial converting the SharedPtr to UniquePtr)
 		{
-			if (InActor->GetGameThreadAPI().Geometry()) // geometry already exists - combine new geometry with the existing
+			if (InActor->Geometry()) // geometry already exists - combine new geometry with the existing
 			{
-				InActor->GetGameThreadAPI().MergeGeometry(MoveTemp(Geoms));
+				InActor->MergeGeometry(MoveTemp(Geoms));
 				bMergeShapesArray = true;
 			}
 			else
 			{
-				InActor->GetGameThreadAPI().SetGeometry(MakeUnique<Chaos::FImplicitObjectUnion>(MoveTemp(Geoms)));
+				InActor->SetGeometry(MakeUnique<Chaos::FImplicitObjectUnion>(MoveTemp(Geoms)));
 			}
 		}
 
 		if (bMergeShapesArray)
 		{
-			InActor->GetGameThreadAPI().MergeShapesArray(MoveTemp(Shapes));
+			InActor->MergeShapesArray(MoveTemp(Shapes));
 		}
 		else
 		{
-			InActor->GetGameThreadAPI().SetShapesArray(MoveTemp(Shapes));
+			InActor->SetShapesArray(MoveTemp(Shapes));
 		}
 	}
 #endif
@@ -990,7 +975,7 @@ bool FPhysInterface_Chaos::LineTrace_Geom(FHitResult& OutHit, const FBodyInstanc
 			{
 				// If we're welded then the target instance is actually our parent
 				const FBodyInstance* TargetInstance = InInstance->WeldParent ? InInstance->WeldParent : InInstance;
-				if(const FPhysicsActorHandle RigidBody = TargetInstance->ActorHandle)
+				if(const Chaos::TGeometryParticle<float, 3>* RigidBody = TargetInstance->ActorHandle)
 				{
 					FRaycastHit BestHit;
 					BestHit.Distance = FLT_MAX;
@@ -999,7 +984,7 @@ bool FPhysInterface_Chaos::LineTrace_Geom(FHitResult& OutHit, const FBodyInstanc
 					PhysicsInterfaceTypes::FInlineShapeArray Shapes;
 					const int32 NumShapes = FillInlineShapeArray_AssumesLocked(Shapes, Actor);
 
-					const FTransform WorldTM(RigidBody->GetGameThreadAPI().R(), RigidBody->GetGameThreadAPI().X());
+					const FTransform WorldTM(RigidBody->R(), RigidBody->X());
 					const FVector LocalStart = WorldTM.InverseTransformPositionNoScale(WorldStart);
 					const FVector LocalDelta = WorldTM.InverseTransformVectorNoScale(Delta);
 
@@ -1024,8 +1009,8 @@ bool FPhysInterface_Chaos::LineTrace_Geom(FHitResult& OutHit, const FBodyInstanc
 						{
 
 							float Distance;
-							Chaos::FVec3 LocalPosition;
-							Chaos::FVec3 LocalNormal;
+							Chaos::TVector<float, 3> LocalPosition;
+							Chaos::TVector<float, 3> LocalNormal;
 
 							int32 FaceIndex;
 							if (Shape->GetGeometry()->Raycast(LocalStart, LocalDelta / DeltaMag, DeltaMag, 0, Distance, LocalPosition, LocalNormal, FaceIndex))
@@ -1036,7 +1021,7 @@ bool FPhysInterface_Chaos::LineTrace_Geom(FHitResult& OutHit, const FBodyInstanc
 									BestHit.WorldNormal = LocalNormal;	//will convert to world when best is chosen
 									BestHit.WorldPosition = LocalPosition;
 									BestHit.Shape = Shape;
-									BestHit.Actor = Actor->GetParticle_LowLevel();
+									BestHit.Actor = Actor;
 									BestHit.FaceIndex = FaceIndex;
 								}
 							}
@@ -1083,7 +1068,9 @@ bool FPhysInterface_Chaos::Sweep_Geom(FHitResult& OutHit, const FBodyInstance* I
 
 		FPhysicsCommand::ExecuteRead(TargetInstance->ActorHandle, [&](const FPhysicsActorHandle& Actor)
 		{
-			if (Actor && InInstance->OwnerComponent.Get())
+			const Chaos::TGeometryParticle<float, 3>* RigidBody = Actor;
+
+			if (RigidBody && InInstance->OwnerComponent.Get())
 			{
 				FPhysicsShapeAdapter ShapeAdapter(InShapeRotation, InShape);
 
@@ -1091,13 +1078,13 @@ bool FPhysInterface_Chaos::Sweep_Geom(FHitResult& OutHit, const FBodyInstance* I
 				const float DeltaMag = Delta.Size();
 				if (DeltaMag > KINDA_SMALL_NUMBER)
 				{
-					const FTransform ActorTM(Actor->GetGameThreadAPI().R(), Actor->GetGameThreadAPI().X());
+					const FTransform ActorTM(RigidBody->R(), RigidBody->X());
 
 					UPrimitiveComponent* OwnerComponentInst = InInstance->OwnerComponent.Get();
 					FTransform StartTM(ShapeAdapter.GetGeomOrientation(), InStart);
 					FTransform CompTM(OwnerComponentInst->GetComponentTransform());
 
-					Chaos::FVec3 Dir = Delta / DeltaMag;
+					Chaos::TVector<float,3> Dir = Delta / DeltaMag;
 
 					FSweepHit Hit;
 
@@ -1126,8 +1113,8 @@ bool FPhysInterface_Chaos::Sweep_Geom(FHitResult& OutHit, const FBodyInstance* I
 						if ((bSweepComplex && bShapeIsComplex) || (!bSweepComplex && bShapeIsSimple))
 						{
 							//question: this is returning first result, is that valid? Keeping it the same as physx for now
-							Chaos::FVec3 WorldPosition;
-							Chaos::FVec3 WorldNormal;
+							Chaos::TVector<float, 3> WorldPosition;
+							Chaos::TVector<float, 3> WorldNormal;
 							int32 FaceIdx;
 							if (Chaos::Utilities::CastHelper(ShapeAdapter.GetGeometry(), ActorTM, [&](const auto& Downcast, const auto& FullActorTM) { return Chaos::SweepQuery(*Shape->GetGeometry(), FullActorTM, Downcast, StartTM, Dir, DeltaMag, Hit.Distance, WorldPosition, WorldNormal, FaceIdx, 0.f, false); }))
 							{
@@ -1137,7 +1124,7 @@ bool FPhysInterface_Chaos::Sweep_Geom(FHitResult& OutHit, const FBodyInstance* I
 
 								// we don't get Shape information when we access via PShape, so I filled it up
 								Hit.Shape = Shape;
-								Hit.Actor = ShapeRef.ActorRef ? ShapeRef.ActorRef->GetParticle_LowLevel() : nullptr;
+								Hit.Actor = ShapeRef.ActorRef;
 								Hit.WorldPosition = WorldPosition;
 								Hit.WorldNormal = WorldNormal;
 								Hit.FaceIndex = FaceIdx;
@@ -1164,9 +1151,9 @@ bool FPhysInterface_Chaos::Sweep_Geom(FHitResult& OutHit, const FBodyInstance* I
 bool Overlap_GeomInternal(const FBodyInstance* InInstance, const Chaos::FImplicitObject& InGeom, const FTransform& GeomTransform, FMTDResult* OutOptResult)
 {
 	const FBodyInstance* TargetInstance = InInstance->WeldParent ? InInstance->WeldParent : InInstance;
-	FPhysicsActorHandle RigidBody = TargetInstance->ActorHandle;
+	Chaos::TGeometryParticle<float, 3>* RigidBody = TargetInstance->ActorHandle;
 
-	if (!RigidBody)
+	if (RigidBody == nullptr)
 	{
 		return false;
 	}
@@ -1175,7 +1162,7 @@ bool Overlap_GeomInternal(const FBodyInstance* InInstance, const Chaos::FImplici
 	PhysicsInterfaceTypes::FInlineShapeArray Shapes;
 	const int32 NumShapes = FillInlineShapeArray_AssumesLocked(Shapes, RigidBody);
 
-	const FTransform ActorTM(RigidBody->GetGameThreadAPI().R(), RigidBody->GetGameThreadAPI().X());
+	const FTransform ActorTM(RigidBody->R(), RigidBody->X());
 
 	// Iterate over each shape
 	for (int32 ShapeIdx = 0; ShapeIdx < NumShapes; ++ShapeIdx)
@@ -1262,7 +1249,7 @@ bool FPhysInterface_Chaos::GetSquaredDistanceToBody(const FBodyInstance* InInsta
 
 			bFoundValidBody = true;
 
-			Chaos::FVec3 Normal;
+			Chaos::TVector<float, 3> Normal;
 			const float Phi = Shape.Shape->GetGeometry()->PhiWithNormal(LocalPoint, Normal);
 			if (Phi <= 0)
 			{
@@ -1279,7 +1266,7 @@ bool FPhysInterface_Chaos::GetSquaredDistanceToBody(const FBodyInstance* InInsta
 				OutDistanceSquared = Phi * Phi;
 				if (OutOptPointOnBody)
 				{
-					const Chaos::FVec3 LocalClosestPoint = LocalPoint - Phi * Normal;
+					const Chaos::TVector<float, 3> LocalClosestPoint = LocalPoint - Phi * Normal;
 					*OutOptPointOnBody = BodyTM.TransformPositionNoScale(LocalClosestPoint);
 				}
 			}
@@ -1323,7 +1310,7 @@ uint32 GetTriangleMeshExternalFaceIndex(const FPhysicsShape& Shape, uint32 Inter
 	return -1;
 }
 
-void FPhysInterface_Chaos::CalculateMassPropertiesFromShapeCollection(Chaos::FMassProperties& OutProperties,const TArray<FPhysicsShapeHandle>& InShapes,float InDensityKGPerCM)
+void FPhysInterface_Chaos::CalculateMassPropertiesFromShapeCollection(Chaos::TMassProperties<float,3>& OutProperties,const TArray<FPhysicsShapeHandle>& InShapes,float InDensityKGPerCM)
 {
 	ChaosInterface::CalculateMassPropertiesFromShapeCollection(OutProperties,InShapes,InDensityKGPerCM);
 }

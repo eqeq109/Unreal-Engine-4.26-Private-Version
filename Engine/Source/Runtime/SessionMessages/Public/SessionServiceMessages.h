@@ -43,7 +43,7 @@ struct FSessionServicePong
 
 	/** Indicates whether the pinging user is authorized to interact with this session. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool Authorized = true;
+	bool Authorized;
 
 	/** Holds the application's build date. */
 	UPROPERTY(EditAnywhere, Category="Message")
@@ -79,7 +79,7 @@ struct FSessionServicePong
 
 	/** Indicates whether the application is the only one in that session. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool Standalone = true;
+	bool Standalone;
 };
 
 
@@ -108,7 +108,7 @@ struct FSessionServiceLog
 
 	/** Holds the time in seconds since the application was started. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	double TimeSeconds = 0.0;
+	double TimeSeconds;
 
 	/** Holds the log message's verbosity level. */
 	UPROPERTY(EditAnywhere, Category="Message")

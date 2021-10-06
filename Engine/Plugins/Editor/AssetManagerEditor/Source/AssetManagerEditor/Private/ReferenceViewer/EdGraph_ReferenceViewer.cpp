@@ -32,8 +32,6 @@ UEdGraph_ReferenceViewer::UEdGraph_ReferenceViewer(const FObjectInitializer& Obj
 	bIsShowNativePackages = false;
 	bIsShowReferencers = true;
 	bIsShowDependencies = true;
-	bIsShowFilteredPackagesOnly = false;
-	bIsCompactMode = false;
 }
 
 void UEdGraph_ReferenceViewer::BeginDestroy()
@@ -133,16 +131,6 @@ bool UEdGraph_ReferenceViewer::IsShowHardReferences() const
 	return bIsShowHardReferences;
 }
 
-bool UEdGraph_ReferenceViewer::IsShowFilteredPackagesOnly() const
-{
-	return bIsShowFilteredPackagesOnly;
-}
-
-bool UEdGraph_ReferenceViewer::IsCompactMode() const
-{
-	return bIsCompactMode;
-}
-
 bool UEdGraph_ReferenceViewer::IsShowEditorOnlyReferences() const
 {
 	return bIsShowEditorOnlyReferences;
@@ -191,16 +179,6 @@ void UEdGraph_ReferenceViewer::SetShowSoftReferencesEnabled(bool newEnabled)
 void UEdGraph_ReferenceViewer::SetShowHardReferencesEnabled(bool newEnabled)
 {
 	bIsShowHardReferences = newEnabled;
-}
-
-void UEdGraph_ReferenceViewer::SetShowFilteredPackagesOnlyEnabled(bool newEnabled)
-{
-	bIsShowFilteredPackagesOnly = newEnabled;
-}
-
-void UEdGraph_ReferenceViewer::SetCompactModeEnabled(bool newEnabled)
-{
-	bIsCompactMode = newEnabled;
 }
 
 void UEdGraph_ReferenceViewer::SetShowEditorOnlyReferencesEnabled(bool newEnabled)
@@ -344,7 +322,7 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::ConstructNodes(const TArray<FA
 		auto AddPackage = [](const FAssetIdentifier& AssetId, TSet<FName>& PackageNames)
 		{ 
 			// Only look for asset data if this is a package
-			if (!AssetId.IsValue() && !AssetId.PackageName.IsNone())
+			if (!AssetId.IsValue())
 			{
 				PackageNames.Add(AssetId.PackageName);
 			}
@@ -371,7 +349,7 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::ConstructNodes(const TArray<FA
 
 		// Create the root node
 		RootNode = CreateReferenceNode();
-		RootNode->SetupReferenceNode(GraphRootOrigin, GraphRootIdentifiers, PackagesToAssetDataMap.FindRef(GraphRootIdentifiers[0].PackageName), /*bInAllowThumbnail = */ !bIsCompactMode);
+		RootNode->SetupReferenceNode(GraphRootOrigin, GraphRootIdentifiers, PackagesToAssetDataMap.FindRef(GraphRootIdentifiers[0].PackageName));
 
 		if (bIsShowReferencers)
 		{
@@ -391,7 +369,7 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::ConstructNodes(const TArray<FA
 	return RootNode;
 }
 
-void UEdGraph_ReferenceViewer::GetSortedLinks(const TArray<FAssetIdentifier>& Identifiers, bool bReferencers, const FAssetManagerDependencyQuery& Query, TMap<FAssetIdentifier, EDependencyPinCategory>& OutLinks) const
+void GetSortedLinks(const TArray<FAssetIdentifier>& Identifiers, bool bReferencers, const FAssetManagerDependencyQuery& Query, bool bIsShowNativePackages, TMap<FAssetIdentifier, EDependencyPinCategory>& OutLinks)
 {
 	using namespace UE::AssetRegistry;
 	auto CategoryOrder = [](EDependencyCategory InCategory)
@@ -453,31 +431,16 @@ void UEdGraph_ReferenceViewer::GetSortedLinks(const TArray<FAssetIdentifier>& Id
 		}
 	}
 
-	for (TMap<FAssetIdentifier, EDependencyPinCategory>::TIterator It(OutLinks); It; ++It)
+	if (!bIsShowNativePackages)
 	{
-		if (!IsPackageIdentifierPassingFilter(It.Key()))
+		for (TMap<FAssetIdentifier, EDependencyPinCategory>::TIterator It(OutLinks); It; ++It)
 		{
-			It.RemoveCurrent();
+			if (It.Key().PackageName.ToString().StartsWith(TEXT("/Script")) && !It.Key().IsValue())
+			{
+				It.RemoveCurrent();
+			}
 		}
 	}
-}
-
-bool UEdGraph_ReferenceViewer::IsPackageIdentifierPassingFilter(const FAssetIdentifier& InAssetIdentifier) const
-{
-	if (!InAssetIdentifier.IsValue())
-	{
-		if (!bIsShowNativePackages && InAssetIdentifier.PackageName.ToString().StartsWith(TEXT("/Script")))
-		{
-			return false;
-		}
-
-		if (bIsShowFilteredPackagesOnly && IsPackageNamePassingFilterCallback.IsSet() && !(*IsPackageNamePassingFilterCallback)(InAssetIdentifier.PackageName))
-		{
-			return false;
-		}
-	}
-
-	return true;
 }
 
 int32 UEdGraph_ReferenceViewer::RecursivelyGatherSizes(bool bReferencers, const TArray<FAssetIdentifier>& Identifiers, const TSet<FName>& AllowedPackageNames, int32 CurrentDepth, TSet<FAssetIdentifier>& VisitedNames, TMap<FAssetIdentifier, int32>& OutNodeSizes) const
@@ -487,7 +450,7 @@ int32 UEdGraph_ReferenceViewer::RecursivelyGatherSizes(bool bReferencers, const 
 	VisitedNames.Append(Identifiers);
 
 	TMap<FAssetIdentifier, EDependencyPinCategory> ReferenceLinks;
-	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), ReferenceLinks);
+	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), bIsShowNativePackages, ReferenceLinks);
 
 	TArray<FAssetIdentifier> ReferenceNames;
 	ReferenceNames.Reserve(ReferenceLinks.Num());
@@ -577,11 +540,11 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 	else
 	{
 		NewNode = CreateReferenceNode();
-		NewNode->SetupReferenceNode(NodeLoc, Identifiers, PackagesToAssetDataMap.FindRef(Identifiers[0].PackageName), /*bInAllowThumbnail = */ !bIsCompactMode);
+		NewNode->SetupReferenceNode(NodeLoc, Identifiers, PackagesToAssetDataMap.FindRef(Identifiers[0].PackageName));
 	}
 
 	TMap<FAssetIdentifier, EDependencyPinCategory> Referencers;
-	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), Referencers);
+	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), bIsShowNativePackages, Referencers);
 
 	if (Referencers.Num() > 0 && !ExceedsMaxSearchDepth(CurrentDepth))
 	{
@@ -590,15 +553,15 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 		if (bReferencers)
 		{
 			// Referencers go left
-			ReferenceNodeLoc.X -= bIsCompactMode ? 400 : 800;
+			ReferenceNodeLoc.X -= 800;
 		}
 		else
 		{
 			// Dependencies go right
-			ReferenceNodeLoc.X += bIsCompactMode ? 400 : 800;
+			ReferenceNodeLoc.X += 800;
 		}
 
-		const int32 NodeSizeY = bIsCompactMode ? 100 : 200;
+		const int32 NodeSizeY = 200;
 		const int32 TotalReferenceSizeY = NodeSizes.FindChecked(Identifiers[0]) * NodeSizeY;
 
 		ReferenceNodeLoc.Y -= TotalReferenceSizeY * 0.5f;
@@ -688,7 +651,6 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 
 			if ( ensure(ReferenceNode) )
 			{
-				ReferenceNode->SetAllowThumbnail(!bIsCompactMode);
 				ReferenceNode->SetReferenceNodeCollapsed(RefNodeLoc, NumReferencesExceedingMax);
 
 				if ( bReferencers )

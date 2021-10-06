@@ -7,7 +7,6 @@
 
 class FRunnable;
 class FMoviePlayerWidgetRenderer;
-class IMovieStreamer;
 
 /**
  * This class will handle all the nasty bits about running Slate on a separate thread
@@ -16,9 +15,7 @@ class IMovieStreamer;
 class FSlateLoadingSynchronizationMechanism
 {
 public:
-	FSlateLoadingSynchronizationMechanism(
-		TSharedPtr<FMoviePlayerWidgetRenderer, ESPMode::ThreadSafe> InWidgetRenderer,
-		const TSharedPtr<IMovieStreamer, ESPMode::ThreadSafe>& InMovieStreamer);
+	FSlateLoadingSynchronizationMechanism(TSharedPtr<FMoviePlayerWidgetRenderer, ESPMode::ThreadSafe> InWidgetRenderer);
 	~FSlateLoadingSynchronizationMechanism();
 	
 	/** Sets up the locks in their proper initial state for running */
@@ -65,6 +62,4 @@ private:
 	FRunnable* SlateRunnableTask;
 
 	TSharedPtr<FMoviePlayerWidgetRenderer, ESPMode::ThreadSafe> WidgetRenderer;
-	/** Holds the current MovieStreamer. */
-	TSharedPtr<IMovieStreamer, ESPMode::ThreadSafe> MovieStreamer;
 };

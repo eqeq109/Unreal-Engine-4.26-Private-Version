@@ -7,7 +7,6 @@
 #include "Misc/Guid.h"
 #include "MovieSceneSignedObject.h"
 #include "MovieSceneTrack.h"
-#include "MovieSceneSequenceID.h"
 #include "MovieSceneSequence.generated.h"
 
 class ITargetPlatform;
@@ -32,7 +31,7 @@ enum class ETrackSupport
 /**
  * Abstract base class for movie scene animations (C++ version).
  */
-UCLASS(abstract, MinimalAPI, Config = Engine, BlueprintType)
+UCLASS(MinimalAPI, Config = Engine, BlueprintType)
 class UMovieSceneSequence
 	: public UMovieSceneSignedObject
 {
@@ -191,20 +190,18 @@ public:
 	/**
 	 * Called to retrieve or construct a director instance to be used for the specified player
 	 */
-	virtual UObject* CreateDirectorInstance(IMovieScenePlayer& Player, FMovieSceneSequenceID SequenceID) { return nullptr; }
-
-	MOVIESCENE_API virtual EMovieSceneServerClientMask OverrideNetworkMask(EMovieSceneServerClientMask InDefaultMask) const;
+	virtual UObject* CreateDirectorInstance(IMovieScenePlayer& Player) { return nullptr; }
 
 	/**
 	 * Find the first object binding ID associated with the specified tag name (set up through RMB->Expose on Object bindings from within sequencer)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Sequence")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic|Bindings")
 	MOVIESCENE_API FMovieSceneObjectBindingID FindBindingByTag(FName InBindingName) const;
 
 	/**
 	 * Find all object binding IDs associated with the specified tag name (set up through RMB->Expose on Object bindings from within sequencer)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Sequence")
+	UFUNCTION(BlueprintCallable, Category = "Game|Cinematic|Bindings")
 	MOVIESCENE_API const TArray<FMovieSceneObjectBindingID>& FindBindingsByTag(FName InBindingName) const;
 
 public:
@@ -212,9 +209,12 @@ public:
 	MOVIESCENE_API virtual void PostLoad() override;
 	MOVIESCENE_API virtual void PreSave(const ITargetPlatform* TargetPlatform) override;
 	MOVIESCENE_API virtual void BeginDestroy() override;
-	MOVIESCENE_API virtual void PostDuplicate(bool bDuplicateForPIE) override;
 
 	MOVIESCENE_API virtual void Serialize(FArchive& Ar) override;
+
+#if WITH_EDITORONLY_DATA
+	MOVIESCENE_API virtual void PostDuplicate(bool bDuplicateForPIE) override;
+#endif
 
 public:
 

@@ -23,12 +23,12 @@ typedef TSharedPtr<class IScreenShotManager> IScreenShotManagerPtr;
  */
 typedef TSharedRef<class IScreenShotManager> IScreenShotManagerRef;
 
-struct FScreenshotExportResult
+struct FScreenshotExportResults
 {
 	bool Success;
 	FString ExportPath;
 
-	FScreenshotExportResult()
+	FScreenshotExportResults()
 		: Success(false)
 	{
 	}
@@ -66,9 +66,9 @@ public:
 	virtual TFuture<FImageComparisonResult> CompareScreenshotAsync(const FString& IncomingPath, const FAutomationScreenshotMetadata& MetaData, const EScreenShotCompareOptions Options) = 0;
 
 	/**
-	 * Exports target screenshot report to the export location specified
+	 * Exports rs screenshots to the export location specified
 	 */
-	virtual FScreenshotExportResult ExportScreenshotComparisonResult(FString ScreenshotName, FString ExportPath = TEXT("")) = 0;
+	virtual TFuture<FScreenshotExportResults> ExportComparisonResultsAsync(FString ExportPath = TEXT("")) = 0;
 
 	/**
 	 * Imports screenshot comparison data from a given path.

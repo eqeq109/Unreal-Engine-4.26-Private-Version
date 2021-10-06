@@ -144,19 +144,15 @@ void FGenerateMips::ExecuteCompute(FRDGBuilder& GraphBuilder, FRDGTextureRef Tex
 	const FRDGTextureDesc& TextureDesc = Texture->Desc;
 
 	// Select compute shader variant (normal vs. sRGB etc.)
-	bool bMipsSRGB = EnumHasAnyFlags(TextureDesc.Flags, TexCreate_SRGB);
 #if PLATFORM_ANDROID
-	if (IsVulkanPlatform(GMaxRHIShaderPlatform))
-	{
-		// Vulkan Android seems to skip sRGB->Lin conversion when sampling texture in compute
-		bMipsSRGB = false;
-	}
+	const bool bIsUsingVulkan = FAndroidMisc::ShouldUseVulkan();
+#else
+	const bool bIsUsingVulkan = false;
 #endif
-	const bool bMipsSwizzle = false; 
 
 	FGenerateMipsCS::FPermutationDomain PermutationVector;
-	PermutationVector.Set<FGenerateMipsCS::FGenMipsSRGB>(bMipsSRGB);
-	PermutationVector.Set<FGenerateMipsCS::FGenMipsSwizzle>(bMipsSwizzle);
+	PermutationVector.Set<FGenerateMipsCS::FGenMipsSRGB>(EnumHasAnyFlags(TextureDesc.Flags, TexCreate_SRGB));
+	PermutationVector.Set<FGenerateMipsCS::FGenMipsSwizzle>(bIsUsingVulkan); // On Vulkan we experience RGB being swizzled around, this little switch circumvents the issue.
 	TShaderMapRef<FGenerateMipsCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), PermutationVector);
 
 	// Loop through each level of the mips that require creation and add a dispatch pass per level.
@@ -192,7 +188,8 @@ void FGenerateMips::Execute(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, F
 		if (RHIRequiresComputeGenerateMips())
 		{
 			FSamplerStateInitializerRHI SamplerInit(Params.Filter, Params.AddressU, Params.AddressV, Params.AddressW);
-			Execute(GraphBuilder, Texture, RHICreateSamplerState(SamplerInit), Pass);
+			FSamplerStateRHIRef Sampler = *GraphBuilder.AllocObject<FSamplerStateRHIRef>(RHICreateSamplerState(SamplerInit));
+			Execute(GraphBuilder, Texture, Sampler, Pass);
 		}
 		else
 		{

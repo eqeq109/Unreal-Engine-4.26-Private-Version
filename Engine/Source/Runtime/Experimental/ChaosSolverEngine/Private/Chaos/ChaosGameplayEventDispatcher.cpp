@@ -14,15 +14,7 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "EventManager.h"
 
-FChaosBreakEvent::FChaosBreakEvent()
-	: Component(nullptr)
-	, Location(FVector::ZeroVector)
-	, Velocity(FVector::ZeroVector)
-	, AngularVelocity(FVector::ZeroVector)
-	, Mass(0.0f)
-{
-
-}
+// PRAGMA_DISABLE_OPTIMIZATION
 
 void UChaosGameplayEventDispatcher::OnRegister()
 {
@@ -293,7 +285,7 @@ void UChaosGameplayEventDispatcher::HandleCollisionEvents(const Chaos::FCollisio
 								bool bSwapOrder;
 								int32 CollisionIdx = Chaos::FEventManager::DecodeCollisionIndex(EncodedCollisionIdx, bSwapOrder);
 
-								Chaos::FCollidingData const& CollisionDataItem = CollisionData[CollisionIdx];
+								Chaos::TCollisionData<float, 3> const& CollisionDataItem = CollisionData[CollisionIdx];
 								IPhysicsProxyBase* const PhysicsProxy1 = bSwapOrder ? CollisionDataItem.ParticleProxy : CollisionDataItem.LevelsetProxy;
 
 								{
@@ -404,7 +396,7 @@ void UChaosGameplayEventDispatcher::HandleBreakingEvents(const Chaos::FBreakingE
 		const int32 NumBreaks = BreakingData.Num();
 		if (NumBreaks > 0)
 		{
-			for (Chaos::FBreakingData const& BreakingDataItem : BreakingData)
+			for (Chaos::TBreakingData<float, 3> const& BreakingDataItem : BreakingData)
 			{	
 				if (BreakingDataItem.Particle && (BreakingDataItem.ParticleProxy))
 				{
@@ -433,7 +425,7 @@ void UChaosGameplayEventDispatcher::HandleSleepingEvents(const Chaos::FSleepingE
 {
 	const Chaos::FSleepingDataArray& SleepingArray = SleepingData.SleepingData;
 
-	for (const Chaos::FSleepingData& SleepData : SleepingArray)
+	for (const Chaos::TSleepingData<float, 3>& SleepData : SleepingArray)
 	{
 		if (SleepData.Particle->GetProxy()!= nullptr)
 		{
@@ -456,3 +448,6 @@ void UChaosGameplayEventDispatcher::AddPendingSleepingNotify(FBodyInstance* Body
 {
 	PendingSleepNotifies.FindOrAdd(BodyInstance) = SleepEventType;
 }
+
+// PRAGMA_ENABLE_OPTIMIZATION
+

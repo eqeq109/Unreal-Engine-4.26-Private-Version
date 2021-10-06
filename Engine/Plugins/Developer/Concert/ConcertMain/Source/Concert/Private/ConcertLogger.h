@@ -14,7 +14,6 @@ struct FConcertMessageContext;
 UENUM()
 enum class EConcertLogMessageAction : uint8
 {
-	None,
 	Send,
 	Publish,
 	Receive,
@@ -34,22 +33,22 @@ struct FConcertLog
 	GENERATED_BODY()
 
 	UPROPERTY()
-	uint64 Frame = 0;
+	uint64 Frame;
 
 	UPROPERTY()
 	FGuid MessageId;
 
 	UPROPERTY()
-	uint16 MessageOrderIndex  = 0;
+	uint16 MessageOrderIndex;
 
 	UPROPERTY()
-	uint16 ChannelId = 0;
+	uint16 ChannelId;
 
 	UPROPERTY()
-	FDateTime Timestamp = {0};
+	FDateTime Timestamp;
 
 	UPROPERTY()
-	EConcertLogMessageAction MessageAction = EConcertLogMessageAction::None;
+	EConcertLogMessageAction MessageAction;
 
 	UPROPERTY()
 	FName MessageTypeName;
@@ -64,7 +63,7 @@ struct FConcertLog
 	FName CustomPayloadTypename;
 
 	UPROPERTY()
-	int32 CustomPayloadUncompressedByteSize = 0;
+	int32 CustomPayloadUncompressedByteSize;
 
 	UPROPERTY()
 	FString StringPayload;
@@ -78,9 +77,6 @@ class FConcertLogger : public IConcertTransportLogger
 public:
 	/** Factory function for use with FConcertTransportLoggerFactory */
 	static IConcertTransportLoggerRef CreateLogger(const FConcertEndpointContext& InOwnerContext);
-
-	/** Static function to enable / disable verbose logging. */
-	static void SetVerboseLogging(bool bInState);
 
 	explicit FConcertLogger(const FConcertEndpointContext& InOwnerContext);
 	virtual ~FConcertLogger();

@@ -120,24 +120,24 @@ bool FMDLMapHandler::Import(const FString& MapName, bool bIsTexture, Mdl::FBakeP
 	if (!FirstNormalExpression && MapNameLower.Find(TEXT("normal")) != INDEX_NONE)
 	{
 		// setup the first normal map expression
-		FirstNormalExpression = Outputs[0].GetExpressionAndMaybeUse();
+		FirstNormalExpression = Outputs[0].ExpressionData.Expression;
 	}
 
 	if (MapNameLower.Find(TEXT("roughness")) != INDEX_NONE)
 	{
-		// convert from GGX to Unreal
+		// convert from GGX to UE4
 		UMaterialExpression* Roughness =
-		    Generator::NewMaterialExpressionSquareRoot(CurrentMaterial, {Outputs[0].GetExpressionAndUse(), Outputs[0].GetExpressionOutputIndex()});
+		    Generator::NewMaterialExpressionSquareRoot(CurrentMaterial, {Outputs[0].ExpressionData.Expression, Outputs[0].ExpressionData.Index});
 		MapBakeParam.SetExpression(Roughness, bIsTexture, 0);
 	}
 	else
 	{
-		MapBakeParam.SetExpression(Outputs[0].GetExpressionAndUse(), bIsTexture, Outputs[0].GetExpressionOutputIndex());
+		MapBakeParam.SetExpression(Outputs[0].ExpressionData.Expression, bIsTexture, Outputs[0].ExpressionData.Index);
 	}
 
-	if (Outputs[0].HasExpression())
+	if (Outputs[0].ExpressionData.Expression)
 	{
-		UE_LOG(LogMDLImporter, Log, TEXT("Created expression %s for: %s from: %s"), *Outputs[0].GetExpressionName(), *MapName,
+		UE_LOG(LogMDLImporter, Log, TEXT("Created expression %s for: %s from: %s"), *Outputs[0].ExpressionData.Expression->GetName(), *MapName,
 		       *MapBakeParam.InputBakePath);
 	}
 	else
@@ -150,7 +150,7 @@ bool FMDLMapHandler::Import(const FString& MapName, bool bIsTexture, Mdl::FBakeP
 
 void FMDLMapHandler::PostImport()
 {
-	MaterialExpressionFactory.CleanupMaterialExpressions();
+	MaterialExpressionFactory.Tidy();
 }
 
 void FMDLMapHandler::SetTextureFactory(Generator::FMaterialTextureFactory* Factory)
@@ -166,22 +166,9 @@ void FMDLMapHandler::Cleanup()
 	FirstNormalExpression = CurrentNormalExpression = nullptr;
 }
 
-void FMDLMapHandler::SetFunctionAssetPath(const TCHAR* AssetPath)
-{
-	if (FunctionLoader)
-	{
-		FunctionLoader->SetAssetPath(AssetPath);
-	}
-}
-
-void FMDLMapHandler::SetObjectFlags(EObjectFlags ObjectFlags)
-{
-	FunctionLoader->SetObjectFlags(ObjectFlags);
-}
-
 TArray<MDLImporterLogging::FLogMessage> FMDLMapHandler::GetLogMessages()
 {
 	return MaterialExpressionFactory.GetLogMessages();
 }
 
-#endif // #ifdef USE_MDLSDK
+#endif

@@ -42,10 +42,10 @@ struct FRigUnit_ConvertRotation : public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta=(Input))
-	FRotator Input = FRotator(0.f);
+	FRotator Input;
 
 	UPROPERTY(meta = (Output))
-	FQuat	Result = FQuat::Identity;
+	FQuat	Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -63,10 +63,10 @@ struct FRigUnit_ConvertQuaternion: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta=(Input))
-	FQuat	Input = FQuat::Identity;
+	FQuat	Input;
 
 	UPROPERTY(meta = (Output))
-	FRotator	Result = FRotator(0.f);
+	FRotator	Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -78,10 +78,10 @@ struct FRigUnit_ConvertVectorToRotation: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	FVector Input = FVector(0.f);
+	FVector Input;
 
 	UPROPERTY(meta = (Output))
-	FRotator	Result = FRotator(0.f);
+	FRotator	Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -93,10 +93,10 @@ struct FRigUnit_ConvertVectorToQuaternion: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	FVector Input = FVector(0.f);
+	FVector Input;
 
 	UPROPERTY(meta = (Output))
-	FQuat	Result = FQuat::Identity;
+	FQuat	Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -109,10 +109,10 @@ struct FRigUnit_ConvertRotationToVector: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	FRotator Input = FRotator(0.f);
+	FRotator Input;
 
 	UPROPERTY(meta = (Output))
-	FVector Result = FVector(0.f);
+	FVector Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -124,10 +124,10 @@ struct FRigUnit_ConvertQuaternionToVector: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	FQuat	Input = FQuat::Identity;
+	FQuat	Input;
 
 	UPROPERTY(meta = (Output))
-	FVector Result = FVector(0.f);
+	FVector Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;

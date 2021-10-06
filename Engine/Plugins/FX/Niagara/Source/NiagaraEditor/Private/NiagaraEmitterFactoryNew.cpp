@@ -122,7 +122,7 @@ UObject* UNiagaraEmitterFactoryNew::FactoryCreateNew(UClass* Class, UObject* InP
 
 	if (EmitterToCopy != nullptr)
 	{
-		if (bUseInheritance && EmitterToCopy->TemplateSpecification == ENiagaraScriptTemplateSpecification::None)
+		if (bUseInheritance && EmitterToCopy->bIsTemplateAsset == false)
 		{
 			NewEmitter = UNiagaraEmitter::CreateWithParentAndOwner(*EmitterToCopy, InParent, Name, Flags);
 		}
@@ -132,7 +132,7 @@ UObject* UNiagaraEmitterFactoryNew::FactoryCreateNew(UClass* Class, UObject* InP
 			NewEmitter->SetUniqueEmitterName(Name.GetPlainNameString());
 		}
 
-		NewEmitter->TemplateSpecification = ENiagaraScriptTemplateSpecification::None;
+		NewEmitter->bIsTemplateAsset = false;
 		NewEmitter->TemplateAssetDescription = FText();
 	}
 	else
@@ -147,11 +147,11 @@ UObject* UNiagaraEmitterFactoryNew::FactoryCreateNew(UClass* Class, UObject* InP
 
 		// Fix up source pointers.
 		NewEmitter->GraphSource = Source;
-		NewEmitter->SpawnScriptProps.Script->SetLatestSource(Source);
-		NewEmitter->UpdateScriptProps.Script->SetLatestSource(Source);
-		NewEmitter->EmitterSpawnScriptProps.Script->SetLatestSource(Source);
-		NewEmitter->EmitterUpdateScriptProps.Script->SetLatestSource(Source);
-		NewEmitter->GetGPUComputeScript()->SetLatestSource(Source);
+		NewEmitter->SpawnScriptProps.Script->SetSource(Source);
+		NewEmitter->UpdateScriptProps.Script->SetSource(Source);
+		NewEmitter->EmitterSpawnScriptProps.Script->SetSource(Source);
+		NewEmitter->EmitterUpdateScriptProps.Script->SetSource(Source);
+		NewEmitter->GetGPUComputeScript()->SetSource(Source);
 
 		// Initialize the scripts for output.
 		UNiagaraNodeOutput* EmitterSpawnOutputNode = FNiagaraStackGraphUtilities::ResetGraphForOutput(*Source->NodeGraph, ENiagaraScriptUsage::EmitterSpawnScript, NewEmitter->EmitterSpawnScriptProps.Script->GetUsageId());
@@ -208,7 +208,6 @@ UObject* UNiagaraEmitterFactoryNew::FactoryCreateNew(UClass* Class, UObject* InP
 		FNiagaraStackGraphUtilities::RelayoutGraph(*Source->NodeGraph);
 		NewEmitter->bInterpolatedSpawning = true;
 		NewEmitter->bDeterminism = false; // NOTE: Default to non-determinism
-		NewEmitter->TemplateSpecification = ENiagaraScriptTemplateSpecification::None;
 		NewEmitter->SpawnScriptProps.Script->SetUsage(ENiagaraScriptUsage::ParticleSpawnScriptInterpolated);
 	}
 	

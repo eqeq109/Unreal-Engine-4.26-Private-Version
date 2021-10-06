@@ -2,26 +2,33 @@
 
 #pragma once
 
-#include "AssetTypeCategories.h"
 #include "CoreMinimal.h"
-#include "DMXPIEManager.h"
-#include "ISequencerModule.h"
 #include "Modules/ModuleInterface.h"
 #include "Toolkits/AssetEditorToolkit.h"
+#include "AssetTypeCategories.h"
 
 class FDMXEditor;
+class FDMXPIEManager;
 class UDMXLibrary;
 class IAssetTools;
 class IAssetTypeActions;
 
+/** Names of tabs in the DMX Editor */
+class FDMXEditorTabNames
+{
+public:
+	static const FName ChannelsMonitorTabName;
+	static const FName ActivityMonitorTabName;
+	static const FName OutputConsoleTabName;
+};
 
 /**
  * Implements the DMX Editor Module.
  */
 class DMXEDITOR_API FDMXEditorModule
 	: public IModuleInterface
-	, public IHasMenuExtensibility
-	, public IHasToolBarExtensibility
+	, public IHasMenuExtensibility			// Extender for adds or removes extenders for menu
+	, public IHasToolBarExtensibility		// Extender for adds or removes extenders for toolbar
 {
 public:
 
@@ -42,7 +49,7 @@ public:
 	static FDMXEditorModule& Get();
 
 	/**
-	 * Creates an instance of a DMX Library editor object.
+	 * Creates an instance of a DMX editor object.
 	 *
 	 * Note: This function should not be called directly. It should be called from AssetTools handler
 	 *
@@ -56,82 +63,93 @@ public:
 
 	static EAssetTypeCategories::Type GetAssetCategory() { return DMXEditorAssetCategory; }
 
+	/**
+	 * Exposes a way for other modules to add in their own DMX editor
+	 * commands (appended to other DMX editor commands, when the editor is
+	 * first opened).
+	 */
+	virtual const TSharedRef<FUICommandList> GetsSharedDMXEditorCommands() const { return SharedDMXEditorCommands.ToSharedRef(); }
+
 public:
 	/** DataTable Editor app identifier string */
 	static const FName DMXEditorAppIdentifier;
 
-	/** The module DMX Editor Module name */
 	static const FName ModuleName;
 
-	/** The DMX Editor asset category */
-	static EAssetTypeCategories::Type DMXEditorAssetCategory;
+	TSharedPtr<FDMXPIEManager> PIEManager;
 
+private:
+	void RegisterAssetTypeAction(IAssetTools& InOutAssetTools, TSharedRef<IAssetTypeActions> Action);
+
+private:
+	void RegisterPropertyTypeCustomizations();
+	void RegisterObjectCustomizations();
+
+	/**
+	 * Registers a custom class
+	 *
+	 * @param ClassName				The class name to register for property customization
+	 * @param DetailLayoutDelegate	The delegate to call to get the custom detail layout instance
+	 */
+	void RegisterCustomClassLayout(FName ClassName, FOnGetDetailCustomizationInstance DetailLayoutDelegate);
+
+	/**
+	* Registers a custom struct
+	*
+	* @param StructName				The name of the struct to register for property customization
+	* @param StructLayoutDelegate	The delegate to call to get the custom detail layout instance
+	*/
+	void RegisterCustomPropertyTypeLayout(FName PropertyTypeName, FOnGetPropertyTypeCustomizationInstance PropertyTypeLayoutDelegate);
+
+	void AddToolbarExtension(class FToolBarBuilder& InOutBuilder);
+
+	TSharedRef< class SWidget > GenerateMonitorsMenu(TSharedPtr<class FUICommandList> InCommands);
+
+	TSharedRef<class SDockTab> OnSpawnChannelsMonitorTab(const class FSpawnTabArgs& InSpawnTabArgs);
+
+	TSharedRef<class SDockTab> OnSpawnActivityMonitorTab(const class FSpawnTabArgs& InSpawnTabArgs);
+
+	TSharedRef<class SDockTab> OnSpawnOutputConsoleTab(const class FSpawnTabArgs& InSpawnTabArgs);
+
+private:
 	//~ Gets the extensibility managers for outside entities to DMX editor's menus and toolbars
 	TSharedPtr<FExtensibilityManager> MenuExtensibilityManager;
 	TSharedPtr<FExtensibilityManager> ToolBarExtensibilityManager;
 
-private:
-	/** Binds commands for the DMX editor */
-	void BindDMXEditorCommands();
+	/** All created asset type actions.  Cached here so that we can unregister it during shutdown. */
+	TArray< TSharedPtr<IAssetTypeActions> > CreatedAssetTypeActions;
 
-	/** Creates the level editor toolbar extender */
-	void ExtendLevelEditorToolbar();
+	/**
+	 * A command list that can be passed around and isn't bound to an instance
+	 * of the DMX editor.
+	 */
+	TSharedPtr<FUICommandList> SharedDMXEditorCommands;
 
-	/** Generates the DMX level editor toolbar extension */
-	void GenerateToolbarExtension(class FToolBarBuilder& InOutBuilder);
+	static EAssetTypeCategories::Type DMXEditorAssetCategory;
 
-	/** Generates the level editor toolbar DMX Menu */
-	TSharedRef<class SWidget> GenerateDMXLevelEditorToolbarMenu();
+	/** List of registered class that we must unregister when the module shuts down */
+	TSet< FName > RegisteredClassNames;
+	TSet< FName > RegisteredPropertyTypes;
 
-protected:
-	/** Registers asset types categories */
-	void RegisterAssetTypeCategories();
+	/** Custom DMX Library Sequencer track registering */
+	FDelegateHandle DMXLibraryTrackCreateHandle;
 
-	/** Registers asset types actions */
-	void RegisterAssetTypeActions();
-
-	/** Registers global property type customizations */
-	void RegisterPropertyTypeCustomizations();
-
-	/** Registers sequencer related types */
-	void RegisterSequencerTypes();
-
-	/** Registers nomad tab spawners */
-	void RegisterNomadTabSpawners();
-
-	/** Starts up the pie manager */
-	void StartupPIEManager();
+#if WITH_DEV_AUTOMATION_TESTS
+	friend struct FDMXChannelsMonitorHelper;
+#endif
 
 private:
-	/** Called when the nomad tab spawner tries to spawn a channels monitor tab */
-	static TSharedRef<class SDockTab> OnSpawnChannelsMonitorTab(const class FSpawnTabArgs& InSpawnTabArgs);
+	/** Called when Open Channels Montior menu command is selected */
+	void OnOpenChannelsMonitor();
 
-	/** Called when the nomad tab spawner tries to spawn an activity monitor tab */
-	static TSharedRef<class SDockTab> OnSpawnActivityMonitorTab(const class FSpawnTabArgs& InSpawnTabArgs);
+	/** Called when Open Universe Montior menu command is selected */
+	void OnOpenActivityMonitor();
 
-	/** Called when the nomad tab spawner tries to spawn an output console tab */
-	static TSharedRef<class SDockTab> OnSpawnOutputConsoleTab(const class FSpawnTabArgs& InSpawnTabArgs);
-
-	/** Called when the nomad tab spawner tries to spawn a patch tool tab */
-	static TSharedRef<class SDockTab> OnSpawnPatchToolTab(const class FSpawnTabArgs& InSpawnTabArgs);
-
-	/** Called when Open Channels Montior command is selected */
-	static void OnOpenChannelsMonitor();
-
-	/** Called when Open Universe Montior command is selected */
-	static void OnOpenActivityMonitor();
-
-	/** Called when Open Output Console command is selected */
-	static void OnOpenOutputConsole();
-
-	/** Called when Open Patch Tool command is selected */
-	static void OnOpenPatchTool();
+	/** Called when Open Output Console menu command is selected */
+	void OnOpenOutputConsole();
 
 	/** Called when the Toggle Receive DMX menu command is selected */
-	static void OnToggleSendDMX();
-
-	/** Returns true if send dmx is enabled */
-	static bool IsSendDMXEnabled();
+	void OnToggleSendDMX();
 
 	/** Returns text for the toggle receive DMX button in the menu */
 	FText GetToggleSendDMXText() const;
@@ -140,10 +158,7 @@ private:
 	FText GetToggleSendDMXTooltip() const;
 
 	/** Called when the Toggle Receive DMX menu command is selected */
-	static void OnToggleReceiveDMX();
-
-	/** Returns true if receive dmx is enabled */
-	static bool IsReceiveDMXEnabled();
+	void OnToggleReceiveDMX();
 
 	/** Returns text for the toggle receive DMX button in the menu */
 	FText GetToggleReceiveDMXText() const;
@@ -151,80 +166,10 @@ private:
 	/** Returns text for the toggle receive DMX tooltip in the menu */
 	FText GetToggleReceiveDMXTooltip() const;
 
-	/** Command list for the DMX level editor menu */
+	/** Command list for the DMX Monitor menu */
 	TSharedPtr<class FUICommandList> DMXLevelEditorMenuCommands;
 
-private:
-	/** 
-	 * Helper to register a custom asset type action, to ease unregistering with the corresponding unregister method.
-	 * 
-	 * @param Action					The asset type action to register
-	 */
-	void RegisterAssetTypeAction(TSharedRef<IAssetTypeActions> Action);
-
-	/** Unregisteres all registered asset type actions */
-	void UnregisterAssetTypeActions();
-
-	/**
-	 * Helper to register a custom class layout, to ease unregistering with the corresponding unregister method.
-	 *
-	 * @param ClassName					The class name to register for details customization
-	 * @param DetailLayoutDelegate		The delegate to call to get the custom detail layout instance
-	 */
-	void RegisterCustomClassLayout(FName ClassName, FOnGetDetailCustomizationInstance DetailLayoutDelegate);
-
-	/** Unregisteres all registered custom class layouts */
-	void UnregisterCustomClassLayouts();
-
-	/**
-	 * Helper to register a custom struct, to ease unregistering with the corresponding unregister method.
-	 *
-	 * @param StructName				The name of the struct to register for property customization
-	 * @param StructLayoutDelegate		The delegate to call to get the custom detail layout instance
-	 */
-	void RegisterCustomPropertyTypeLayout(FName PropertyTypeName, FOnGetPropertyTypeCustomizationInstance PropertyTypeLayoutDelegate);
-
-	/** Unregisteres all registered custom property type layouts */
-	void UnregisterCustomPropertyTypeLayouts();
-
-	/**
-	 * Helper to register a custom sequencer track type, to ease unregistering with the corresponding unregister method.
-	 * 	
-	 * @param CreateTrackEditorDelegate		Delegate executed to create the custom track type
-	 */
-	void RegisterCustomSequencerTrackType(const FOnCreateTrackEditor& CreateTrackEditorDelegate);
-
-	/** Unregisteres all custom sequencer track types */
-	void UnregisterCustomSequencerTrackTypes();
-
-	/**
-	 * Helper to register a new normad tab spawner with the tab manager, to ease unregistering with the corresponding unregister method.
-	 * 
-	 * @param			TabId The TabId to register the spawner for.
-	 * @param			OnSpawnTab The callback that will be used to spawn the tab.
-	 * @param			CanSpawnTab The callback that will be used to ask if spawning the tab is allowed
-	 * @return			The registration entry for the spawner.
-	 */
-	FTabSpawnerEntry& RegisterNomadTabSpawner(const FName TabId, const FOnSpawnTab& OnSpawnTab, const FCanSpawnTab& CanSpawnTab = FCanSpawnTab());
-
-	/** Unregisteres all nomad tab spawners */
-	void UnregisterNomadTabSpawners();
-
-	/** List of registered class that must be unregistered when the module shuts down */
-	TSet<FName> RegisteredClassNames;
-
-	/** List of registered property types that must be unregistered when the module shuts down */
-	TSet<FName> RegisteredPropertyTypes;
-
-	/** All created asset type actions that must be unregistered when the module shuts down */
-	TArray<TSharedPtr<IAssetTypeActions>> RegisteredAssetTypeActions;
-
-	/** All custom sequencer track handles */
-	TSet<FDelegateHandle> RegisteredSequencerTrackHandles;
-
-	/** Names of all registered nomad tabs */
-	TSet<FName> RegisteredNomadTabNames;
-
-	/** Helper to track when the editor is in PIE */
-	TUniquePtr<FDMXPIEManager> PIEManager;
+	TSharedPtr<class SDMXActivityMonitor> UniverseMonitorTab;
+	TSharedPtr<class SDMXChannelsMonitor> ChannelsMonitorTab;
+	TSharedPtr<class SDMXOutputConsole> OutputConsoleTab;
 };

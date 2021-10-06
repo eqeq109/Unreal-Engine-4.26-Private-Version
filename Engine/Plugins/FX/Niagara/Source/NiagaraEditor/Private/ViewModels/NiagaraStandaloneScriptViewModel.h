@@ -2,14 +2,12 @@
 
 #pragma once
 
+#include "Internationalization/Text.h"
 #include "ViewModels/NiagaraParameterEditMode.h"
-#include "ViewModels/NiagaraParameterDefinitionsSubscriberViewModel.h"
 #include "ViewModels/NiagaraScriptViewModel.h"
 
 class FNiagaraMessageLogViewModel;
 class UNiagaraScript;
-class UNiagaraScriptVariable;
-
 
 class FNiagaraStandaloneScriptViewModel : public FNiagaraScriptViewModel
 {
@@ -18,28 +16,19 @@ public:
 		FText DisplayName,
 		ENiagaraParameterEditMode InParameterEditMode,
 		TSharedPtr<FNiagaraMessageLogViewModel> InNiagaraMessageLogViewModel,
-		const FGuid& InMessageLogGuidKey,
-		bool bInIsForDataProcessingOnly
+		const FGuid& InMessageLogGuidKey
 	);
 
-	void Initialize(FVersionedNiagaraScript& InScript, const FVersionedNiagaraScript& InSourceScript);
-
-	//~ Begin INiagaraParameterDefinitionsSubscriberViewModel Interface
-protected:
-	virtual INiagaraParameterDefinitionsSubscriber* GetParameterDefinitionsSubscriber() override;
-	//~ End NiagaraParameterDefinitionsSubscriberViewModel Interface
-
-public:
-	virtual FVersionedNiagaraScript GetStandaloneScript() override;
-	const FVersionedNiagaraScript GetStandaloneScript() const;
+	void Initialize(UNiagaraScript* InScript, UNiagaraScript* InSourceScript);
+	UNiagaraScript* GetStandaloneScript();
 
 private:
-	virtual void OnVMScriptCompiled(UNiagaraScript* InScript, const FGuid& ScriptVersion) override;
+	virtual void OnVMScriptCompiled(UNiagaraScript* InScript) override;
 
 	/** Sends messages to FNiagaraMessageManager for all compile events from the last compile. */
-	void SendLastCompileMessages(const FVersionedNiagaraScript& InScript);
+	void SendLastCompileMessages(const UNiagaraScript* InScript);
 
 	TSharedPtr<FNiagaraMessageLogViewModel> NiagaraMessageLogViewModel;
-	FVersionedNiagaraScript SourceScript;
+	const UNiagaraScript* SourceScript;
 	const FGuid ScriptMessageLogGuidKey;
 };

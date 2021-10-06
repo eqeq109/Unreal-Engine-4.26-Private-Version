@@ -8,7 +8,6 @@
 #include "Distributions/Distribution.h"
 #include "Async/ParallelFor.h"
 #include "Particles/ParticleEmitter.h"
-#include "Particles/ParticlePerfStatsManager.h"
 
 DECLARE_STATS_GROUP(TEXT("Particle World Manager"), STATGROUP_PSCWorldMan, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("PSC Manager Tick [GT]"), STAT_PSCMan_Tick, STATGROUP_PSCWorldMan);
@@ -147,7 +146,7 @@ void FParticleSystemWorldManager::OnStartup()
 	FWorldDelegates::OnPreWorldFinishDestroy.AddStatic(&OnPreWorldFinishDestroy);
 	FWorldDelegates::OnWorldBeginTearDown.AddStatic(&OnWorldBeginTearDown);
 #if WITH_PARTICLE_PERF_STATS
-	FParticlePerfStatsManager::OnStartup();
+	FParticlePerfStats::OnStartup();
 #endif
 }
 
@@ -162,7 +161,7 @@ void FParticleSystemWorldManager::OnShutdown()
 	}
 	WorldManagers.Empty();
 #if WITH_PARTICLE_PERF_STATS
-	FParticlePerfStatsManager::OnShutdown();
+	FParticlePerfStats::OnShutdown();
 #endif
 }
 
@@ -582,19 +581,6 @@ void FParticleSystemWorldManager::ProcessTickList(float DeltaTime, ELevelTick Ti
 			if (bDoTick)
 			{
 				//UE_LOG(LogParticles, Warning, TEXT("| Ticking %d | PSC: %p "), PSCIndex, PSC);
-
-				/////////////////////////////////////////////////////////////////////////////////////////////////////////
-				// FORT-319316 - Tracking down why we sometimes have a PSC with no world in the manager?
-				if (!PSC->GetWorld())
-				{
-					UE_LOG(LogParticles, Warning, TEXT("PSC(%s) has no world but is inside PSC Manager. Template(%s) PendingKill(%d) IsTickManaged(%d) ManagerHandle(%d) PendingAdd(%d) PendingRemove(%d)"), *GetFullNameSafe(PSC), *GetFullNameSafe(PSC->Template), PSC->IsPendingKill(), PSC->IsTickManaged(), PSC->GetManagerHandle(), PSC->IsPendingManagerAdd(), PSC->IsPendingManagerRemove());
-					PSC->SetPendingManagerAdd(false);
-					PSC->SetPendingManagerRemove(true);
-					TickData.bPendingUnregister = true;
-					TickData.bPendingReregister = false;
-					continue;
-				}
-				/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 				if (PSC->CanSkipTickDueToVisibility())
 				{

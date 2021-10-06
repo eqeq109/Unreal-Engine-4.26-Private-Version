@@ -41,10 +41,9 @@ bool UNiagaraStackItemFooter::GetHasAdvancedContent() const
 	return bHasAdvancedContent;
 }
 
-void UNiagaraStackItemFooter::SetHasAdvancedContent(bool bInHasAdvancedRows, bool bInHasChangedContent)
+void UNiagaraStackItemFooter::SetHasAdvancedContent(bool bInHasAdvancedRows)
 {
 	bHasAdvancedContent = bInHasAdvancedRows;
-	bHasChangedAdvancedContent = bInHasChangedContent;
 }
 
 void UNiagaraStackItemFooter::SetOnToggleShowAdvanced(FOnToggleShowAdvanced OnExpandedChanged)

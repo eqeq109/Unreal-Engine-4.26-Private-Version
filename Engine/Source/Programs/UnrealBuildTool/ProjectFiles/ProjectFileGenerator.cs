@@ -134,7 +134,6 @@ namespace UnrealBuildTool
 		VisualStudio2015,
 		VisualStudio2017,
 		VisualStudio2019,
-		VisualStudio2022,
 		XCode,
 		Eddie,
 		VisualStudioCode,
@@ -186,11 +185,6 @@ namespace UnrealBuildTool
 		/// This is enabled only via UnrealBuildTool command-line.
 		/// </summary>
 		public static bool bGenerateProjectFiles = false;
-
-		/// <summary>
-		/// Current ProjectFileGenerator that is in the middle of generating project files. Set just before GenerateProjectFiles() is called.
-		/// </summary>
-		public static ProjectFileGenerator Current = null;
 
 		/// <summary>
 		/// True if we're generating lightweight project files for a single game only, excluding most engine code, documentation, etc.
@@ -390,7 +384,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// File extension for project files we'll be generating (e.g. ".vcxproj")
 		/// </summary>
-		public abstract string ProjectFileExtension
+		abstract public string ProjectFileExtension
 		{
 			get;
 		}
@@ -398,18 +392,9 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// True if we should include IntelliSense data in the generated project files when possible
 		/// </summary>
-		public virtual bool ShouldGenerateIntelliSenseData()
+		virtual public bool ShouldGenerateIntelliSenseData()
 		{
 			return bGenerateIntelliSenseData;
-		}
-
-		/// <summary>
-		/// Allows each project generator to indicate whether target rules should be used to explicitly enable or disable plugins.
-		/// Default is false - since usually not needed for project generation unless project files indicate whether referenced plugins should be built or not.
-		/// </summary>
-		public virtual bool ShouldTargetRulesTogglePlugins()
-		{
-			return bGenerateProjectFiles;
 		}
 
 		/// <summary>
@@ -632,13 +617,7 @@ namespace UnrealBuildTool
 					Format = ProjectFileFormat.VisualStudio2019;
 					return true;
 				}
-				else if (PreferredAccessor == "visualstudio2022")
-				{
-					Format = ProjectFileFormat.VisualStudio2022;
-					return true;
-				}
 			}
-
 
 			Format = ProjectFileFormat.VisualStudio;
 			return false;
@@ -2523,10 +2502,7 @@ namespace UnrealBuildTool
 							TargetFilePath = TargetFilePath,
 							ProjectFilePath = ProjectFilePath,
 							UnrealProjectFilePath = CheckProjectFile,
-							SupportedPlatforms = TargetRulesObject.GetSupportedPlatforms().Where(
-													x => UEBuildPlatform.GetBuildPlatform(x, true) != null && 
-													(TargetRulesObject.LinkType != TargetLinkType.Modular || !UEBuildPlatform.PlatformRequiresMonolithicBuilds(x, TargetRulesObject.Configuration))
-													).ToArray(),
+							SupportedPlatforms = TargetRulesObject.GetSupportedPlatforms().Where(x => UEBuildPlatform.GetBuildPlatform(x, true) != null).ToArray(),
 							CreateRulesDelegate = (Platform, Configuration) => RulesAssembly.CreateTargetRules(TargetName, Platform, Configuration, "", CheckProjectFile, new CommandLineArguments(GetTargetArguments(Arguments)))
                         };
 

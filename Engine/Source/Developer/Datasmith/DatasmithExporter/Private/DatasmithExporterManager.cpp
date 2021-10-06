@@ -6,7 +6,7 @@
 #include "UObject/GarbageCollection.h"
 
 #if IS_PROGRAM
-#include "DirectLinkModule.h"
+#include "DatasmithDirectLink.h"
 
 #include "Async/Future.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -50,7 +50,7 @@ public:
 
 	void RequestExit();
 
-	bool WasInitializedWithMessaging() const { return bUseMessaging; }
+	bool WasInitilizedWithMessaging() const { return bUseMessaging; }
 
 	TQueue<FSimpleDelegate, EQueueMode::Mpsc> CommandQueue;
 
@@ -184,7 +184,7 @@ uint32 FDatasmithGameThread::Run()
 		}
 
 		// Update this if we can get refresh rate of the user monitor(s)
-		constexpr double FrameTime = 1.0 / 60;
+		constexpr double FrameTime = 1 / 60;
 		double TimeSinceLastUpdate =  FPlatformTime::Seconds() - LastSlateUpdateTime;
 		while (TimeSinceLastUpdate < FrameTime && bKeepRunning)
 		{
@@ -252,10 +252,11 @@ void FDatasmithGameThread::OnInit()
 
 		ModuleManager.LoadModuleChecked(FName(TEXT("DatasmithExporterUI")));
 
+
 		if (bUseMessaging)
 		{
-			// Init DirectLink module (and dependencies)
-			FDirectLinkModule::Get();
+			// Init the modules for live link
+			check(FDatasmithDirectLink::ValidateCommunicationSetup() == 0);
 		}
 	}
 	else
@@ -379,17 +380,15 @@ bool FDatasmithExporterManager::RunGarbageCollection()
 		GarbageCollectionDoneFuture.Wait();
 		return true;
 	}
-	else if (IsInGameThread())
+#endif
+
+	if (IsInGameThread())
 	{
 		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 		return true;
 	}
 
 	return false;
-#else
-	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-	return true;
-#endif
 }
 
 #if IS_PROGRAM
@@ -414,19 +413,14 @@ void FDatasmithExporterManager::PushCommandIntoGameThread(FSimpleDelegate&& Comm
 	}
 }
 
-bool FDatasmithExporterManager::WasInitializedWithMessaging()
+bool FDatasmithExporterManager::WasInitilizedWithMessaging()
 {
 	if( GDatasmithGameThread )
 	{
-		return GDatasmithGameThread->WasInitializedWithMessaging();
+		return GDatasmithGameThread->WasInitilizedWithMessaging();
 	}
 
 	return bUseMessaging && bEngineInitialized;
-}
-
-bool FDatasmithExporterManager::WasInitializedWithGameThread()
-{
-	return GDatasmithGameThread && bEngineInitialized;
 }
 #endif
 

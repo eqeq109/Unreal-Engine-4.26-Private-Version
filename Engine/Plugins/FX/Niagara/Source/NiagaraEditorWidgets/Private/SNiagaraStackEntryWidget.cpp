@@ -146,7 +146,7 @@ FText SNiagaraStackDisplayName::GetTopLevelDisplayName(TWeakPtr<UNiagaraStackVie
 	return TopLevelDisplayNameFormattedCache;
 }
 
-void SNiagaraStackDisplayName::StackViewModelStructureChanged(ENiagaraStructureChangedFlags Flags)
+void SNiagaraStackDisplayName::StackViewModelStructureChanged()
 {
 	if (StackEntryItem->IsFinalized() == false && StackViewModel->GetTopLevelViewModels().Num() != TopLevelViewModelCountAtLastConstruction)
 	{
@@ -228,6 +228,7 @@ bool SNiagaraStackEntryWidget::IsCurrentSearchMatch() const
 FReply SNiagaraStackEntryWidget::ExpandEntry()
 {
 	StackEntryItem->SetIsExpanded(true);
+	StackEntryItem->OnStructureChanged().Broadcast();
 	return FReply::Handled();
 }
 

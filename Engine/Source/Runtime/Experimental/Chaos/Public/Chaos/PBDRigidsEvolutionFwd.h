@@ -3,20 +3,29 @@
 
 namespace Chaos
 {
-	class FPBDRigidsEvolutionBase;
+	template <typename Traits>
+	class TPBDRigidsEvolutionBase;
 
-	class FPBDRigidsEvolutionGBF;
+	template <typename Traits>
+	class TPBDRigidsEvolutionGBF;
+
+	using FDefaultTraits = struct FRewindableEvolutionTraits;
 
 	//The default evolution used by unreal
-	using FPBDRigidsEvolution = FPBDRigidsEvolutionGBF;
+	using FPBDRigidsEvolution = TPBDRigidsEvolutionGBF<FDefaultTraits>;
 
-	class FPBDRigidsSolver;
+	template <typename Traits>
+	class TPBDRigidsSolver;
 
-	using FPBDRigidsSolver = FPBDRigidsSolver;
+	using FPBDRigidsSolver = TPBDRigidsSolver<FDefaultTraits>;
 
-	class FEventManager;
+	template <typename Traits>
+	class TEventManager;
 
-	using FEventManager = FEventManager;
+	using FEventManager = TEventManager<FDefaultTraits>;
 }
 
-class FGeometryCollectionPhysicsProxy;
+template <typename Traits>
+class TGeometryCollectionPhysicsProxy;
+
+using FGeometryCollectionPhysicsProxy = TGeometryCollectionPhysicsProxy<Chaos::FDefaultTraits>;

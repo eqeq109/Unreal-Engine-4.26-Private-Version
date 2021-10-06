@@ -25,16 +25,21 @@ struct FDataprepSetLODsReductionSettings
 {
 	GENERATED_BODY()
 
+	FDataprepSetLODsReductionSettings()
+		: PercentTriangles(0.5f)
+		, ScreenSize(0.5f)
+	{ }
+
 	// Percentage of triangles to keep. Ranges from 0.0 to 1.0: 1.0 = no reduction, 0.0 = no triangles.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SetLODsReductionSettings, meta=(UIMin = "0.0", UIMax = "1.0"))
-	float PercentTriangles = 0.5f;
+	float PercentTriangles;
 
 	// ScreenSize to display this LOD. Ranges from 0.0 to 1.0.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SetLODsReductionSettings, meta=(UIMin = "0.0", UIMax = "1.0"))
-	float ScreenSize = 0.5f;
+	float ScreenSize;
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set LODs", ToolTip = "For each static mesh to process, replace the existing static mesh's LODs with new ones based on the set of reduction settings") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Set LODs", ToolTip = "For each static mesh to process, replace the existing static mesh's LODs with new ones based on the set of reduction settings") )
 class UDataprepSetLODsOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -65,7 +70,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set LOD Group", ToolTip = "For each static mesh to process, replace the existing static mesh's LODs with new ones based on selected group") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Set LOD Group", ToolTip = "For each static mesh to process, replace the existing static mesh's LODs with new ones based on selected group") )
 class UDataprepSetLODGroupOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -89,10 +94,10 @@ private:
 	UPROPERTY(EditAnywhere, Category = SetLOGGroup_Internal, meta = (ToolTip = ""))
 	FName GroupName;
 
-	friend class FDataprepSetLODGroupDetails;
+	friend class FDataprepSetLOGGroupDetails;
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set Simple Collision", ToolTip = "For each static mesh to process, replace the existing static mesh's collision setup with a simple one based on selected shape") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Set Simple Collision", ToolTip = "For each static mesh to process, replace the existing static mesh's collision setup with a simple one based on selected shape") )
 class UDataprepSetSimpleCollisionOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -119,7 +124,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set Convex Collision", ToolTip = "For each static mesh to process, replace the existing static mesh's collision setup with a convex decomposition one computed using the Hull settings") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Set Convex Collision", ToolTip = "For each static mesh to process, replace the existing static mesh's collision setup with a convex decomposition one computed using the Hull settings") )
 class UDataprepSetConvexDecompositionCollisionOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -156,7 +161,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName="Set Mobility", ToolTip = "For each actor to process, update its mobilty with the selected value") )
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName="Set Mobility", ToolTip = "For each actor to process, update its mobilty with the selected value") )
 class UDataprepSetMobilityOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -183,7 +188,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set Material", ToolTip = "On each static mesh or actor to process, replace any materials used with the specified one") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Set Material", ToolTip = "On each static mesh or actor to process, replace any materials used with the specified one") )
 class UDataprepSetMaterialOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -210,7 +215,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Substitute Material", ToolTip = "On each static mesh or actor to process, replace the material matching the criteria with the specified one") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Substitute Material", ToolTip = "On each static mesh or actor to process, replace the material matching the criteria with the specified one") )
 class UDataprepSubstituteMaterialOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -247,7 +252,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Substitute Material By Table", ToolTip = "On each static mesh or actor to process, replace the material found in the first column of the table with the one from the second column in the same row") )
+UCLASS(Experimental, Category = MeshOperation, Meta = (DisplayName="Substitute Material By Table", ToolTip = "On each static mesh or actor to process, replace the material found in the first column of the table with the one from the second column in the same row") )
 class UDataprepSubstituteMaterialByTableOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -275,12 +280,12 @@ protected:
 };
 
 // Customization of the details of the Datasmith Scene for the data prep editor.
-class FDataprepSetLODGroupDetails : public IDetailCustomization
+class FDataprepSetLOGGroupDetails : public IDetailCustomization
 {
 public:
-	static TSharedRef< IDetailCustomization > MakeDetails() { return MakeShared<FDataprepSetLODGroupDetails>(); };
+	static TSharedRef< IDetailCustomization > MakeDetails() { return MakeShared<FDataprepSetLOGGroupDetails>(); };
 
-	FDataprepSetLODGroupDetails() : DataprepOperation(nullptr) {}
+	FDataprepSetLOGGroupDetails() : DataprepOperation(nullptr) {}
 
 	/** Called when details should be customized */
 	virtual void CustomizeDetails( IDetailLayoutBuilder& DetailBuilder ) override;
@@ -299,7 +304,8 @@ private:
 	TSharedPtr<IPropertyHandle> LodGroupPropertyHandle;
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName="Set Mesh", ToolTip = "On each actor to process, replace any meshes used with the specified one") )
+
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName="Set Mesh", ToolTip = "On each actor to process, replace any meshes used with the specified one") )
 class UDataprepSetMeshOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -326,7 +332,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName = "Add Tags", ToolTip = "On each actor to process, add specified tags"))
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName = "Add Tags", ToolTip = "On each actor to process, add specified tags"))
 class UDataprepAddTagsOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -348,7 +354,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName = "Set Metadata", ToolTip = "On each actor to process set metadata value"))
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName = "Set Metadata", ToolTip = "On each actor to process set metadata value"))
 class UDataprepSetMetadataOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -370,7 +376,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = AssetOperation, Meta = (DisplayName = "Replace Asset References", ToolTip = "Replace references to each asset with the first asset in the list"))
+UCLASS(Experimental, Category = AssetOperation, Meta = (DisplayName = "Replace Asset References", ToolTip = "Replace references to each asset with the first asset in the list"))
 class UDataprepConsolidateObjectsOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -389,7 +395,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName = "Random Offset Transform", ToolTip = "For each actor in the input set, offset its position/rotation/scale with random vector generated from X/Y/Z Min-Max."))
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName = "Random Offset Transform", ToolTip = "For each actor in the input set, offset its position/rotation/scale with random vector generated from X/Y/Z Min-Max."))
 class UDataprepRandomizeTransformOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -427,7 +433,7 @@ protected:
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName = "Flip Faces", ToolTip = "On each actor to process, flip faces of each mesh"))
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName = "Flip Faces", ToolTip = "On each actor to process, flip faces of each mesh"))
 class UDataprepFlipFacesOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -446,7 +452,7 @@ protected:
 	//~ End UDataprepOperation Interface
 };
 
-UCLASS(Category = AssetOperation, Meta = (DisplayName="Output to Folder", ToolTip = "For each asset to process, set the sub-folder to save it to.\nThe sub-folder is relative to the folder specified to the Dataprep consumer.") )
+UCLASS(Experimental, Category = AssetOperation, Meta = (DisplayName="Output to Folder", ToolTip = "For each asset to process, set the sub-folder to save it to.\nThe sub-folder is relative to the folder specified to the Dataprep consumer.") )
 class UDataprepSetOutputFolder : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -495,7 +501,7 @@ private:
 	TSharedPtr< class SEditableTextBox > TextBox;
 };
 
-UCLASS(Category = ActorOperation, Meta = (DisplayName = "Add To Layer", ToolTip = "On each actor to process, add the actor to the layer"))
+UCLASS(Experimental, Category = ActorOperation, Meta = (DisplayName = "Add To Layer", ToolTip = "On each actor to process, add the actor to the layer"))
 class UDataprepAddToLayerOperation : public UDataprepOperation
 {
 	GENERATED_BODY()
@@ -515,57 +521,4 @@ public:
 protected:
 	virtual void OnExecution_Implementation(const FDataprepContext& InContext) override;
 	//~ End UDataprepOperation Interface
-};
-
-UCLASS(Category = MeshOperation, Meta = (DisplayName="Set Collision Complexity", ToolTip = "For each static mesh to process, set its collision complexity") )
-class UDataprepSetCollisionComplexityOperation : public UDataprepOperation
-{
-	GENERATED_BODY()
-
-	UDataprepSetCollisionComplexityOperation()
-		: CollisionTraceFlag(ECollisionTraceFlag::CTF_UseDefault)
-	{
-	}
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MeshOperation, meta = (ToolTip = "Collision complexity"))
-	TEnumAsByte<ECollisionTraceFlag> CollisionTraceFlag;
-
-	//~ Begin UDataprepOperation Interface
-public:
-	virtual FText GetCategory_Implementation() const override
-	{
-		return FDataprepOperationCategories::MeshOperation;
-	}
-
-protected:
-	virtual void OnExecution_Implementation(const FDataprepContext& InContext) override;
-	//~ End UDataprepOperation Interface
-};
-
-UCLASS(Category = AssetOperation, Meta = (DisplayName = "Set Max Texture Size", ToolTip = "Set max size (width or height) each input texture"))
-class UDataprepSetMaxTextureSizeOperation : public UDataprepOperation
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, Category = AssetOperation, BlueprintReadWrite, meta = (UIMin = "1", ClampMin = "1"), Meta = (ToolTip = ""))
-	int32 MaxTextureSize;
-
-	UPROPERTY(EditAnywhere, Category = AssetOperation, BlueprintReadWrite, meta = (ToolTip = "If true, original texture size will be enforced to power of two before resizing (if it's a non-power of two size), else only POT textures will be affected."))
-	bool bAllowPadding = false;
-
-	//~ Begin UDataprepOperation Interface
-public:
-	virtual FText GetCategory_Implementation() const override
-	{
-		return FDataprepOperationCategories::AssetOperation;
-	}
-
-protected:
-	virtual void OnExecution_Implementation(const FDataprepContext& InContext) override;
-	//~ End UDataprepOperation Interface
-
-	// Track changes of MaxTextureSize and force values to be power of two
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 };

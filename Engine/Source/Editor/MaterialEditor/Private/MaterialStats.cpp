@@ -48,22 +48,12 @@ FShaderPlatformSettings::FShaderPlatformSettings(
 
 void FShaderPlatformSettings::ClearResources()
 {
-	TArray<TRefCountPtr<FMaterial>> MaterialsToDeleteOnRenderThread;
-
 	// free material resources
 	for (int32 i = 0; i < EMaterialQualityLevel::Num; ++i)
 	{
-		FMaterialResourceStats* Resource = PlatformData[i].MaterialResourcesStats;
-		if (Resource != nullptr)
+		if (PlatformData[i].MaterialResourcesStats != nullptr)
 		{
-			if (Resource->PrepareDestroy_GameThread())
-			{
-				MaterialsToDeleteOnRenderThread.Add(Resource);
-			}
-			else
-			{
-				delete Resource;
-			}
+			delete PlatformData[i].MaterialResourcesStats;
 			PlatformData[i].MaterialResourcesStats = nullptr;
 		}
 
@@ -72,8 +62,6 @@ void FShaderPlatformSettings::ClearResources()
 		PlatformData[i].bCompilingShaders = false;
 		PlatformData[i].bNeedShaderRecompilation = true;
 	}
-
-	FMaterial::DeleteMaterialsOnRenderThread(MaterialsToDeleteOnRenderThread);
 }
 
 FText FShaderPlatformSettings::GetSelectedShaderViewComboText(EMaterialQualityLevel::Type QualityLevel) const
@@ -436,7 +424,25 @@ void FMaterialStats::BuildShaderPlatformDB()
 	AddShaderPlatform(EPlatformCategoryType::IOS, SP_METAL, TEXT("Metal"), false, true, TEXT("iOS, Metal, Mobile"));
 	AddShaderPlatform(EPlatformCategoryType::IOS, SP_METAL_MRT, TEXT("Metal MRT"), false, true, TEXT("iOS, Metal, Shader Model 5"));
 
+	// Look to see what console platforms we have
+	static const EShaderPlatform ConsolePlatforms[] =
+	{
+		SP_PS4,
+		SP_XBOXONE_D3D12,
+		SP_SWITCH,
+		SP_SWITCH_FORWARD,
+	};
+
 	ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
+	for (EShaderPlatform ShaderPlatform : ConsolePlatforms)
+	{
+		const FName ShaderFormat = LegacyShaderPlatformToShaderFormat(ShaderPlatform);
+		if (TPM.FindShaderFormat(ShaderFormat) != nullptr )
+		{
+			FString PlatformName = FMaterialStatsUtils::ShaderPlatformTypeName(ShaderPlatform);
+			AddShaderPlatform(EPlatformCategoryType::Console, ShaderPlatform, FName(*PlatformName), true, true, PlatformName);
+		}
+	}
 
 	// Add platform extensions
 	for (int32 StaticPlatform = SP_StaticPlatform_First; StaticPlatform <= SP_StaticPlatform_Last; ++StaticPlatform)
@@ -447,11 +453,8 @@ void FMaterialStats::BuildShaderPlatformDB()
 			bool bIsConsole = FDataDrivenShaderPlatformInfo::GetIsConsole(ShaderPlatform);
 
 			const FName ShaderFormat = LegacyShaderPlatformToShaderFormat(ShaderPlatform);
-			if (TPM.FindShaderFormat(ShaderFormat) != nullptr)
-			{
-				const FName PlatformName = ShaderPlatformToPlatformName(ShaderPlatform);
-				AddShaderPlatform(bIsConsole ? EPlatformCategoryType::Console : EPlatformCategoryType::Desktop, ShaderPlatform, PlatformName, true, true, PlatformName.ToString());
-			}
+			const FName PlatformName = ShaderPlatformToPlatformName(ShaderPlatform);
+			AddShaderPlatform(bIsConsole ? EPlatformCategoryType::Console : EPlatformCategoryType::Desktop, ShaderPlatform, PlatformName, true, true, PlatformName.ToString());
 		}
 	}
 

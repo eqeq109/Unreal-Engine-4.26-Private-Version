@@ -9,14 +9,14 @@
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "ThumbnailRendering/DefaultSizedThumbnailRenderer.h"
+#include "ThumbnailRendering/ThumbnailRenderer.h"
 #include "SoundWaveThumbnailRenderer.generated.h"
 
 class FCanvas;
 class FRenderTarget;
 
 UCLASS()
-class USoundWaveThumbnailRenderer : public UDefaultSizedThumbnailRenderer
+class USoundWaveThumbnailRenderer : public UThumbnailRenderer
 {
 	GENERATED_UCLASS_BODY()
 

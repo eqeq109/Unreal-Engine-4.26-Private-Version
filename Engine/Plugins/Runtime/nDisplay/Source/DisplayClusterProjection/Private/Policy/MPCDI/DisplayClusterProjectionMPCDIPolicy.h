@@ -4,8 +4,52 @@
 
 #include "Policy/DisplayClusterProjectionPolicyBase.h"
 
-#include "WarpBlend/IDisplayClusterWarpBlend.h"
-#include "WarpBlend/DisplayClusterWarpContext.h"
+#include "IMPCDI.h"
+
+#include "DisplayClusterProjectionMPCDIPolicy.generated.h"
+
+class USceneComponent;
+class UDisplayClusterSceneComponent;
+class UDisplayClusterConfigurationViewport;
+
+
+UCLASS()
+class DISPLAYCLUSTERPROJECTION_API UDisplayClusterProjectionPolicyMPCDIParameters
+	: public UDisplayClusterProjectionPolicyParameters
+{
+	GENERATED_BODY()
+
+public:
+	UDisplayClusterProjectionPolicyMPCDIParameters();
+
+#if WITH_EDITOR
+public:
+	virtual bool Parse(ADisplayClusterRootActor* RootActor, const FDisplayClusterConfigurationProjection& ConfigData) override;
+#endif
+
+#if WITH_EDITORONLY_DATA
+public:
+	UPROPERTY(EditAnywhere, Category = "MPCDI")
+	ADisplayClusterRootActor* RootActor;
+
+	UPROPERTY(EditAnywhere, Category = "MPCDI")
+	FString File;
+
+	UPROPERTY(EditAnywhere, Category = "MPCDI")
+	FString Buffer;
+
+	UPROPERTY(EditAnywhere, Category = "MPCDI")
+	FString Region;
+
+	UPROPERTY(EditAnywhere, Category = "MPCDI")
+	USceneComponent* Origin;
+
+	IMPCDI::FRegionLocator MPCDILocator;
+	FCriticalSection InternalsSyncScope;
+#endif
+};
+
+
 
 /**
  * MPCDI projection policy
@@ -21,11 +65,8 @@ public:
 	};
 
 public:
-	FDisplayClusterProjectionMPCDIPolicy(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy);
+	FDisplayClusterProjectionMPCDIPolicy(const FString& ViewportId, const TMap<FString, FString>& Parameters);
 	virtual ~FDisplayClusterProjectionMPCDIPolicy();
-
-	virtual const FString GetTypeId() const
-	{ return DisplayClusterProjectionStrings::projection::MPCDI; }
 
 public:
 	virtual EWarpType GetWarpType() const
@@ -33,64 +74,63 @@ public:
 		return EWarpType::mpcdi;
 	}
 
-	// This policy can support ICVFX rendering
-	virtual bool ShouldSupportICVFX() const
-	{
-		return true;
-	}
-
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProjectionPolicy
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual bool HandleStartScene(class IDisplayClusterViewport* InViewport) override;
-	virtual void HandleEndScene(class IDisplayClusterViewport* InViewport) override;
+	virtual void StartScene(UWorld* World) override;
+	virtual void EndScene() override;
+	virtual bool HandleAddViewport(const FIntPoint& ViewportSize, const uint32 ViewsAmount) override;
+	virtual void HandleRemoveViewport() override;
 
-	virtual bool CalculateView(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP) override;
-	virtual bool GetProjectionMatrix(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FMatrix& OutPrjMatrix) override;
+	virtual bool CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP) override;
+	virtual bool GetProjectionMatrix(const uint32 ViewIdx, FMatrix& OutPrjMatrix) override;
 
 	virtual bool IsWarpBlendSupported() override;
-	virtual void ApplyWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const class IDisplayClusterViewportProxy* InViewportProxy) override;
-
-	virtual bool ShouldUseSourceTextureWithMips() const override
-	{
-		// Support input texture with mips
-		return true;
-	}
-
-	virtual void UpdateProxyData(class IDisplayClusterViewport* InViewport) override;
+	virtual void ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect) override;
 
 protected:
-	bool CreateWarpBlendFromConfig();
-	void ImplRelease();
+	bool InitializeResources_RenderThread();
 
 protected:
 	FString OriginCompId;
-	
-	TSharedPtr<IDisplayClusterWarpBlend, ESPMode::ThreadSafe> WarpBlendInterface;
-	TArray<FDisplayClusterWarpContext> WarpBlendContexts;
+	FIntPoint ViewportSize;
 
-	TSharedPtr<IDisplayClusterWarpBlend, ESPMode::ThreadSafe> WarpBlendInterface_Proxy;
-	TArray<FDisplayClusterWarpContext> WarpBlendContexts_Proxy;
+	IMPCDI& MPCDIAPI;
 
-private:
-	bool bInvalidConfiguration = false;
-	bool bIsPreviewMeshEnabled = false;
+	IMPCDI::FRegionLocator WarpRef;
+	mutable FCriticalSection WarpRefCS;
+
+	struct FViewData
+	{
+		IMPCDI::FFrustum Frustum;
+		FTexture2DRHIRef RTTexture;
+	};
+
+	TArray<FViewData> Views;
+
+	mutable bool bIsRenderResourcesInitialized;
+	FCriticalSection RenderingResourcesInitializationCS;
+
 
 #if WITH_EDITOR
 protected:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProjectionPolicyPreview
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual bool HasPreviewMesh() override
+	virtual bool HasMeshPreview() override
 	{
 		return true;
 	}
-	virtual class UMeshComponent* GetOrCreatePreviewMeshComponent(class IDisplayClusterViewport* InViewport, bool& bOutIsRootActorComponent) override;
 
-	void ReleasePreviewMeshComponent();
+	virtual bool HasPreviewRendering() override
+	{
+		return true;
+	}
 
-private:
-	FDisplayClusterSceneComponentRef PreviewMeshComponentRef;
+	virtual UDisplayClusterProjectionPolicyParameters* CreateParametersObject(UObject* Owner) override;
+	virtual void InitializePreview(UDisplayClusterProjectionPolicyParameters* PolicyParameters) override;
+	virtual UMeshComponent* BuildMeshPreview(UDisplayClusterProjectionPolicyParameters* PolicyParameters) override;
+	virtual void RenderFrame(USceneComponent* Camera, UDisplayClusterProjectionPolicyParameters* PolicyParameters, FTextureRenderTargetResource* RenderTarget, FIntRect RenderRegion, bool bApplyWarpBlend) override;
 #endif
 };

@@ -64,7 +64,7 @@ static PxQueryHitType::Enum WheelRaycastPreFilter(
 		// debug what object we hit
 		if ( false )
 		{
-			for ( FThreadSafeObjectIterator It; It; ++It )
+			for ( FObjectIterator It; It; ++It )
 			{
 				if ( It->GetUniqueID() == HitData.word0 )
 				{

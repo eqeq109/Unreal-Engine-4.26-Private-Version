@@ -18,17 +18,16 @@
 #include "Algo/Sort.h"
 #include "Async/Async.h"
 #include "Components/StaticMeshComponent.h"
-#include "PhysicsEngine/BodySetup.h"
 #include "Engine/StaticMesh.h"
-#include "Engine/StaticMeshActor.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "MeshDescription.h"
 #include "Misc/ScopeLock.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
 #include "UObject/GarbageCollection.h"
 
 #if WITH_EDITOR
+#include "Engine/StaticMeshActor.h"
+#include "Engine/World.h"
 #include "Materials/Material.h"
 #endif
 
@@ -38,11 +37,11 @@ namespace DatasmithRuntime
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(FSceneImporter::ProcessMeshData);
 
-		// Something is wrong. Do not go any further
+		// Clear PendingDelete flag if it is set. Something is wrong. Better safe than sorry
 		if (MeshData.HasState(EAssetState::PendingDelete))
 		{
-			UE_LOG(LogDatasmithRuntime, Error, TEXT("A mesh marked for deletion is actually used by the scene"));
-			return false;
+			MeshData.ClearState(EAssetState::PendingDelete);
+			UE_LOG(LogDatasmithRuntime, Warning, TEXT("A mesh marked for deletion is actually used by the scene"));
 		}
 
 		if (MeshData.HasState(EAssetState::Processed))
@@ -52,31 +51,52 @@ namespace DatasmithRuntime
 
 		TSharedPtr< IDatasmithMeshElement > MeshElement = StaticCastSharedPtr< IDatasmithMeshElement >(Elements[MeshData.ElementId]);
 
-		URuntimeMesh* StaticMesh = MeshData.GetObject<URuntimeMesh>();
+		// If mesh file does not exist, add scene's resource path if valid
+		if (!FPaths::FileExists(MeshElement->GetFile()) && FPaths::DirectoryExists(SceneElement->GetResourcePath()))
+		{
+			MeshElement->SetFile( *FPaths::Combine(SceneElement->GetResourcePath(), MeshElement->GetFile()) );
+		}
 
-		// If static mesh already completed, check if geometry has changed
+		// File not found, nothing to do
+		if (!FPaths::FileExists(MeshElement->GetFile()))
+		{
+			MeshData.Object.Reset();
+			MeshData.SetState(EAssetState::Processed | EAssetState::Completed);
+			return false;
+		}
+
+		const int32 MaterialSlotCount = MeshElement->GetMaterialSlotCount();
+
+		UStaticMesh* StaticMesh = MeshData.GetObject<UStaticMesh>();
+
+		// Check if geometry has not changed
 		if (StaticMesh)
 		{
-			uint32 NewResourceHash = GetTypeHash(MeshElement->GetFileHash());
 			// Force recreation of the static mesh if the mesh's file has changed
+			DirectLink::FElementHash NewResourceHash = GetTypeHash(MeshElement->GetFileHash());
 			if (MeshData.ResourceHash != NewResourceHash)
 			{
-				MeshData.ClearState(EAssetState::Completed);
 				FAssetRegistry::UnregisterAssetData(StaticMesh, SceneKey, MeshData.ElementId);
 				StaticMesh = nullptr;
 				MeshData.Object.Reset();
 			}
 		}
 
+		bool bUsingStaticMeshFromCache = false;
+
 		if (StaticMesh == nullptr)
 		{
-			MeshData.Hash = GetTypeHash(MeshElement->CalculateElementHash(true), EDataType::Mesh);
+			MeshData.Hash = GetTypeHash(MeshElement->CalculateElementHash(true));
 			MeshData.ResourceHash = GetTypeHash(MeshElement->GetFileHash());
 
 			if (UObject* AssetPtr = FAssetRegistry::FindObjectFromHash(MeshData.Hash))
 			{
-				StaticMesh = Cast<URuntimeMesh>(AssetPtr);
+				StaticMesh = Cast<UStaticMesh>(AssetPtr);
 				check(StaticMesh);
+
+				MeshData.Object = TWeakObjectPtr<UObject>(StaticMesh);
+
+				bUsingStaticMeshFromCache = true;
 			}
 			else
 			{
@@ -84,18 +104,18 @@ namespace DatasmithRuntime
 				FString MeshName = TEXT("S_") + FString(MeshElement->GetName()) + TEXT("_LU_") + FString::FromInt(MeshData.ElementId);
 				MeshName = FDatasmithUtils::SanitizeObjectName(MeshName);
 				UPackage* Package = CreatePackage(*FPaths::Combine( TEXT("/DatasmithContent/Meshes"), MeshName));
-				StaticMesh = NewObject< URuntimeMesh >(Package, *MeshName, RF_Public);
+				StaticMesh = NewObject< UStaticMesh >(Package, *MeshName, RF_Public);
 #else
-				StaticMesh = NewObject< URuntimeMesh >(GetTransientPackage());
+				StaticMesh = NewObject< UStaticMesh >(GetTransientPackage());
 #endif
 				check(StaticMesh);
 
-				StaticMesh->SetWorld(RootComponent->GetWorld());
+				MeshData.Object = TWeakObjectPtr< UObject >(StaticMesh);
 
 				// Add the creation of the mesh to the queue
 				FActionTaskFunction TaskFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
 				{
-					this->OnGoingTasks.Emplace( Async(
+					OnGoingTasks.Emplace( Async(
 #if WITH_EDITOR
 						EAsyncExecution::LargeThreadPool,
 #else
@@ -115,20 +135,33 @@ namespace DatasmithRuntime
 				};
 
 				AddToQueue(EQueueTask::MeshQueue, { TaskFunc, {EDataType::Mesh, MeshData.ElementId, 0 } });
-				TasksToComplete |= EWorkerTask::MeshCreate;
-
-				// If applicable, Apply metadata on newly created static mesh
-				ApplyMetadata(MeshData.MetadataId, StaticMesh);
+				TasksToComplete |=  EWorkerTask::MeshCreate;
 
 				MeshElementSet.Add(MeshData.ElementId);
 			}
-
-			MeshData.Object = TWeakObjectPtr< UObject >(StaticMesh);
 		}
 
-		// Collect materials used by static mesh
-		for (int32 Index = 0; Index < MeshElement->GetMaterialSlotCount(); Index++)
+		FActionTaskFunction AssignMaterialFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
 		{
+			return this->AssignMaterial(Referencer, Cast<UMaterialInstanceDynamic>(Object));
+		};
+
+		TArray< FStaticMaterial >& StaticMaterials = StaticMesh->StaticMaterials;
+		StaticMaterials.SetNum(MaterialSlotCount);
+
+		for (int32 Index = 0; Index < MaterialSlotCount; Index++)
+		{
+			FStaticMaterial& StaticMaterial = StaticMaterials[Index];
+
+			if (!bUsingStaticMeshFromCache)
+			{
+				StaticMaterial.MaterialSlotName = NAME_None;
+				StaticMaterial.MaterialInterface = nullptr;
+
+				// Done to remove an assert from an 'ensure' in UStaticMesh::GetUVChannelData
+				StaticMaterial.UVChannelData = FMeshUVChannelInfo(1.f);
+			}
+
 			if (const IDatasmithMaterialIDElement* MaterialIDElement = MeshElement->GetMaterialSlotAt(Index).Get())
 			{
 				const FString MaterialPathName(MaterialIDElement->GetName());
@@ -137,29 +170,28 @@ namespace DatasmithRuntime
 				{
 					if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialPathName))
 					{
-						ProcessMaterialData(AssetDataList[*MaterialElementIdPtr]);
+						FAssetData& MaterialData = AssetDataList[*MaterialElementIdPtr];
+
+						ProcessMaterialData(MaterialData);
+
+						AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Mesh, MeshData.ElementId, (uint16)Index } });
+						TasksToComplete |= EWorkerTask::MaterialAssign;
 					}
 				}
 				else
 				{
-					// Force loading of material asset if it exists. It will be assigned when the mesh is built
-					UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(FSoftObjectPath(MaterialPathName).TryLoad());
-					if (MaterialInterface == nullptr)
-					{
-						UE_LOG(LogDatasmithRuntime, Warning, TEXT("ProcessMeshData: Cannot find material %s"), *MaterialPathName);
-					}
+					StaticMaterial.MaterialInterface = Cast<UMaterialInterface>(FSoftObjectPath(MaterialPathName).TryLoad());
+				}
+
+				if (!bUsingStaticMeshFromCache)
+				{
+					StaticMaterial.MaterialSlotName = *FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
 				}
 			}
 		}
 
-		// If static mesh already completed, then material assignment has changed
-		if (MeshData.HasState(EAssetState::Completed))
-		{
-			UpdateStaticMeshMaterials(MeshData);
-		}
-
 		// Create BodySetup in game thread to avoid allocating during a garbage collect later on
-		if (StaticMesh->GetBodySetup() == nullptr)
+		if (StaticMesh->BodySetup == nullptr)
 		{
 			StaticMesh->CreateBodySetup();
 		}
@@ -232,7 +264,7 @@ namespace DatasmithRuntime
 				return this->AssignMaterial(Referencer, Cast<UMaterialInstanceDynamic>(Object));
 			};
 
-			TArray< FStaticMaterial >& StaticMaterials = StaticMesh->GetStaticMaterials();
+			TArray< FStaticMaterial >& StaticMaterials = StaticMesh->StaticMaterials;
 
 			TMap<FString, int32> SlotMapping;
 			SlotMapping.Reserve(StaticMaterials.Num());
@@ -259,8 +291,10 @@ namespace DatasmithRuntime
 				{
 					ProcessMaterialData(AssetDataList[*MaterialElementIdPtr]);
 
-					DependencyList.Add(MaterialIDElement->GetNodeId(), { EDataType::Actor, ActorData.ElementId, 0xffff });
-					AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, 0xffff } });
+					for (int32 Index = 0; Index < StaticMaterials.Num(); ++Index)
+					{
+						AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)Index } });
+					}
 
 					TasksToComplete |= EWorkerTask::MaterialAssign;
 				}
@@ -271,21 +305,22 @@ namespace DatasmithRuntime
 				{
 					TSharedPtr<const IDatasmithMaterialIDElement> MaterialIDElement = MeshActorElement->GetMaterialOverride(Index);
 
-					if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialIDElement->GetName()))
+					FString MaterialSlotName = FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
+
+					if (StaticMaterials.Num() == 0 || SlotMapping.Contains(MaterialSlotName))
 					{
-						ProcessMaterialData(AssetDataList[*MaterialElementIdPtr]);
-
-						const FString MaterialSlotName = FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
-
-						// If staticmesh has no material assigned, material assignment will be queued later when the mesh component is created
-						if (StaticMaterials.Num() > 0 && SlotMapping.Contains(MaterialSlotName))
+						if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialIDElement->GetName()))
 						{
-							const int32 MaterialIndex = SlotMapping[MaterialSlotName];
+							ProcessMaterialData(AssetDataList[*MaterialElementIdPtr]);
 
-							DependencyList.Add(MaterialIDElement->GetNodeId(), { EDataType::Actor, ActorData.ElementId, (uint16)MaterialIndex });
+							// If staticmesh has no material assigned, material assignment will be queued later when the mesh component is created
+							if (StaticMaterials.Num() > 0)
+							{
+								const int32 MaterialIndex = SlotMapping[MaterialSlotName];
 
-							AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)MaterialIndex } });
-							TasksToComplete |= EWorkerTask::MaterialAssign;
+								AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)MaterialIndex } });
+								TasksToComplete |= EWorkerTask::MaterialAssign;
+							}
 						}
 					}
 				}
@@ -337,35 +372,22 @@ namespace DatasmithRuntime
 
 		FDatasmithMeshElementPayload MeshPayload;
 		{
+			FDatasmithNativeTranslator NativeTranslator;
+
 			// Prevent GC from running while loading meshes.
 			// FDatasmithNativeTranslator::LoadStaticMesh is creating UDatasmithMesh objects
 			FGCScopeGuard GCGuard;
 
-			if (!Translator->LoadStaticMesh(MeshElement, MeshPayload))
+			if (!NativeTranslator.LoadStaticMesh(MeshElement, MeshPayload))
 			{
-				// If mesh cannot be loaded, add scene's resource path if valid and retry
-				bool bSecondTrySucceeded = false;
+				// #ueent_datasmithruntime: TODO : Update FAssetFactory
+				ActionCounter.Add(MeshData.Referencers.Num());
+				MeshData.Object.Reset();
+				MeshData.AddState(EAssetState::Completed);
 
-				if (FPaths::DirectoryExists(SceneElement->GetResourcePath()) && FPaths::IsRelative(MeshElement->GetFile()))
-				{
-					MeshElement->SetFile( *FPaths::Combine(SceneElement->GetResourcePath(), MeshElement->GetFile()) );
-					bSecondTrySucceeded = Translator->LoadStaticMesh(MeshElement, MeshPayload);
-				}
-
-				if (!bSecondTrySucceeded)
-				{
-					// #ueent_datasmithruntime: TODO : Update FAssetFactory
-					ActionCounter.Add(MeshData.Referencers.Num());
-					FAssetRegistry::UnregisteredAssetsData(StaticMesh, SceneKey, [](FAssetData& AssetData) -> void
-						{
-							AssetData.AddState(EAssetState::Completed);
-							AssetData.Object.Reset();
-						});
-
-					UE_LOG(LogDatasmithRuntime, Warning, TEXT("CreateStaticMesh: Loading file %s failed. Mesh element %s has not been imported"), MeshElement->GetFile(), MeshElement->GetLabel());
-
-					return true;
-				}
+				UE_LOG(LogDatasmithRuntime, Warning, TEXT("CreateStaticMesh: Loading file %s failed. Mesh element %s has not been imported"), MeshElement->GetFile(), MeshElement->GetLabel());
+				
+				return true;
 			}
 		}
 
@@ -388,36 +410,52 @@ namespace DatasmithRuntime
 
 		// #ue_datasmithruntime: Cleanup mesh descriptions
 		//FDatasmithStaticMeshImporter::CleanupMeshDescriptions(MeshDescriptions);
-		for (FMeshDescription& MeshDescription : MeshDescriptions)
-		{
-			if (ShouldRecomputeNormals(MeshDescription, 0))
-			{
-				FStaticMeshOperations::ComputePolygonTangentsAndNormals(MeshDescription);
-				FStaticMeshOperations::ComputeTangentsAndNormals(MeshDescription, EComputeNTBsFlags::UseMikkTSpace);
-			}
-		}
 
 		//#ue_datasmithruntime: Implement task to build better lightmap sizes - See Dataprep operation
 		int32 MinLightmapSize = FDatasmithStaticMeshImportOptions::ConvertLightmapEnumToValue(EDatasmithImportLightmapMin::LIGHTMAP_64);
 		int32 MaxLightmapSize = FDatasmithStaticMeshImportOptions::ConvertLightmapEnumToValue(EDatasmithImportLightmapMax::LIGHTMAP_512);
 
 		// 4. Collisions
-		StaticMesh->GetBodySetup()->AggGeom.EmptyElements();
-		if (ImportOptions.BuildCollisions != ECollisionEnabled::NoCollision && ImportOptions.CollisionType != ECollisionTraceFlag::CTF_UseComplexAsSimple)
-		{
-			ProcessCollision(StaticMesh, MeshPayload);
-		}
+		ProcessCollision(StaticMesh, MeshPayload);
 
 		// Extracted from FDatasmithStaticMeshImporter::SetupStaticMesh
 #if WITH_EDITOR
 		StaticMesh->SetNumSourceModels(MeshDescriptions.Num());
 #endif
 
-		FillStaticMeshMaterials(MeshData, MeshDescriptions);
-
 		for (int32 LodIndex = 0; LodIndex < MeshDescriptions.Num(); ++LodIndex)
 		{
 			FMeshDescription& MeshDescription = MeshDescriptions[LodIndex];
+
+			// If the number of polygon groups in the MeshDescription is greater than the number of static materials in the static mesh
+			// Add the missing polygon groups.
+			FStaticMeshAttributes Attributes(MeshDescription);
+			TPolygonGroupAttributesConstRef<FName> MaterialSlotNameAttribute = Attributes.GetPolygonGroupMaterialSlotNames();
+			if (MeshDescription.PolygonGroups().Num() > StaticMesh->StaticMaterials.Num())
+			{
+				TArray<FStaticMaterial>& StaticMaterials = StaticMesh->StaticMaterials;
+				int32 LastIndex = StaticMaterials.Num();
+
+				StaticMaterials.SetNum(MeshDescription.PolygonGroups().Num());
+
+				TSet<FName> ExistingSlotNames;
+				ExistingSlotNames.Reserve(LastIndex);
+				for (int32 Index = 0; Index < LastIndex; ++Index)
+				{
+					ExistingSlotNames.Add(StaticMaterials[Index].MaterialSlotName);
+				}
+
+				for (FPolygonGroupID PolygonGroupID : MeshDescription.PolygonGroups().GetElementIDs())
+				{
+					const FName& MaterialSlotName = MaterialSlotNameAttribute[PolygonGroupID];
+					if (!ExistingSlotNames.Contains(MaterialSlotName))
+					{
+						StaticMaterials[LastIndex].MaterialSlotName = MaterialSlotName;
+						StaticMaterials[LastIndex].MaterialInterface = nullptr;
+						++LastIndex;
+					}
+				}
+			}
 
 			// UV Channels
 			int32 SourceIndex = 0;
@@ -535,27 +573,20 @@ namespace DatasmithRuntime
 			MeshDescriptionPointers.Add(&MeshDescription);
 		}
 
+		// #ue_datasmithruntime: Multi-threading issue with BodySetup::CreatePhysicsMeshes.
+		static bool bEnableCollision = false;
+
 		{
 			FGCScopeGuard GCGuard;
 
+			// Do not mark the package dirty since MarkPackageDirty is not thread safe
 			UStaticMesh::FBuildMeshDescriptionsParams Params;
 			Params.bUseHashAsGuid = true;
-			// Do not mark the package dirty since MarkPackageDirty is not thread safe
 			Params.bMarkPackageDirty = false;
-			Params.bBuildSimpleCollision = false;
+			Params.bBuildSimpleCollision = bEnableCollision;
 			// Do not commit since we only need the render data and commit is slow
 			Params.bCommitMeshDescription = false;
-#if !WITH_EDITOR
-			// Force build process to keep index buffer for complex collision when in game
-			Params.bAllowCpuAccess = ImportOptions.BuildCollisions != ECollisionEnabled::NoCollision && (ImportOptions.CollisionType == ECollisionTraceFlag::CTF_UseComplexAsSimple || ImportOptions.CollisionType == ECollisionTraceFlag::CTF_UseSimpleAndComplex);
-#endif
-
 			StaticMesh->BuildFromMeshDescriptions(MeshDescriptionPointers, Params);
-		}
-
-		if (ImportOptions.BuildCollisions != ECollisionEnabled::NoCollision)
-		{
-			DatasmithRuntime::BuildCollision(StaticMesh->GetBodySetup(), ImportOptions.CollisionType, StaticMesh->GetRenderData()->LODResources[0]);
 		}
 
 		// Free up memory
@@ -564,7 +595,7 @@ namespace DatasmithRuntime
 		StaticMesh->ClearMeshDescriptions();
 #endif
 
-		check(StaticMesh->GetRenderData() && StaticMesh->GetRenderData()->IsInitialized());
+		check(StaticMesh->RenderData && StaticMesh->RenderData->IsInitialized());
 
 		MeshData.ClearState(EAssetState::Building);
 		FAssetRegistry::SetObjectCompletion(StaticMesh, true);
@@ -590,153 +621,111 @@ namespace DatasmithRuntime
 			return EActionResult::Succeeded;
 		}
 
-		IDatasmithMeshActorElement* MeshActorElement = static_cast<IDatasmithMeshActorElement*>(Elements[ActorId].Get());
 		UStaticMeshComponent* MeshComponent = ActorData.GetObject<UStaticMeshComponent>();
 
 		if (MeshComponent == nullptr)
 		{
-			if (ImportOptions.BuildHierarchy != EBuildHierarchyMethod::None && !MeshActorElement->IsAComponent())
-			{
-				AStaticMeshActor* Actor = Cast<AStaticMeshActor>(RootComponent->GetOwner()->GetWorld()->SpawnActor(AStaticMeshActor::StaticClass(), nullptr, nullptr));
-				check(Actor != nullptr);
-
-				Actor->Rename(MeshActorElement->GetName(), nullptr, REN_NonTransactional | REN_DontCreateRedirectors);
-#if WITH_EDITOR
-				Actor->SetActorLabel( MeshActorElement->GetLabel() );
-#endif
-
-				Actor->Tags.Empty(MeshActorElement->GetTagsCount());
-				for (int32 Index = 0; Index < MeshActorElement->GetTagsCount(); ++Index)
-				{
-					Actor->Tags.Add(MeshActorElement->GetTag(Index));
-				}
-
-				MeshComponent = Actor->GetStaticMeshComponent();
-			}
-			else
-			{
-				FName ComponentName = NAME_None;
-				if (ImportOptions.BuildHierarchy != EBuildHierarchyMethod::None)
-				{
-					ComponentName = MakeUniqueObjectName(RootComponent->GetOwner(), UStaticMeshComponent::StaticClass(), MeshActorElement->GetLabel());
-				}
-				MeshComponent = NewObject< UStaticMeshComponent >(RootComponent->GetOwner(), ComponentName);
-			}
-
-			// #ueent_datasmithruntime: Enable collision after mesh component has been displayed. Can this be multi-threaded?
-			MeshComponent->bAlwaysCreatePhysicsState = ImportOptions.BuildCollisions != ECollisionEnabled::NoCollision;
-			MeshComponent->BodyInstance.SetCollisionEnabled(ImportOptions.BuildCollisions);
-
-			if (MeshComponent->bAlwaysCreatePhysicsState)
-			{
-				MeshComponent->BodyInstance.SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-				//MeshComponent->BodyInstance.bNotifyRigidBodyCollision = true;
-			}
-			else
-			{
-				MeshComponent->BodyInstance.SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-			}
+			MeshComponent = NewObject< UStaticMeshComponent >(RootComponent->GetOwner(), NAME_None);
 
 			ActorData.Object = TWeakObjectPtr<UObject>(MeshComponent);
+
+			MeshComponent->SetMobility(EComponentMobility::Movable);
+
+			MeshComponent->AttachToComponent(RootComponent.Get(), FAttachmentTransformRules::KeepRelativeTransform);
+			MeshComponent->RegisterComponentWithWorld(RootComponent->GetOwner()->GetWorld());
+		}
+		else
+		{
+			MeshComponent->MarkRenderStateDirty();
 		}
 
-		FinalizeComponent(ActorData);
+		// #ueent_datasmithruntime: Enable collision after mesh component has been displayed. Can this be multi-threaded?
+		MeshComponent->bAlwaysCreatePhysicsState = false;
+		MeshComponent->BodyInstance.SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 		MeshComponent->SetStaticMesh(StaticMesh);
-
-		if (StaticMesh != nullptr)
-		{
 #ifdef ASSET_DEBUG
-			StaticMesh->ClearFlags(RF_Public);
+		StaticMesh->ClearFlags(RF_Public);
 #endif
 
-			// Allocate memory or not for override materials
-			TArray< UMaterialInterface* >& OverrideMaterials = MeshComponent->OverrideMaterials;
+		MeshComponent->SetRelativeTransform(ActorData.WorldTransform);
 
-			// There are override materials, make sure the slots are allocated
-			if (MeshActorElement->GetMaterialOverridesCount() > 0)
+		// Allocate memory or not for override materials
+		TArray< UMaterialInterface* >& OverrideMaterials = MeshComponent->OverrideMaterials;
+		IDatasmithMeshActorElement* MeshActorElement = static_cast<IDatasmithMeshActorElement*>(Elements[ActorData.ElementId].Get());
+
+		// There are override materials, make sure the slots are allocated
+		if (MeshActorElement->GetMaterialOverridesCount() > 0)
+		{
+			// Update override materials if mesh element has less materials assigned than static mesh
+			if (StaticMesh->StaticMaterials.Num() > OverrideMaterials.Num())
 			{
-				// Update override materials if mesh element has less materials assigned than static mesh
-				if (StaticMesh->GetStaticMaterials().Num() > OverrideMaterials.Num())
+				FActionTaskFunction AssignMaterialFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
 				{
-					FActionTaskFunction AssignMaterialFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
+					return this->AssignMaterial(Referencer, Cast<UMaterialInstanceDynamic>(Object));
+				};
+
+				TArray< FStaticMaterial >& StaticMaterials = StaticMesh->StaticMaterials;
+
+				if (MeshActorElement->GetMaterialOverride(0)->GetId() == -1)
+				{
+					TSharedPtr<const IDatasmithMaterialIDElement> MaterialIDElement = MeshActorElement->GetMaterialOverride(0);
+
+					if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialIDElement->GetName()))
 					{
-						return this->AssignMaterial(Referencer, Cast<UMaterialInstanceDynamic>(Object));
-					};
-
-					TArray< FStaticMaterial >& StaticMaterials = StaticMesh->GetStaticMaterials();
-
-					if (MeshActorElement->GetMaterialOverride(0)->GetId() < 0)
-					{
-						TSharedPtr<const IDatasmithMaterialIDElement> MaterialIDElement = MeshActorElement->GetMaterialOverride(0);
-
-						if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialIDElement->GetName()))
+						for (int32 Index = 0; Index < StaticMaterials.Num(); ++Index)
 						{
-							DependencyList.Add(MaterialIDElement->GetNodeId(), { EDataType::Actor, ActorData.ElementId, 0xffff });
-							AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, 0xffff } });
+							AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)Index } });
+						}
 
-							TasksToComplete |= EWorkerTask::MaterialAssign;
+						TasksToComplete |= EWorkerTask::MaterialAssign;
+					}
+				}
+				else
+				{
+					TMap<FString, int32> SlotMapping;
+					SlotMapping.Reserve(StaticMaterials.Num());
+
+					for (int32 Index = 0; Index < StaticMaterials.Num(); ++Index)
+					{
+						const FStaticMaterial& StaticMaterial = StaticMaterials[Index];
+
+						if (StaticMaterial.MaterialSlotName != NAME_None)
+						{
+							SlotMapping.Add(StaticMaterial.MaterialSlotName.ToString(), Index);
 						}
 					}
-					else
+
+					for (int32 Index = 0; Index < MeshActorElement->GetMaterialOverridesCount(); ++Index)
 					{
-						const int32 StaticMaterialCount = StaticMaterials.Num();
+						TSharedPtr<const IDatasmithMaterialIDElement> MaterialIDElement = MeshActorElement->GetMaterialOverride(Index);
 
-						TMap<FString, int32> SlotMapping;
-						SlotMapping.Reserve(StaticMaterialCount);
+						FString MaterialSlotName = FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
 
-						for (int32 Index = 0; Index < StaticMaterialCount; ++Index)
+						if (SlotMapping.Contains(MaterialSlotName))
 						{
-							const FStaticMaterial& StaticMaterial = StaticMaterials[Index];
-
-							if (StaticMaterial.MaterialSlotName != NAME_None)
-							{
-								SlotMapping.Add(StaticMaterial.MaterialSlotName.ToString(), Index);
-							}
-						}
-
-						for (int32 Index = 0; Index < MeshActorElement->GetMaterialOverridesCount(); ++Index)
-						{
-							TSharedPtr<const IDatasmithMaterialIDElement> MaterialIDElement = MeshActorElement->GetMaterialOverride(Index);
-
 							if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialIDElement->GetName()))
 							{
-								const FString MaterialSlotName = FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
-								int32 MaterialIndex = INDEX_NONE;
+								const int32 MaterialIndex = SlotMapping[MaterialSlotName];
 
-								if (SlotMapping.Contains(MaterialSlotName))
-								{
-									MaterialIndex = SlotMapping[MaterialSlotName];
-								}
-								else if (MaterialIDElement->GetId() < StaticMaterialCount)
-								{
-									MaterialIndex = MaterialIDElement->GetId();
-								}
-
-								if (MaterialIndex != INDEX_NONE)
-								{
-									DependencyList.Add(MaterialIDElement->GetNodeId(), { EDataType::Actor, ActorData.ElementId, (uint16)Index });
-
-									AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)MaterialIndex } });
-									TasksToComplete |= EWorkerTask::MaterialAssign;
-								}
+								AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Actor, ActorData.ElementId, (uint16)MaterialIndex } });
+								TasksToComplete |= EWorkerTask::MaterialAssign;
 							}
 						}
 					}
 				}
-
-				OverrideMaterials.SetNum(StaticMesh->GetStaticMaterials().Num());
-				for (int32 Index = 0; Index < OverrideMaterials.Num(); ++Index)
-				{
-					OverrideMaterials[Index] = nullptr;
-				}
-
 			}
-			// No override material, discard the array if necessary
-			else if (OverrideMaterials.Num() > 0)
+
+			OverrideMaterials.SetNum(StaticMesh->StaticMaterials.Num());
+			for (int32 Index = 0; Index < OverrideMaterials.Num(); ++Index)
 			{
-				OverrideMaterials.Empty();
+				OverrideMaterials[Index] = nullptr;
 			}
+		}
+		// No override material, discard the array if necessary
+		else if (OverrideMaterials.Num() > 0)
+		{
+			OverrideMaterials.Empty();
 		}
 
 		if (MeshActorElement->GetTagsCount() > 0)
@@ -747,8 +736,6 @@ namespace DatasmithRuntime
 				MeshComponent->ComponentTags.Add(MeshActorElement->GetTag(Index));
 			}
 		}
-
-		MeshComponent->MarkRenderStateDirty();
 
 		ActorData.AddState(EAssetState::Completed);
 
@@ -781,25 +768,16 @@ namespace DatasmithRuntime
 			// Static mesh can be null if creation failed
 			if (UStaticMesh* StaticMesh = MeshData.GetObject<UStaticMesh>())
 			{
-				TArray< FStaticMaterial >& StaticMaterials = StaticMesh->GetStaticMaterials();
+				TArray< FStaticMaterial >& StaticMaterials = StaticMesh->StaticMaterials;
 
-				if (Referencer.Slot == 0xffff)
-				{
-					for (FStaticMaterial& StaticMaterial : StaticMaterials)
-					{
-						StaticMaterial.MaterialInterface = Material;
-					}
-				}
-				else if (!StaticMaterials.IsValidIndex(Referencer.Slot))
+				if (!StaticMaterials.IsValidIndex(Referencer.Slot))
 				{
 					ensure(false);
 					ActionCounter.Increment();
 					return EActionResult::Failed;
 				}
-				else
-				{
-					StaticMaterials[Referencer.Slot].MaterialInterface = Material;
-				}
+
+				StaticMaterials[Referencer.Slot].MaterialInterface = Material;
 
 #ifdef ASSET_DEBUG
 				Material->ClearFlags(RF_Public);
@@ -820,6 +798,8 @@ namespace DatasmithRuntime
 		{
 			FActorData& ActorData = ActorDataList[Referencer.GetId()];
 
+			const TCHAR* ActorLabel = Elements[ActorData.ElementId]->GetLabel();
+
 			if (!ActorData.HasState(EAssetState::Completed))
 			{
 				return EActionResult::Retry;
@@ -828,23 +808,14 @@ namespace DatasmithRuntime
 			// Static mesh can be null if creation failed
 			if (UStaticMeshComponent* MeshComponent = ActorData.GetObject<UStaticMeshComponent>())
 			{
-				if (Referencer.Slot == 0xffff)
-				{
-					for (int32 Index = 0; Index < MeshComponent->GetNumMaterials(); ++Index)
-					{
-						MeshComponent->SetMaterial(Index, Material);
-					}
-				}
-				else if ((int32)Referencer.Slot >= MeshComponent->GetNumMaterials())
+				if ((int32)Referencer.Slot >= MeshComponent->GetNumMaterials())
 				{
 					ensure(false);
 					ActionCounter.Increment();
 					return EActionResult::Failed;
 				}
-				else
-				{
-					MeshComponent->SetMaterial(Referencer.Slot, Material);
-				}
+
+				MeshComponent->SetMaterial(Referencer.Slot, Material);
 
 				// Force rebuilding of render data for mesh component
 				MeshComponent->MarkRenderStateDirty();
@@ -869,220 +840,5 @@ namespace DatasmithRuntime
 		ActionCounter.Increment();
 
 		return EActionResult::Succeeded;
-	}
-
-	void FSceneImporter::UpdateStaticMeshMaterials(FAssetData& MeshData)
-	{
-		TSharedPtr< IDatasmithMeshElement > MeshElement = StaticCastSharedPtr< IDatasmithMeshElement >(Elements[MeshData.ElementId]);
-		UStaticMesh* StaticMesh = MeshData.GetObject<UStaticMesh>();
-
-		if (!MeshElement.IsValid() || StaticMesh == nullptr)
-		{
-			return;
-		}
-
-		TArray<FStaticMaterial>& StaticMaterials = StaticMesh->GetStaticMaterials();
-		const int32 MaterialSlotCount = StaticMaterials.Num();
-
-		TMap<FString, int32> SlotMapping;
-		SlotMapping.Reserve(MaterialSlotCount);
-
-		for(int32 Index = 0; Index < MaterialSlotCount; ++Index)
-		{
-			const FStaticMaterial& StaticMaterial = StaticMaterials[Index];
-			SlotMapping.Add(StaticMaterial.MaterialSlotName.ToString(), Index);
-		}
-
-		FActionTaskFunction AssignMaterialFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
-		{
-			return this->AssignMaterial(Referencer, Cast<UMaterialInstanceDynamic>(Object));
-		};
-
-		TFunction<bool(const IDatasmithMaterialIDElement*,int32)> UpdateMaterialSlot;
-		UpdateMaterialSlot = [&](const IDatasmithMaterialIDElement* MaterialIDElement, int32 SlotIndex) -> bool
-		{
-			const FString MaterialPathName(MaterialIDElement->GetName());
-
-			UMaterialInterface* PreviousMaterialInterface = StaticMaterials[SlotIndex].MaterialInterface;
-
-			if (!MaterialPathName.StartsWith(TEXT("/")))
-			{
-				StaticMaterials[SlotIndex].MaterialInterface = nullptr;
-
-				if (FSceneGraphId* MaterialElementIdPtr = AssetElementMapping.Find(MaterialPrefix + MaterialPathName))
-				{
-					DependencyList.Add(MaterialIDElement->GetNodeId(), { EDataType::Mesh, MeshData.ElementId, (uint16)SlotIndex });
-
-					AddToQueue(EQueueTask::NonAsyncQueue, { AssignMaterialFunc, *MaterialElementIdPtr, { EDataType::Mesh, MeshData.ElementId, (uint16)SlotIndex } });
-					TasksToComplete |= EWorkerTask::MaterialAssign;
-				}
-				else
-				{
-					DependencyList.Remove(MaterialIDElement->GetNodeId());
-				}
-			}
-			else
-			{
-				StaticMaterials[SlotIndex].MaterialInterface = Cast<UMaterialInterface>(FSoftObjectPath(MaterialPathName).TryLoad());
-			}
-
-			return PreviousMaterialInterface != StaticMaterials[SlotIndex].MaterialInterface;
-		};
-
-		bool bUpdateReferencers = false;
-
-		// Check to see if there is material to apply on all slots
-		int32 OverrideIndex = INDEX_NONE;
-		for (int32 Index = 0; Index < MeshElement->GetMaterialSlotCount(); Index++)
-		{
-			if (MeshElement->GetMaterialSlotAt(Index).IsValid() && MeshElement->GetMaterialSlotAt(Index)->GetId() < 0)
-			{
-				OverrideIndex = Index;
-				break;
-			}
-		}
-
-		if (OverrideIndex != INDEX_NONE)
-		{
-			const IDatasmithMaterialIDElement* MaterialIDElement = MeshElement->GetMaterialSlotAt(OverrideIndex).Get();
-
-			for (int32 Index = 0; Index < MaterialSlotCount; Index++)
-			{
-				bUpdateReferencers |= UpdateMaterialSlot(MaterialIDElement, Index);
-			}
-		}
-
-		// Apply material on specific slots
-		for (int32 Index = 0; Index < MeshElement->GetMaterialSlotCount(); Index++)
-		{
-			if (const IDatasmithMaterialIDElement* MaterialIDElement = MeshElement->GetMaterialSlotAt(Index).Get())
-			{
-				if (MaterialIDElement->GetId() >= 0)
-				{
-					const FString MaterialSlotName = FString::Printf(TEXT("%d"), MaterialIDElement->GetId());
-					int32 SlotIndex = INDEX_NONE;
-					if (SlotMapping.Contains(MaterialSlotName))
-					{
-						SlotIndex = SlotMapping[MaterialSlotName];
-					}
-					else if (MaterialIDElement->GetId() < MaterialSlotCount)
-					{
-						SlotIndex = MaterialIDElement->GetId();
-					}
-					else
-					{
-						UE_LOG(LogDatasmithRuntime, Warning, TEXT("CreateStaticMesh: Cannot assign material %s to any slot"), MaterialIDElement->GetName());
-						continue;
-					}
-
-					bUpdateReferencers |= UpdateMaterialSlot(MaterialIDElement, SlotIndex);
-				}
-			}
-		}
-
-		if (bUpdateReferencers)
-		{
-			// Mark dependent mesh components' render state as dirty
-			for (FReferencer& ActorReferencer : MeshData.Referencers)
-			{
-				const FActorData& ActorData = ActorDataList[ActorReferencer.GetId()];
-
-				if (ActorData.HasState(EAssetState::Completed))
-				{
-					if (UActorComponent* ActorComponent = ActorData.GetObject<UActorComponent>())
-					{
-						ActorComponent->MarkRenderStateDirty();
-					}
-				}
-			}
-		}
-
-	}
-
-	void FSceneImporter::FillStaticMeshMaterials(FAssetData& MeshData, TArray<FMeshDescription>& MeshDescriptions)
-	{
-		TSharedRef< IDatasmithMeshElement > MeshElement = StaticCastSharedPtr< IDatasmithMeshElement >(Elements[MeshData.ElementId]).ToSharedRef();
-		UStaticMesh* StaticMesh = MeshData.GetObject<UStaticMesh>();
-
-		if (StaticMesh == nullptr)
-		{
-			return;
-		}
-
-		TMap<FString, int32> SlotMapping;
-
-		// Update static mesh's static material array for LOD 0
-		TArray<FStaticMaterial>& StaticMaterials = StaticMesh->GetStaticMaterials();
-		FMeshDescription& MeshDescription = MeshDescriptions[0];
-
-		FStaticMeshAttributes Attributes(MeshDescription);
-		TPolygonGroupAttributesConstRef<FName> MaterialSlotNameAttribute = Attributes.GetPolygonGroupMaterialSlotNames();
-
-		const int32 MaterialSlotCount = MeshDescription.PolygonGroups().Num();
-
-		StaticMaterials.SetNum(MaterialSlotCount);
-
-		{
-			int32 Index = 0;
-			for (FPolygonGroupID PolygonGroupID : MeshDescription.PolygonGroups().GetElementIDs())
-			{
-				FStaticMaterial& StaticMaterial = StaticMaterials[Index];
-
-				StaticMaterial.MaterialSlotName = MaterialSlotNameAttribute[PolygonGroupID];
-				StaticMaterial.MaterialInterface = nullptr;
-				// Done to remove an assert from an 'ensure' in UStaticMesh::GetUVChannelData
-				StaticMaterial.UVChannelData = FMeshUVChannelInfo(1.f);
-
-				++Index;
-			}
-		}
-
-		// Add task to update material interfaces on static materials if applicable
-		if (MeshElement->GetMaterialSlotCount() > 0)
-		{
-			FActionTaskFunction UpdateMaterialsFunc = [this](UObject* Object, const FReferencer& Referencer) -> EActionResult::Type
-			{
-				this->UpdateStaticMeshMaterials(AssetDataList[Referencer.GetId()]);
-				return EActionResult::Succeeded;
-			};
-
-			AddToQueue(EQueueTask::NonAsyncQueue, { UpdateMaterialsFunc, DirectLink::InvalidId, { EDataType::Mesh, MeshData.ElementId, 0 } });
-			TasksToComplete |= EWorkerTask::MaterialAssign;
-		}
-
-		// Add slots defined in subsequent LODs but not present in LOD 0
-		TSet<FName> LODSlotNames;
-		for (int32 LODIndex = 1; LODIndex < MeshDescriptions.Num(); ++LODIndex)
-		{
-			FMeshDescription& LODMeshDescription = MeshDescriptions[LODIndex];
-
-			FStaticMeshAttributes LODAttributes(LODMeshDescription);
-			TPolygonGroupAttributesConstRef<FName> LODMaterialSlotNameAttribute = LODAttributes.GetPolygonGroupMaterialSlotNames();
-
-			for (FPolygonGroupID PolygonGroupID : LODMeshDescription.PolygonGroups().GetElementIDs())
-			{
-				const FName LODSlotName = LODMaterialSlotNameAttribute[PolygonGroupID];
-				if (!SlotMapping.Contains(LODSlotName.ToString()))
-				{
-					LODSlotNames.Add(LODSlotName);
-				}
-			}
-		}
-
-		if (LODSlotNames.Num() > 0)
-		{
-			StaticMaterials.SetNum(MaterialSlotCount + LODSlotNames.Num());
-			int32 Index = MaterialSlotCount;
-			for (FName& SlotName : LODSlotNames)
-			{
-				FStaticMaterial& StaticMaterial = StaticMaterials[Index];
-				StaticMaterial.MaterialSlotName = SlotName;
-				StaticMaterial.MaterialInterface = nullptr;
-				// Done to remove an assert from an 'ensure' in UStaticMesh::GetUVChannelData
-				StaticMaterial.UVChannelData = FMeshUVChannelInfo(1.f);
-
-				++Index;
-			}
-		}
 	}
 }

@@ -13,7 +13,6 @@
 #include "DirectLinkCommon.h"
 #include "DirectLinkElementSnapshot.h"
 #include "DirectLinkLog.h"
-#include "DirectLinkParameterStore.h"
 #include "DirectLinkSceneSnapshot.h"
 
 
@@ -62,25 +61,26 @@ void FDatasmithSceneReceiver::FinalSnapshot(const DirectLink::FSceneSnapshot& Sc
 
 	for (const auto& KV : SceneSnapshot.Elements)
 	{
-		const DirectLink::FElementSnapshot& ElementSnapshot = KV.Value.Get();
-		DirectLink::FSceneGraphId NodeId = ElementSnapshot.GetNodeId();
+		const DirectLink::FElementSnapshot& Snap = KV.Value.Get();
+		DirectLink::FSceneGraphId NodeId = Snap.NodeId;
+		const DirectLink::FParameterStoreSnapshot& DataSnapshot = Snap.DataSnapshot;
 
 		FString Name;
-		if (!ElementSnapshot.GetValueAs("Name", Name))
+		if (!DataSnapshot.GetValueAs("Name", Name))
 		{
 			UE_LOG(LogDatasmith, Display, TEXT("OnAddElement failed: missing element name for node #%d"), NodeId);
 			return;
 		}
 
 		uint64 Type = 0;
-		if (!ElementSnapshot.GetValueAs("Type", Type))
+		if (!DataSnapshot.GetValueAs("Type", Type))
 		{
 			UE_LOG(LogDatasmith, Display, TEXT("OnAddElement failed: missing element type info for node '%s'"), *Name);
 			return;
 		}
 
 		uint64 Subtype = 0;
-		if (!ElementSnapshot.GetValueAs("Subtype", Subtype))
+		if (!DataSnapshot.GetValueAs("Subtype", Subtype))
 		{
 			UE_LOG( LogDatasmith, Display, TEXT("OnAddElement failed: missing element subtype info for node '%s'"), *Name);
 			return;
@@ -92,8 +92,24 @@ void FDatasmithSceneReceiver::FinalSnapshot(const DirectLink::FSceneSnapshot& Sc
 		// Well, of course it's not exact...
 		// Type &= (uint64)~EDatasmithElementType::BaseMaterial; // remove that flag as it always has a child anyway, and its order is impractical.
 		EDatasmithElementType PureType = EDatasmithElementType(uint64(1) << FPlatformMath::FloorLog2_64(Type));
-
-		TSharedPtr<IDatasmithElement> Element = FDatasmithSceneFactory::CreateElement(PureType, Subtype, *Name);
+		
+		TSharedPtr<IDatasmithElement> Element;
+		if ((uint64)PureType == FDatasmithUEPbrInternalHelper::MaterialExpressionType)
+		{
+			Element = FDatasmithUEPbrInternalHelper::ConvertMaterialExpressionToElementSharedPtr( FDatasmithUEPbrInternalHelper::CreateMaterialExpression( static_cast<EDatasmithMaterialExpressionType>(Subtype) ).Get() );
+		}
+		else if ((uint64)PureType == FDatasmithUEPbrInternalHelper::MaterialExpressionInputType)
+		{
+			Element = MakeShared<FDatasmithExpressionInputImpl>( *Name );
+		}
+		else if ((uint64)PureType == FDatasmithUEPbrInternalHelper::MaterialExpressionOutputType)
+		{
+			Element = MakeShared<FDatasmithExpressionOutputImpl>( *Name );
+		}
+		else
+		{
+			Element = FDatasmithSceneFactory::CreateElement(PureType, *Name);
+		}
 		check(Element);
 		Element->SetSharedState(SceneSharedState);
 		Element->SetNodeId(NodeId); // #ue_directlink_design nope, only the Scene SharedState has this right
@@ -105,19 +121,19 @@ void FDatasmithSceneReceiver::FinalSnapshot(const DirectLink::FSceneSnapshot& Sc
 
 		FFinalizableNode& Node = Nodes.AddDefaulted_GetRef();
 		Node.Element = Element;
-		Node.Snapshot = &ElementSnapshot;
+		Node.Snapshot = &Snap;
 	}
 
 	// all nodes are created, link refs
 	for (FFinalizableNode& Node : Nodes)
 	{
-		Node.Snapshot->UpdateNodeReferences(Current->Elements, *Node.Element);
+		Node.Element->UpdateRefs(Current->Elements, Node.Snapshot->RefSnapshot);
 	}
 
 	// set data
 	for (FFinalizableNode& Node : Nodes)
 	{
-		Node.Snapshot->UpdateNodeData(*Node.Element);
+		Node.Element->GetStore().Update(Node.Snapshot->DataSnapshot);
 	}
 
 	// detect graph root

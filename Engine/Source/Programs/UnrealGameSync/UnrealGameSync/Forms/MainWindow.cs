@@ -31,7 +31,6 @@ namespace UnrealGameSync
 		void SyncLatestChange();
 		bool CanLaunchEditor();
 		void LaunchEditor();
-		void UpdateSettings();
 
 		Color? TintColor
 		{
@@ -106,10 +105,6 @@ namespace UnrealGameSync
 		Rectangle PrimaryWorkArea;
 		List<IssueAlertWindow> AlertWindows = new List<IssueAlertWindow>();
 
-		public ToolUpdateMonitor ToolUpdateMonitor { get; private set; }
-
-		NetCoreWindow NetCoreWindow;
-
 		public MainWindow(UpdateMonitor InUpdateMonitor, string InApiUrl, string InDataFolder, string InCacheFolder, bool bInRestoreStateOnLoad, string InOriginalExecutableFileName, bool bInUnstable, DetectProjectSettingsResult[] StartupProjects, PerforceConnection InDefaultConnection, LineBasedTextWriter InLog, UserSettings InSettings, string InUri)
 		{
 			Log = InLog;
@@ -126,8 +121,7 @@ namespace UnrealGameSync
 			OriginalExecutableFileName = InOriginalExecutableFileName;
 			bUnstable = bInUnstable;
 			DefaultConnection = InDefaultConnection;
-			ToolUpdateMonitor = new ToolUpdateMonitor(DefaultConnection, DataFolder, InSettings);
-
+	
 			Settings = InSettings;
 
 			// While creating tab controls during startup, we need to prevent layout calls resulting in the window handle being created too early. Disable layout calls here.
@@ -198,8 +192,6 @@ namespace UnrealGameSync
 			{
 				WorkspaceIssueMonitor.IssueMonitor.Start();
 			}
-
-			ToolUpdateMonitor.Start();
 		}
 
 		void PostAutomationRequest(AutomationRequest Request)
@@ -588,12 +580,6 @@ namespace UnrealGameSync
 			{
 				AutomationLog.Close();
 				AutomationLog = null;
-			}
-
-			if (ToolUpdateMonitor != null)
-			{
-				ToolUpdateMonitor.Close();
-				ToolUpdateMonitor = null;
 			}
 
 			base.Dispose(disposing);
@@ -1378,16 +1364,10 @@ namespace UnrealGameSync
 
 		public void ModifyApplicationSettings()
 		{
-			bool? bRelaunchUnstable = ApplicationSettingsWindow.ShowModal(this, DefaultConnection, bUnstable, OriginalExecutableFileName, Settings, ToolUpdateMonitor, Log);
+			bool? bRelaunchUnstable = ApplicationSettingsWindow.ShowModal(this, DefaultConnection, bUnstable, OriginalExecutableFileName, Settings, Log);
 			if(bRelaunchUnstable.HasValue)
 			{
 				UpdateMonitor.TriggerUpdate(UpdateType.UserInitiated, bRelaunchUnstable);
-			}
-
-			for (int Idx = 0; Idx < TabControl.GetTabCount(); Idx++)
-			{
-				IMainWindowTabPanel TabPanel = (IMainWindowTabPanel)TabControl.GetTabData(Idx);
-				TabPanel.UpdateSettings();
 			}
 		}
 
@@ -1663,19 +1643,6 @@ namespace UnrealGameSync
 					IssueMonitor.Release();
 
 					WorkspaceIssueMonitors.RemoveAt(Index);
-				}
-			}
-		}
-
-		private void NetCoreTimer_Tick(object sender, EventArgs e)
-		{
-			if (NetCoreWindow == null || !NetCoreWindow.Created)
-			{
-				if (!EventMonitor.HasNetCore3() && Settings.bShowNetCoreInfo)
-				{
-					NetCoreWindow = new NetCoreWindow(Settings);
-					NetCoreWindow.Location = new Point(Location.X + (Width - NetCoreWindow.Width) / 2, Location.Y + (Height - NetCoreWindow.Height) / 2);
-					NetCoreWindow.Show(this);
 				}
 			}
 		}

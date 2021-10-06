@@ -145,13 +145,9 @@ void TLinkerImportPlaceholder<PlaceholderType>::AddReferencingScriptExpr(Placeho
 
 //------------------------------------------------------------------------------
 template<class PlaceholderType>
-int32 TLinkerImportPlaceholder<PlaceholderType>::ResolvePropertyReferences(PlaceholderType* ReplacementObj)
-{
-#if !CHECK_PUREVIRTUALS
+int32 TLinkerImportPlaceholder<PlaceholderType>::ResolvePropertyReferences(PlaceholderType* ReplacementObj) 
 	// requires template specialization (technically not "pure virtual"):
 	PURE_VIRTUAL(TLinkerImportPlaceholder<PlaceholderType>::ResolvePropertyReferences, return 0;)
-#endif
-}
 
 //------------------------------------------------------------------------------
 template<class PlaceholderType>

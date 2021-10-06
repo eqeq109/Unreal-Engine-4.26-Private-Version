@@ -14,7 +14,7 @@
 #include "MeshPassProcessor.inl"
 
 template <ELightMapPolicyType Policy, int32 NumMovablePointLights>
-bool GetUniformMobileBasePassShaders(
+void GetUniformMobileBasePassShaders(
 	const FMaterial& Material, 
 	FVertexFactoryType* VertexFactoryType, 
 	bool bEnableSkyLight,
@@ -24,48 +24,36 @@ bool GetUniformMobileBasePassShaders(
 {
 	using FVertexShaderType = TMobileBasePassVSPolicyParamType<FUniformLightMapPolicy>;
 	using FPixelShaderType = TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>;
-
-	FMaterialShaderTypes ShaderTypes;
 	if (IsMobileHDR())
 	{
-		ShaderTypes.AddShaderType<TMobileBasePassVS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64>>();
+		VertexShader = TShaderRef<FVertexShaderType>::ReinterpretCast(Material.GetShader<TMobileBasePassVS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64> >(VertexFactoryType));
 
 		if (bEnableSkyLight)
 		{
-			ShaderTypes.AddShaderType<TMobileBasePassPS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64, true, NumMovablePointLights>>();
+			PixelShader = TShaderRef<FPixelShaderType>::ReinterpretCast(Material.GetShader< TMobileBasePassPS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64, true, NumMovablePointLights> >(VertexFactoryType));
 		}
 		else
 		{
-			ShaderTypes.AddShaderType<TMobileBasePassPS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64, false, NumMovablePointLights>>();
+			PixelShader = TShaderRef<FPixelShaderType>::ReinterpretCast(Material.GetShader< TMobileBasePassPS<TUniformLightMapPolicy<Policy>, HDR_LINEAR_64, false, NumMovablePointLights> >(VertexFactoryType));
 		}	
 	}
 	else
 	{
-		ShaderTypes.AddShaderType<TMobileBasePassVS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32>>();
+		VertexShader = TShaderRef<FVertexShaderType>::ReinterpretCast(Material.GetShader<TMobileBasePassVS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32> >(VertexFactoryType));
 
 		if (bEnableSkyLight)
 		{
-			ShaderTypes.AddShaderType<TMobileBasePassPS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32, true, NumMovablePointLights>>();
+			PixelShader = TShaderRef<FPixelShaderType>::ReinterpretCast(Material.GetShader< TMobileBasePassPS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32, true, NumMovablePointLights> >(VertexFactoryType));
 		}
 		else
 		{
-			ShaderTypes.AddShaderType<TMobileBasePassPS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32, false, NumMovablePointLights>>();
+			PixelShader = TShaderRef<FPixelShaderType>::ReinterpretCast(Material.GetShader< TMobileBasePassPS<TUniformLightMapPolicy<Policy>, LDR_GAMMA_32, false, NumMovablePointLights> >(VertexFactoryType));
 		}			
 	}
-
-	FMaterialShaders Shaders;
-	if (!Material.TryGetShaders(ShaderTypes, VertexFactoryType, Shaders))
-	{
-		return false;
-	}
-
-	Shaders.TryGetVertexShader(VertexShader);
-	Shaders.TryGetPixelShader(PixelShader);
-	return true;
 }
 
 template <int32 NumMovablePointLights>
-bool GetMobileBasePassShaders(
+void GetMobileBasePassShaders(
 	ELightMapPolicyType LightMapPolicyType, 
 	const FMaterial& Material, 
 	FVertexFactoryType* VertexFactoryType, 
@@ -76,33 +64,33 @@ bool GetMobileBasePassShaders(
 {
 	switch (LightMapPolicyType)
 	{
-	case LMP_NO_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_NO_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
 	case LMP_LQ_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_LQ_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		GetUniformMobileBasePassShaders<LMP_LQ_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
 	case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
-	case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
-	case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		GetUniformMobileBasePassShaders<LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
 	case LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
-	case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		GetUniformMobileBasePassShaders<LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
+	case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
+		GetUniformMobileBasePassShaders<LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
 	case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
-	case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
-	case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM:
-		return GetUniformMobileBasePassShaders<LMP_MOBILE_DIRECTIONAL_LIGHT_CSM, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		GetUniformMobileBasePassShaders<LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
+	case LMP_CACHED_POINT_INDIRECT_LIGHTING:
+		GetUniformMobileBasePassShaders<LMP_CACHED_POINT_INDIRECT_LIGHTING, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
+	case LMP_NO_LIGHTMAP:
+		GetUniformMobileBasePassShaders<LMP_NO_LIGHTMAP, NumMovablePointLights>(Material, VertexFactoryType, bEnableSkyLight, VertexShader, PixelShader);
+		break;
 	default:										
 		check(false);
-		return true;
 	}
 }
 
-bool MobileBasePass::GetShaders(
+void MobileBasePass::GetShaders(
 	ELightMapPolicyType LightMapPolicyType,
 	int32 NumMovablePointLights, 
 	const FMaterial& MaterialResource,
@@ -116,11 +104,11 @@ bool MobileBasePass::GetShaders(
 	{
 		bEnableSkyLight = !bEnableSkyLight;
 	}
-
+		
 	switch (NumMovablePointLights)
 	{
 	case INT32_MAX:
-		return GetMobileBasePassShaders<INT32_MAX>(
+		GetMobileBasePassShaders<INT32_MAX>(
 			LightMapPolicyType,
 			MaterialResource,
 			VertexFactoryType,
@@ -128,8 +116,9 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	case 1:
-		return GetMobileBasePassShaders<1>(
+		GetMobileBasePassShaders<1>(
 			LightMapPolicyType, 
 			MaterialResource, 
 			VertexFactoryType, 
@@ -137,8 +126,9 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	case 2:
-		return GetMobileBasePassShaders<2>(
+		GetMobileBasePassShaders<2>(
 			LightMapPolicyType,
 			MaterialResource,
 			VertexFactoryType,
@@ -146,8 +136,9 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	case 3:
-		return GetMobileBasePassShaders<3>(
+		GetMobileBasePassShaders<3>(
 			LightMapPolicyType,
 			MaterialResource,
 			VertexFactoryType,
@@ -155,8 +146,9 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	case 4:
-		return GetMobileBasePassShaders<4>(
+		GetMobileBasePassShaders<4>(
 			LightMapPolicyType,
 			MaterialResource,
 			VertexFactoryType,
@@ -164,9 +156,10 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	case 0:
 	default:
-		return GetMobileBasePassShaders<0>(
+		GetMobileBasePassShaders<0>(
 			LightMapPolicyType,
 			MaterialResource,
 			VertexFactoryType,
@@ -174,13 +167,14 @@ bool MobileBasePass::GetShaders(
 			VertexShader,
 			PixelShader
 			);
+		break;
 	}
 }
 
 static bool UseSkyReflectionCapture(const FScene* RenderScene)
 {
 	return RenderScene
-		&& RenderScene->ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Num() == 0
+		&& RenderScene->ReflectionSceneData.RegisteredReflectionCapturePositions.Num() == 0
 		&& RenderScene->SkyLight
 		&& RenderScene->SkyLight->ProcessedTexture
 		&& RenderScene->SkyLight->ProcessedTexture->TextureRHI;
@@ -230,116 +224,77 @@ ELightMapPolicyType MobileBasePass::SelectMeshLightmapPolicy(
 	const FLightSceneInfo* MobileDirectionalLight,
 	FMaterialShadingModelField ShadingModels, 
 	bool bPrimReceivesCSM,
-	bool bUsesDeferredShading,
+	bool bUsedDeferredShading,
 	ERHIFeatureLevel::Type FeatureLevel,
 	EBlendMode BlendMode)
 {
 	// Unlit uses NoLightmapPolicy with 0 point lights
 	ELightMapPolicyType SelectedLightmapPolicy = LMP_NO_LIGHTMAP;
 	
+	// Check for a cached light-map.
 	const bool bIsLitMaterial = ShadingModels.IsLit();
 	if (bIsLitMaterial)
 	{
+		const FLightMapInteraction LightMapInteraction = (Mesh.LCI && bIsLitMaterial)
+			? Mesh.LCI->GetLightMapInteraction(FeatureLevel)
+			: FLightMapInteraction();
+
 		const FReadOnlyCVARCache& ReadOnlyCVARCache = FReadOnlyCVARCache::Get();
+		const bool bUseMovableLight = MobileDirectionalLight && !MobileDirectionalLight->Proxy->HasStaticShadowing() && ReadOnlyCVARCache.bMobileAllowMovableDirectionalLights;
 
-		if (!ReadOnlyCVARCache.bAllowStaticLighting)
+		const bool bPrimitiveUsesILC = PrimitiveSceneProxy
+									&& (PrimitiveSceneProxy->IsMovable() || PrimitiveSceneProxy->NeedsUnbuiltPreviewLighting() || PrimitiveSceneProxy->GetLightmapType() == ELightmapType::ForceVolumetric)
+									&& PrimitiveSceneProxy->WillEverBeLit()
+									&& PrimitiveSceneProxy->GetIndirectLightingCacheQuality() != ILCQ_Off;
+
+		const bool bHasValidVLM = Scene && Scene->VolumetricLightmapSceneData.HasData()
+								&& ReadOnlyCVARCache.bAllowStaticLighting;
+
+		const bool bHasValidILC = Scene && Scene->PrecomputedLightVolumes.Num() > 0
+								&& IsIndirectLightingCacheAllowed(FeatureLevel);
+
+		if (LightMapInteraction.GetType() == LMIT_Texture && ReadOnlyCVARCache.bAllowStaticLighting && ReadOnlyCVARCache.bEnableLowQualityLightmaps)
 		{
-			if (!IsTranslucentBlendMode(BlendMode))
+			// Lightmap path
+			const FShadowMapInteraction ShadowMapInteraction = (Mesh.LCI && bIsLitMaterial)
+				? Mesh.LCI->GetShadowMapInteraction(FeatureLevel)
+				: FShadowMapInteraction();
+
+			if (bUseMovableLight)
 			{
-				// Whether to use a single CSM permutation with a branch in the shader
-				bPrimReceivesCSM |= MobileUseCSMShaderBranch();
-			}
-			
-			// no precomputed lighting
-			if (!bPrimReceivesCSM || bUsesDeferredShading)
-			{
-				SelectedLightmapPolicy = LMP_NO_LIGHTMAP;
-			}
-			else
-			{
-				SelectedLightmapPolicy = LMP_MOBILE_DIRECTIONAL_LIGHT_CSM;				
-			}
-		}
-		else
-		{
-			// Check for a cached light-map.
-			const FLightMapInteraction LightMapInteraction = (Mesh.LCI != nullptr)
-				? Mesh.LCI->GetLightMapInteraction(FeatureLevel)
-				: FLightMapInteraction();
-		
-			const bool bUseMovableLight = MobileDirectionalLight && !MobileDirectionalLight->Proxy->HasStaticShadowing() && ReadOnlyCVARCache.bMobileAllowMovableDirectionalLights;
-			const bool bUseStaticAndCSM = MobileDirectionalLight && MobileDirectionalLight->Proxy->UseCSMForDynamicObjects()
-											&& bPrimReceivesCSM
-											&& ReadOnlyCVARCache.bMobileEnableStaticAndCSMShadowReceivers;
-
-			const bool bMovableWithCSM = bUseMovableLight && MobileDirectionalLight->ShouldRenderViewIndependentWholeSceneShadows() && bPrimReceivesCSM;
-
-			const bool bPrimitiveUsesILC = PrimitiveSceneProxy
-										&& (PrimitiveSceneProxy->IsMovable() || PrimitiveSceneProxy->NeedsUnbuiltPreviewLighting() || PrimitiveSceneProxy->GetLightmapType() == ELightmapType::ForceVolumetric)
-										&& PrimitiveSceneProxy->WillEverBeLit()
-										&& PrimitiveSceneProxy->GetIndirectLightingCacheQuality() != ILCQ_Off;
-
-			const bool bHasValidVLM = Scene && Scene->VolumetricLightmapSceneData.HasData();
-
-			const bool bHasValidILC = Scene && Scene->PrecomputedLightVolumes.Num() > 0
-									&& IsIndirectLightingCacheAllowed(FeatureLevel);
-
-			if (LightMapInteraction.GetType() == LMIT_Texture && ReadOnlyCVARCache.bEnableLowQualityLightmaps)
-			{
-				// Lightmap path
-				if (bUseMovableLight)
+				if (!bUsedDeferredShading)
 				{
-					if (bUsesDeferredShading)
-					{
-						SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
-					}
-					else if (bMovableWithCSM && !bUsesDeferredShading)
-					{
-						SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP;
-					}
-					else
-					{
-						SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP;						
-					}
+					SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP;
 				}
 				else
 				{
-					const FShadowMapInteraction ShadowMapInteraction = (Mesh.LCI != nullptr)
-						? Mesh.LCI->GetShadowMapInteraction(FeatureLevel)
-						: FShadowMapInteraction();
-
-					if (bUseStaticAndCSM && !bUsesDeferredShading)
-					{
-						if (ShadowMapInteraction.GetType() == SMIT_Texture && 
-							MobileDirectionalLight->ShouldRenderViewIndependentWholeSceneShadows() && 
-							ReadOnlyCVARCache.bMobileAllowDistanceFieldShadows)
-						{
-							SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM;
-						}
-						else
-						{
-							SelectedLightmapPolicy = LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP;
-						}
-					}
-					else
-					{
-						if (ShadowMapInteraction.GetType() == SMIT_Texture &&
-							ReadOnlyCVARCache.bMobileAllowDistanceFieldShadows)
-						{
-							SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP;
-						}
-						else
-						{
-							SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
-						}
-					}
+					SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
 				}
 			}
-			else if ((bHasValidVLM || bHasValidILC) && bPrimitiveUsesILC)
+			else
 			{
-				if ((bUseStaticAndCSM || bMovableWithCSM) && !bUsesDeferredShading)
+				if (ShadowMapInteraction.GetType() == SMIT_Texture &&
+					ReadOnlyCVARCache.bMobileAllowDistanceFieldShadows)
 				{
-					SelectedLightmapPolicy = LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT;
+					SelectedLightmapPolicy = LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP;
+				}
+				else
+				{
+					SelectedLightmapPolicy = LMP_LQ_LIGHTMAP;
+				}
+			}
+		}
+		else if ((bHasValidVLM || bHasValidILC) && bPrimitiveUsesILC)
+		{
+			if (bUsedDeferredShading)
+			{
+				SelectedLightmapPolicy = LMP_CACHED_POINT_INDIRECT_LIGHTING;
+			}
+			else
+			{
+				if (bUseMovableLight)
+				{
+					SelectedLightmapPolicy = LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT;
 				}
 				else
 				{
@@ -475,12 +430,6 @@ void MobileBasePass::SetTranslucentRenderState(FMeshPassProcessorRenderState& Dr
 			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
 		}
 	}
-#if PLATFORM_HOLOLENS
-	else if (Material.ShouldWriteDepthToTranslucentMaterial())
-	{
-		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
-	}
-#endif
 }
 
 bool MobileBasePass::StationarySkyLightHasBeenApplied(const FScene* Scene, ELightMapPolicyType LightMapPolicyType)
@@ -489,13 +438,11 @@ bool MobileBasePass::StationarySkyLightHasBeenApplied(const FScene* Scene, ELigh
 		&& Scene->SkyLight
 		&& Scene->SkyLight->bWantsStaticShadowing
 		&& (LightMapPolicyType == LMP_LQ_LIGHTMAP
-			|| LightMapPolicyType == LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP
-			|| LightMapPolicyType == LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM
-			|| LightMapPolicyType == LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP
-			|| LightMapPolicyType == LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT
-			|| LightMapPolicyType == LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT
 			|| LightMapPolicyType == LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP
-			|| LightMapPolicyType == LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP);
+			|| LightMapPolicyType == LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP
+			|| LightMapPolicyType == LMP_CACHED_POINT_INDIRECT_LIGHTING
+			|| LightMapPolicyType == LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT
+			|| LightMapPolicyType == LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT);
 }
 
 static FMeshDrawCommandSortKey GetBasePassStaticSortKey(EBlendMode BlendMode, bool bBackground)
@@ -660,8 +607,17 @@ FMobileBasePassMeshProcessor::FMobileBasePassMeshProcessor(
 {
 }
 
-bool FMobileBasePassMeshProcessor::TryAddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId, const FMaterialRenderProxy& MaterialRenderProxy, const FMaterial& Material)
+void FMobileBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId)
 {
+	if (!MeshBatch.bUseForMaterial || (PrimitiveSceneProxy && !PrimitiveSceneProxy->ShouldRenderInMainPass()))
+	{
+		return;
+	}
+	
+	// Determine the mesh's material and blend mode.
+	const FMaterialRenderProxy* FallbackMaterialRenderProxyPtr = nullptr;
+	const FMaterial& Material = MeshBatch.MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, FallbackMaterialRenderProxyPtr);
+	const FMaterialRenderProxy& MaterialRenderProxy = FallbackMaterialRenderProxyPtr ? *FallbackMaterialRenderProxyPtr : *MeshBatch.MaterialRenderProxy;
 	const EBlendMode BlendMode = Material.GetBlendMode();
 	const FMaterialShadingModelField ShadingModels = Material.GetShadingModels();
 	const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode);
@@ -669,8 +625,7 @@ bool FMobileBasePassMeshProcessor::TryAddMeshBatch(const FMeshBatch& RESTRICT Me
 	const bool bIsUsingMobilePixelProjectedReflection = Material.IsUsingPlanarForwardReflections() 
 														&& IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(Material.GetFeatureLevel()));
 	const bool bCanReceiveCSM = ((Flags & EFlags::CanReceiveCSM) == EFlags::CanReceiveCSM);
-
-	bool bResult = true;
+	
 	if (bTranslucentBasePass)
 	{
 		// Skipping TPT_TranslucencyAfterDOFModulate. That pass is only needed for Dual Blending, which is not supported on Mobile.
@@ -685,7 +640,7 @@ bool FMobileBasePassMeshProcessor::TryAddMeshBatch(const FMeshBatch& RESTRICT Me
 			const FLightSceneInfo* MobileDirectionalLight = MobileBasePass::GetDirectionalLightInfo(Scene, PrimitiveSceneProxy);
 			// Opaque meshes used for mobile pixel projected reflection could receive CSM in translucent pass.
 			ELightMapPolicyType LightmapPolicyType = MobileBasePass::SelectMeshLightmapPolicy(Scene, MeshBatch, PrimitiveSceneProxy, MobileDirectionalLight, ShadingModels, bCanReceiveCSM || (!bIsTranslucent && bIsUsingMobilePixelProjectedReflection), false, FeatureLevel, BlendMode);
-			bResult = Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, BlendMode, ShadingModels, LightmapPolicyType, MeshBatch.LCI);
+			Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, BlendMode, ShadingModels, LightmapPolicyType, MeshBatch.LCI);
 		}
 	}
 	else
@@ -696,37 +651,12 @@ bool FMobileBasePassMeshProcessor::TryAddMeshBatch(const FMeshBatch& RESTRICT Me
 		{
 			const FLightSceneInfo* MobileDirectionalLight = MobileBasePass::GetDirectionalLightInfo(Scene, PrimitiveSceneProxy);
 			ELightMapPolicyType LightmapPolicyType = MobileBasePass::SelectMeshLightmapPolicy(Scene, MeshBatch, PrimitiveSceneProxy, MobileDirectionalLight, ShadingModels, bCanReceiveCSM, bUsesDeferredShading, FeatureLevel, BlendMode);
-			bResult = Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, BlendMode, ShadingModels, LightmapPolicyType, MeshBatch.LCI);
+			Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, MaterialRenderProxy, Material, BlendMode, ShadingModels, LightmapPolicyType, MeshBatch.LCI);
 		}
-	}
-
-	return bResult;
-}
-
-void FMobileBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT MeshBatch, uint64 BatchElementMask, const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, int32 StaticMeshId)
-{
-	if (!MeshBatch.bUseForMaterial || (PrimitiveSceneProxy && !PrimitiveSceneProxy->ShouldRenderInMainPass()))
-	{
-		return;
-	}
-	
-	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-	while (MaterialRenderProxy)
-	{
-		const FMaterial* Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-		if (Material && Material->GetRenderingThreadShaderMap())
-		{
-			if (TryAddMeshBatch(MeshBatch, BatchElementMask, PrimitiveSceneProxy, StaticMeshId, *MaterialRenderProxy, *Material))
-			{
-				break;
-			}
-		}
-
-		MaterialRenderProxy = MaterialRenderProxy->GetFallback(FeatureLevel);
 	}
 }
 
-bool FMobileBasePassMeshProcessor::Process(
+void FMobileBasePassMeshProcessor::Process(
 		const FMeshBatch& RESTRICT MeshBatch,
 		uint64 BatchElementMask,
 		int32 StaticMeshId,
@@ -763,19 +693,16 @@ bool FMobileBasePassMeshProcessor::Process(
 		NumMovablePointLights = MobileBasePass::CalcNumMovablePointLights(MaterialResource, PrimitiveSceneProxy);
 	}
 
-	if (!MobileBasePass::GetShaders(
-		LightMapPolicyType,
-		NumMovablePointLights,
-		MaterialResource,
-		MeshBatch.VertexFactory->GetType(),
-		bEnableSkyLight,
-		BasePassShaders.VertexShader,
-		BasePassShaders.PixelShader))
-	{
-		return false;
-	}
+	MobileBasePass::GetShaders(
+		LightMapPolicyType, 
+		NumMovablePointLights, 
+		MaterialResource, 
+		MeshBatch.VertexFactory->GetType(), 
+		bEnableSkyLight, 
+		BasePassShaders.VertexShader, 
+		BasePassShaders.PixelShader);
 
-	const bool bMaskedInEarlyPass = (MaterialResource.IsMasked() || MeshBatch.bDitheredLODTransition) && Scene && MaskedInEarlyPass(Scene->GetShaderPlatform());
+	const bool bMaskedInEarlyPass = (MeshBatch.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsMasked() || MeshBatch.bDitheredLODTransition) && Scene && MaskedInEarlyPass(Scene->GetShaderPlatform());
 	const bool bForcePassDrawRenderState = ((Flags & EFlags::ForcePassDrawRenderState) == EFlags::ForcePassDrawRenderState);
 
 	FMeshPassProcessorRenderState DrawRenderState(PassDrawRenderState);
@@ -785,7 +712,7 @@ bool FMobileBasePassMeshProcessor::Process(
 		{
 			MobileBasePass::SetTranslucentRenderState(DrawRenderState, MaterialResource);
 		}
-		else if((MeshBatch.bUseForDepthPass && Scene->EarlyZPassMode == DDM_AllOpaque) || bMaskedInEarlyPass)
+		else if (bMaskedInEarlyPass)
 		{
 			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Equal>::GetRHI());
 		}
@@ -837,7 +764,6 @@ bool FMobileBasePassMeshProcessor::Process(
 		SortKey,
 		EMeshPassFeatures::Default,
 		ShaderElementData);
-	return true;
 }
 
 FMeshPassProcessor* CreateMobileBasePassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)

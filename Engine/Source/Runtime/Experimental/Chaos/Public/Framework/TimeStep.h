@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include "Chaos/Defines.h"
-
 namespace Chaos
 {
 	class ITimeStep
@@ -40,7 +38,7 @@ namespace Chaos
 		virtual float GetTarget() const { return GetCalculatedDt(); }
 	};
 
-	class UE_DEPRECATED(4.27, "Deprecated, this class is to be deleted") FFixedTimeStep final : public ITimeStep
+	class FFixedTimeStep final : public ITimeStep
 	{
 	public:
 
@@ -61,7 +59,7 @@ namespace Chaos
 		float ActualDt;
 	};
 
-	class UE_DEPRECATED(4.27, "Deprecated, this class is to be deleted") FVariableTimeStep final : public ITimeStep
+	class FVariableTimeStep final : public ITimeStep
 	{
 
 		/** ITimeStep interface */
@@ -76,7 +74,7 @@ namespace Chaos
 		float Dt;
 	};
 
-	class UE_DEPRECATED(4.27, "Deprecated, this class is to be deleted") FVariableWithCapTimestep final : public ITimeStep
+	class FVariableWithCapTimestep final : public ITimeStep
 	{
 		/** ITimeStep interface */
 		virtual void Reset() override;
@@ -93,7 +91,7 @@ namespace Chaos
 		float ActualDt;
 	};
 
-	class UE_DEPRECATED(4.27, "Deprecated, this class is to be deleted") FVariableMinimumWithCapTimestep final : public ITimeStep
+	class FVariableMinimumWithCapTimestep final : public ITimeStep
 	{
 		/** ITimeStep interface */
 		virtual void Reset() override;

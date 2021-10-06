@@ -70,7 +70,7 @@ struct FGenericStruct
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	int32 Data = 0;
+	int32 Data;
 };
 
 UCLASS(meta=(ScriptName="SystemLibrary"))
@@ -411,7 +411,7 @@ class ENGINE_API UKismetSystemLibrary : public UBlueprintFunctionLibrary
 	 * @param	Command			Command to send to the console
 	 * @param	SpecificPlayer	If specified, the console command will be routed through the specified player
 	 */
-	UFUNCTION(BlueprintCallable, Category="Development",meta=(WorldContext="WorldContextObject", CallableWithoutWorldContext))
+	UFUNCTION(BlueprintCallable, Category="Development",meta=(WorldContext="WorldContextObject"))
 	static void ExecuteConsoleCommand(const UObject* WorldContextObject, const FString& Command, class APlayerController* SpecificPlayer = NULL );
 
 	/**
@@ -447,7 +447,7 @@ class ENGINE_API UKismetSystemLibrary : public UBlueprintFunctionLibrary
 	 * @param	QuitPreference	Form of quitting.
 	 * @param	bIgnorePlatformRestrictions	Ignores and best-practices based on platform (e.g PS4 games should never quit). Non-shipping only
 	 */
-	UFUNCTION(BlueprintCallable, Category="Game",meta=(WorldContext="WorldContextObject", CallableWithoutWorldContext))
+	UFUNCTION(BlueprintCallable, Category="Game",meta=(WorldContext="WorldContextObject"))
 	static void QuitGame(const UObject* WorldContextObject, class APlayerController* SpecificPlayer, TEnumAsByte<EQuitPreference::Type> QuitPreference, bool bIgnorePlatformRestrictions);
 	
 #if WITH_EDITOR

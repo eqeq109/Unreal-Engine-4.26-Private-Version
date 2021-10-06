@@ -558,10 +558,8 @@ public:
 	virtual bool HasPreSimulateTick() const override { return true; }
 	//----------------------------------------------------------------------------
 	// GPU sim functionality
-#if WITH_EDITORONLY_DATA
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-#endif
 
 	//----------------------------------------------------------------------------
 	// EXPOSED FUNCTIONS
@@ -626,47 +624,47 @@ public:
 	void GetTrailingData(FVectorVMContext& Context);
 
 	// Sort predicates to sort data
-	inline static bool CollisionDataSortByMassPredicateMaxToMin(const Chaos::FCollidingDataExt& Lhs, const Chaos::FCollidingDataExt& Rhs)
+	inline static bool CollisionDataSortByMassPredicateMaxToMin(const Chaos::TCollisionDataExt<float, 3>& Lhs, const Chaos::TCollisionDataExt<float, 3>& Rhs)
 	{
 		return FMath::Max(Lhs.Mass1, Lhs.Mass2) > FMath::Max(Rhs.Mass1, Rhs.Mass2);
 	}
 
-	inline static bool CollisionDataSortByMassPredicateMinToMax(const Chaos::FCollidingDataExt& Lhs, const Chaos::FCollidingDataExt& Rhs)
+	inline static bool CollisionDataSortByMassPredicateMinToMax(const Chaos::TCollisionDataExt<float, 3>& Lhs, const Chaos::TCollisionDataExt<float, 3>& Rhs)
 	{
 		return FMath::Max(Lhs.Mass1, Lhs.Mass2) < FMath::Max(Rhs.Mass1, Rhs.Mass2);
 	}
 
-	inline static bool CollisionDataRandomShuffleSortPredicate(const Chaos::FCollidingDataExt& Lhs, const Chaos::FCollidingDataExt& Rhs)
+	inline static bool CollisionDataRandomShuffleSortPredicate(const Chaos::TCollisionDataExt<float, 3>& Lhs, const Chaos::TCollisionDataExt<float, 3>& Rhs)
 	{
 		return FMath::FRand() < 0.5f;
 	}
 
-	inline static bool BreakingDataSortByMassPredicateMaxToMin(const Chaos::FBreakingDataExt& Lhs, const Chaos::FBreakingDataExt& Rhs)
+	inline static bool BreakingDataSortByMassPredicateMaxToMin(const Chaos::TBreakingDataExt<float, 3>& Lhs, const Chaos::TBreakingDataExt<float, 3>& Rhs)
 	{
 		return Lhs.Mass > Rhs.Mass;
 	}
 
-	inline static bool BreakingDataSortByMassPredicateMinToMax(const Chaos::FBreakingDataExt& Lhs, const Chaos::FBreakingDataExt& Rhs)
+	inline static bool BreakingDataSortByMassPredicateMinToMax(const Chaos::TBreakingDataExt<float, 3>& Lhs, const Chaos::TBreakingDataExt<float, 3>& Rhs)
 	{
 		return Lhs.Mass < Rhs.Mass;
 	}
 
-	inline static bool BreakingDataRandomShuffleSortPredicate(const Chaos::FBreakingDataExt& Lhs, const Chaos::FBreakingDataExt& Rhs)
+	inline static bool BreakingDataRandomShuffleSortPredicate(const Chaos::TBreakingDataExt<float, 3>& Lhs, const Chaos::TBreakingDataExt<float, 3>& Rhs)
 	{
 		return FMath::FRand() < 0.5f;
 	}
 
-	inline static bool TrailingDataSortByMassPredicateMaxToMin(const Chaos::FTrailingDataExt& Lhs, const Chaos::FTrailingDataExt& Rhs)
+	inline static bool TrailingDataSortByMassPredicateMaxToMin(const Chaos::TTrailingDataExt<float, 3>& Lhs, const Chaos::TTrailingDataExt<float, 3>& Rhs)
 	{
 		return Lhs.Mass > Rhs.Mass;
 	}
 
-	inline static bool TrailingDataSortByMassPredicateMinToMax(const Chaos::FTrailingDataExt& Lhs, const Chaos::FTrailingDataExt& Rhs)
+	inline static bool TrailingDataSortByMassPredicateMinToMax(const Chaos::TTrailingDataExt<float, 3>& Lhs, const Chaos::TTrailingDataExt<float, 3>& Rhs)
 	{
 		return Lhs.Mass < Rhs.Mass;
 	}
 
-	inline static bool TrailingDataRandomShuffleSortPredicate(const Chaos::FTrailingDataExt& Lhs, const Chaos::FTrailingDataExt& Rhs)
+	inline static bool TrailingDataRandomShuffleSortPredicate(const Chaos::TTrailingDataExt<float, 3>& Lhs, const Chaos::TTrailingDataExt<float, 3>& Rhs)
 	{
 		return FMath::FRand() < 0.5f;
 	}
@@ -690,43 +688,43 @@ protected:
 	void ResetInstData(FNDIChaosDestruction_InstanceData* InstData);
 
 	void HandleCollisionEvents(const Chaos::FCollisionEventData& Event);
-	void FilterAllCollisions(TArray<Chaos::FCollidingDataExt>& AllCollisionsArray);
+	void FilterAllCollisions(TArray<Chaos::TCollisionDataExt<float, 3>>& AllCollisionsArray);
 
-	void SortCollisions(TArray<Chaos::FCollidingDataExt>& CollisionsArray);
+	void SortCollisions(TArray<Chaos::TCollisionDataExt<float, 3>>& CollisionsArray);
 
-	void GetCollisionsToSpawnFromCollisions(TArray<Chaos::FCollidingDataExt>& AllCollisionsArray,
-							 			    TArray<Chaos::FCollidingDataExt>& CollisionsToSpawnArray);
+	void GetCollisionsToSpawnFromCollisions(TArray<Chaos::TCollisionDataExt<float, 3>>& AllCollisionsArray,
+							 			    TArray<Chaos::TCollisionDataExt<float, 3>>& CollisionsToSpawnArray);
 
 	int32 SpawnParticlesFromCollision(FSolverData SolverData,
-									  Chaos::FCollidingDataExt& Collision,
+									  Chaos::TCollisionDataExt<float, 3>& Collision,
 									  FNDIChaosDestruction_InstanceData* InstData,
 									  float TimeData_MapsCreated,
 									  int32 IdxSolver);
 	
 	void HandleBreakingEvents(const Chaos::FBreakingEventData& Event);
-	void FilterAllBreakings(TArray<Chaos::FBreakingDataExt>& AllBreakingsArray);
+	void FilterAllBreakings(TArray<Chaos::TBreakingDataExt<float, 3>>& AllBreakingsArray);
 
-	void SortBreakings(TArray<Chaos::FBreakingDataExt>& BreakingsArray);
+	void SortBreakings(TArray<Chaos::TBreakingDataExt<float, 3>>& BreakingsArray);
 
-	void GetBreakingsToSpawnFromBreakings(TArray<Chaos::FBreakingDataExt>& AllBreakingsArray,
-										  TArray<Chaos::FBreakingDataExt>& BreakingsToSpawnArray);
+	void GetBreakingsToSpawnFromBreakings(TArray<Chaos::TBreakingDataExt<float, 3>>& AllBreakingsArray,
+										  TArray<Chaos::TBreakingDataExt<float, 3>>& BreakingsToSpawnArray);
 
 	int32 SpawnParticlesFromBreaking(FSolverData SolverData,
-									 Chaos::FBreakingDataExt& Breaking,
+									 Chaos::TBreakingDataExt<float, 3>& Breaking,
 									 FNDIChaosDestruction_InstanceData* InstData,
 									 float TimeData_MapsCreated,
 									 int32 IdxSolver);
 	   	  
 	void HandleTrailingEvents(const Chaos::FTrailingEventData& Event);
-	void FilterAllTrailings(TArray<Chaos::FTrailingDataExt>& AllTrailingsArray);
+	void FilterAllTrailings(TArray<Chaos::TTrailingDataExt<float, 3>>& AllTrailingsArray);
 
-	void SortTrailings(TArray<Chaos::FTrailingDataExt>& TrailingsArray);
+	void SortTrailings(TArray<Chaos::TTrailingDataExt<float, 3>>& TrailingsArray);
 
-	void GetTrailingsToSpawnFromTrailings(TArray<Chaos::FTrailingDataExt>& AllTrailingsArray,
-										  TArray<Chaos::FTrailingDataExt>& TrailingsToSpawnArray);
+	void GetTrailingsToSpawnFromTrailings(TArray<Chaos::TTrailingDataExt<float, 3>>& AllTrailingsArray,
+										  TArray<Chaos::TTrailingDataExt<float, 3>>& TrailingsToSpawnArray);
 
 	int32 SpawnParticlesFromTrailing(FSolverData SolverData,
-									 Chaos::FTrailingDataExt& Trailing,
+									 Chaos::TTrailingDataExt<float, 3>& Trailing,
 									 FNDIChaosDestruction_InstanceData* InstData,
 									 float TimeData_MapsCreated,
 									 int32 IdxSolver);
@@ -735,7 +733,7 @@ protected:
 	bool BreakingCallback(FNDIChaosDestruction_InstanceData* InstData);
 	bool TrailingCallback(FNDIChaosDestruction_InstanceData* InstData);
 
-	virtual void PushToRenderThreadImpl() override;
+	void PushToRenderThread();
 
 	UPROPERTY()
 	int32 LastSpawnedPointID;
@@ -755,9 +753,9 @@ protected:
 	bool ShouldSpawn;
 
 	TArray<FSolverData> Solvers;
-	TArray<Chaos::FCollidingDataExt> CollisionEvents;
-	TArray<Chaos::FBreakingDataExt> BreakingEvents;
-	TArray<Chaos::FTrailingDataExt> TrailingEvents;
+	TArray<Chaos::TCollisionDataExt<float, 3>> CollisionEvents;
+	TArray<Chaos::TBreakingDataExt<float, 3>> BreakingEvents;
+	TArray<Chaos::TTrailingDataExt<float, 3>> TrailingEvents;
 };
 
 struct FNiagaraDataInterfaceProxyChaosDestruction : public FNiagaraDataInterfaceProxy

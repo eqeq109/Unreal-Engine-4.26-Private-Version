@@ -731,7 +731,9 @@ int32 UAssetRegistryDumpCommandlet::Main(const FString& CmdLineParams)
 	}
 
 	FAssetRegistryState State;
-	if (!State.Load(Bytes))
+	FAssetRegistrySerializationOptions Options;
+	Options.ModifyForDevelopment();
+	if (!State.Serialize(Bytes, Options))
 	{
 		UE_LOG(LogAssetRegUtil, Warning, TEXT("Failed to serialize file %s as an AssetRegistry"), *InputFileName);
 		return 3;

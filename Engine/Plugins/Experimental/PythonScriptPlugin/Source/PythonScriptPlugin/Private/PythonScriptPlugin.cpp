@@ -443,8 +443,7 @@ FPythonScriptPlugin::FPythonScriptPlugin()
 
 bool FPythonScriptPlugin::IsPythonAvailable() const
 {
-	static const bool bDisablePython = FParse::Param(FCommandLine::Get(), TEXT("DisablePython"));
-	return WITH_PYTHON && !bDisablePython;
+	return WITH_PYTHON;
 }
 
 bool FPythonScriptPlugin::ExecPythonCommand(const TCHAR* InPythonCommand)
@@ -456,15 +455,6 @@ bool FPythonScriptPlugin::ExecPythonCommand(const TCHAR* InPythonCommand)
 
 bool FPythonScriptPlugin::ExecPythonCommandEx(FPythonCommandEx& InOutPythonCommand)
 {
-#if WITH_PYTHON
-	if (!IsPythonAvailable())
-#endif
-	{
-		InOutPythonCommand.CommandResult = TEXT("Python is not available!");
-		ensureAlwaysMsgf(false, TEXT("%s"), *InOutPythonCommand.CommandResult);
-		return false;
-	}
-
 #if WITH_PYTHON
 	if (InOutPythonCommand.ExecutionMode == EPythonCommandExecutionMode::ExecuteFile)
 	{
@@ -489,7 +479,11 @@ bool FPythonScriptPlugin::ExecPythonCommandEx(FPythonCommandEx& InOutPythonComma
 	else
 	{
 		return RunString(InOutPythonCommand);
-	}	
+	}
+#else	// WITH_PYTHON
+	InOutPythonCommand.CommandResult = TEXT("Python is not available!");
+	ensureAlwaysMsgf(false, TEXT("%s"), *InOutPythonCommand.CommandResult);
+	return false;
 #endif	// WITH_PYTHON
 }
 
@@ -505,11 +499,6 @@ FSimpleMulticastDelegate& FPythonScriptPlugin::OnPythonShutdown()
 
 void FPythonScriptPlugin::StartupModule()
 {
-	if (!IsPythonAvailable())
-	{
-		return;
-	}
-
 #if WITH_PYTHON
 	InitializePython();
 	IModularFeatures::Get().RegisterModularFeature(IConsoleCommandExecutor::ModularFeatureName(), &CmdExec);
@@ -547,11 +536,6 @@ void FPythonScriptPlugin::OnPostEngineInit()
 
 void FPythonScriptPlugin::ShutdownModule()
 {
-	if (!IsPythonAvailable())
-	{
-		return;
-	}
-
 #if WITH_PYTHON
 	FCoreDelegates::OnPreExit.RemoveAll(this);
 
@@ -597,9 +581,7 @@ void FPythonScriptPlugin::PreChange(const UUserDefinedEnum* Enum, FEnumEditorUti
 
 void FPythonScriptPlugin::PostChange(const UUserDefinedEnum* Enum, FEnumEditorUtils::EEnumEditorChangeInfo Info)
 {
-#if WITH_PYTHON
 	OnAssetUpdated(Enum);
-#endif //WITH_PYTHON
 }
 
 #if WITH_PYTHON
@@ -736,9 +718,7 @@ void FPythonScriptPlugin::InitializePython()
 		for (const FString& RootPath : RootPaths)
 		{
 			const FString RootFilesystemPath = FPackageName::LongPackageNameToFilename(RootPath);
-			const FString PythonContentPath = FPaths::ConvertRelativePathToFull(RootFilesystemPath / TEXT("Python"));
-			PyUtil::AddSystemPath(PythonContentPath);
-			PyUtil::GetOnDiskUnrealModulesCache().AddModules(*PythonContentPath);
+			PyUtil::AddSystemPath(FPaths::ConvertRelativePathToFull(RootFilesystemPath / TEXT("Python")));
 		}
 
 		for (const FDirectoryPath& AdditionalPath : GetDefault<UPythonScriptPluginSettings>()->AdditionalPaths)
@@ -1082,7 +1062,7 @@ void FPythonScriptPlugin::ImportUnrealModule(const TCHAR* InModuleName)
 
 	const TCHAR* ModuleNameToImport = nullptr;
 	PyObject* ModuleToReload = nullptr;
-	if (PyUtil::IsModuleAvailableForImport(*PythonModuleName, &PyUtil::GetOnDiskUnrealModulesCache()))
+	if (PyUtil::IsModuleAvailableForImport(*PythonModuleName))
 	{
 		// Python modules that are already loaded should be reloaded if we're requested to import them again
 		if (!PyUtil::IsModuleImported(*PythonModuleName, &ModuleToReload))
@@ -1090,7 +1070,7 @@ void FPythonScriptPlugin::ImportUnrealModule(const TCHAR* InModuleName)
 			ModuleNameToImport = *PythonModuleName;
 		}
 	}
-	else if (PyUtil::IsModuleAvailableForImport(*NativeModuleName, &PyUtil::GetOnDiskUnrealModulesCache()))
+	else if (PyUtil::IsModuleAvailableForImport(*NativeModuleName))
 	{
 		ModuleNameToImport = *NativeModuleName;
 	}
@@ -1132,7 +1112,7 @@ void FPythonScriptPlugin::ImportUnrealModule(const TCHAR* InModuleName)
 	}
 	else
 	{
-		PyUtil::LogPythonError(nullptr, /*bInteractive*/true);
+		PyUtil::LogPythonError(/*bInteractive*/true);
 	}
 }
 
@@ -1200,8 +1180,9 @@ bool FPythonScriptPlugin::RunString(FPythonCommandEx& InOutPythonCommand)
 		{
 			InOutPythonCommand.CommandResult = PyUtil::PyObjectToUEStringRepr(PyResult);
 		}
-		else if (PyUtil::LogPythonError(&InOutPythonCommand.CommandResult))
+		else
 		{
+			InOutPythonCommand.CommandResult = PyUtil::LogPythonError();
 			return false;
 		}
 	}
@@ -1295,8 +1276,9 @@ bool FPythonScriptPlugin::RunFile(const TCHAR* InFile, const TCHAR* InArgs, FPyt
 		{
 			InOutPythonCommand.CommandResult = PyUtil::PyObjectToUEStringRepr(PyResult);
 		}
-		else if (PyUtil::LogPythonError(&InOutPythonCommand.CommandResult))
+		else
 		{
+			InOutPythonCommand.CommandResult = PyUtil::LogPythonError();
 			return false;
 		}
 	}
@@ -1347,9 +1329,7 @@ void FPythonScriptPlugin::OnContentPathMounted(const FString& InAssetPath, const
 {
 	{
 		FPyScopedGIL GIL;
-		const FString PythonContentPath = FPaths::ConvertRelativePathToFull(InFilesystemPath / TEXT("Python"));
-		PyUtil::AddSystemPath(PythonContentPath);
-		PyUtil::GetOnDiskUnrealModulesCache().AddModules(*PythonContentPath);
+		PyUtil::AddSystemPath(FPaths::ConvertRelativePathToFull(InFilesystemPath / TEXT("Python")));
 	}
 
 #if WITH_EDITOR
@@ -1364,9 +1344,7 @@ void FPythonScriptPlugin::OnContentPathDismounted(const FString& InAssetPath, co
 {
 	{
 		FPyScopedGIL GIL;
-		const FString PythonContentPath = FPaths::ConvertRelativePathToFull(InFilesystemPath / TEXT("Python"));
-		PyUtil::RemoveSystemPath(PythonContentPath);
-		PyUtil::GetOnDiskUnrealModulesCache().RemoveModules(*PythonContentPath);
+		PyUtil::RemoveSystemPath(FPaths::ConvertRelativePathToFull(InFilesystemPath / TEXT("Python")));
 	}
 
 #if WITH_EDITOR
@@ -1384,32 +1362,31 @@ bool FPythonScriptPlugin::IsDeveloperModeEnabled()
 
 void FPythonScriptPlugin::OnAssetRenamed(const FAssetData& Data, const FString& OldName)
 {
-	FPyWrapperTypeRegistry& PyWrapperTypeRegistry = FPyWrapperTypeRegistry::Get();
 	const FName OldPackageName = *FPackageName::ObjectPathToPackageName(OldName);
-	
-	// If this asset has an associated Python type, then we need to rename it
-	if (PyWrapperTypeRegistry.HasWrappedTypeForObjectName(OldPackageName))
+	const UObject* AssetPtr = PyGenUtil::GetTypeRegistryType(Data.GetAsset());
+	if (AssetPtr)
 	{
-		if (const UObject* AssetPtr = PyGenUtil::GetAssetTypeRegistryType(Data.GetAsset()))
+		// If this asset has an associated Python type, then we need to rename it
+		FPyWrapperTypeRegistry& PyWrapperTypeRegistry = FPyWrapperTypeRegistry::Get();
+		if (PyWrapperTypeRegistry.HasWrappedTypeForObjectName(OldPackageName))
 		{
 			PyWrapperTypeRegistry.UpdateGenerateWrappedTypeForRename(OldPackageName, AssetPtr);
 			OnAssetUpdated(AssetPtr);
-		}
-		else
-		{
-			PyWrapperTypeRegistry.RemoveGenerateWrappedTypeForDelete(OldPackageName);
 		}
 	}
 }
 
 void FPythonScriptPlugin::OnAssetRemoved(const FAssetData& Data)
 {
-	FPyWrapperTypeRegistry& PyWrapperTypeRegistry = FPyWrapperTypeRegistry::Get();
-	
-	// If this asset has an associated Python type, then we need to remove it
-	if (PyWrapperTypeRegistry.HasWrappedTypeForObjectName(Data.PackageName))
+	const UObject* AssetPtr = PyGenUtil::GetTypeRegistryType(Data.GetAsset());
+	if (AssetPtr)
 	{
-		PyWrapperTypeRegistry.RemoveGenerateWrappedTypeForDelete(Data.PackageName);
+		// If this asset has an associated Python type, then we need to remove it
+		FPyWrapperTypeRegistry& PyWrapperTypeRegistry = FPyWrapperTypeRegistry::Get();
+		if (PyWrapperTypeRegistry.HasWrappedTypeForObject(AssetPtr))
+		{
+			PyWrapperTypeRegistry.RemoveGenerateWrappedTypeForDelete(AssetPtr);
+		}
 	}
 }
 
@@ -1427,7 +1404,8 @@ void FPythonScriptPlugin::OnAssetReload(const EPackageReloadPhase InPackageReloa
 
 void FPythonScriptPlugin::OnAssetUpdated(const UObject* InObj)
 {
-	if (const UObject* AssetPtr = PyGenUtil::GetAssetTypeRegistryType(InObj))
+	const UObject* AssetPtr = PyGenUtil::GetTypeRegistryType(InObj);
+	if (AssetPtr)
 	{
 		// If this asset has an associated Python type, then we need to re-generate it
 		FPyWrapperTypeRegistry& PyWrapperTypeRegistry = FPyWrapperTypeRegistry::Get();

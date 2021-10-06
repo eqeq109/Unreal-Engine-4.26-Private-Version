@@ -193,7 +193,7 @@ void FReferenceSkeleton::RemoveDuplicateBones(const UObject* Requester, TArray<F
 		{
 			if (const USkeletalMesh* Mesh = Cast<USkeletalMesh>(Requester))
 			{
-				Skeleton = Mesh->GetSkeleton();
+				Skeleton = Mesh->Skeleton;
 			}
 			else
 			{

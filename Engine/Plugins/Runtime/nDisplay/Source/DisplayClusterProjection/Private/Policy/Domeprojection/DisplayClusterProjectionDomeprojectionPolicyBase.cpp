@@ -11,18 +11,17 @@
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Game/IDisplayClusterGameManager.h"
 
-#include "Render/Viewport/IDisplayClusterViewport.h"
-#include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
-FDisplayClusterProjectionDomeprojectionPolicyBase::FDisplayClusterProjectionDomeprojectionPolicyBase(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
-	: FDisplayClusterProjectionPolicyBase(ProjectionPolicyId, InConfigurationProjectionPolicy)
+FDisplayClusterProjectionDomeprojectionPolicyBase::FDisplayClusterProjectionDomeprojectionPolicyBase(const FString& ViewportId, const TMap<FString, FString>& Parameters)
+	: FDisplayClusterProjectionPolicyBase(ViewportId, Parameters)
 {
 }
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicy
 //////////////////////////////////////////////////////////////////////////////////////////////
-bool FDisplayClusterProjectionDomeprojectionPolicyBase::HandleStartScene(class IDisplayClusterViewport* InViewport)
+void FDisplayClusterProjectionDomeprojectionPolicyBase::StartScene(UWorld* World)
 {
 	check(IsInGameThread());
 
@@ -30,11 +29,23 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::HandleStartScene(class I
 	// so we can extend it by our projection related functionality/components/etc.
 
 	// Find origin component if it exists
-	InitializeOriginComponent(InViewport, OriginCompId);
+	InitializeOriginComponent(OriginCompId);
+}
+
+void FDisplayClusterProjectionDomeprojectionPolicyBase::EndScene()
+{
+	check(IsInGameThread());
+
+	ReleaseOriginComponent();
+}
+
+bool FDisplayClusterProjectionDomeprojectionPolicyBase::HandleAddViewport(const FIntPoint& ViewportSize, const uint32 ViewsAmount)
+{
+	check(IsInGameThread())
 
 	// Read domeprojection config data from nDisplay config file
 	FString File;
-	if (!ReadConfigData(InViewport->GetId(), File, OriginCompId, DomeprojectionChannel))
+	if (!ReadConfigData(GetViewportId(), File, OriginCompId, DomeprojectionChannel))
 	{
 		UE_LOG(LogDisplayClusterProjectionDomeprojection, Error, TEXT("Couldn't read Domeprojection configuration from the config file"));
 		return false;
@@ -48,9 +59,7 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::HandleStartScene(class I
 	}
 
 	// Create and store nDisplay-to-Domeprojection viewport adapter
-	const int MaxViewsAmount = 2; // always init contexts for stereo
-
-	ViewAdapter = CreateViewAdapter(FDisplayClusterProjectionDomeprojectionViewAdapterBase::FInitParams{ MaxViewsAmount });
+	ViewAdapter = CreateViewAdapter(FDisplayClusterProjectionDomeprojectionViewAdapterBase::FInitParams{ ViewportSize, ViewsAmount });
 	if (!(ViewAdapter && ViewAdapter->Initialize(FullFilePath)))
 	{
 		UE_LOG(LogDisplayClusterProjectionDomeprojection, Error, TEXT("An error occurred during Domeprojection viewport adapter initialization"));
@@ -62,15 +71,14 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::HandleStartScene(class I
 	return true;
 }
 
-void FDisplayClusterProjectionDomeprojectionPolicyBase::HandleEndScene(class IDisplayClusterViewport* InViewport)
+void FDisplayClusterProjectionDomeprojectionPolicyBase::HandleRemoveViewport()
 {
 	check(IsInGameThread());
 
-	ReleaseOriginComponent();
+	UE_LOG(LogDisplayClusterProjectionDomeprojection, Log, TEXT("Removing viewport '%s'"), *GetViewportId());
 }
 
-
-bool FDisplayClusterProjectionDomeprojectionPolicyBase::CalculateView(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP)
+bool FDisplayClusterProjectionDomeprojectionPolicyBase::CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP)
 {
 	check(IsInGameThread());
 
@@ -91,9 +99,9 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::CalculateView(class IDis
 
 	// Forward data to the RHI dependend Domeprojection implementation
 	FRotator OriginSpaceViewRotation = FRotator::ZeroRotator;
-	if (!ViewAdapter->CalculateView(InViewport, InContextNum, DomeprojectionChannel, OriginSpaceViewLocation, OriginSpaceViewRotation, ViewOffset, WorldToMeters, NCP, FCP))
+	if (!ViewAdapter->CalculateView(ViewIdx, DomeprojectionChannel, OriginSpaceViewLocation, OriginSpaceViewRotation, ViewOffset, WorldToMeters, NCP, FCP))
 	{
-		UE_LOG(LogDisplayClusterProjectionDomeprojection, Warning, TEXT("Couldn't compute view info for <%s> viewport"), *InViewport->GetId());
+		UE_LOG(LogDisplayClusterProjectionDomeprojection, Warning, TEXT("Couldn't compute view info for <%s> viewport"), *GetViewportId());
 		return false;
 	}
 
@@ -106,7 +114,7 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::CalculateView(class IDis
 	return true;
 }
 
-bool FDisplayClusterProjectionDomeprojectionPolicyBase::GetProjectionMatrix(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FMatrix& OutPrjMatrix)
+bool FDisplayClusterProjectionDomeprojectionPolicyBase::GetProjectionMatrix(const uint32 ViewIdx, FMatrix& OutPrjMatrix)
 {
 	check(IsInGameThread());
 
@@ -116,7 +124,7 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::GetProjectionMatrix(clas
 	}
 
 	// Pass request to the adapter
-	return ViewAdapter->GetProjectionMatrix(InViewport, InContextNum, DomeprojectionChannel, OutPrjMatrix);
+	return ViewAdapter->GetProjectionMatrix(ViewIdx, DomeprojectionChannel, OutPrjMatrix);
 }
 
 bool FDisplayClusterProjectionDomeprojectionPolicyBase::IsWarpBlendSupported()
@@ -124,13 +132,13 @@ bool FDisplayClusterProjectionDomeprojectionPolicyBase::IsWarpBlendSupported()
 	return true;
 }
 
-void FDisplayClusterProjectionDomeprojectionPolicyBase::ApplyWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const class IDisplayClusterViewportProxy* InViewportProxy)
+void FDisplayClusterProjectionDomeprojectionPolicyBase::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)
 {
 	check(IsInRenderingThread());
 
 	if (ViewAdapter.IsValid())
 	{
-		ViewAdapter->ApplyWarpBlend_RenderThread(RHICmdList, InViewportProxy, DomeprojectionChannel);
+		ViewAdapter->ApplyWarpBlend_RenderThread(ViewIdx, DomeprojectionChannel, RHICmdList, SrcTexture, ViewportRect);
 	}
 }
 

@@ -13,13 +13,9 @@ void FSourcesSearch::Initialize()
 
 void FSourcesSearch::ClearSearch()
 {
-	if (!SearchBox->GetText().IsEmpty())
+	if (!SearchBox->GetSearchText().IsEmpty())
 	{
-		if (SearchBox->HasKeyboardFocus())
-		{
-			FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Cleared);
-		}
-		SearchBox->SetText(FText::GetEmpty());
+		SearchBox->SetSearchText(FText::GetEmpty());
 	}
 }
 

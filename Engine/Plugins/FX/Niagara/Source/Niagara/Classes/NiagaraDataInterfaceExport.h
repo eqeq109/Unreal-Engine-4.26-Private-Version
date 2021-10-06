@@ -13,13 +13,13 @@ struct FBasicParticleData
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(BlueprintReadOnly, Category = "Particle Data")
-	FVector Position = FVector(ForceInitToZero);
+	FVector Position;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Particle Data")
-	float Size = 0.0f;
+	float Size;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Particle Data")
-	FVector Velocity = FVector(ForceInitToZero);
+	FVector Velocity;
 };
 
 UINTERFACE(BlueprintType)
@@ -85,11 +85,9 @@ public:
 	virtual bool PerInstanceTick(void* PerInstanceData, FNiagaraSystemInstance* SystemInstance, float DeltaSeconds) override;
 	virtual bool PerInstanceTickPostSimulate(void* PerInstanceData, FNiagaraSystemInstance* SystemInstance, float DeltaSeconds) override;
 	virtual bool Equals(const UNiagaraDataInterface* Other) const override;
-#if WITH_EDITORONLY_DATA
+	virtual void GetCommonHLSL(FString& OutHLSL) override;
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-	virtual bool AppendCompileHash(FNiagaraCompileHashVisitor* InVisitor) const override;
-#endif
 	virtual bool CanExecuteOnTarget(ENiagaraSimTarget Target) const override { return true; }
 
 	virtual bool HasPreSimulateTick() const override { return true; }

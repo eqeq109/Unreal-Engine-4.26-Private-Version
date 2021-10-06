@@ -832,6 +832,8 @@ public:
 };
 #endif
 
+#define NUM_THREADS_PER_GROUP_DIMENSION 32
+
 class FComputeShaderYCbCrToRGB : public FGlobalShader
 {
 public:
@@ -858,7 +860,9 @@ public:
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 
-		OutEnvironment.SetDefine(TEXT("THREADGROUPSIZE"), FComputeShaderUtils::kGolden2DGroupSize);
+		OutEnvironment.SetDefine(TEXT("THREADGROUPSIZE_X"), NUM_THREADS_PER_GROUP_DIMENSION);
+		OutEnvironment.SetDefine(TEXT("THREADGROUPSIZE_Y"), NUM_THREADS_PER_GROUP_DIMENSION);
+		OutEnvironment.SetDefine(TEXT("THREADGROUPSIZE_Z"), 1);
 	}
 };
 
@@ -1024,16 +1028,13 @@ public:
 			PassParameters->InputTextureCbCrSize = FVector2D(CapturedCbCrImageSize);
 
 			TShaderMapRef<FComputeShaderYCbCrToRGB> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			
-			const auto GroupSize = FComputeShaderUtils::kGolden2DGroupSize;
-			check(GroupSize * GroupSize <= GetMaxWorkGroupInvocations());
 
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("ARKit Video Texture Conversion"),
 				ComputeShader,
 				PassParameters,
-				FComputeShaderUtils::GetGroupCount(Size, GroupSize)
+				FComputeShaderUtils::GetGroupCount(Size, NUM_THREADS_PER_GROUP_DIMENSION)
 			);
 			
 			GraphBuilder.Execute();

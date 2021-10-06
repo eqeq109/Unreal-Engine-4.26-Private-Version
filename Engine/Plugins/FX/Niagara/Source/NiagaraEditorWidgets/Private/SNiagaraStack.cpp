@@ -34,7 +34,6 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "NiagaraEmitter.h"
 #include "IDetailTreeNode.h"
-#include "Stack/NiagaraStackPropertyRowUtilities.h"
 #include "Stack/SNiagaraStackFunctionInputName.h"
 #include "Stack/SNiagaraStackFunctionInputValue.h"
 #include "Stack/SNiagaraStackItem.h"
@@ -59,6 +58,7 @@
 #include "Framework/Commands/UICommandList.h"
 #include "ViewModels/NiagaraOverviewGraphViewModel.h"
 #include "Widgets/SNiagaraParameterName.h"
+
 
 #define LOCTEXT_NAMESPACE "NiagaraStack"
 
@@ -260,12 +260,10 @@ void SNiagaraStack::Construct(const FArguments& InArgs, UNiagaraStackViewModel* 
 {
 	StackViewModel = InStackViewModel;
 	StackViewModel->OnStructureChanged().AddSP(this, &SNiagaraStack::StackStructureChanged);
-	StackViewModel->OnExpansionChanged().AddSP(this, &SNiagaraStack::OnStackExpansionChanged);
 	StackViewModel->OnSearchCompleted().AddSP(this, &SNiagaraStack::OnStackSearchComplete); 
 	NameColumnWidth = .3f;
 	ContentColumnWidth = .7f;
 	StackCommandContext = MakeShared<FNiagaraStackCommandContext>();
-	bSynchronizeExpansionPending = true;
 
 	ChildSlot
 	[
@@ -307,7 +305,6 @@ void SNiagaraStack::Construct(const FArguments& InArgs, UNiagaraStackViewModel* 
 
 void SNiagaraStack::SynchronizeTreeExpansion()
 {
-	bSynchronizeExpansionPending = false;
 	TArray<UNiagaraStackEntry*> EntriesToProcess(StackViewModel->GetRootEntryAsArray());
 	while (EntriesToProcess.Num() > 0)
 	{
@@ -442,6 +439,7 @@ FReply SNiagaraStack::ScrollToNextMatch()
 		}
 
 		ExpandAllInPath(CurrentSearchResults[NextMatchIndex].EntryPath);
+		SynchronizeTreeExpansion();
 	}
 
 	AddSearchScrollOffset(1);
@@ -454,14 +452,27 @@ FReply SNiagaraStack::ScrollToPreviousMatch()
 	TArray<UNiagaraStackViewModel::FSearchResult> CurrentSearchResults = StackViewModel->GetCurrentSearchResults();
 	if (CurrentSearchResults.Num() != 0)
 	{
-		if (PreviousMatchIndex >= 0)
+		if (PreviousMatchIndex > 0)
 		{
-			ExpandAllInPath(CurrentSearchResults[PreviousMatchIndex].EntryPath);
+			for (auto SearchResultEntry : CurrentSearchResults[PreviousMatchIndex].EntryPath)
+			{
+				if (!SearchResultEntry->IsA<UNiagaraStackRoot>())
+				{
+					SearchResultEntry->SetIsExpanded(true);
+				}
+			}
 		}
 		else
 		{
-			ExpandAllInPath(CurrentSearchResults.Last().EntryPath);
+			for (auto SearchResultEntry : CurrentSearchResults.Last().EntryPath)
+			{
+				if (!SearchResultEntry->IsA<UNiagaraStackRoot>())
+				{
+					SearchResultEntry->SetIsExpanded(true);
+				}
+			}
 		}
+		SynchronizeTreeExpansion();
 	}
 
 	// move current match to the previous one in the StackTree, wrap around
@@ -537,6 +548,7 @@ void CollapseEntriesRecursive(TArray<UNiagaraStackEntry*> Entries)
 void SNiagaraStack::CollapseAll()
 {
 	CollapseEntriesRecursive(StackViewModel->GetRootEntryAsArray());
+	StackViewModel->NotifyStructureChanged();
 }
 
 TSharedRef<SWidget> SNiagaraStack::GetViewOptionsMenu() const
@@ -623,10 +635,15 @@ void SNiagaraStack::ExpandSearchResults()
 {
 	for (auto SearchResult : StackViewModel->GetCurrentSearchResults())
 	{
-		ExpandAllInPath(SearchResult.EntryPath);
+		for (UNiagaraStackEntry* ParentalUnit : SearchResult.EntryPath)
+		{
+			if (!ParentalUnit->IsA<UNiagaraStackRoot>()) // should not alter expansion state of root entries
+			{
+				ParentalUnit->SetIsExpanded(true);
+			}
+		}
 	}
-
-	bSynchronizeExpansionPending = true;
+	SynchronizeTreeExpansion();
 }
 
 void SNiagaraStack::OnSearchBoxTextCommitted(const FText& NewText, ETextCommit::Type CommitInfo)
@@ -839,9 +856,6 @@ TSharedRef<SNiagaraStackTableRow> SNiagaraStack::ConstructContainerForItem(UNiag
 			case EStackIssueSeverity::Info:
 				ItemBackgroundColor = FNiagaraEditorWidgetsStyle::Get().GetColor("NiagaraEditor.Stack.Item.InfoBackgroundColor");
 				break;
-			case EStackIssueSeverity::CustomNote:
-				ItemBackgroundColor = FNiagaraEditorWidgetsStyle::Get().GetColor("NiagaraEditor.Stack.Item.CustomNoteBackgroundColor");
-				break;
 			default:
 				checkf(false, TEXT("Issue severity not set for stack issue."));
 		}
@@ -887,17 +901,12 @@ FReply SNiagaraStack::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& In
 
 void SNiagaraStack::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
-	// Update the stack view model and synchronize the expansion state before the parent tick to ensure that the state is up to date before ticking child widgets.
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
 	if (StackViewModel)
 	{
 		StackViewModel->Tick();
 	}
-	if (bSynchronizeExpansionPending)
-	{
-		SynchronizeTreeExpansion();
-	}
-
-	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 }
 
 
@@ -999,12 +1008,8 @@ SNiagaraStack::FRowWidgets SNiagaraStack::ConstructNameAndValueWidgetsForItem(UN
 	{
 		UNiagaraStackPropertyRow* PropertyRow = CastChecked<UNiagaraStackPropertyRow>(Item);
 		FNodeWidgets PropertyRowWidgets = PropertyRow->GetDetailTreeNode()->CreateNodeWidgets();
-
 		TAttribute<bool> IsEnabled;
 		IsEnabled.BindUObject(Item, &UNiagaraStackEntry::GetIsEnabledAndOwnerIsEnabled);
-
-		Container->AddFillRowContextMenuHandler(FNiagaraStackPropertyRowUtilities::CreateOnFillRowContextMenu(PropertyRow->GetDetailTreeNode()->CreatePropertyHandle(), PropertyRowWidgets.Actions));
-
 		if (PropertyRowWidgets.WholeRowWidget.IsValid())
 		{
 			Container->SetOverrideNameWidth(PropertyRowWidgets.WholeRowWidgetLayoutData.MinWidth, PropertyRowWidgets.WholeRowWidgetLayoutData.MaxWidth);
@@ -1081,14 +1086,9 @@ void SNiagaraStack::OnContentColumnWidthChanged(float Width)
 	ContentColumnWidth = Width;
 }
 
-void SNiagaraStack::OnStackExpansionChanged()
+void SNiagaraStack::StackStructureChanged()
 {
-	bSynchronizeExpansionPending = true;
-}
-
-void SNiagaraStack::StackStructureChanged(ENiagaraStructureChangedFlags Flags)
-{
-	bSynchronizeExpansionPending = true;
+	SynchronizeTreeExpansion();
 	StackTree->RequestTreeRefresh();
 	HeaderList->RequestListRefresh();
 }

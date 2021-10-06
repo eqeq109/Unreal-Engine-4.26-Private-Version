@@ -80,8 +80,7 @@ void UControlRigEditModeDelegateHelper::AddDelegates(USkeletalMeshComponent* InS
 	if (BoundComponent.IsValid())
 	{
 		BoundComponent->OnAnimInitialized.AddDynamic(this, &UControlRigEditModeDelegateHelper::OnPoseInitialized);
-		OnBoneTransformsFinalizedHandle = BoundComponent->RegisterOnBoneTransformsFinalizedDelegate(
-			FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &UControlRigEditModeDelegateHelper::PostPoseUpdate));
+		BoundComponent->OnBoneTransformsFinalized.AddDynamic(this, &UControlRigEditModeDelegateHelper::PostPoseUpdate);
 	}
 }
 
@@ -90,8 +89,7 @@ void UControlRigEditModeDelegateHelper::RemoveDelegates()
 	if(BoundComponent.IsValid())
 	{
 		BoundComponent->OnAnimInitialized.RemoveAll(this);
-		BoundComponent->UnregisterOnBoneTransformsFinalizedDelegate(OnBoneTransformsFinalizedHandle);
-		OnBoneTransformsFinalizedHandle.Reset();
+		BoundComponent->OnBoneTransformsFinalized.RemoveAll(this);
 		BoundComponent = nullptr;
 	}
 }
@@ -813,18 +811,9 @@ bool FControlRigEditMode::HandleClick(FEditorViewportClient* InViewportClient, H
 					FScopedTransaction ScopedTransaction(LOCTEXT("SelectControlTransaction", "Select Control"), IsInLevelEditor() && !GIsTransacting);
 						
 					const FName& ControlName = GizmoActor->ControlName;
-					if (Click.IsShiftDown()) //guess we just select
+					if (Click.IsShiftDown() || Click.IsControlDown())
 					{
 						SetRigElementSelection(ERigElementType::Control, ControlName, true);
-					}
-					else if(Click.IsControlDown()) //if ctrl we toggle selection
-					{
-						UControlRig* InteractionRig = GetControlRig(true);
-						if (InteractionRig)
-						{
-							bool bIsSelected = InteractionRig->IsControlSelected(ControlName);
-							SetRigElementSelection(ERigElementType::Control, ControlName, !bIsSelected);
-						}
 					}
 					else
 					{
@@ -1577,10 +1566,7 @@ void FControlRigEditMode::BindCommands()
 	CommandBindings->MapAction(
 		Commands.ResetAllTransforms,
 		FExecuteAction::CreateRaw(this, &FControlRigEditMode::ResetTransforms, false));
-	CommandBindings->MapAction(
-		Commands.ClearSelection,
-		FExecuteAction::CreateRaw(this, &FControlRigEditMode::ClearSelection));
-
+	
 	CommandBindings->MapAction(
 		Commands.FrameSelection,
 		FExecuteAction::CreateRaw(this, &FControlRigEditMode::FrameSelection),
@@ -1646,15 +1632,6 @@ bool FControlRigEditMode::CanFrameSelection()
 	}
 	return false;
 	*/
-}
-
-void FControlRigEditMode::ClearSelection()
-{
-	ClearRigElementSelection(FRigElementTypeHelper::ToMask(ERigElementType::All));
-	if (GEditor)
-	{
-		GEditor->Exec(GetWorld(), TEXT("SELECT NONE"));
-	}
 }
 
 void FControlRigEditMode::FrameSelection()

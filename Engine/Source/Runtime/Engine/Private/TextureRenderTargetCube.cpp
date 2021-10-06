@@ -54,19 +54,6 @@ void UTextureRenderTargetCube::InitAutoFormat(uint32 InSizeX)
 	UpdateResource();
 }
 
-void UTextureRenderTargetCube::UpdateResourceImmediate(bool bClearRenderTarget/*=true*/)
-{
-	if (Resource)
-	{
-		FTextureRenderTargetCubeResource* InResource = static_cast<FTextureRenderTargetCubeResource*>(Resource);
-		ENQUEUE_RENDER_COMMAND(UpdateResourceImmediate)(
-			[InResource, bClearRenderTarget](FRHICommandListImmediate& RHICmdList)
-			{
-				InResource->UpdateDeferredResource(RHICmdList, bClearRenderTarget);
-			}
-		);
-	}
-}
 
 void UTextureRenderTargetCube::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
 {
@@ -234,11 +221,6 @@ void FTextureRenderTargetCubeResource::InitDynamicRHI()
 
 		// Create the RHI texture. Only one mip is used and the texture is targetable for resolve.
 		ETextureCreateFlags TexCreateFlags = bIsSRGB ? TexCreate_SRGB : TexCreate_None;
-		if (Owner->bCanCreateUAV)
-		{
-			TexCreateFlags |= TexCreate_UAV;
-		}
-
 		{
 			FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(Owner->ClearColor) };
 			RHICreateTargetableShaderResourceCube(
@@ -251,11 +233,6 @@ void FTextureRenderTargetCubeResource::InitDynamicRHI()
 				CreateInfo,
 				RenderTargetCubeRHI,
 				TextureCubeRHI );
-		}
-
-		if ((TexCreateFlags & TexCreate_UAV) != 0)
-		{
-			UnorderedAccessViewRHI = RHICreateUnorderedAccessView(RenderTargetCubeRHI);
 		}
 
 		TextureRHI = TextureCubeRHI;
@@ -273,7 +250,6 @@ void FTextureRenderTargetCubeResource::InitDynamicRHI()
 				TexCreate_RenderTargetable|TexCreateFlags,
 				CreateInfo
 				);
-			SetGPUMask(CreateInfo.GPUMask);
 		}
 
 		// Set render target to 2D surface.

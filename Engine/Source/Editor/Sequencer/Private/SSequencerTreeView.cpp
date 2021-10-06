@@ -681,11 +681,6 @@ FReply SSequencerTreeView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEven
 			}
 			bWasHandled = true;
 		}
-		else if (InKeyEvent.GetKey() == EKeys::SpaceBar)
-		{
-			// SListView behavior is: Change selected status of item. Bypass that here. We don't want that, but instead want spacebar to go to SequencerCommands (toggle play)
-			return FReply::Unhandled();
-		}
 
 		if (TListTypeTraits<FDisplayNodeRef>::IsPtrValid(ItemNavigatedTo))
 		{
@@ -709,28 +704,18 @@ void SSequencerTreeView::SynchronizeTreeSelectionWithSequencerSelection()
 	{
 		bUpdatingTreeSelection = true;
 		{
-			const TArray<FDisplayNodeRef>& ItemsSourceRef = (*this->ItemsSource);
-			
+			Private_ClearSelection();
+
 			FSequencer& Sequencer = SequencerNodeTree->GetSequencer();
-			FSequencerSelection& Selection = Sequencer.GetSelection();
-			
-			bool bSelectionChanged = false;
-			for (int32 ItemIndex = 0; ItemIndex < ItemsSourceRef.Num(); ++ItemIndex)
+			for ( const TSharedRef<FSequencerDisplayNode>& Node : Sequencer.GetSelection().GetSelectedOutlinerNodes() )
 			{
-				const bool bIsSelected = IsItemSelected(ItemsSourceRef[ItemIndex]);
-				const bool bShouldBeSelected = Selection.IsSelected(ItemsSourceRef[ItemIndex]);
-				
-				if (bIsSelected != bShouldBeSelected)
+				if (Node->IsSelectable() && Node->GetOutermostParent()->IsPinned() == bShowPinnedNodes)
 				{
-					bSelectionChanged = true;
-					Private_SetItemSelection( ItemsSourceRef[ItemIndex], bShouldBeSelected, false );
+					Private_SetItemSelection( Node, true, false );
 				}
 			}
 
-			if (bSelectionChanged)
-			{
-				Private_SignalSelectionChanged( ESelectInfo::Direct );
-			}
+			Private_SignalSelectionChanged( ESelectInfo::Direct );
 		}
 		bUpdatingTreeSelection = false;
 	}
@@ -826,7 +811,7 @@ bool SSequencerTreeView::SynchronizeSequencerSelectionWithTreeSelection()
 	// If this is a slave SSequencerTreeView it only has a partial view of what is selected. The master should handle syncing the entire selection instead.
 	if (MasterTreeView.IsValid())
 	{
-		return MasterTreeView.Pin()->SynchronizeSequencerSelectionWithTreeSelection();
+		return MasterTreeView->SynchronizeSequencerSelectionWithTreeSelection();
 	}
 
 	bool bSelectionChanged = false;
@@ -843,27 +828,12 @@ bool SSequencerTreeView::SynchronizeSequencerSelectionWithTreeSelection()
 	{
 		FSequencer& Sequencer = SequencerNodeTree->GetSequencer();
 		FSequencerSelection& Selection = Sequencer.GetSelection();
-
-		const TArray<FDisplayNodeRef>& ItemsSourceRef = (*this->ItemsSource);
-			
-		for (int32 ItemIndex = 0; ItemIndex < ItemsSourceRef.Num(); ++ItemIndex)
+		Selection.EmptySelectedOutlinerNodes();
+		for ( const TSharedRef<FSequencerDisplayNode>& Item : AllSelectedItems)
 		{
-			const bool bShouldBeSelected = IsItemSelected(ItemsSourceRef[ItemIndex]);
-			const bool bIsSelected = Selection.IsSelected(ItemsSourceRef[ItemIndex]);
-				
-			if (bIsSelected != bShouldBeSelected)
-			{
-				bSelectionChanged = true;
-				if (bShouldBeSelected)
-				{
-					Selection.AddToSelection(ItemsSourceRef[ItemIndex]);
-				}
-				else
-				{
-					Selection.RemoveFromSelection(ItemsSourceRef[ItemIndex]);
-				}
-			}
+			Selection.AddToSelection( Item );
 		}
+		bSelectionChanged = true;
 	}
 	return bSelectionChanged;
 }
@@ -958,38 +928,56 @@ bool ShouldExpand(const T& InContainer, ETreeRecursion Recursion)
 	return !bAllExpanded;
 }
 
-void SSequencerTreeView::ToggleExpandCollapseNodes(ETreeRecursion Recursion, bool bExpandAll, bool bCollapseAll)
+void SSequencerTreeView::ToggleExpandCollapseNodes(ETreeRecursion Recursion, bool bExpandAll)
+{
+	bool bExpand = false;
+	if (bExpandAll)
+	{
+		bExpand = ShouldExpand(SequencerNodeTree->GetRootNodes(), Recursion);
+	}
+	else
+	{
+		FSequencer& Sequencer = SequencerNodeTree->GetSequencer();
+
+		const TSet< FDisplayNodeRef >& SelectedNodes = Sequencer.GetSelection().GetSelectedOutlinerNodes();
+
+		bExpand = ShouldExpand(SelectedNodes, Recursion);
+	}
+
+	ExpandOrCollapseNodes(Recursion, bExpandAll, bExpand);
+}
+
+void SSequencerTreeView::ExpandNodes(ETreeRecursion Recursion, bool bExpandAll)
+{
+	const bool bExpand = true;
+	ExpandOrCollapseNodes(Recursion, bExpandAll, bExpand);
+}
+
+void SSequencerTreeView::CollapseNodes(ETreeRecursion Recursion, bool bExpandAll)
+{
+	const bool bExpand = false;
+	ExpandOrCollapseNodes(Recursion, bExpandAll, bExpand);
+}
+
+void SSequencerTreeView::ExpandOrCollapseNodes(ETreeRecursion Recursion, bool bExpandAll, bool bExpand)
 {
 	FSequencer& Sequencer = SequencerNodeTree->GetSequencer();
 
-	const TSet< FDisplayNodeRef >& SelectedNodes = Sequencer.GetSelection().GetSelectedOutlinerNodes();
-
-	if (SelectedNodes.Num() > 0 && !bExpandAll && !bCollapseAll)
+	if (bExpandAll)
 	{
-		const bool bExpand = ShouldExpand(SelectedNodes, Recursion);
-		
-		for (TSharedRef<FSequencerDisplayNode> Item : SelectedNodes)
-		{
-			ExpandCollapseNode(Item, bExpand, Recursion);
-		}
-	}
-	else if (SequencerNodeTree->GetRootNodes().Num() > 0)
-	{
-		bool bExpand = ShouldExpand(SequencerNodeTree->GetRootNodes(), Recursion);
-
-		if (bExpandAll)
-		{
-			bExpand = true;
-		}
-		if (bCollapseAll)
-		{
-			bExpand = false;
-		}
-
-		for (TSharedRef<FSequencerDisplayNode> Item : SequencerNodeTree->GetRootNodes())
+		for (auto& Item : SequencerNodeTree->GetRootNodes())
 		{
 			ExpandCollapseNode(Item, bExpand, Recursion);
 		}	
+	}
+	else
+	{
+		const TSet< FDisplayNodeRef >& SelectedNodes = Sequencer.GetSelection().GetSelectedOutlinerNodes();
+
+		for (auto& Item : SelectedNodes)
+		{
+			ExpandCollapseNode(Item, bExpand, Recursion);
+		}
 	}
 }
 

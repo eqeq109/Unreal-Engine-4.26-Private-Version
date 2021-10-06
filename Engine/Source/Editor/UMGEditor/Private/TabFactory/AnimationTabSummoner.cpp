@@ -178,7 +178,7 @@ private:
 	{
 		UWidgetAnimation* Animation = ListItem.Pin()->Animation;
 
-		const FName NewName = *InText.ToString().Left(NAME_SIZE - 1);
+		const FName NewName = *InText.ToString();
 
 		if ( Animation->GetFName() != NewName )
 		{

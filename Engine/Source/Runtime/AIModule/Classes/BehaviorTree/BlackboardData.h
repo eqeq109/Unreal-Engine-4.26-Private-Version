@@ -21,9 +21,6 @@ struct FBlackboardEntry
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(EditAnywhere, Category=Blackboard, Meta=(ToolTip="Optional description to explain what this blackboard entry does."))
 	FString EntryDescription;
-
-	UPROPERTY(EditAnywhere, Category=Blackboard)
-	FName EntryCategory;
 #endif // WITH_EDITORONLY_DATA
 
 	/** key type and additional properties */
@@ -31,7 +28,7 @@ struct FBlackboardEntry
 	UBlackboardKeyType* KeyType;
 
 	/** if set to true then this field will be synchronized across all instances of this blackboard */
-	UPROPERTY(EditAnywhere, Category=Blackboard)
+	UPROPERTY(EditAnywhere, Category = Blackboard)
 	uint32 bInstanceSynced : 1;
 
 	FBlackboardEntry()

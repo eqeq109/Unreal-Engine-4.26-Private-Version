@@ -134,8 +134,10 @@ public:
 
 	ENGINE_API void BindPositionVertexBuffer(const class FVertexFactory* VertexFactory, struct FStaticMeshDataType& Data) const;
 
-	void* GetVertexData() { return Data; }
-	const void* GetVertexData() const { return Data; }
+	void* GetVertexData()
+	{
+		return Data;
+	}
 
 	FRHIShaderResourceView* GetSRV() const { return PositionComponentSRV; }
 

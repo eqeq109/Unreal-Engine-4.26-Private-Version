@@ -77,7 +77,10 @@ private:
 	bool bInit;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamWriteSharedFile() = delete;
+	FOnlineAsyncTaskSteamWriteSharedFile() :
+		bInit(false)
+	{
+	}
 
 PACKAGE_SCOPE:
 

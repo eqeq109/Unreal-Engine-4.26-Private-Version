@@ -5,7 +5,6 @@
 #include "CADToolsModule.h"
 #include "DatasmithCADTranslator.h"
 
-#include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleInterface.h"
@@ -25,17 +24,8 @@ void FDatasmithCADTranslatorModule::StartupModule()
 		IFileManager::Get().DeleteDirectory(*OldCacheDir, true, true);
 	}
 
-	bool bCreateCacheFolder = false;
-	if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CADTranslator.EnableCADCache")))
-	{
-		bCreateCacheFolder = CVar->GetInt() != 0;
-	}
-
-	if (bCreateCacheFolder)
-	{
-		CacheDir = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("DatasmithCADCache"), *FString::FromInt(CacheVersion)));
-		IFileManager::Get().MakeDirectory(*CacheDir);
-	}
+	CacheDir = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("DatasmithCADCache"), *FString::FromInt(CacheVersion)));
+	IFileManager::Get().MakeDirectory(*CacheDir);
 
 	Datasmith::RegisterTranslator<FDatasmithCADTranslator>();
 }

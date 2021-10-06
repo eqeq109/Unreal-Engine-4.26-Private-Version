@@ -1,7 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#define USE_IES_TERM 0 // this shader doesn't bind the IES atlas, so disable the IES term from path tracer lights
-
 #include "../Common.ush"
 #include "../RectLight.ush"
 //#include "../MonteCarlo.ush"
@@ -14,8 +12,8 @@
 
 #include "../PathTracing/Light/PathTracingLightSampling.ush"
 #include "../PathTracing/Material/PathTracingMaterialSampling.ush"
-#include "../PathTracing/Utilities/PathTracingRandomSequence.ush"
 
+#include "../QuasiRandom.ush"
 
 #define USE_PATHTRACING_MATERIALS 0
 
@@ -62,7 +60,7 @@ void GenerateCosineNormalRay(
 
 RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 {
-	uint2 DispatchThreadId = DispatchRaysIndex().xy + uint2(View.ViewRectMin.xy) + uint2(RenderTileOffsetX, RenderTileOffsetY);
+	uint2 DispatchThreadId = DispatchRaysIndex().xy + View.ViewRectMin + uint2(RenderTileOffsetX, RenderTileOffsetY);
 	RWGlobalIlluminationUAV[DispatchThreadId] = 0.0;
 	RWGlobalIlluminationRayDistanceUAV[DispatchThreadId] = float2(-1.0, 0.0);
 
@@ -104,17 +102,19 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 		return;
 	}
 
+	FQuasiRandom QuasiRandom;
+	QuasiRandom_Initialize(QuasiRandom, DispatchThreadId, 0, SamplesPerPixel);
+
 	float3 Irradiance = 0;
 	float HitDistance = 0.0;
 	float HitCount = 0.0;
 	float AmbientOcclusion = 0.0;
 	for (uint SampleIndex = 0; SampleIndex < SamplesPerPixel; ++SampleIndex)
 	{
-		RandomSequence RandSequence;
-		RandomSequence_Initialize(RandSequence, PixelCoord, SampleIndex, View.StateFrameIndex, SamplesPerPixel);
+		QuasiRandom_Update(QuasiRandom, SampleIndex, SamplesPerPixel);
 
 		float3 RayThroughput = 1.0;
-		float3 RandSample = RandomSequence_GenerateSample3D(RandSequence);
+		float3 RandSample = QuasiRandom_Sample3(QuasiRandom);
 
 		// Russian roulette based on DiffuseColor
 		if (UseRussianRoulette)
@@ -139,7 +139,8 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 		FDirectLighting LightingSample = EvaluateBxDF(GBufferData, N, V, L, NoL, ShadowTerms);
 		RayThroughput *= LightingSample.Diffuse / DiffuseColor;
 #else
-		float2 RandSample = RandomSequence_GenerateSample2D(RandSequence);
+		uint DummyVariable;
+		float2 RandSample = RandomSequence_GenerateSample2D(RandSequence, DummyVariable);
 		float2 ViewportUV = (PixelCoord.xy + RandSample.xy) * View.BufferSizeAndInvSize.zw;
 		Ray.Origin = ReconstructWorldPositionFromDepth(ViewportUV, 0.0f);
 		Ray.Direction = normalize(ReconstructWorldPositionFromDepth(ViewportUV, 1.f) - Ray.Origin);
@@ -182,9 +183,8 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 				if (EvalSkyLight && Bounce > 0)
 				{
 					uint SkyLightId = 0;
-					RayDesc LightRay = Ray;
-					LightRay.TMax = POSITIVE_INFINITY;
-					float3 EnvironmentRadiance = SkyLight_TraceLight(Ray, SkyLightId).Radiance;
+					float3 EnvironmentRadiance = 0.0;
+					SkyLight_EvalLight(SkyLightId, Ray.Direction, Ray, EnvironmentRadiance);
 					Irradiance += EnvironmentRadiance * RayThroughput / RayPdf;
 				}
 				break;
@@ -226,25 +226,18 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 			{
 				// Light selection
 				int LightId;
-				float3 LightRadianceOverPdf = 0;
+				float3 LightUV;
 				float NeePdf = 0.0;
 
-				float3 RandSample3 = RandomSequence_GenerateSample3D(RandSequence);
+				float4 RandSample4;
+				RandSample4.xyz = QuasiRandom_Sample3(QuasiRandom);
+				RandSample4.w = QuasiRandom_Sample3(QuasiRandom).x;
+				SampleLight(Ray, Payload, RandSample4, LightId, LightUV, NeePdf);
 
-				RayDesc LightRay;
-				if (SampleLight(RandSample3,
-								Ray.Origin,
-								Payload.WorldNormal,
-								Payload.PrimitiveLightingChannelMask,
-								ENABLE_TRANSMISSION,
-								LightId,
-								LightRay.Direction,
-								LightRay.TMax,
-								LightRadianceOverPdf,
-								NeePdf))
+				if (NeePdf > 0.0)
 				{
-					LightRay.Origin = Ray.Origin;
-					LightRay.TMin = 0;
+					RayDesc LightRay;
+					GenerateLightRay(Ray, LightId, LightUV, LightRay);
 					LightRay.TMax = min(LightRay.TMax, MaxShadowDistance);
 					bool bTransmission = HasTransmission(LightId);
 					float3 BiasNormal = Payload.WorldNormal;
@@ -272,13 +265,15 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 					// No hit indicates successful next-event connection
 					if (NeePayload.IsMiss())
 					{
+						// Evaluate radiance
+						float3 Radiance;
+						EvalLight(LightId, LightUV, LightRay, Radiance);
+
 						// Evaluate material
 						float3 MaterialThroughput;
 						float MaterialEvalPdf = 0.0;
 #if USE_PATHTRACING_MATERIALS
-						float3 MaterialWeight = 0;
-						EvalMaterial(Ray.Direction, LightRay.Direction, Payload, MaterialWeight, MaterialEvalPdf);
-						MaterialThroughput = MaterialWeight * MaterialEvalPdf;
+						EvalMaterial(Ray.Direction, LightRay.Direction, Payload, MaterialThroughput, MaterialEvalPdf);
 #else
 						half3 N = Payload.WorldNormal;
 						half3 V = -Ray.Direction;
@@ -293,9 +288,16 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 						}
 						MaterialEvalPdf = 1.0;
 #endif
-
+						// Apply material Pdf for correct MIS weight
+						float MisWeight = 1.0;
+#if 0
+						if (IsUnidirectionalEnabled && IsPhysicalLight(LightId))
+						{
+							MisWeight = NeePdf / (NeePdf + MaterialEvalPdf);
+						}
+#endif
 						// Record the contribution
-						float3 ExitantRadianceSample = LightRadianceOverPdf * MaterialThroughput * RayThroughput * SplitFactor / RayPdf;
+						float3 ExitantRadianceSample = Radiance * MaterialThroughput * RayThroughput * SplitFactor * MisWeight / (NeePdf * RayPdf);
 
 						// Tonemap for firefly suppression
 						if (UseFireflySuppression)
@@ -314,16 +316,13 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 				float3 Direction;
 				float3 Throughput = 1.0;
 #if USE_PATHTRACING_MATERIALS
-				RandSample4 = RandomSequence_GenerateSample4D(RandSequence);
-
+				float4 RandSample;
+				RandSample.xyz = QuasiRandom_Sample3(QuasiRandom);
+				RandSample.w = QuasiRandom_Sample3(QuasiRandom).x;
 				float PositionBiasSign;
-				float3 Weight = 0;
-				SampleMaterial(Ray.Direction, Payload, RandSample, Direction, Weight, MaterialPdf, PositionBiasSign);
-				Throughput = Weight * MaterialPdf;
+				SampleMaterial(Ray.Direction, Payload, RandSample, Direction, Throughput, MaterialPdf, PositionBiasSign);
 #else
-
-				float3 RandSample3 = RandomSequence_GenerateSample3D(RandSequence);
-
+				float3 RandSample3 = QuasiRandom_Sample3(QuasiRandom);
 				float3 RayOrigin = Ray.Origin;
 				GenerateCosineNormalRay(RayOrigin, Payload.WorldNormal, RandSample3.xy, Ray.Origin, Direction, Ray.TMin, Ray.TMax, MaterialPdf);
 				

@@ -2,11 +2,12 @@
 
 #include "Tracks/MovieSceneEnumTrack.h"
 #include "Sections/MovieSceneEnumSection.h"
+#include "IMovieScenePlayer.h"
+#include "Evaluation/MovieScenePropertyTemplates.h"
 
 UMovieSceneEnumTrack::UMovieSceneEnumTrack( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )
-{
-}
+{ }
 
 void UMovieSceneEnumTrack::PostLoad()
 {
@@ -26,6 +27,11 @@ UMovieSceneSection* UMovieSceneEnumTrack::CreateNewSection()
 	return NewEnumSection;
 }
 
+FMovieSceneEvalTemplatePtr UMovieSceneEnumTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FMovieSceneEnumPropertySectionTemplate(*CastChecked<UMovieSceneEnumSection>(&InSection), *this);
+}
+
 void UMovieSceneEnumTrack::SetEnum(UEnum* InEnum)
 {
 	Enum = InEnum;
@@ -38,6 +44,7 @@ void UMovieSceneEnumTrack::SetEnum(UEnum* InEnum)
 		}
 	}
 }
+
 
 UEnum* UMovieSceneEnumTrack::GetEnum() const
 {

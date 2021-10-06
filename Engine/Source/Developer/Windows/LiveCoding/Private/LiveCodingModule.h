@@ -34,11 +34,6 @@ public:
 	virtual void Tick() override;
 	virtual FOnPatchCompleteDelegate& GetOnPatchCompleteDelegate() override;
 
-	static void PreCompileHook();
-	static void PostCompileHook();
-private:
-	void AttemptSyncLivePatching();
-
 private:
 	ULiveCodingSettings* Settings;
 	TSharedPtr<ISettingsSection> SettingsSection;
@@ -47,7 +42,6 @@ private:
 	bool bStarted;
 	bool bUpdateModulesInTick;
 	TSet<FName> ConfiguredModules;
-	TArray<void*> LppPendingTokens;
 
 	const FString FullEnginePluginsDir;
 	const FString FullProjectDir;

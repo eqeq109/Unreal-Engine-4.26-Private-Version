@@ -31,7 +31,6 @@ public class WaterEditor : ModuleRules
 				"EditorSubsystem",
 				"ComponentVisualizers",
 				"DeveloperSettings",
-				"AdvancedPreviewScene",
 				"RenderCore",
 				"RHI"
 			});

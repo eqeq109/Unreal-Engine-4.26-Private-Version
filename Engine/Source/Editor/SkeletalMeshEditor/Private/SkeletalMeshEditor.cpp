@@ -46,9 +46,6 @@
 #include "Factories/FbxSkeletalMeshImportData.h"
 
 #include "Misc/MessageDialog.h"
-#include "Interfaces/ITargetPlatform.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
-#include "Misc/CoreMisc.h"
 
 const FName SkeletalMeshEditorAppIdentifier = FName(TEXT("SkeletalMeshEditorApp"));
 
@@ -138,15 +135,15 @@ bool FSkeletalMeshEditor::OnRequestClose()
 			}
 
 			bool bValidLODSettings = false;
-			if (SkeletalMesh->GetLODSettings() != nullptr)
+			if (SkeletalMesh->LODSettings != nullptr)
 			{
-				const int32 NumSettings = FMath::Min(SkeletalMesh->GetLODSettings()->GetNumberOfSettings(), SkeletalMesh->GetLODNum());
+				const int32 NumSettings = FMath::Min(SkeletalMesh->LODSettings->GetNumberOfSettings(), SkeletalMesh->GetLODNum());
 				if (LODIndex < NumSettings)
 				{
 					bValidLODSettings = true;
 				}
 			}
-			const FSkeletalMeshLODGroupSettings* SkeletalMeshLODGroupSettings = bValidLODSettings ? &SkeletalMesh->GetLODSettings()->GetSettingsForLODLevel(LODIndex) : nullptr;
+			const FSkeletalMeshLODGroupSettings* SkeletalMeshLODGroupSettings = bValidLODSettings ? &SkeletalMesh->LODSettings->GetSettingsForLODLevel(LODIndex) : nullptr;
 
 			FGuid BuildGUID = LODInfo->ComputeDeriveDataCacheKey(SkeletalMeshLODGroupSettings);
 			if (LODInfo->BuildGUID != BuildGUID)
@@ -311,7 +308,7 @@ void FSkeletalMeshEditor::RegisterReimportContextMenu(const FName InBaseMenuName
 		{
 			if (USkeletalMesh* FoundSkeletalMesh = SkeletalMeshEditor->SkeletalMesh)
 			{
-				UFbxSkeletalMeshImportData* SkeletalMeshImportData = Cast<UFbxSkeletalMeshImportData>(FoundSkeletalMesh->GetAssetImportData());
+				UFbxSkeletalMeshImportData* SkeletalMeshImportData = Cast<UFbxSkeletalMeshImportData>(FoundSkeletalMesh->AssetImportData);
 				if (SkeletalMeshImportData)
 				{
 					SkeletalMeshImportData->ImportContentType = SourceFileIndex == 0 ? EFBXImportContentType::FBXICT_All : SourceFileIndex == 1 ? EFBXImportContentType::FBXICT_Geometry : EFBXImportContentType::FBXICT_SkinningWeights;
@@ -353,7 +350,7 @@ void FSkeletalMeshEditor::RegisterReimportContextMenu(const FName InBaseMenuName
 		{
 			if (USkeletalMesh* FoundSkeletalMesh = SkeletalMeshEditor->SkeletalMesh)
 			{
-				UFbxSkeletalMeshImportData* SkeletalMeshImportData = FoundSkeletalMesh ? Cast<UFbxSkeletalMeshImportData>(FoundSkeletalMesh->GetAssetImportData()) : nullptr;
+				UFbxSkeletalMeshImportData* SkeletalMeshImportData = FoundSkeletalMesh ? Cast<UFbxSkeletalMeshImportData>(FoundSkeletalMesh->AssetImportData) : nullptr;
 				if (SkeletalMeshImportData)
 				{
 					SkeletalMeshImportData->ImportContentType = SourceFileIndex == 0 ? EFBXImportContentType::FBXICT_All : SourceFileIndex == 1 ? EFBXImportContentType::FBXICT_Geometry : EFBXImportContentType::FBXICT_SkinningWeights;
@@ -390,13 +387,13 @@ void FSkeletalMeshEditor::RegisterReimportContextMenu(const FName InBaseMenuName
 		if (SkeletalMeshEditor.IsValid())
 		{
 			USkeletalMesh* InSkeletalMesh = SkeletalMeshEditor->SkeletalMesh;
-			if (InSkeletalMesh && InSkeletalMesh->GetAssetImportData())
+			if (InSkeletalMesh && InSkeletalMesh->AssetImportData)
 			{
 				//Get the data
 				TArray<FString> SourceFilePaths;
-				InSkeletalMesh->GetAssetImportData()->ExtractFilenames(SourceFilePaths);
+				InSkeletalMesh->AssetImportData->ExtractFilenames(SourceFilePaths);
 				TArray<FString> SourceFileLabels;
-				InSkeletalMesh->GetAssetImportData()->ExtractDisplayLabels(SourceFileLabels);
+				InSkeletalMesh->AssetImportData->ExtractDisplayLabels(SourceFileLabels);
 
 				if (SourceFileLabels.Num() > 0 && SourceFileLabels.Num() == SourceFilePaths.Num())
 				{
@@ -433,7 +430,7 @@ void FSkeletalMeshEditor::RegisterReimportContextMenu(const FName InBaseMenuName
 			if (SkeletalMeshEditor.IsValid())
 			{
 				USkeletalMesh* InSkeletalMesh = SkeletalMeshEditor->SkeletalMesh;
-				bool bShowSubMenu = InSkeletalMesh != nullptr && InSkeletalMesh->GetAssetImportData() != nullptr && InSkeletalMesh->GetAssetImportData()->GetSourceFileCount() > 1;
+				bool bShowSubMenu = InSkeletalMesh != nullptr && InSkeletalMesh->AssetImportData != nullptr && InSkeletalMesh->AssetImportData->GetSourceFileCount() > 1;
 
 				FToolMenuSection& Section = InMenu->AddSection("Section");
 				if (!bShowSubMenu)
@@ -603,7 +600,7 @@ void FSkeletalMeshEditor::FillMeshClickMenu(FMenuBuilder& MenuBuilder, HActor* H
 		return;
 	}
 
-	const int32 LodIndex = MeshComp->GetPredictedLODLevel();
+	const int32 LodIndex = MeshComp->PredictedLODLevel;
 	const int32 SectionIndex = HitProxy->SectionIndex;
 
 	TSharedRef<SWidget> InfoWidget = SNew(SBox)
@@ -725,7 +722,7 @@ void FSkeletalMeshEditor::OnRemoveSectionFromLodAndBelowMenuItemClicked(int32 Lo
 		const FSkeletalMeshLODInfo* CurrentSkeletalMeshLODInfo = SkeletalMesh->GetLODInfo(GenerateLodIndex);
 		if (CurrentSkeletalMeshLODInfo != nullptr && CurrentSkeletalMeshLODInfo->bHasBeenSimplified && BaseLodIndexes.Contains(CurrentSkeletalMeshLODInfo->ReductionSettings.BaseLOD))
 		{
-			FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, GenerateLodIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform(), true);
+			FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, GenerateLodIndex, true);
 			BaseLodIndexes.Add(GenerateLodIndex);
 		}
 	}
@@ -745,7 +742,7 @@ void FSkeletalMeshEditor::FillApplyClothingAssetMenu(FMenuBuilder& MenuBuilder, 
 
 	MenuBuilder.BeginSection(TEXT("ApplyClothingMenu"), LOCTEXT("ApplyClothingMenuHeader", "Available Assets"));
 	{
-		for(UClothingAssetBase* BaseAsset : Mesh->GetMeshClothingAssets())
+		for(UClothingAssetBase* BaseAsset : Mesh->MeshClothingAssets)
 		{
 			UClothingAssetCommon* ClothAsset = CastChecked<UClothingAssetCommon>(BaseAsset);
 
@@ -898,7 +895,7 @@ bool FSkeletalMeshEditor::CanApplyClothing(int32 InLodIndex, int32 InSectionInde
 {
 	USkeletalMesh* Mesh = GetPersonaToolkit()->GetPreviewMesh();
 
-	if(Mesh->GetMeshClothingAssets().Num() > 0)
+	if(Mesh->MeshClothingAssets.Num() > 0)
 	{
 	FSkeletalMeshModel* MeshResource = Mesh->GetImportedModel();
 
@@ -960,7 +957,7 @@ bool FSkeletalMeshEditor::CanCreateClothingLod(int32 InLodIndex, int32 InSection
 {
 	USkeletalMesh* Mesh = GetPersonaToolkit()->GetPreviewMesh();
 
-	return Mesh && Mesh->GetMeshClothingAssets().Num() > 0 && CanApplyClothing(InLodIndex, InSectionIndex);
+	return Mesh && Mesh->MeshClothingAssets.Num() > 0 && CanApplyClothing(InLodIndex, InSectionIndex);
 }
 
 void FSkeletalMeshEditor::ApplyClothing(UClothingAssetBase* InAsset, int32 InLodIndex, int32 InSectionIndex, int32 InClothingLod)
@@ -989,12 +986,9 @@ void FSkeletalMeshEditor::ApplyClothing(UClothingAssetBase* InAsset, int32 InLod
 		};
 		if (UClothingAssetCommon* ClothingAsset = Cast<UClothingAssetCommon>(InAsset))
 		{
-			ClothingAsset->Modify();
-
 			// Look for a currently bound asset an unbind it if necessary first
 			if (UClothingAssetBase* CurrentAsset = Mesh->GetSectionClothingAsset(InLodIndex, InSectionIndex))
 			{
-				CurrentAsset->Modify();
 				CurrentAsset->UnbindFromSkeletalMesh(Mesh, InLodIndex);
 				ClearOriginalSectionUserData();
 			}
@@ -1003,7 +997,7 @@ void FSkeletalMeshEditor::ApplyClothing(UClothingAssetBase* InAsset, int32 InLod
 			{
 				//Successful bind so set the SectionUserData
 				int32 AssetIndex = INDEX_NONE;
-				check(Mesh->GetMeshClothingAssets().Find(ClothingAsset, AssetIndex));
+				check(Mesh->MeshClothingAssets.Find(ClothingAsset, AssetIndex));
 				OriginalSectionData.CorrespondClothAssetIndex = AssetIndex;
 				OriginalSectionData.ClothingData.AssetGuid = ClothingAsset->GetAssetGuid();
 				OriginalSectionData.ClothingData.AssetLodIndex = InClothingLod;
@@ -1014,7 +1008,6 @@ void FSkeletalMeshEditor::ApplyClothing(UClothingAssetBase* InAsset, int32 InLod
 			//User set none, so unbind anything that is bind
 			if (UClothingAssetBase* CurrentAsset = Mesh->GetSectionClothingAsset(InLodIndex, InSectionIndex))
 			{
-				CurrentAsset->Modify();
 				CurrentAsset->UnbindFromSkeletalMesh(Mesh, InLodIndex);
 				ClearOriginalSectionUserData();
 			}
@@ -1201,7 +1194,7 @@ void ReimportAllCustomLODs(USkeletalMesh* SkeletalMesh, UDebugSkelMeshComponent*
 				FSkeletalMeshUpdateContext UpdateContext;
 				UpdateContext.SkeletalMesh = SkeletalMesh;
 				UpdateContext.AssociatedComponents.Push(PreviewMeshComponent);
-				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LodIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform(), false);
+				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LodIndex, false);
 				Dependencies[LodIndex] = true;
 			}
 		}

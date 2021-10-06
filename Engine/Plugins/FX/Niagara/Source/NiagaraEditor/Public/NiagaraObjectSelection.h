@@ -18,15 +18,9 @@ public:
 		return SelectedObjects;
 	}
 
-	const void* GetAdditionalSelectionInfo() const
-	{
-		return AdditionalSelectionInfo;
-	}
-
 	/** Replaces the currently selected set of objects with the supplied object. */
-	void SetSelectedObject(SelectedItemType SelectedObject, const void* InSelectionInfo)
+	void SetSelectedObject(SelectedItemType SelectedObject)
 	{
-		AdditionalSelectionInfo = InSelectionInfo;
 		if (SelectedObjects.Num() == 1 && SelectedObjects.Contains(SelectedObject))
 		{
 			// Refresh the delegate, in case a different object selection has been used in 
@@ -40,19 +34,12 @@ public:
 		OnSelectedObjectsChangedDelegate.Broadcast();
 	}
 
-	/** Replaces the currently selected set of objects with the supplied object. */
-	void SetSelectedObject(SelectedItemType SelectedObject)
-	{
-		SetSelectedObject(SelectedObject, nullptr);
-	}
-
 	/** Replaces the currently selected set of objects with the supplied set. */
 	void SetSelectedObjects(const TSet<SelectedItemType>& InSelectedObjects)
 	{
 		if (FNiagaraEditorUtilities::SetsMatch(SelectedObjects, InSelectedObjects) == false)
 		{
 			SelectedObjects.Empty();
-			AdditionalSelectionInfo = nullptr;
 			SelectedObjects = InSelectedObjects;
 			OnSelectedObjectsChangedDelegate.Broadcast();
 		}
@@ -64,7 +51,6 @@ public:
 		if (FNiagaraEditorUtilities::ArrayMatchesSet(InSelectedObjects, SelectedObjects) == false)
 		{
 			SelectedObjects.Empty();
-			AdditionalSelectionInfo = nullptr;
 			SelectedObjects.Append(InSelectedObjects);
 			OnSelectedObjectsChangedDelegate.Broadcast();
 		}
@@ -76,7 +62,6 @@ public:
 		if (SelectedObjects.Num() > 0)
 		{
 			SelectedObjects.Empty();
-			AdditionalSelectionInfo = nullptr;
 			OnSelectedObjectsChangedDelegate.Broadcast();
 		}
 	}
@@ -87,21 +72,12 @@ public:
 		return OnSelectedObjectsChangedDelegate;
 	}
 
-	/** Refresh all views subscribed to OnSelectedObjectsChanged. */
-	void Refresh()
-	{
-		OnSelectedObjectsChangedDelegate.Broadcast();
-	}
-
 private:
 	/** The set of selected objects. */
 	TSet<SelectedItemType> SelectedObjects;
 
 	/** The delegate which is called whenever the set of selected objects changes. */
 	FOnSelectedObjectsChanged OnSelectedObjectsChangedDelegate;
-
-	/** Any additional data payload for the selection. */
-	const void* AdditionalSelectionInfo = nullptr;
 };
 
 class FNiagaraObjectSelection : public TNiagaraSelection<UObject*>

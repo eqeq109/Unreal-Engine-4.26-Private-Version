@@ -14,13 +14,11 @@
 
 void FNiagaraStackFunctionInputCondition::Initialize(UNiagaraScript* InScript,
 	TArray<UNiagaraScript*> InDependentScripts,
-	FCompileConstantResolver InConstantResolver,
 	FString InOwningEmitterUniqueName,
 	UNiagaraNodeFunctionCall* InFunctionCallNode)
 {
 	Script = InScript;
 	DependentScripts = InDependentScripts;
-	ConstantResolver = InConstantResolver;
 	OwningEmitterUniqueName = InOwningEmitterUniqueName;
 	FunctionCallNode = InFunctionCallNode;
 }
@@ -42,7 +40,7 @@ void FNiagaraStackFunctionInputCondition::Refresh(const FNiagaraInputConditionMe
 		TargetValues.Add("true");
 	}
 
-	if (InputBinder.TryBind(Script, DependentScripts, ConstantResolver, OwningEmitterUniqueName, FunctionCallNode, InputCondition.InputName, TOptional<FNiagaraTypeDefinition>(), true, OutErrorMessage))
+	if (InputBinder.TryBind(Script, DependentScripts, OwningEmitterUniqueName, FunctionCallNode, InputCondition.InputName, TOptional<FNiagaraTypeDefinition>(), true, OutErrorMessage))
 	{
 		FNiagaraEditorModule& NiagaraEditorModule = FModuleManager::GetModuleChecked<FNiagaraEditorModule>("NiagaraEditor");
 		TSharedPtr<INiagaraEditorTypeUtilities, ESPMode::ThreadSafe> TypeEditorUtilities = NiagaraEditorModule.GetTypeUtilities(InputBinder.GetInputType());
@@ -129,7 +127,7 @@ TOptional<FNiagaraVariableMetaData> FNiagaraStackFunctionInputCondition::GetCond
 {
 	checkf(IsValid(), TEXT("Can not get the input metadata for an invalid input condition"));
 	FNiagaraVariable InputVariable(InputBinder.GetInputType(), InputBinder.GetInputName());
-	UNiagaraGraph* FunctionGraph = CastChecked<UNiagaraScriptSource>(FunctionCallNode->GetFunctionScriptSource())->NodeGraph;
+	UNiagaraGraph* FunctionGraph = CastChecked<UNiagaraScriptSource>(FunctionCallNode->FunctionScript->GetSource())->NodeGraph;
 	return FunctionGraph->GetMetaData(InputVariable);
 }
 

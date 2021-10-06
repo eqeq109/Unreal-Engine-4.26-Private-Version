@@ -173,9 +173,9 @@ public:
 		PackedUniformBuffers.SetPackedGlobalParameter(BufferIndex, ByteOffset, NumBytes, NewValue, PackedUniformBuffersDirty);
 	}
 
-	inline void SetUniformBufferConstantData(uint32 BindingIndex, const TArray<uint8>& ConstantData, const FVulkanUniformBuffer* SrcBuffer)
+	inline void SetUniformBufferConstantData(uint32 BindingIndex, const TArray<uint8>& ConstantData)
 	{
-		PackedUniformBuffers.SetEmulatedUniformBufferIntoPacked(BindingIndex, ConstantData, SrcBuffer, PackedUniformBuffersDirty);
+		PackedUniformBuffers.SetEmulatedUniformBufferIntoPacked(BindingIndex, ConstantData, PackedUniformBuffersDirty);
 	}
 
 	bool UpdateDescriptorSets(FVulkanCommandListContext* CmdListContext, FVulkanCmdBuffer* CmdBuffer)
@@ -232,9 +232,9 @@ public:
 		PackedUniformBuffers[Stage].SetPackedGlobalParameter(BufferIndex, ByteOffset, NumBytes, NewValue, PackedUniformBuffersDirty[Stage]);
 	}
 
-	inline void SetUniformBufferConstantData(uint8 Stage, uint32 BindingIndex, const TArray<uint8>& ConstantData, const FVulkanUniformBuffer* SrcBuffer)
+	inline void SetUniformBufferConstantData(uint8 Stage, uint32 BindingIndex, const TArray<uint8>& ConstantData)
 	{
-		PackedUniformBuffers[Stage].SetEmulatedUniformBufferIntoPacked(BindingIndex, ConstantData, SrcBuffer, PackedUniformBuffersDirty[Stage]);
+		PackedUniformBuffers[Stage].SetEmulatedUniformBufferIntoPacked(BindingIndex, ConstantData, PackedUniformBuffersDirty[Stage]);
 	}
 
 	inline void SetDynamicUniformBuffer(uint8 DescriptorSet, uint32 BindingIndex, const FVulkanRealUniformBuffer* UniformBuffer)
@@ -315,11 +315,6 @@ static inline bool UpdatePackedUniformBuffers(VkDeviceSize UBOffsetAlignment, co
 
 			// get location in the ring buffer to use
 			FMemory::Memcpy(CPURingBufferBase + RingBufferOffset, StagedUniformBuffer.GetData(), UBSize);
-
-			if (UniformBufferUploader->bEnableUniformBufferPatching)
-			{
-				PackedUniformBuffers.RecordUniformBufferPatch(UniformBufferUploader->GetUniformBufferPatchInfo(), UniformBufferUploader->UniformBufferPatchingFrameNumber, PackedUBIndex, CPURingBufferBase + RingBufferOffset);
-			}
 
 			if (bIsDynamic)
 			{

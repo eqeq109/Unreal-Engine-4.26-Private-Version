@@ -15,7 +15,6 @@ class FLidarPointCloudEditorViewportClient;
 class SVerticalBox;
 class ULidarPointCloud;
 class ULidarPointCloudComponent;
-class UStaticMeshComponent;
 
 /**
  * PointCloud Editor Preview viewport widget
@@ -42,8 +41,6 @@ public:
 
 	/** Component for the preview point cloud. */
 	ULidarPointCloudComponent* PreviewCloudComponent;
-
-	UStaticMeshComponent* PaintBrush;
 
 	/**
 	 *	Sets up the point cloud that the Point Cloud editor is viewing.
@@ -74,8 +71,6 @@ public:
 	virtual TSharedPtr<FExtender> GetExtenders() const override { return TSharedPtr<FExtender>(MakeShareable(new FExtender)); }
 	virtual void OnFloatingButtonClicked() override {}
 	// End of ICommonEditorViewportToolbarInfoProvider interface
-
-	TSharedPtr<FLidarPointCloudEditorViewportClient> GetEditorViewportClient() { return EditorViewportClient; }
 
 protected:
 	/** SEditorViewport interface */
@@ -110,7 +105,4 @@ private:
 
 	/** Pointer to the vertical box into which the overlay text items are added */
 	TSharedPtr<SVerticalBox> OverlayTextVerticalBox;
-
-	/** Pointer to the background of the overlay text */
-	TSharedPtr<SBorder> OverlayTextBackground;
 };

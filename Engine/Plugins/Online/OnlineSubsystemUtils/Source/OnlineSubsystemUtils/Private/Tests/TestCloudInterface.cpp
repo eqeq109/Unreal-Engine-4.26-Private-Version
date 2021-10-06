@@ -24,7 +24,6 @@ void FTestCloudInterface::Test(UWorld* InWorld)
 			// Setup delegates
 			EnumerationDelegate = FOnEnumerateUserFilesCompleteDelegate::CreateRaw(this, &FTestCloudInterface::OnEnumerateUserFilesComplete);
 			OnWriteUserCloudFileCompleteDelegate = FOnWriteUserFileCompleteDelegate::CreateRaw(this, &FTestCloudInterface::OnWriteUserCloudFileComplete);
-			OnWriteUserFileCanceledDelegate = FOnWriteUserFileCanceledDelegate::CreateRaw(this, &FTestCloudInterface::OnCancelWriteUserCloudFileComplete);
 			OnReadEnumeratedUserFilesCompleteDelegate = FOnReadUserFileCompleteDelegate::CreateRaw(this, &FTestCloudInterface::OnReadEnumeratedUserFilesComplete);
 			OnDeleteEnumeratedUserFilesCompleteDelegate = FOnDeleteUserFileCompleteDelegate::CreateRaw(this, &FTestCloudInterface::OnDeleteEnumeratedUserFilesComplete);
 
@@ -55,75 +54,70 @@ bool FTestCloudInterface::Tick( float DeltaTime )
 {
     QUICK_SCOPE_CYCLE_COUNTER(STAT_FTestCloudInterface_Tick);
 
-	if (CurrentTestPhase != LastTestPhase)
+	if (TestPhase != LastTestPhase)
 	{
 		if (!bOverallSuccess)
 		{
 			UE_LOG_ONLINE_CLOUD(Log, TEXT("Testing failed in phase %d"), LastTestPhase);
-			CurrentTestPhase = EUserCloudTestPhase::End;
+			TestPhase = 10;
 		}
 		if (!SharedCloud.IsValid() && 
-			CurrentTestPhase > EUserCloudTestPhase::CancelWritingFiles)
+			TestPhase > 4)
 		{
 			UE_LOG_ONLINE_CLOUD(Log, TEXT("Skipping shared cloud tests"));
-			CurrentTestPhase = EUserCloudTestPhase::End;
+			TestPhase = 10;
 		}
 
-		switch(CurrentTestPhase)
+		switch(TestPhase)
 		{
-		case EUserCloudTestPhase::EnumerateFiles:
+		case 0:
 			// Enumerate all files at the beginning
 			EnumerateUserFiles();
 			break;
-		case EUserCloudTestPhase::WriteFiles:
+		case 1:
 			// Write out N files for the user of various sizes/names and enumerate
 			// @todo: make the file count configurable on a per-platform basis, since different platforms have different file count limits
-			OnWriteUserCloudFileCompleteDelegateHandle = WriteNUserCloudFiles(*UserId, FString(TEXT("UserCloud.bin")), 15, false, OnWriteUserCloudFileCompleteDelegate);
+			OnWriteUserCloudFileCompleteDelegateHandle = WriteNUserCloudFiles(*UserId, FString(TEXT("UserCloud.bin")), 15, OnWriteUserCloudFileCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::ReadFiles:
+		case 2:
 			// Read in N files for the user and enumerate
 			OnReadEnumeratedUserFilesCompleteDelegateHandle = ReadEnumeratedUserFiles(OnReadEnumeratedUserFilesCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::DeleteFilesLocally:
-			// Delete the N files for the user and enumerate (should be removed locally but remain in the cloud)
-			// We run local deletion first because the opposite would mean that by the time we attempt a local deletion, EnumerateUserFiles may return an empty list
-			OnDeleteEnumeratedUserFilesCompleteDelegateHandle = DeleteEnumeratedUserFiles(false, true, OnDeleteEnumeratedUserFilesCompleteDelegate);
-			break;
-		case EUserCloudTestPhase::DeleteFilesInCloud:
-			// Forget the N files for the user and enumerate (should be removed in the cloud but remain locally)
+		case 3: 
+			// Forget the N files for the user and enumerate (should still remain locally)
 			OnDeleteEnumeratedUserFilesCompleteDelegateHandle = DeleteEnumeratedUserFiles(true, false, OnDeleteEnumeratedUserFilesCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::CancelWritingFiles:
-			OnWriteUserCloudFileCompleteDelegateHandle = WriteNUserCloudFiles(*UserId, FString(TEXT("UserCloud.bin")), 5, true, OnWriteUserCloudFileCompleteDelegate);
-			OnWriteUserFileCanceledDelegateHandle = CancelWriteNUserCloudFiles(*UserId, FString(TEXT("UserCloud.bin")), 5, OnWriteUserFileCanceledDelegate);
+		case 4:
+			// Delete the N files for the user and enumerate (should be removed permanently)
+			OnDeleteEnumeratedUserFilesCompleteDelegateHandle = DeleteEnumeratedUserFiles(false, true, OnDeleteEnumeratedUserFilesCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::WriteSharedFiles:
+		case 5:
 			// Write out N files for the user and share with the cloud and enumerate
 			OnWriteSharedCloudFileCompleteDelegateHandle = WriteNSharedCloudFiles(*UserId, FString(TEXT("SharedCloud.bin")), 15, OnWriteSharedCloudFileCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::ReadSharedFiles:
+		case 6:
 			// Read in N files given the shared handles that this user generated
 			OnReadEnumerateSharedFileCompleteDelegateHandle = ReadEnumeratedSharedFiles(false, OnReadEnumerateSharedFileCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::DeleteSharedFilesInCloud:
+		case 7:
 			// Delete, marking all the files as only forgotten
 			OnDeleteEnumeratedUserFilesCompleteDelegateHandle = DeleteEnumeratedUserFiles(true, false, OnDeleteEnumeratedUserFilesCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::ReadRandomSharedFiles:
+		case 8:
 			// Try to read in the N random files from their shared handles
 			OnReadEnumerateSharedFileCompleteDelegateHandle = ReadEnumeratedSharedFiles(true, OnReadEnumerateSharedFileCompleteDelegate);
 			break;
-		case EUserCloudTestPhase::DeleteSharedFilesTotally:
+		case 9:
 			// Delete, marking all the files for permanent removal
 			OnDeleteEnumeratedUserFilesCompleteDelegateHandle = DeleteEnumeratedUserFiles(true, true, OnDeleteEnumeratedUserFilesCompleteDelegate);
 			break;	
-		case EUserCloudTestPhase::End:
+		case 10:
 			bOverallSuccess = bOverallSuccess && Cleanup();
 			UE_LOG_ONLINE_CLOUD(Log, TEXT("TESTING COMPLETE Success:%s!"), bOverallSuccess ? TEXT("true") : TEXT("false"));
 			delete this;
 			return false;
 		}
-		LastTestPhase = CurrentTestPhase;
+		LastTestPhase = TestPhase;
 	}
 	return true;
 }
@@ -170,7 +164,7 @@ void FTestCloudInterface::OnEnumerateUserFilesComplete(bool bWasSuccessful, cons
 	}
 
 	// Enumeration always advances the test phase
-	CurrentTestPhase++;
+	TestPhase++;
 }
 
 void FTestCloudInterface::WriteRandomFile(TArray<uint8>& Buffer, int32 Size)
@@ -183,10 +177,12 @@ void FTestCloudInterface::WriteRandomFile(TArray<uint8>& Buffer, int32 Size)
 	}
 }
 
-FDelegateHandle FTestCloudInterface::WriteNUserCloudFiles(const FUniqueNetId& InUserId, const FString& FileNameBase, int32 FileCount, bool bCancelWrite, FOnWriteUserFileCompleteDelegate& Delegate)
+FDelegateHandle FTestCloudInterface::WriteNUserCloudFiles(const FUniqueNetId& InUserId, const FString& FileNameBase, int32 FileCount, FOnWriteUserFileCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_CLOUD(Log, TEXT("------------------------------------------------"));
-	UE_LOG_ONLINE_CLOUD(Log, TEXT("Writing %d files to the cloud for user %s. bCancelWrite=%s"), FileCount, *InUserId.ToDebugString(), *LexToString(bCancelWrite));
+	UE_LOG_ONLINE_CLOUD(Log, TEXT("Writing %d files to the cloud for user %s"), FileCount, *InUserId.ToDebugString());
+
+	FString FileName(FileNameBase);
 
 	WriteUserCloudFileCount = FileCount;
 	FDelegateHandle Result = UserCloud->AddOnWriteUserFileCompleteDelegate_Handle(Delegate);
@@ -197,10 +193,8 @@ FDelegateHandle FTestCloudInterface::WriteNUserCloudFiles(const FUniqueNetId& In
 		// @todo: make the dummy data size configurable on a per-platform basis, since different platforms (e.g. PS4) have different size limits
 		//WriteRandomFile(DummyData, FMath::TruncToInt(FMath::FRandRange(1024, 100*1024)));
 		WriteRandomFile(DummyData, FMath::TruncToInt(FMath::FRandRange(256, 1024)));
-		UserCloud->WriteUserFile(InUserId, FString::Printf(TEXT("%s%d.%s"), *FPaths::GetBaseFilename(FileNameBase), FileIdx, *FPaths::GetExtension(FileNameBase)), DummyData);
+		UserCloud->WriteUserFile(InUserId, FString::Printf(TEXT("%s%d.%s"), *FPaths::GetBaseFilename(FileName), FileIdx, *FPaths::GetExtension(FileName)), DummyData);
 	}
-
-	bIsFailureExpected = bCancelWrite;
 
 	return Result;
 }
@@ -229,7 +223,7 @@ void FTestCloudInterface::OnWriteUserCloudFileComplete(bool bWasSuccessful, cons
 {
 	UE_LOG_ONLINE_CLOUD(Log, TEXT("Write user file complete Success:%d UserId:%s FileName:%s"), bWasSuccessful, *InUserId.ToDebugString(), *FileName);
 	
-	bOverallSuccess = bOverallSuccess && (bWasSuccessful || bIsFailureExpected);
+	bOverallSuccess = bOverallSuccess && bWasSuccessful;
 
 	static int32 NumWrittenCount = 0;
 	NumWrittenCount++;
@@ -239,42 +233,7 @@ void FTestCloudInterface::OnWriteUserCloudFileComplete(bool bWasSuccessful, cons
 		UE_LOG_ONLINE_CLOUD(Log, TEXT("------------------------------------------------"));
 		UserCloud->ClearOnWriteUserFileCompleteDelegate_Handle(OnWriteUserCloudFileCompleteDelegateHandle);
 		NumWrittenCount = 0;
-		bIsFailureExpected = false;
 		EnumerateUserFiles();
-	}
-}
-
-FDelegateHandle FTestCloudInterface::CancelWriteNUserCloudFiles(const FUniqueNetId& InUserId, const FString& FileNameBase, int32 FileCount, FOnWriteUserFileCanceledDelegate& Delegate)
-{
-	UE_LOG_ONLINE_CLOUD(Log, TEXT("------------------------------------------------"));
-	UE_LOG_ONLINE_CLOUD(Log, TEXT("Cancelling %d write operations for user %s"), FileCount, *InUserId.ToDebugString());
-
-	WriteUserFileCanceledCount = FileCount;
-	FDelegateHandle Result = UserCloud->AddOnWriteUserFileCanceledDelegate_Handle(Delegate);
-
-	for (int32 FileIdx = 0; FileIdx < FileCount; FileIdx++)
-	{
-		UserCloud->CancelWriteUserFile(InUserId, FString::Printf(TEXT("%s%d.%s"), *FPaths::GetBaseFilename(FileNameBase), FileIdx, *FPaths::GetExtension(FileNameBase)));
-	}
-
-	return Result;
-}
-
-void FTestCloudInterface::OnCancelWriteUserCloudFileComplete(bool bWasSuccessful, const FUniqueNetId& InUserId, const FString& FileName)
-{
-	UE_LOG_ONLINE_CLOUD(Log, TEXT("Cancellation of user file writing complete Success:%d UserId:%s FileName:%s"), bWasSuccessful, *InUserId.ToDebugString(), *FileName);
-
-	bOverallSuccess = bOverallSuccess && bWasSuccessful;
-
-	static int32 NumCancelledWriteCount = 0;
-	NumCancelledWriteCount++;
-	if (NumCancelledWriteCount == WriteUserFileCanceledCount)
-	{
-		UE_LOG_ONLINE_CLOUD(Log, TEXT("Cancel %d User File Writings Complete!"), NumCancelledWriteCount);
-		UE_LOG_ONLINE_CLOUD(Log, TEXT("------------------------------------------------"));
-		UserCloud->ClearOnWriteUserFileCanceledDelegate_Handle(OnWriteUserFileCanceledDelegateHandle);
-		NumCancelledWriteCount = 0;
-		// We don't enumerate user files here, the failed write file delegate will do it
 	}
 }
 

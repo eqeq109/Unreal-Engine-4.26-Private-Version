@@ -48,9 +48,9 @@ namespace ChaosTest {
 		}
 	}
 
-	GTEST_TEST(AllEvolutions, JointForcesTests_TestLinear)
+	TYPED_TEST(AllEvolutions, JointForcesTests_TestLinear)
 	{
-		JointForces_Linear<FPBDRigidsEvolutionGBF>();
+		JointForces_Linear<TypeParam>();
 	}
 
 	// 1 Kinematic Body with 1 Dynamic bodies arranged horizontally.
@@ -111,9 +111,9 @@ namespace ChaosTest {
 		}
 	}
 
-	GTEST_TEST(AllEvolutions, JointForcesTests_TestLinear2)
+	TYPED_TEST(AllEvolutions, JointForcesTests_TestLinear2)
 	{
-		JointForces_Linear2<FPBDRigidsEvolutionGBF>();
+		JointForces_Linear2<TypeParam>();
 	}
 
 
@@ -167,8 +167,8 @@ namespace ChaosTest {
 		}
 	}
 
-	GTEST_TEST(AllEvolutions, JointForcesTests_Angular)
+	TYPED_TEST(AllEvolutions, JointForcesTests_Angular)
 	{
-		JointForces_Angular<FPBDRigidsEvolutionGBF>();
+		JointForces_Angular<TypeParam>();
 	}
 }

@@ -68,11 +68,6 @@ FName UOnlineEngineInterfaceImpl::GetDefaultOnlineSubsystemName() const
 	return OnlineSub ? OnlineSub->GetSubsystemName() : NAME_None;
 }
 
-bool UOnlineEngineInterfaceImpl::IsCompatibleUniqueNetId(const FUniqueNetId& InUniqueNetId) const
-{
-	return InUniqueNetId.GetType() == GetDefaultOnlineSubsystemName() || CompatibleUniqueNetIdTypes.Contains(InUniqueNetId.GetType());
-}
-
 uint8 UOnlineEngineInterfaceImpl::GetReplicationHashForSubsystem(FName InSubsystemName) const
 {
 	return Online::GetUtils()->GetReplicationHashForSubsystem(InSubsystemName);
@@ -95,12 +90,10 @@ FName UOnlineEngineInterfaceImpl::GetDedicatedServerSubsystemNameForSubsystem(co
 	// then the server can pass the value of that option to this function to get the name of
 	// the corresponding server OSS for that client, if one exists.
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if (Subsystem == LIVE_SUBSYSTEM)
 	{
 		return LIVESERVER_SUBSYSTEM;
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	else if (Subsystem == PS4_SUBSYSTEM)
 	{
 		return PS4SERVER_SUBSYSTEM;
@@ -109,21 +102,15 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	return NAME_None;
 }
 
-FUniqueNetIdPtr UOnlineEngineInterfaceImpl::CreateUniquePlayerId(const FString& Str, FName Type)
+TSharedPtr<const FUniqueNetId> UOnlineEngineInterfaceImpl::CreateUniquePlayerId(const FString& Str, FName Type)
 {
 	// Foreign types may be passed into this function, do not load OSS modules explicitly here
-	FUniqueNetIdPtr UniqueId = nullptr;
-	//Configuration driven mapping for UniqueNetIds so we don't treat the mapped ids as foreign
-	const FName* MappedUniqueNetIdType = MappedUniqueNetIdTypes.Find(Type);
-
-	bool bIsPrimaryLoaded = IsLoaded(Type);
-	bool bIsMappedUniqueNetIdTypeLoaded = (MappedUniqueNetIdType != nullptr ? IsLoaded(*MappedUniqueNetIdType) : false);
-	
-	if (bIsPrimaryLoaded || bIsMappedUniqueNetIdTypeLoaded)
+	TSharedPtr<const FUniqueNetId> UniqueId = nullptr;
+	if (IsLoaded(Type))
 	{
 		// No UWorld here, but ok since this is just a factory
 		UWorld* World = nullptr;
-		IOnlineIdentityPtr IdentityInt = Online::GetIdentityInterface(World, bIsPrimaryLoaded ? Type : *MappedUniqueNetIdType);
+		IOnlineIdentityPtr IdentityInt = Online::GetIdentityInterface(World, Type);
 		if (IdentityInt.IsValid())
 		{
 			UniqueId = IdentityInt->CreateUniquePlayerId(Str);
@@ -143,12 +130,12 @@ FUniqueNetIdPtr UOnlineEngineInterfaceImpl::CreateUniquePlayerId(const FString& 
 	return UniqueId;
 }
 
-FUniqueNetIdPtr UOnlineEngineInterfaceImpl::GetUniquePlayerId(UWorld* World, int32 LocalUserNum, FName Type)
+TSharedPtr<const FUniqueNetId> UOnlineEngineInterfaceImpl::GetUniquePlayerId(UWorld* World, int32 LocalUserNum, FName Type)
 {
 	IOnlineIdentityPtr IdentityInt = Online::GetIdentityInterface(World, Type);
 	if (IdentityInt.IsValid())
 	{
-		FUniqueNetIdPtr UniqueId = IdentityInt->GetUniquePlayerId(LocalUserNum);
+		TSharedPtr<const FUniqueNetId> UniqueId = IdentityInt->GetUniquePlayerId(LocalUserNum);
 		return UniqueId;
 	}
 
@@ -371,7 +358,7 @@ void UOnlineEngineInterfaceImpl::UnregisterPlayer(UWorld* World, FName SessionNa
 	}
 }
 
-void UOnlineEngineInterfaceImpl::UnregisterPlayers(UWorld* World, FName SessionName, const TArray< FUniqueNetIdRef >& Players)
+void UOnlineEngineInterfaceImpl::UnregisterPlayers(UWorld* World, FName SessionName, const TArray< TSharedRef<const FUniqueNetId> >& Players)
 {
 	IOnlineSessionPtr SessionInt = Online::GetSessionInterface(World);
 	if (SessionInt.IsValid())

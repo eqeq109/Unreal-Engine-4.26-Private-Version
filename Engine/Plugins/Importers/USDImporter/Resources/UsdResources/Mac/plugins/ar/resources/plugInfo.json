@@ -4,15 +4,10 @@
             "Info": {
                 "Types": {
                     "ArResolver": {},
-                    "ArDefaultResolver": {
-                        "bases": [
-                            "ArResolver"
-                        ]
-                    },
                     "ArPackageResolver": {}
                 }
             },
-            "LibraryPath": "../../../../../Source/ThirdParty/Mac/bin/libar.dylib", 
+            "LibraryPath": "../../../../../Binaries/Mac/libar.dylib", 
             "Name": "ar", 
             "ResourcePath": "resources", 
             "Root": "..", 

@@ -25,7 +25,7 @@ namespace ChaosTest {
 	 * Check that we can access and remove constraints using handles
 	 */
 	template<typename TConstraints>
-	void CheckConstraintHandles(TConstraints& Constraints, TArray<FPBDRigidParticleHandle*> ParticleHandles, TArray<typename TConstraints::FConstraintContainerHandle*> ConstraintsHandles)
+	void CheckConstraintHandles(TConstraints& Constraints, TArray<TPBDRigidParticleHandle<FReal, 3>*> ParticleHandles, TArray<typename TConstraints::FConstraintContainerHandle*> ConstraintsHandles)
 	{
 		// Constraints are created in valid state
 		EXPECT_EQ(Constraints.NumConstraints(), 4);
@@ -88,13 +88,13 @@ namespace ChaosTest {
 	{
 #if CHAOS_CONSTRAINTHANDLE_TODO
 		// @todo(ccaulfield): Collision Constraints Container can't be used without collision detection loop.
-		FPBDRigidsSOAs Particles;
-		TPBDCollisionConstraints<FReal, 3> Constraints;
+		TPBDRigidsSOAs<FReal, 3> Particles;
+		TPBDCollisionConstraints<T, 3> Constraints;
 		TEvolution Evolution(Particles);
 
-		TArray<FPBDRigidParticleHandle*> ParticleHandles = Evolution.CreateDynamicParticles(5);
+		TArray<TPBDRigidParticleHandle<T, 3>*> ParticleHandles = Evolution.CreateDynamicParticles(5);
 
-		TArray<TPBDCollisionConstraintHandle<FReal, 3>*> ConstraintsHandles =
+		TArray<TPBDCollisionConstraintHandle<T, 3>*> ConstraintsHandles =
 		{
 			Constraints.AddConstraint({ ParticleHandles[0], ParticleHandles[1] }, ...),
 			Constraints.AddConstraint({ ParticleHandles[1], ParticleHandles[2] }, ...),
@@ -109,19 +109,19 @@ namespace ChaosTest {
 	template<typename TEvolution>
 	void JointConstraintHandles()
 	{
-		FPBDRigidsSOAs Particles;
+		TPBDRigidsSOAs<FReal, 3> Particles;
 		THandleArray<FChaosPhysicsMaterial> PhysicalMaterials;
 		TEvolution Evolution(Particles, PhysicalMaterials);
 
-		TArray<FPBDRigidParticleHandle*> ParticleHandles = Evolution.CreateDynamicParticles(5);
+		TArray<TPBDRigidParticleHandle<FReal, 3>*> ParticleHandles = Evolution.CreateDynamicParticles(5);
 
 		FPBDJointConstraints Constraints;
 		TArray<FPBDJointConstraintHandle*> ConstraintsHandles =
 		{
-			Constraints.AddConstraint({ ParticleHandles[0], ParticleHandles[1] }, { FRigidTransform3(), FRigidTransform3() }),
-			Constraints.AddConstraint({ ParticleHandles[1], ParticleHandles[2] }, { FRigidTransform3(), FRigidTransform3() }),
-			Constraints.AddConstraint({ ParticleHandles[2], ParticleHandles[3] }, { FRigidTransform3(), FRigidTransform3() }),
-			Constraints.AddConstraint({ ParticleHandles[3], ParticleHandles[4] }, { FRigidTransform3(), FRigidTransform3() }),
+			Constraints.AddConstraint({ ParticleHandles[0], ParticleHandles[1] }, { TRigidTransform<FReal, 3>(), TRigidTransform<FReal, 3>() }),
+			Constraints.AddConstraint({ ParticleHandles[1], ParticleHandles[2] }, { TRigidTransform<FReal, 3>(), TRigidTransform<FReal, 3>() }),
+			Constraints.AddConstraint({ ParticleHandles[2], ParticleHandles[3] }, { TRigidTransform<FReal, 3>(), TRigidTransform<FReal, 3>() }),
+			Constraints.AddConstraint({ ParticleHandles[3], ParticleHandles[4] }, { TRigidTransform<FReal, 3>(), TRigidTransform<FReal, 3>() }),
 		};
 
 		CheckConstraintHandles(Constraints, ParticleHandles, ConstraintsHandles);
@@ -130,13 +130,13 @@ namespace ChaosTest {
 	template<typename TEvolution>
 	void PositionConstraintHandles()
 	{
-		FPBDRigidsSOAs Particles;
+		TPBDRigidsSOAs<FReal, 3> Particles;
 		THandleArray<FChaosPhysicsMaterial> PhysicalMaterials;
 		TEvolution Evolution(Particles, PhysicalMaterials);
-		TArray<FPBDRigidParticleHandle*> ParticleHandles = Evolution.CreateDynamicParticles(5);
+		TArray<TPBDRigidParticleHandle<FReal, 3>*> ParticleHandles = Evolution.CreateDynamicParticles(5);
 
-		FPBDPositionConstraints Constraints;
-		TArray<FPBDPositionConstraintHandle*> ConstraintsHandles =
+		TPBDPositionConstraints<FReal, 3> Constraints;
+		TArray<TPBDPositionConstraintHandle<FReal, 3>*> ConstraintsHandles =
 		{
 			Constraints.AddConstraint(ParticleHandles[0], { 0, 0, 0 }),
 			Constraints.AddConstraint(ParticleHandles[1], { 0, 0, 0 }),
@@ -150,10 +150,10 @@ namespace ChaosTest {
 	template<typename TEvolution>
 	void RigidSpringConstraintHandles()
 	{
-		FPBDRigidsSOAs Particles;
+		TPBDRigidsSOAs<FReal, 3> Particles;
 		THandleArray<FChaosPhysicsMaterial> PhysicalMaterials;
 		TEvolution Evolution(Particles, PhysicalMaterials);
-		TArray<FPBDRigidParticleHandle*> ParticleHandles = Evolution.CreateDynamicParticles(5);
+		TArray<TPBDRigidParticleHandle<FReal, 3>*> ParticleHandles = Evolution.CreateDynamicParticles(5);
 
 		FPBDRigidSpringConstraints Constraints;
 		TArray<FPBDRigidSpringConstraintHandle*> ConstraintsHandles =
@@ -171,13 +171,13 @@ namespace ChaosTest {
 	template<typename TEvolution>
 	void RigidDynamicSpringConstraintHandles()
 	{
-		FPBDRigidsSOAs Particles;
+		TPBDRigidsSOAs<FReal, 3> Particles;
 		THandleArray<FChaosPhysicsMaterial> PhysicalMaterials;
 		TEvolution Evolution(Particles, PhysicalMaterials);
-		TArray<FPBDRigidParticleHandle*> ParticleHandles = Evolution.CreateDynamicParticles(5);
+		TArray<TPBDRigidParticleHandle<FReal, 3>*> ParticleHandles = Evolution.CreateDynamicParticles(5);
 
-		FPBDRigidDynamicSpringConstraints Constraints;
-		TArray<FPBDRigidDynamicSpringConstraintHandle*> ConstraintsHandles =
+		TPBDRigidDynamicSpringConstraints<FReal, 3> Constraints;
+		TArray<TPBDRigidDynamicSpringConstraintHandle<FReal, 3>*> ConstraintsHandles =
 		{
 			Constraints.AddConstraint({ ParticleHandles[0], ParticleHandles[1] }),
 			Constraints.AddConstraint({ ParticleHandles[1], ParticleHandles[2] }),
@@ -188,37 +188,37 @@ namespace ChaosTest {
 		CheckConstraintHandles(Constraints, ParticleHandles, ConstraintsHandles);
 	}
 
-	GTEST_TEST(AllEvolutions, DISABLED_ConstraintHandleTests_CollisionConstraintHandle)
+	TYPED_TEST(AllEvolutions, DISABLED_ConstraintHandleTests_CollisionConstraintHandle)
 	{
-		CollisionConstraintHandles<FPBDRigidsEvolutionGBF>();
+		CollisionConstraintHandles<TypeParam>();
 
 		SUCCEED();
 	}
 
-	GTEST_TEST(AllEvolutions, ConstraintHandleTests_JointConstraintHandle)
+	TYPED_TEST(AllEvolutions, ConstraintHandleTests_JointConstraintHandle)
 	{
-		JointConstraintHandles<FPBDRigidsEvolutionGBF>();
+		JointConstraintHandles<TypeParam>();
 
 		SUCCEED();
 	}
 
-	GTEST_TEST(AllEvolutions, ConstraintHandleTests_PositionConstraintHandles)
+	TYPED_TEST(AllEvolutions, ConstraintHandleTests_PositionConstraintHandles)
 	{
-		PositionConstraintHandles<FPBDRigidsEvolutionGBF>();
+		PositionConstraintHandles<TypeParam>();
 
 		SUCCEED();
 	}
 
-	GTEST_TEST(AllEvolutions, ConstraintHandleTests_RigidSpringConstraintHandles)
+	TYPED_TEST(AllEvolutions, ConstraintHandleTests_RigidSpringConstraintHandles)
 	{
-		RigidSpringConstraintHandles<FPBDRigidsEvolutionGBF>();
+		RigidSpringConstraintHandles<TypeParam>();
 
 		SUCCEED();
 	}
 
-	GTEST_TEST(AllEvolutions, ConstraintHandleTests_RigidDynamicSpringConstraintHandles)
+	TYPED_TEST(AllEvolutions, ConstraintHandleTests_RigidDynamicSpringConstraintHandles)
 	{
-		RigidDynamicSpringConstraintHandles<FPBDRigidsEvolutionGBF>();
+		RigidDynamicSpringConstraintHandles<TypeParam>();
 
 		SUCCEED();
 	}

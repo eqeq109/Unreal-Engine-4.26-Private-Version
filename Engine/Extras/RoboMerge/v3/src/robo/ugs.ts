@@ -1,11 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 import { Blockage } from './branch-interfaces';
-import { Badge } from '../common/badge';
+import { Badge, UGS_URL_ROOT } from '../common/badge';
 import { ContextualLogger } from '../common/logger';
-
-// need to check whether build health reporting is working
-const UGS_URL_ROOT = 'http://ugsapi.epicgames.net'
 
 interface IntegrationIssue {
 	Project: string

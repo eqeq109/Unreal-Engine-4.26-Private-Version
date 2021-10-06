@@ -2,6 +2,7 @@
 
 #include "ViewModels/Stack/NiagaraStackErrorItem.h"
 #include "NiagaraStackEditorData.h"
+#include "ScopedTransaction.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraStackErrorItem"
 //UNiagaraStackErrorItem
@@ -27,16 +28,6 @@ FText UNiagaraStackErrorItem::GetDisplayName() const
 EStackIssueSeverity UNiagaraStackErrorItem::GetIssueSeverity() const
 {
 	return StackIssue.GetSeverity();
-}
-
-bool UNiagaraStackErrorItem::IsExpandedByDefault() const
-{
-	return bIsExpandedByDefault && StackIssue.GetIsExpandedByDefault();
-}
-
-void UNiagaraStackErrorItem::SetIsExpandedByDefault(bool bIsExpanded)
-{
-	bIsExpandedByDefault = bIsExpanded;
 }
 
 UNiagaraStackEntry::EStackRowStyle UNiagaraStackErrorItem::GetStackRowStyle() const
@@ -204,9 +195,7 @@ void UNiagaraStackErrorItemDismiss::Initialize(FRequiredEntryData InRequiredEntr
 	UNiagaraStackEntry::Initialize(InRequiredEntryData, ErrorStackEditorDataKey);
 	StackIssue = InStackIssue;
 	IssueFix = FStackIssueFix(
-		StackIssue.GetSeverity() == EStackIssueSeverity::Info || StackIssue.GetSeverity() == EStackIssueSeverity::CustomNote ?
-			LOCTEXT("DismissNote", "Dismiss note") :
-			LOCTEXT("DismissError", "Dismiss the issue without fixing (I know what I'm doing)"),
+		LOCTEXT("DismissError", "Dismiss the issue without fixing (I know what I'm doing)"),
 		FStackIssueFixDelegate::CreateUObject(this, &UNiagaraStackErrorItemDismiss::DismissIssue));
 }
 
@@ -223,7 +212,7 @@ UNiagaraStackEntry::EStackRowStyle UNiagaraStackErrorItemDismiss::GetStackRowSty
 
 FText UNiagaraStackErrorItemDismiss::GetFixButtonText() const
 {
-	return StackIssue.GetSeverity() == EStackIssueSeverity::Info || StackIssue.GetSeverity() == EStackIssueSeverity::CustomNote ? LOCTEXT("DismissNote", "Dismiss") : LOCTEXT("DismissIssue", "Dismiss issue");
+	return LOCTEXT("DismissIssue", "Dismiss issue");
 }
 
 #undef LOCTEXT_NAMESPACE

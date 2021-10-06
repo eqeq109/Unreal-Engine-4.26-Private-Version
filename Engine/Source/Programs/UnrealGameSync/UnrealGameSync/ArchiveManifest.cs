@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -84,28 +84,25 @@ namespace UnrealGameSync
 			DateTime TimeStamp = DateTime.UtcNow;
 			using(ZipFile Zip = new ZipFile(ArchiveFileName))
 			{
-				if (ManifestFileName != null)
+				File.Delete(ManifestFileName);
+
+				// Create the manifest
+				ArchiveManifest Manifest = new ArchiveManifest();
+				foreach(ZipEntry Entry in Zip.Entries)
 				{
-					File.Delete(ManifestFileName);
-
-					// Create the manifest
-					ArchiveManifest Manifest = new ArchiveManifest();
-					foreach (ZipEntry Entry in Zip.Entries)
-					{
-						if (!Entry.FileName.EndsWith("/") && !Entry.FileName.EndsWith("\\"))
-						{
-							Manifest.Files.Add(new ArchiveManifestFile(Entry.FileName, Entry.UncompressedSize, TimeStamp));
-						}
+					if(!Entry.FileName.EndsWith("/") && !Entry.FileName.EndsWith("\\"))
+					{ 
+						Manifest.Files.Add(new ArchiveManifestFile(Entry.FileName, Entry.UncompressedSize, TimeStamp));
 					}
-
-					// Write it out to a temporary file, then move it into place
-					string TempManifestFileName = ManifestFileName + ".tmp";
-					using (FileStream OutputStream = File.Open(TempManifestFileName, FileMode.Create, FileAccess.Write))
-					{
-						Manifest.Write(OutputStream);
-					}
-					File.Move(TempManifestFileName, ManifestFileName);
 				}
+
+				// Write it out to a temporary file, then move it into place
+				string TempManifestFileName = ManifestFileName + ".tmp";
+				using(FileStream OutputStream = File.Open(TempManifestFileName, FileMode.Create, FileAccess.Write))
+				{
+					Manifest.Write(OutputStream);
+				}
+				File.Move(TempManifestFileName, ManifestFileName);
 
 				// Extract all the files
 				int EntryIdx = 0;

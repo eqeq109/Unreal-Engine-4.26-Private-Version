@@ -30,7 +30,7 @@ struct FCustomPin
 
 	/** If TRUE this is a custom pin that does come from the type of wildcard pin connected */
 	UPROPERTY()
-	bool bValuePin = false;
+	bool bValuePin;
 };
 
 UCLASS(MinimalAPI)

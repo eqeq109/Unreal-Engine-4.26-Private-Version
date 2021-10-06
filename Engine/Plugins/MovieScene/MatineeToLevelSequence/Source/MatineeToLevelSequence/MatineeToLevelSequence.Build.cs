@@ -6,51 +6,45 @@ public class MatineeToLevelSequence : ModuleRules
 {
 	public MatineeToLevelSequence(ReadOnlyTargetRules Target) : base(Target)
 	{
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[] {
-			"AssetTools",
+        DynamicallyLoadedModuleNames.AddRange(
+            new string[] {
+				"AssetTools",
 			}
-		);
-
-		PrivateDependencyModuleNames.AddRange(
+        );
+        
+        PrivateDependencyModuleNames.AddRange(
 			new string[] {
-			"LevelSequence",
-			"ContentBrowser",
-			"Core",
-			"CoreUObject",
-			"EditorStyle",
-			"Engine",
-			"BlueprintGraph",
-			"GameplayCameras",
-			"InputCore",
-			"Kismet",
-			"LevelEditor",
-			"MovieScene",
-			"MovieSceneTools",
-			"MovieSceneTracks",
-			"Slate",
-			"SlateCore",
-			"ToolMenus",
-			"UnrealEd",
-			"TimeManagement",
-			"TemplateSequence",
-			"Analytics",
-			"AssetRegistry"
-			}
-		);
+                "LevelSequence",
+                "ContentBrowser",
+				"Core",
+				"CoreUObject",
+                "EditorStyle",
+                "Engine",
+				"LevelEditor",
+				"MovieScene",
+                "MovieSceneTools",
+				"MovieSceneTracks",
+                "Slate",
+                "SlateCore",
+                "ToolMenus",
+                "UnrealEd",
+				"TimeManagement",
+                "TemplateSequence",
+				"Analytics"
+            }
+        );
 
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {
-			"AssetTools",
-			"MovieSceneTools",
-			"Settings",
-			"WorkspaceMenuStructure",
+				"AssetTools",
+                "MovieSceneTools",
+                "Settings",
 			}
 		);
 
-		PrivateIncludePaths.AddRange(
-			new string[] {
-			}
-		);
-	}
+        PrivateIncludePaths.AddRange(
+            new string[] {
+            }
+        );
+    }
 }

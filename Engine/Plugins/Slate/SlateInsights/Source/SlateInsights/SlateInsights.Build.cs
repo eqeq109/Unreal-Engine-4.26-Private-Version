@@ -10,7 +10,6 @@ namespace UnrealBuildTool.Rules
 			new string[]
 			{
 				"Core",
-				"CoreUObject",
 				"InputCore",
 				"SlateCore",
 				"Slate",
@@ -20,7 +19,6 @@ namespace UnrealBuildTool.Rules
 				"TraceInsights",
 				"AssetRegistry",
 				"ApplicationCore",
-				"SourceCodeAccess",
 			});
 
 			if (Target.bCompileAgainstEngine)
@@ -29,6 +27,7 @@ namespace UnrealBuildTool.Rules
 				new string[]
 				{
 					"Engine",
+					"CoreUObject",
 				});
 			}
 		}

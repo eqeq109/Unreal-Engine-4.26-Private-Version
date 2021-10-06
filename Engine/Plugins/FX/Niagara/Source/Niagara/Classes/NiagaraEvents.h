@@ -28,15 +28,15 @@ struct FNiagaraCollisionEventPayload
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	FVector CollisionPos = FVector(ForceInitToZero);
+	FVector CollisionPos;
 	UPROPERTY()
-	FVector CollisionNormal = FVector(ForceInitToZero);
+	FVector CollisionNormal;
 	UPROPERTY()
-	FVector CollisionVelocity = FVector(ForceInitToZero);
+	FVector CollisionVelocity;
 	UPROPERTY()
-	int32 ParticleIndex = 0;
+	int32 ParticleIndex;
 	UPROPERTY()
-	int32 PhysicalMaterialIndex = 0;
+	int32 PhysicalMaterialIndex;
 };
 
 

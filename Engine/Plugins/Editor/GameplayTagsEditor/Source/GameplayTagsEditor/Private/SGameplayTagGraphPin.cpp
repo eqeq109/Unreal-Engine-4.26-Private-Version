@@ -1,6 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SGameplayTagGraphPin.h"
+#include "Widgets/Input/SComboButton.h"
+#include "GameplayTagsModule.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "GameplayTagPinUtilities.h"
 
 #define LOCTEXT_NAMESPACE "GameplayTagGraphPin"
@@ -11,22 +14,59 @@ void SGameplayTagGraphPin::Construct( const FArguments& InArgs, UEdGraphPin* InG
 	SGraphPin::Construct( SGraphPin::FArguments(), InGraphPinObj );
 }
 
+TSharedRef<SWidget>	SGameplayTagGraphPin::GetDefaultValueWidget()
+{
+	ParseDefaultValueData();
+
+	//Create widget
+	return SNew(SVerticalBox)
+		+SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SAssignNew( ComboButton, SComboButton )
+			.OnGetMenuContent( this, &SGameplayTagGraphPin::GetListContent )
+			.ContentPadding( FMargin( 2.0f, 2.0f ) )
+			.Visibility( this, &SGraphPin::GetDefaultValueVisibility )
+			.MenuPlacement(MenuPlacement_BelowAnchor)
+			.ButtonContent()
+			[
+				SNew( STextBlock )
+				.Text( LOCTEXT("GameplayTagWidget_Edit", "Edit") )
+			]
+		]
+		+SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SelectedTags()
+		];
+}
+
 void SGameplayTagGraphPin::ParseDefaultValueData()
 {
+	FString TagString = GraphPinObj->GetDefaultAsString();
+
 	FilterString = GameplayTagPinUtilities::ExtractTagFilterStringFromGraphPin(GraphPinObj);
 
-	FGameplayTag GameplayTag;
-	
-	// Read using import text, but with serialize flag set so it doesn't always throw away invalid ones
-	GameplayTag.FromExportString(GraphPinObj->GetDefaultAsString(), PPF_SerializedAsImportText);
-
-	if (GameplayTag.IsValid())
+	if (TagString.StartsWith(TEXT("("), ESearchCase::CaseSensitive) && TagString.EndsWith(TEXT(")"), ESearchCase::CaseSensitive))
 	{
+		TagString.LeftChopInline(1, false);
+		TagString.RightChopInline(1, false);
+		TagString.Split(TEXT("="), nullptr, &TagString, ESearchCase::CaseSensitive);
+		if (TagString.StartsWith(TEXT("\""), ESearchCase::CaseSensitive) && TagString.EndsWith(TEXT("\""), ESearchCase::CaseSensitive))
+		{
+			TagString.LeftChopInline(1, false);
+			TagString.RightChopInline(1, false);
+		}
+	}
+
+	if (!TagString.IsEmpty())
+	{
+		FGameplayTag GameplayTag = FGameplayTag::RequestGameplayTag(FName(*TagString));
 		TagContainer->AddTag(GameplayTag);
 	}
 }
 
-TSharedRef<SWidget> SGameplayTagGraphPin::GetEditContent()
+TSharedRef<SWidget> SGameplayTagGraphPin::GetListContent()
 {
 	EditableContainers.Empty();
 	EditableContainers.Add( SGameplayTagWidget::FEditableGameplayTagContainerDatum( GraphPinObj->GetOwningNode(), TagContainer.Get() ) );
@@ -37,7 +77,7 @@ TSharedRef<SWidget> SGameplayTagGraphPin::GetEditContent()
 		.MaxHeight( 400 )
 		[
 			SNew( SGameplayTagWidget, EditableContainers )
-			.OnTagChanged( this, &SGameplayTagGraphPin::SaveDefaultValueData)
+			.OnTagChanged( this, &SGameplayTagGraphPin::RefreshTagList )
 			.TagContainerName( TEXT("SGameplayTagGraphPin") )
 			.Visibility( this, &SGraphPin::GetDefaultValueVisibility )
 			.MultiSelect(false)
@@ -45,9 +85,9 @@ TSharedRef<SWidget> SGameplayTagGraphPin::GetEditContent()
 		];
 }
 
-TSharedRef<SWidget> SGameplayTagGraphPin::GetDescriptionContent()
+TSharedRef<SWidget> SGameplayTagGraphPin::SelectedTags()
 {
-	RefreshCachedData();
+	RefreshTagList();
 
 	SAssignNew( TagListView, SListView<TSharedPtr<FString>> )
 		.ListItemsSource(&TagNames)
@@ -65,8 +105,8 @@ TSharedRef<ITableRow> SGameplayTagGraphPin::OnGenerateRow(TSharedPtr<FString> It
 		];
 }
 
-void SGameplayTagGraphPin::RefreshCachedData()
-{
+void SGameplayTagGraphPin::RefreshTagList()
+{	
 	// Clear the list
 	TagNames.Empty();
 
@@ -77,29 +117,23 @@ void SGameplayTagGraphPin::RefreshCachedData()
 		for (auto It = TagContainer->CreateConstIterator(); It; ++It)
 		{
 			TagName = It->ToString();
-			TagNames.Add(MakeShareable(new FString(TagName)));
+			TagNames.Add( MakeShareable( new FString( TagName ) ) );
 		}
 	}
 
 	// Refresh the slate list
-	if (TagListView.IsValid())
+	if( TagListView.IsValid() )
 	{
 		TagListView->RequestListRefresh();
 	}
-}
-
-void SGameplayTagGraphPin::SaveDefaultValueData()
-{	
-	RefreshCachedData();
 
 	// Set Pin Data
 	FString TagString;
-
-	if (TagNames.Num() > 0 && TagNames[0].IsValid())
+	if (!TagName.IsEmpty())
 	{
 		TagString = TEXT("(");
 		TagString += TEXT("TagName=\"");
-		TagString += *TagNames[0].Get();
+		TagString += TagName;
 		TagString += TEXT("\"");
 		TagString += TEXT(")");
 	}

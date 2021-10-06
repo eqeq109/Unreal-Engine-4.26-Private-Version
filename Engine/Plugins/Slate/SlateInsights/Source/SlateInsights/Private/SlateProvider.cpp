@@ -1,8 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "SlateProvider.h"
-#include "HAL/PlatformStackWalk.h"
-#include "HAL/PlatformProcess.h"
 #include "Insights/ViewModels/TimingEventsTrack.h"
 
 #define LOCTEXT_NAMESPACE "SlateProvider"
@@ -56,8 +54,6 @@ namespace Message
 		Message.WidgetId = EventData.GetValue<uint64>("WidgetId");
 		Message.InvestigatorId = EventData.GetValue<uint64>("InvestigatorId");
 		Message.InvalidationReason = static_cast<EInvalidateWidgetReason>(EventData.GetValue<uint8>("InvalidateWidgetReason"));
-		EventData.GetString("ScriptTrace", Message.ScriptTrace);
-		Message.Callstack = GetCallstack(EventData);
 		return Message;
 	}
 
@@ -67,8 +63,6 @@ namespace Message
 		Message.WidgetId = EventData.GetValue<uint64>("WidgetId");
 		Message.InvestigatorId = EventData.GetValue<uint64>("InvestigatorId");
 		Message.InvalidationReason = EInvalidateWidgetReason::Layout;
-		EventData.GetString("ScriptTrace", Message.ScriptTrace);
-		Message.Callstack = GetCallstack(EventData);
 		return Message;
 	}
 
@@ -78,36 +72,7 @@ namespace Message
 		Message.WidgetId = EventData.GetValue<uint64>("WidgetId");
 		Message.InvestigatorId = EventData.GetValue<uint64>("InvestigatorId");
 		Message.InvalidationReason = EInvalidateWidgetReason::ChildOrder;
-		EventData.GetString("ScriptTrace", Message.ScriptTrace);
-		Message.Callstack = GetCallstack(EventData);
 		return Message;
-	}
-
-	FString FWidgetInvalidatedMessage::GetCallstack(const Trace::IAnalyzer::FEventData& EventData)
-	{
-		FString Callstack = "";
-		const auto& CallstackReader = EventData.GetArrayView<uint64>("Callstack");
-		if (CallstackReader.Num() != 0)
-		{
-			FPlatformStackWalk::InitStackWalkingForProcess(FPlatformProcess::OpenProcess(EventData.GetValue<uint32>("ProcessId")));
-			uint8 StackDepth = 0;
-			for (uint64 ProgramCounter : CallstackReader)
-			{
-				// Skip the first two backraces, that's from us.
-				if (StackDepth++ >= 2)
-				{
-					FString SymbolAsText;
-
-					// Note: Done insight thread as this process is very slow, possibly 1~80ms based on widget complexity.
-					FProgramCounterSymbolInfoEx SymbolInfo;
-					FPlatformStackWalk::ProgramCounterToSymbolInfoEx(ProgramCounter, SymbolInfo);
-					FPlatformStackWalk::SymbolInfoToHumanReadableStringEx(SymbolInfo, SymbolAsText);
-
-					Callstack += SymbolAsText + "\r\n";
-				}
-			}
-		}
-		return Callstack;
 	}
 } //namespace Message
 

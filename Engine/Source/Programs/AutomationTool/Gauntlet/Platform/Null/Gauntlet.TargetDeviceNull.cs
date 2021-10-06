@@ -83,7 +83,7 @@ namespace Gauntlet
 			return Platform == null;
 		}
 
-		public ITargetDevice CreateDevice(string InRef, string InCachePath, string InParam = null)
+		public ITargetDevice CreateDevice(string InRef, string InParam)
 		{
 			return new TargetDeviceNull(InRef);
 		}
@@ -182,16 +182,6 @@ namespace Gauntlet
 				Log.Warning("Platform directory mappings have not been populated for this platform! This should be done within InstallApplication()");
 			}
 			return LocalDirectoryMappings;
-		}
-
-		public bool IsOSOutOfDate()
-		{
-			return false;
-		}
-
-		public bool UpdateOS()
-		{
-			return true;
 		}
 	}
 }

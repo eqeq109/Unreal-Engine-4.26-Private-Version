@@ -103,13 +103,6 @@ void UNetworkPredictionWorldManager::ReconcileSimulationsPostNetworkUpdate()
 	}
 
 	ActiveInstance = this;
-	bLockServices = true;
-
-	// Trace Local->Server offset. We need to trace this so that we can flag reconciles that happened
-	// due to this (usually caused by server being starved for input)
-	const bool OffsetChanged = (LastFixedTickOffset != FixedTickState.Offset);
-	UE_NP_TRACE_FIXED_TICK_OFFSET(FixedTickState.Offset, OffsetChanged);
-	LastFixedTickOffset = FixedTickState.Offset;
 
 	// -------------------------------------------------------------------------
 	//	Non-rollback reconcile services
@@ -190,7 +183,7 @@ void UNetworkPredictionWorldManager::ReconcileSimulationsPostNetworkUpdate()
 				FServiceTimeStep ServiceStep = FixedTickState.GetNextServiceTimeStep();
 			
 				const int32 ServerInputFrame = Frame + FixedTickState.Offset;
-				UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, FixedTickState.FixedStepMS, Step.Frame);
+				UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, FixedTickState.FixedStepMS, Step.Frame, FixedTickState.Offset);
 
 				// Everyone must apply corrections and flush as necessary before anyone runs the next sim tick
 				// bFirstStep will indicate that even if they don't have a correction, they need to rollback their historic state
@@ -251,10 +244,6 @@ void UNetworkPredictionWorldManager::ReconcileSimulationsPostNetworkUpdate()
 	{
 		Ptr->Reconcile(&VariableTickState);
 	}
-
-	bLockServices = false;
-	DeferredServiceConfigDelegate.Broadcast(this);
-	DeferredServiceConfigDelegate.Clear();
 }
 
 void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, ELevelTick InLevelTick, float DeltaTimeSeconds)
@@ -265,7 +254,6 @@ void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, EL
 	}
 
 	ActiveInstance = this;
-	bLockServices = true;
 
 	const float fEngineFrameDeltaTimeMS = DeltaTimeSeconds * 1000.f;
 
@@ -309,17 +297,14 @@ void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, EL
 				Ptr->ProduceInput(FixedTickState.FixedStepMS);
 			}
 
-			UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, FixedTickState.FixedStepMS, Step.Frame);
-			
-			// Should we increment PendingFrame before or after the tick?
-			// Before: sims that are spawned during Tick (of other sims) will not be ticked this frame.
-			// So we want their seed state/cached pending frame to be set to the next pending frame, not this one.
-			FixedTickState.PendingFrame++;
+			UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, FixedTickState.FixedStepMS, Step.Frame, FixedTickState.Offset);
 
 			for (TUniquePtr<ILocalTickService>& Ptr : Services.FixedTick.Array)
 			{
 				Ptr->Tick(Step, ServiceStep);
 			}
+
+			FixedTickState.PendingFrame++;
 			
 			if (bSingleTick)
 			{
@@ -359,7 +344,7 @@ void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, EL
 
 		FNetSimTimeStep Step = VariableTickState.GetNextTimeStep(PendingFrameData);
 		FServiceTimeStep ServiceStep = VariableTickState.GetNextServiceTimeStep(PendingFrameData);
-		UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, Step.StepMS, Step.Frame);
+		UE_NP_TRACE_PUSH_TICK(Step.TotalSimulationTime, Step.StepMS, Step.Frame, 0);
 
 		for (TUniquePtr<ILocalTickService>& Ptr : Services.IndependentLocalTick.Array)
 		{
@@ -382,83 +367,75 @@ void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, EL
 	// -------------------------------------------------------------------------
 	// Interpolation
 	// -------------------------------------------------------------------------
-	if (Services.FixedInterpolate.Array.Num() > 0)
+	if (Services.FixedInterpolate.Array.Num() > 0 && FixedTickState.Interpolation.LatestRecvFrame != INDEX_NONE)
 	{
-		const int32 LatestRecvFrame = FixedTickState.Interpolation.LatestRecvFrameAP != INDEX_NONE ? FixedTickState.Interpolation.LatestRecvFrameAP : FixedTickState.Interpolation.LatestRecvFrameSP;
-		if (LatestRecvFrame != INDEX_NONE)
+		// We want 100ms of buffered time. As long a actors replicate at >= 10hz, this is should be good
+		// Its better to keep this simple with a single time rather than trying to coordinate lowest amount of buffered time
+		// between all the registered instances in the different ModelDefs
+		const int32 DesiredBufferedMS = Settings.FixedTickInterpolationBufferedMS;
+
+		float InterpolateRate = 1.f;
+		if (FixedTickState.Interpolation.ToFrame == INDEX_NONE)
 		{
-			// We want 100ms of buffered time. As long a actors replicate at >= 10hz, this is should be good
-			// Its better to keep this simple with a single time rather than trying to coordinate lowest amount of buffered time
-			// between all the registered instances in the different ModelDefs
-			const int32 DesiredBufferedMS = Settings.FixedTickInterpolationBufferedMS;
+			const int32 NumBufferedFrames = FixedTickState.Interpolation.LatestRecvFrame;
+			const int32 BufferedMS = NumBufferedFrames * FixedTickState.FixedStepMS;
 
-			float InterpolateRate = 1.f;
-			if (FixedTickState.Interpolation.ToFrame == INDEX_NONE)
+			if (BufferedMS < DesiredBufferedMS)
 			{
-				const int32 NumBufferedFrames = LatestRecvFrame;
-				const int32 BufferedMS = NumBufferedFrames * FixedTickState.FixedStepMS;
-
-				//UE_LOG(LogTemp, Warning, TEXT("BufferedMS: %d Frames: %d (No ToFrame)"), BufferedMS, NumBufferedFrames);
-
-				if (BufferedMS < DesiredBufferedMS)
-				{
-					// Not enough time buffered yet to start interpolating
-					InterpolateRate = 0.f;
-				}
-				else
-				{
-					// Begin interpolation
-					const int32 DesiredNumBufferedFrames = (DesiredBufferedMS / FixedTickState.FixedStepMS);
-					FixedTickState.Interpolation.ToFrame = LatestRecvFrame - DesiredNumBufferedFrames;
-
-					FixedTickState.Interpolation.PCT = 0.f;
-					FixedTickState.Interpolation.AccumulatedTimeMS = 0.f;
-
-					// We need to force a reconcile here since we supress the call until interpolation starts
-					for (TUniquePtr<IFixedInterpolateService>& Ptr : Services.FixedInterpolate.Array)
-					{
-						Ptr->Reconcile(&FixedTickState);
-					}
-				}
+				// Not enough time buffered yet to start interpolating
+				InterpolateRate = 0.f;
 			}
 			else
 			{
-				const int32 NumBufferedFrames = LatestRecvFrame - FixedTickState.Interpolation.ToFrame;
-				const int32 BufferedMS = NumBufferedFrames * FixedTickState.FixedStepMS;
+				// Begin interpolation
+				const int32 DesiredNumBufferedFrames = (DesiredBufferedMS / FixedTickState.FixedStepMS);
+				FixedTickState.Interpolation.ToFrame = FixedTickState.Interpolation.LatestRecvFrame - DesiredNumBufferedFrames;
 
-				//UE_LOG(LogTemp, Warning, TEXT("BufferedMS: %d Frames: %d"), BufferedMS, NumBufferedFrames);
+				FixedTickState.Interpolation.PCT = 0.f;
+				FixedTickState.Interpolation.AccumulatedTimeMS = 0.f;
 
-				if (NumBufferedFrames <= 0)
-				{
-					InterpolateRate = 0.f;
-				}
-			}
-
-			int32 AdvanceFrames = 0;
-			if (InterpolateRate > 0.f)
-			{
-				const float fScaledDeltaTimeMS = (InterpolateRate * fEngineFrameDeltaTimeMS);
-
-				FixedTickState.Interpolation.AccumulatedTimeMS += fScaledDeltaTimeMS;
-				AdvanceFrames = (int32)FixedTickState.Interpolation.AccumulatedTimeMS / FixedTickState.FixedStepRealTimeMS;
-				if (AdvanceFrames > 0)
-				{
-					FixedTickState.Interpolation.ToFrame += AdvanceFrames;
-					FixedTickState.Interpolation.AccumulatedTimeMS -= (AdvanceFrames * FixedTickState.FixedStepRealTimeMS);
-				}
-				const float RawPCT = FixedTickState.Interpolation.AccumulatedTimeMS / (float)FixedTickState.FixedStepRealTimeMS;
-				FixedTickState.Interpolation.PCT = FMath::Clamp<float>(RawPCT, 0.f, 1.f);
-				npEnsureMsgf(FixedTickState.Interpolation.PCT >= 0.f && FixedTickState.Interpolation.PCT <= 1.f, TEXT("Interpolation PCT out of range. %f"), FixedTickState.Interpolation.PCT);
-
-				const float PCTms = FixedTickState.Interpolation.PCT * (float)FixedTickState.FixedStepMS;
-				FixedTickState.Interpolation.InterpolatedTimeMS = ((FixedTickState.Interpolation.ToFrame-1) * FixedTickState.FixedStepMS) + (int32)PCTms;
-
-				//UE_LOG(LogTemp, Warning, TEXT("[Interpolate] %s Interpolating ToFrame %d. PCT: %.2f. Buffered: %d"), *GetPathName(), FixedTickState.Interpolation.ToFrame, FixedTickState.Interpolation.PCT, FixedTickState.Interpolation.LatestRecvFrame - FixedTickState.Interpolation.ToFrame);
-
+				// We need to force a reconcinle here since we supress the call until interpolation starts
 				for (TUniquePtr<IFixedInterpolateService>& Ptr : Services.FixedInterpolate.Array)
 				{
-					Ptr->FinalizeFrame(DeltaTimeSeconds, &FixedTickState);
+					Ptr->Reconcile(&FixedTickState);
 				}
+			}
+		}
+		else
+		{
+			const int32 NumBufferedFrames = FixedTickState.Interpolation.LatestRecvFrame - FixedTickState.Interpolation.ToFrame;
+			const int32 BufferedMS = NumBufferedFrames * FixedTickState.FixedStepMS;
+
+			if (NumBufferedFrames <= 0)
+			{
+				InterpolateRate = 0.f;
+			}
+		}
+
+		int32 AdvanceFrames = 0;
+		if (InterpolateRate > 0.f)
+		{
+			const float fScaledDeltaTimeMS = (InterpolateRate * fEngineFrameDeltaTimeMS);
+
+			FixedTickState.Interpolation.AccumulatedTimeMS += fScaledDeltaTimeMS;
+			AdvanceFrames = (int32)FixedTickState.Interpolation.AccumulatedTimeMS / FixedTickState.FixedStepRealTimeMS;
+			if (AdvanceFrames > 0)
+			{
+				FixedTickState.Interpolation.ToFrame += AdvanceFrames;
+				FixedTickState.Interpolation.AccumulatedTimeMS -= (AdvanceFrames * FixedTickState.FixedStepRealTimeMS);
+			}
+			const float RawPCT = FixedTickState.Interpolation.AccumulatedTimeMS / (float)FixedTickState.FixedStepRealTimeMS;
+			FixedTickState.Interpolation.PCT = FMath::Clamp<float>(RawPCT, 0.f, 1.f);
+			npEnsureMsgf(FixedTickState.Interpolation.PCT >= 0.f && FixedTickState.Interpolation.PCT <= 1.f, TEXT("Interpolation PCT out of range. %f"), FixedTickState.Interpolation.PCT);
+
+			const float PCTms = FixedTickState.Interpolation.PCT * (float)FixedTickState.FixedStepMS;
+			FixedTickState.Interpolation.InterpolatedTimeMS = ((FixedTickState.Interpolation.ToFrame-1) * FixedTickState.FixedStepMS) + (int32)PCTms;
+
+			//UE_LOG(LogTemp, Warning, TEXT("[Interpolate] %s Interpolating ToFrame %d. PCT: %.2f. Buffered: %d"), *GetPathName(), FixedTickState.Interpolation.ToFrame, FixedTickState.Interpolation.PCT, FixedTickState.Interpolation.LatestRecvFrame - FixedTickState.Interpolation.ToFrame);
+
+			for (TUniquePtr<IFixedInterpolateService>& Ptr : Services.FixedInterpolate.Array)
+			{
+				Ptr->FinalizeFrame(DeltaTimeSeconds, &FixedTickState);
 			}
 		}
 	}
@@ -497,15 +474,6 @@ void UNetworkPredictionWorldManager::BeginNewSimulationFrame(UWorld* InWorld, EL
 			}
 		}
 	}
-
-
-	//-------------------------------------------------------------------------------------------------------------
-	// Handle newly spawned services right now, so that they can Finalize/SendRPCs on the very first frame of life
-	//-------------------------------------------------------------------------------------------------------------
-
-	bLockServices = false;
-	DeferredServiceConfigDelegate.Broadcast(this);
-	DeferredServiceConfigDelegate.Clear();
 
 	// -------------------------------------------------------------------------
 	//	Finalize
@@ -555,13 +523,15 @@ void UNetworkPredictionWorldManager::InitPhysicsCapture()
 	npCheckSlow(!Physics.bRecordingEnabled);
 
 	Physics.bRecordingEnabled = true;
-	Physics.Solver->EnableRewindCapture(PhysicsBufferSize, false);	//TODO: turn optimizations back on
+	Physics.Solver->EnableRewindCapture(PhysicsBufferSize, true);
 	FixedTickState.PhysicsRewindData = Physics.Solver->GetRewindData();
 }
 
 void UNetworkPredictionWorldManager::AdvancePhysicsResimFrame(int32& PhysicsFrame)
 {
 	Physics.Solver->AdvanceAndDispatch_External(FixedTickState.PhysicsRewindData->GetDeltaTimeForFrame(PhysicsFrame));
+	Physics.Solver->BufferPhysicsResults();
+	Physics.Solver->FlipBuffers();
 	Physics.Solver->UpdateGameThreadStructures();
 	PhysicsFrame++;
 }

@@ -22,7 +22,6 @@ public class LevelSequence : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
-				"DeveloperSettings",
 				"MediaAssets",
 			}
 		);

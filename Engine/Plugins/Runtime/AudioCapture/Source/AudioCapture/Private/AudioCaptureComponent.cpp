@@ -2,8 +2,6 @@
 
 #include "AudioCaptureComponent.h"
 
-static const unsigned int MaxBufferSize = 2 * 5 * 48000;
-
 UAudioCaptureComponent::UAudioCaptureComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -118,15 +116,9 @@ int32 UAudioCaptureComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples)
 		// Just return NumSamples, which uses zero'd buffer
 		return NumSamples;
 	}
+
 	int32 OutputSamplesGenerated = 0;
-	//In case of severe overflow, just drop the data
-	if (CaptureAudioData.Num() > MaxBufferSize)
-	{
-		//Clear the CaptureSynth's data, too
-		CaptureSynth.GetAudioData(CaptureAudioData);
-		CaptureAudioData.Reset();
-		return NumSamples;
-	}
+
 	if (CapturedAudioDataSamples > 0 || CaptureSynth.GetNumSamplesEnqueued() > 1024)
 	{
 		// Check if we need to read more audio data from capture synth
@@ -137,42 +129,32 @@ int32 UAudioCaptureComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples)
 			if (SamplesLeft > 0)
 			{
 				float* CaptureDataPtr = CaptureAudioData.GetData();
-				if (!(ReadSampleIndex + NumSamples > MaxBufferSize - 1))
-				{
-					FMemory::Memcpy(OutAudio, &CaptureDataPtr[ReadSampleIndex], SamplesLeft * sizeof(float));
-				}
-				else
-				{
-					UE_LOG(LogAudio, Warning, TEXT("Attempt to write past end of buffer in OnGenerateAudio, when we got more data from the synth"));
-					return NumSamples;
-				}
+				FMemory::Memcpy(OutAudio, &CaptureDataPtr[ReadSampleIndex], SamplesLeft * sizeof(float));
+
 				// Track samples generated
 				OutputSamplesGenerated += SamplesLeft;
 			}
+
 			// Get another block of audio from the capture synth
 			CaptureAudioData.Reset();
 			CaptureSynth.GetAudioData(CaptureAudioData);
+
 			// Reset the read sample index since we got a new buffer of audio data
 			ReadSampleIndex = 0;
 		}
+
 		// note it's possible we didn't get any more audio in our last attempt to get it
 		if (CaptureAudioData.Num() > 0)
 		{
 			// Compute samples to copy
 			int32 NumSamplesToCopy = FMath::Min(NumSamples - OutputSamplesGenerated, CaptureAudioData.Num() - ReadSampleIndex);
+
 			float* CaptureDataPtr = CaptureAudioData.GetData();
-			if (!(ReadSampleIndex + NumSamplesToCopy > MaxBufferSize - 1))
-			{
-				FMemory::Memcpy(&OutAudio[OutputSamplesGenerated], &CaptureDataPtr[ReadSampleIndex], NumSamplesToCopy * sizeof(float));
-			}
-			else
-			{
-				UE_LOG(LogAudio, Warning, TEXT("Attempt to read past end of buffer in OnGenerateAudio, when we did not get more data from the synth"));
-				return NumSamples;
-			}
+			FMemory::Memcpy(&OutAudio[OutputSamplesGenerated], &CaptureDataPtr[ReadSampleIndex], NumSamplesToCopy * sizeof(float));
 			ReadSampleIndex += NumSamplesToCopy;
 			OutputSamplesGenerated += NumSamplesToCopy;
 		}
+
 		CapturedAudioDataSamples += OutputSamplesGenerated;
 	}
 	else
@@ -180,5 +162,6 @@ int32 UAudioCaptureComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples)
 		// Say we generated the full samples, this will result in silence
 		OutputSamplesGenerated = NumSamples;
 	}
+
 	return OutputSamplesGenerated;
 }

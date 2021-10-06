@@ -23,10 +23,11 @@ public:
 	virtual bool OpenFile(const FString& InFileName, const UMDLImporterOptions& InImporterOptions) = 0;
 	virtual int GetMaterialCountInFile() = 0;
 	virtual bool ImportMaterials(UObject* ParentPackage, EObjectFlags Flags, FProgressFunc ProgressFunc = nullptr) = 0;
+	virtual void SetTextureFactory(UTextureFactory* TextureFactory) = 0;
 	virtual TMap<FString, UMaterialInterface*> GetCreatedMaterials() = 0;
 	virtual bool Reimport(const FString& InFileName, const UMDLImporterOptions& InImporterOptions, UMaterialInterface* OutMaterial) = 0;
 
 	virtual const TArray<MDLImporterLogging::FLogMessage> GetLogMessages() = 0;
 
-    static TUniquePtr<IMdlFileImporter> Create();
+    static IMdlFileImporter* Create();
 };

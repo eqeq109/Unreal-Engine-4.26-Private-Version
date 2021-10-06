@@ -25,23 +25,28 @@ class FNiagaraCompileOptions;
 struct FNiagaraCompileResults
 {
 	/** Whether or not the script compiled successfully for VectorVM */
-	bool bVMSucceeded = false;
+	bool bVMSucceeded;
+
 	/** Whether or not the script compiled successfully for GPU compute */
-	bool bComputeSucceeded = false;
+	bool bComputeSucceeded;
 	
 	/** The actual final compiled data.*/
 	TSharedPtr<FNiagaraVMExecutableData> Data;
-	float CompileTime = 0.0f;
+
+	float CompileTime;
+
 	/** Tracking any compilation warnings or errors that occur.*/
 	TArray<FNiagaraCompileEvent> CompileEvents;
-	uint32 NumErrors = 0;
-	uint32 NumWarnings = 0;
+	uint32 NumErrors;
+	uint32 NumWarnings;
+
 	FString DumpDebugInfoPath;
- 
- 
- 
- 
- 
+
+	FNiagaraCompileResults()
+		: CompileTime(0.0f), NumErrors(0), NumWarnings(0)
+	{
+	}
+
 	static ENiagaraScriptCompileStatus CompileResultsToSummary(const FNiagaraCompileResults* CompileResults);
 	void AppendCompileEvents(TArrayView<const FNiagaraCompileEvent> InCompileEvents)
 	{

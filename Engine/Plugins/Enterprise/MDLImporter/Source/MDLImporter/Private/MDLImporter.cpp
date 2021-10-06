@@ -7,7 +7,6 @@
 #include "MDLImporterOptions.h"
 #include "MDLMapHandler.h"
 #include "MDLMaterialFactory.h"
-#include "MDLMaterialImporter.h"
 
 #include "generator/MaterialTextureFactory.h"
 #include "mdl/ApiContext.h"
@@ -15,9 +14,6 @@
 #include "mdl/MaterialDistiller.h"
 #include "mdl/Utility.h"
 
-#include "AssetToolsModule.h"
-#include "Engine/Texture2D.h"
-#include "Factories/TextureFactory.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Logging/LogMacros.h"
@@ -25,7 +21,8 @@
 #include "Misc/Paths.h"
 #include "PackageTools.h"
 #include "UObject/Package.h"
-#include "UObject/StrongObjectPtr.h"
+#include "Engine/Texture2D.h"
+#include "AssetToolsModule.h"
 
 namespace MDLImporterImpl
 {
@@ -165,6 +162,9 @@ const TArray<MDLImporterLogging::FLogMessage>& FMDLImporter::GetLogMessages() co
 
 bool FMDLImporter::OpenFile(const FString& InFileName, const UMDLImporterOptions& InImporterOptions, Mdl::FMaterialCollection& OutMaterials)
 {
+	MaterialFactory->CleanUp();
+	LogMessages.Empty();
+
 	if (!IsLoaded())
 	{
 		return false;
@@ -191,8 +191,8 @@ bool FMDLImporter::OpenFile(const FString& InFileName, const UMDLImporterOptions
 			MdlContext->AddResourceSearchPath(Path);
 		} while (MDLImporterImpl::GetParentPath(Path));
 
-		ActiveModuleName = UE::Mdl::Util::ConvertFilePathToModuleName(*FPaths::GetBaseFilename(ActiveFilename));
-		bSuccess = LoadModule(ActiveModuleName, InImporterOptions, OutMaterials);
+		bSuccess = MdlContext->LoadModule(ActiveFilename, OutMaterials);
+		MDLImporterImpl::SetupPostProcess(InImporterOptions.MetersPerSceneUnit, OutMaterials);
 
 		Path = FPaths::GetPath(ActiveFilename) + TEXT("/");
 		do
@@ -211,43 +211,17 @@ bool FMDLImporter::OpenFile(const FString& InFileName, const UMDLImporterOptions
 		}
 	}
 
-	return bSuccess;
-}
-
-bool FMDLImporter::LoadModule(const FString& InModuleName, const UMDLImporterOptions& InImporterOptions, Mdl::FMaterialCollection& OutMaterials)
-{
-	MaterialFactory->CleanUp();
-	LogMessages.Empty();
-
-	if (!IsLoaded())
-	{
-		return false;
-	}
-
-	bool bSuccess = false;
-	// load mdl module
-	{
-		FMDLMapHandler* MapHandler = nullptr;
-
-		bSuccess = MdlContext->LoadModule(InModuleName, OutMaterials);
-		MDLImporterImpl::SetupPostProcess(InImporterOptions.MetersPerSceneUnit, OutMaterials);
-
-		MapHandler = InImporterOptions.bForceBaking ? nullptr : DistillationMapHandler.Get();
-
-		MdlContext->GetDistiller()->SetMapHanlder(MapHandler);
-	}
-
 	MdlContext->GetDistiller()->SetBakingSettings(InImporterOptions.BakingResolution, InImporterOptions.BakingSamples);
 	MdlContext->GetDistiller()->SetMetersPerSceneUnit(InImporterOptions.MetersPerSceneUnit);
 
-	UE_LOG(LogMDLImporter, Log, TEXT("MDL module %s has %d materials"), *InModuleName, OutMaterials.Count());
+	UE_LOG(LogMDLImporter, Log, TEXT("MDL module %s has %d materials"), *InFileName, OutMaterials.Count());
 	if (OutMaterials.Count() == 0)
 	{
 		LogMessages.Emplace(MDLImporterLogging::EMessageSeverity::Error, TEXT("No materials are present in the MDL module!"));
 
 		bSuccess = false;
 		// clear MDL database
-		MdlContext->UnloadModule(ActiveModuleName);
+		MdlContext->UnloadModule(ActiveFilename);
 		MdlContext->Unload(true);
 	}
 
@@ -260,7 +234,7 @@ bool FMDLImporter::DistillMaterials(const TMap<FString, UMaterial*>& MaterialsMa
 	bool bSuccess = MdlContext->GetDistiller()->Distil(Materials, ProgressFunc);
 
 	// clear MDL database
-	MdlContext->UnloadModule(ActiveModuleName);
+	MdlContext->UnloadModule(ActiveFilename);
 	MdlContext->Unload(true);
 	return bSuccess;
 }
@@ -320,24 +294,11 @@ bool FMDLImporter::ImportMaterials(UObject* ParentPackage, EObjectFlags Flags, M
 		return false;
 	}
 
-	if ( ParentPackage == GetTransientPackage() )
-	{
-		DistillationMapHandler->SetFunctionAssetPath(*ParentPackage->GetPathName());
-	}
-	DistillationMapHandler->SetObjectFlags(Flags);
-
-	TStrongObjectPtr<UTextureFactory> Factory(NewObject<UTextureFactory>());
-	SetTextureFactory(Factory.Get());
-
 	if (!MaterialFactory->CreateMaterials(ActiveFilename, ParentPackage, Flags, Materials))
-	{
 		return false;
-	}
 
 	if (!DistillMaterials(MaterialFactory->GetNameMaterialMap(), Materials, ProgressFunc))
-	{
 		return false;
-	}
 
 	if (ProgressFunc)
 	{
@@ -361,9 +322,7 @@ bool FMDLImporter::Reimport(const FString& InFileName, const UMDLImporterOptions
 
 	Mdl::FMaterialCollection Materials;
 	if (!OpenFile(InFileName, InImporterOptions, Materials))
-	{
 		return false;
-	}
 
 	Mdl::FMaterial* FoundMdlMaterial = nullptr;
 	for (Mdl::FMaterial& MdlMaterial : Materials)
@@ -381,12 +340,7 @@ bool FMDLImporter::Reimport(const FString& InFileName, const UMDLImporterOptions
 	}
 
 	if (!FoundMdlMaterial)
-	{
 		return false;
-	}
-
-	TStrongObjectPtr<UTextureFactory> Factory(NewObject<UTextureFactory>());
-	SetTextureFactory(Factory.Get());
 
 	Mdl::FMaterial& MdlMaterial = *FoundMdlMaterial;
 	UMaterial*      Material    = Cast<UMaterial>(OutMaterial);
@@ -398,9 +352,7 @@ bool FMDLImporter::Reimport(const FString& InFileName, const UMDLImporterOptions
 	MdlContext->GetDistiller()->SetBakingSettings(InImporterOptions.BakingResolution, InImporterOptions.BakingSamples);
 	MdlContext->GetDistiller()->SetMetersPerSceneUnit(InImporterOptions.MetersPerSceneUnit);
 	if (!DistillMaterials(MaterialsMap, Materials, nullptr))
-	{
 		return false;
-	}
 
 	MaterialFactory->Reimport(MdlMaterial, *Material);
 
@@ -417,25 +369,7 @@ void FMDLImporter::CleanUp()
 	MaterialFactory->CleanUp();
 }
 
-void FMDLImporter::AddSearchPath(const FString& SearchPath)
-{
-	if ( !IsLoaded() )
-	{
-		return;
-	}
 
-	MdlContext->AddSearchPath(SearchPath);
-}
-
-void FMDLImporter::RemoveSearchPath(const FString& SearchPath)
-{
-	if ( !IsLoaded() )
-	{
-		return;
-	}
-
-	MdlContext->RemoveSearchPath(SearchPath);
-}
 
 #else
 
@@ -466,11 +400,6 @@ bool FMDLImporter::OpenFile(const FString&, const UMDLImporterOptions&, Mdl::FMa
 	return false;
 }
 
-bool FMDLImporter::LoadModule(const FString& InModuleName, const UMDLImporterOptions& InImporterOptions, Mdl::FMaterialCollection& OutMaterials)
-{
-	return false;
-}
-
 bool FMDLImporter::ImportMaterials(UObject*, EObjectFlags, Mdl::FMaterialCollection&, FProgressFunc)
 {
 	return false;
@@ -486,11 +415,4 @@ void FMDLImporter::CleanUp()
 
 }
 
-void FMDLImporter::AddSearchPath(const FString& SearchPath)
-{
-}
-
-void FMDLImporter::RemoveSearchPath(const FString& SearchPath)
-{
-}
 #endif

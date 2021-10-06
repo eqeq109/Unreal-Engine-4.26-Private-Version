@@ -310,6 +310,7 @@ void FRHICommandListExecutor::ExecuteInner_DoExecute(FRHICommandListBase& CmdLis
 
 	CmdList.bExecuting = true;
 	check(CmdList.Context || CmdList.ComputeContext);
+
 	FMemMark Mark(FMemStack::Get());
 
 #if WITH_MGPU

@@ -34,11 +34,11 @@ class IOnlineSubsystem;
 	/** Default name of friends list for running tests */
 	FString FriendsListName;
 	/** Filled in after reading friends list. Invites that are pending will be auto-accepted */
-	TArray<FUniqueNetIdPtr > InvitesToAccept;
+	TArray<TSharedPtr<const FUniqueNetId> > InvitesToAccept;
 	/** List of friends to send invites to. From test options */
-	TArray<FUniqueNetIdPtr > InvitesToSend;
+	TArray<TSharedPtr<const FUniqueNetId> > InvitesToSend;
 	/** List of friends to delete */
-	TArray<FUniqueNetIdPtr > FriendsToDelete;
+	TArray<TSharedPtr<const FUniqueNetId> > FriendsToDelete;
 	
 	/** true to enable friends list read */
 	bool bReadFriendsList;

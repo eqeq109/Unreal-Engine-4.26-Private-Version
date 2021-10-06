@@ -4,7 +4,6 @@
 
 #include "USDConversionUtils.h"
 #include "USDLayerUtils.h"
-#include "USDAttributeUtils.h"
 #include "USDListener.h"
 #include "USDLog.h"
 #include "USDMemory.h"
@@ -23,11 +22,16 @@
 #include "Compilation/MovieSceneCompiledDataManager.h"
 #include "Components/SceneComponent.h"
 #include "CoreMinimal.h"
+#include "Editor.h"
+#include "ILevelSequenceEditorToolkit.h"
+#include "ISequencer.h"
 #include "LevelSequence.h"
 #include "MovieScene.h"
 #include "MovieSceneTimeHelpers.h"
+#include "ObjectTools.h"
 #include "Sections/MovieSceneFloatSection.h"
 #include "Sections/MovieSceneSubSection.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 #include "Templates/SharedPointer.h"
 #include "Tracks/MovieSceneFloatTrack.h"
 #include "Tracks/MovieSceneSubTrack.h"
@@ -35,37 +39,14 @@
 #include "Tracks/MovieSceneVectorTrack.h"
 #include "UObject/UObjectGlobals.h"
 
-#if WITH_EDITOR
-#include "Editor.h"
-#include "Editor/TransBuffer.h"
-#include "ILevelSequenceEditorToolkit.h"
-#include "ISequencer.h"
-#include "Subsystems/AssetEditorSubsystem.h"
-#endif // WITH_EDITOR
-
 #if USE_USD_SDK
 
 namespace UsdLevelSequenceHelperImpl
 {
-	// Adapted from ObjectTools as it is within an Editor-only module
-	FString SanitizeObjectName( const FString& InObjectName )
-	{
-		FString SanitizedText = InObjectName;
-		const TCHAR* InvalidChar = INVALID_OBJECTNAME_CHARACTERS;
-		while ( *InvalidChar )
-		{
-			SanitizedText.ReplaceCharInline( *InvalidChar, TCHAR( '_' ), ESearchCase::CaseSensitive );
-			++InvalidChar;
-		}
-
-		return SanitizedText;
-	}
-
 	/** Sets the readonly value of the scene on construction and reverts it on destruction */
 	class FMovieSceneReadonlyGuard
 	{
 	public:
-#if WITH_EDITOR
 		explicit FMovieSceneReadonlyGuard( UMovieScene& InMovieScene, const bool bNewReadonlyValue )
 			: MovieScene( InMovieScene )
 			, bWasReadonly( InMovieScene.IsReadOnly() )
@@ -77,13 +58,6 @@ namespace UsdLevelSequenceHelperImpl
 		{
 			MovieScene.SetReadOnly( bWasReadonly );
 		}
-#else
-		explicit FMovieSceneReadonlyGuard( UMovieScene& InMovieScene, const bool bNewReadonlyValue )
-			: MovieScene( InMovieScene )
-			, bWasReadonly( true )
-		{
-		}
-#endif // WITH_EDITOR
 
 	private:
 		UMovieScene& MovieScene;
@@ -102,14 +76,11 @@ namespace UsdLevelSequenceHelperImpl
 
 }
 
-class FUsdLevelSequenceHelperImpl : private FGCObject
+class FUsdLevelSequenceHelperImpl
 {
 public:
-	FUsdLevelSequenceHelperImpl();
+	FUsdLevelSequenceHelperImpl(TWeakObjectPtr<AUsdStageActor> InStageActor);
 	~FUsdLevelSequenceHelperImpl();
-
-	ULevelSequence* Init(const UE::FUsdStage& InUsdStage);
-	void Clear();
 
 private:
 	struct FLayerOffsetInfo
@@ -134,41 +105,22 @@ private:
 		}
 	};
 
-// FGCObject interface
-protected:
-	virtual void AddReferencedObjects( FReferenceCollector& Collector ) override;
-
 // Sequences handling
 public:
 
 	/** Creates a Level Sequence and its SubSequenceSection for each layer in the local layer stack (root layer and sub layers) */
 	void CreateLocalLayersSequences();
-	void BindToUsdStageActor( AUsdStageActor* InStageActor );
-	void UnbindFromUsdStageActor();
-
-	ULevelSequence* GetMainLevelSequence() const { return MainLevelSequence; }
-	TArray< ULevelSequence* > GetSubSequences() const
-	{
-		TArray< ULevelSequence* > SubSequences;
-		LevelSequencesByIdentifier.GenerateValueArray( SubSequences );
-		SubSequences.Remove( MainLevelSequence );
-
-		return SubSequences;
-	}
 
 private:
 	ULevelSequence* FindSequenceForAttribute( const UE::FUsdAttribute& Attribute );
 	ULevelSequence* FindOrAddSequenceForAttribute( const UE::FUsdAttribute& Attribute );
-	ULevelSequence* FindSequenceForIdentifier( const FString& SequenceIdentitifer );
+	ULevelSequence* FindSequenceForIdentifier( const FString& SequenceIdentitifer ) const;
 	ULevelSequence* FindOrAddSequenceForLayer( const UE::FSdfLayer& Layer, const FString& SequenceIdentifier, const FString& SequenceDisplayName );
 
 	/** Removes PrimTwin as a user of Sequence. If Sequence is now unused, remove its subsection and itself. */
 	void RemoveSequenceForPrim( ULevelSequence& Sequence, const UUsdPrimTwin& PrimTwin );
 
 private:
-	ULevelSequence* MainLevelSequence;
-	TMap<FString, ULevelSequence*> LevelSequencesByIdentifier;
-
 	TSet< FName > LocalLayersSequences; // List of sequences associated with sublayers
 
 	FMovieSceneSequenceHierarchy SequenceHierarchyCache; // Cache for the hierarchy of level sequences and subsections
@@ -188,10 +140,9 @@ private:
 private:
 	/** Creates a time track on the ULevelSequence corresponding to Info */
 	void CreateTimeTrack(const FUsdLevelSequenceHelperImpl::FLayerTimeInfo& Info);
-	void RemoveTimeTrack(const FUsdLevelSequenceHelperImpl::FLayerTimeInfo* Info);
 
 	/** Adds a transform track for the prim xform transform op. */
-	void AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelSequence& Sequence, bool bIsMuted = false );
+	void AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelSequence& Sequence );
 	void RemoveXformTrack( ULevelSequence& Sequence, const UUsdPrimTwin& PrimTwin );
 
 // Prims handling
@@ -213,7 +164,6 @@ private:
 	FLayerTimeInfo* GetRootLayerInfo();
 
 	FLayerTimeInfo& FindOrAddLayerTimeInfo(const UE::FSdfLayer& Layer);
-	FLayerTimeInfo* FindLayerTimeInfo(const UE::FSdfLayer& Layer);
 
 	/** Updates the Usd LayerOffset with new offset/scale values when Section has been moved by the user */
 	void UpdateUsdLayerOffsetFromSection(const UMovieSceneSequence* Sequence, const UMovieSceneSubSection* Section);
@@ -231,23 +181,17 @@ private:
 
 // Changes handling
 public:
-	void StartMonitoringChanges() { MonitoringChangesWhenZero.Decrement(); }
-	void StopMonitoringChanges() { MonitoringChangesWhenZero.Increment(); }
-	bool IsMonitoringChanges() const { return MonitoringChangesWhenZero.GetValue() == 0; }
-
-	/**
-	 * Used as a fire-and-forget block that will prevent any levelsequence object (tracks, moviescene, sections, etc.) change from being written to the stage.
-	 * We unblock during HandleTransactionStateChanged.
-	 */
-	void BlockMonitoringChangesForThisTransaction();
+	void StartMonitoringChanges() { bMonitorChanges = true; }
+	void StopMonitoringChanges() { bMonitorChanges = false; }
 
 private:
 	void OnObjectTransacted(UObject* Object, const class FTransactionObjectEvent& Event);
-	void HandleTransactionStateChanged( const FTransactionContext& InTransactionContext, const ETransactionStateEventType InTransactionState );
 	void HandleMovieSceneChange(UMovieScene& MovieScene);
 	void HandleSubSectionChange(UMovieSceneSubSection& Section);
-	void HandleTransformTrackChange( const UMovieScene3DTransformTrack& TransformTrack, bool bIsMuteChange );
+	void HandleTransformTrackChange(const UMovieScene3DTransformTrack& TransformTrack);
 	void HandleDisplayRateChange(const double DisplayRate);
+
+	bool bMonitorChanges; // Flag to handle or not changes done to the level sequence or one of its subobject
 
 	FDelegateHandle OnObjectTransactedHandle;
 	FDelegateHandle OnStageEditTargetChangedHandle;
@@ -268,15 +212,6 @@ private:
 
 	TWeakObjectPtr<AUsdStageActor> StageActor;
 	FGuid StageActorBinding;
-
-	// Only when this is zero we write LevelSequence object (tracks, moviescene, sections, etc.) transactions back to the USD stage
-	FThreadSafeCounter MonitoringChangesWhenZero;
-
-	// When we call BlockMonitoringChangesForThisTransaction, we record the FGuid of the current transaction. We'll early out of all OnObjectTransacted calls for that transaction
-	// We keep a set here in order to remember all the blocked transactions as we're going through them
-	TSet<FGuid> BlockedTransactionGuids;
-
-	UE::FUsdStage UsdStage;
 };
 
 const EObjectFlags FUsdLevelSequenceHelperImpl::DefaultObjFlags = EObjectFlags::RF_Transactional | EObjectFlags::RF_Transient | EObjectFlags::RF_Public;
@@ -284,20 +219,21 @@ const double FUsdLevelSequenceHelperImpl::DefaultFramerate = 24.0;
 const TCHAR* FUsdLevelSequenceHelperImpl::TimeTrackName = TEXT("Time");
 const double FUsdLevelSequenceHelperImpl::EmptySubSectionRange = 10.0;
 
-FUsdLevelSequenceHelperImpl::FUsdLevelSequenceHelperImpl()
-	: MainLevelSequence( nullptr )
+FUsdLevelSequenceHelperImpl::FUsdLevelSequenceHelperImpl(TWeakObjectPtr<AUsdStageActor> InStageActor)
+	: bMonitorChanges( true )
+	, StageActor(InStageActor)
 {
-#if WITH_EDITOR
 	OnObjectTransactedHandle = FCoreUObjectDelegates::OnObjectTransacted.AddRaw(this, &FUsdLevelSequenceHelperImpl::OnObjectTransacted);
 
-	if ( GEditor )
+	if ( StageActor.IsValid() )
 	{
-		if ( UTransBuffer* Transactor = Cast<UTransBuffer>( GEditor->Trans ) )
-		{
-			Transactor->OnTransactionStateChanged().AddRaw( this, &FUsdLevelSequenceHelperImpl::HandleTransactionStateChanged );
-		}
+		OnStageEditTargetChangedHandle = StageActor->GetUsdListener().GetOnStageEditTargetChanged().AddLambda(
+			[ this ]()
+			{
+				UpdateMovieSceneReadonlyFlags();
+			}
+		);
 	}
-#endif // WITH_EDITOR
 }
 
 FUsdLevelSequenceHelperImpl::~FUsdLevelSequenceHelperImpl()
@@ -308,78 +244,58 @@ FUsdLevelSequenceHelperImpl::~FUsdLevelSequenceHelperImpl()
 		OnStageEditTargetChangedHandle.Reset();
 	}
 
-#if WITH_EDITOR
 	FCoreUObjectDelegates::OnObjectTransacted.Remove(OnObjectTransactedHandle);
 	OnObjectTransactedHandle.Reset();
-
-	if ( GEditor )
-	{
-		if ( UTransBuffer* Transactor = Cast<UTransBuffer>( GEditor->Trans ) )
-		{
-			Transactor->OnTransactionStateChanged().RemoveAll( this );
-		}
-	}
-#endif // WITH_EDITOR
-}
-
-ULevelSequence* FUsdLevelSequenceHelperImpl::Init(const UE::FUsdStage& InUsdStage)
-{
-	UsdStage = InUsdStage;
-
-	CreateLocalLayersSequences();
-	return MainLevelSequence;
-}
-
-void FUsdLevelSequenceHelperImpl::Clear()
-{
-	MainLevelSequence = nullptr;
-	LevelSequencesByIdentifier.Empty();
-	LocalLayersSequences.Empty();
-	LayerIdentifierByLevelSequenceName.Empty();
-	LayerTimeInfosByLayerIdentifier.Empty();
-	PrimPathByLevelSequenceName.Empty();
-	SequencesID.Empty();
-	SceneComponentsBindings.Empty();
-	SequenceHierarchyCache = FMovieSceneSequenceHierarchy();
-}
-
-void FUsdLevelSequenceHelperImpl::AddReferencedObjects( FReferenceCollector& Collector )
-{
-	Collector.AddReferencedObject( MainLevelSequence );
-	Collector.AddReferencedObjects( LevelSequencesByIdentifier );
 }
 
 void FUsdLevelSequenceHelperImpl::CreateLocalLayersSequences()
 {
-	Clear();
+	LocalLayersSequences.Empty();
+	LayerIdentifierByLevelSequenceName.Empty();
+	LayerTimeInfosByLayerIdentifier.Empty();
+	PrimPathByLevelSequenceName.Empty();
+	StageActorBinding = FGuid::NewGuid();
+	SequencesID.Empty();
+	SceneComponentsBindings.Empty();
+	SequenceHierarchyCache = FMovieSceneSequenceHierarchy();
 
-	if ( !UsdStage )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if (!ValidStageActor)
 	{
 		return;
 	}
 
-	UE::FSdfLayer RootLayer = UsdStage.GetRootLayer();
+	if ( ValidStageActor->LevelSequence )
+	{
+		return;
+	}
+
+	UE::FSdfLayer RootLayer = ValidStageActor->GetUsdStage().GetRootLayer();
 	const FLayerTimeInfo& RootLayerInfo = FindOrAddLayerTimeInfo( RootLayer );
 
 	UE_LOG(LogUsd, Verbose, TEXT("CreateLayerSequences: Initializing level sequence for '%s'"), *RootLayerInfo.Identifier);
 
-	// Create main level sequence for root layer
-	MainLevelSequence = FindOrAddSequenceForLayer( RootLayer, RootLayer.GetIdentifier(), RootLayer.GetDisplayName() );
+	// Create level sequence for root layer (visible on StageActor's details panel)
+	ValidStageActor->LevelSequence = FindOrAddSequenceForLayer( RootLayer, RootLayer.GetIdentifier(), RootLayer.GetDisplayName() );
 
-	if ( !MainLevelSequence )
+	if ( !ValidStageActor->LevelSequence )
 	{
 		return;
 	}
 
-	UMovieScene* MovieScene = MainLevelSequence->GetMovieScene();
+	UMovieScene* MovieScene = ValidStageActor->LevelSequence->GetMovieScene();
 	if ( !MovieScene )
 	{
 		return;
 	}
 
-	SequencesID.Add( MainLevelSequence ) = MovieSceneSequenceID::Root;
+	SequencesID.Add( ValidStageActor->LevelSequence ) = MovieSceneSequenceID::Root;
 
-	LocalLayersSequences.Add( MainLevelSequence->GetFName() );
+	LocalLayersSequences.Add( ValidStageActor->LevelSequence->GetFName() );
+
+	// Bind stage actor
+	StageActorBinding = MovieScene->AddPossessable( ValidStageActor->GetActorLabel(), ValidStageActor->GetClass() );
+	ValidStageActor->LevelSequence->BindPossessableObject( StageActorBinding, *ValidStageActor, ValidStageActor->GetWorld() );
 
 	TFunction< void( const FLayerTimeInfo* LayerTimeInfo, ULevelSequence& ParentSequence ) > RecursivelyCreateSequencesForLayer;
 	RecursivelyCreateSequencesForLayer = [ &RecursivelyCreateSequencesForLayer, this ]( const FLayerTimeInfo* LayerTimeInfo, ULevelSequence& ParentSequence )
@@ -403,7 +319,7 @@ void FUsdLevelSequenceHelperImpl::CreateLocalLayersSequences()
 
 							CreateSubSequenceSection( ParentSequence, *SubSequence );
 
-							RecursivelyCreateSequencesForLayer( FindLayerTimeInfo( SubLayer ), *SubSequence );
+							RecursivelyCreateSequencesForLayer( LayerTimeInfosByLayerIdentifier.Find( SubLayer.GetIdentifier() ), *SubSequence );
 						}
 					}
 				}
@@ -412,64 +328,9 @@ void FUsdLevelSequenceHelperImpl::CreateLocalLayersSequences()
 	};
 
 	// Create level sequences for all sub layers (accessible via the main level sequence but otherwise hidden)
-	RecursivelyCreateSequencesForLayer( &RootLayerInfo, *MainLevelSequence );
-}
+	RecursivelyCreateSequencesForLayer( &RootLayerInfo, *ValidStageActor->LevelSequence );
 
-void FUsdLevelSequenceHelperImpl::BindToUsdStageActor( AUsdStageActor* InStageActor )
-{
-	UnbindFromUsdStageActor();
-
-	StageActor = InStageActor;
-
-	if ( !StageActor.IsValid() || !MainLevelSequence || !MainLevelSequence->GetMovieScene() )
-	{
-		return;
-	}
-
-	OnStageEditTargetChangedHandle = StageActor->GetUsdListener().GetOnStageEditTargetChanged().AddLambda(
-		[ this ]()
-		{
-			UpdateMovieSceneReadonlyFlags();
-		});
-
-	// Bind stage actor
-	StageActorBinding = MainLevelSequence->GetMovieScene()->AddPossessable(
-#if WITH_EDITOR
-		StageActor->GetActorLabel(),
-#else
-		StageActor->GetName(),
-#endif // WITH_EDITOR
-		StageActor->GetClass()
-	);
-	MainLevelSequence->BindPossessableObject( StageActorBinding, *StageActor, StageActor->GetWorld() );
-
-	CreateTimeTrack( FindOrAddLayerTimeInfo( UsdStage.GetRootLayer() ) );
-}
-
-void FUsdLevelSequenceHelperImpl::UnbindFromUsdStageActor()
-{
-	if ( UsdStage )
-	{
-		RemoveTimeTrack( FindLayerTimeInfo( UsdStage.GetRootLayer() ) );
-	}
-
-	if ( MainLevelSequence && MainLevelSequence->GetMovieScene() )
-	{
-		if ( MainLevelSequence->GetMovieScene()->RemovePossessable( StageActorBinding ) )
-		{
-			MainLevelSequence->UnbindPossessableObjects( StageActorBinding );
-		}
-	}
-
-	StageActorBinding = FGuid::NewGuid();
-
-	if ( StageActor.IsValid() )
-	{
-		StageActor->GetUsdListener().GetOnStageEditTargetChanged().Remove( OnStageEditTargetChangedHandle );
-		StageActor.Reset();
-	}
-
-	OnStageEditTargetChangedHandle.Reset();
+	CreateTimeTrack( FindOrAddLayerTimeInfo( ValidStageActor->GetUsdStage().GetRootLayer() ) );
 }
 
 ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForAttribute( const UE::FUsdAttribute& Attribute )
@@ -479,7 +340,8 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForAttribute( const UE:
 		return nullptr;
 	}
 
-	if ( !UsdStage )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
 	{
 		return nullptr;
 	}
@@ -501,7 +363,7 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForAttribute( const UE:
 	ULevelSequence* Sequence = nullptr;
 
 	// If the attribute is on the Root or a SubLayer, return the Sequence associated with that layer
-	if ( AttributeLayer.HasSpec( Prim.GetPrimPath() ) && UsdStage.HasLocalLayer( AttributeLayer ) )
+	if ( AttributeLayer.HasSpec( Prim.GetPrimPath() ) && ValidStageActor->GetUsdStage().HasLocalLayer( AttributeLayer ) )
 	{
 		Sequence = FindSequenceForIdentifier( AttributeLayer.GetIdentifier() );
 	}
@@ -517,6 +379,12 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForAttribute( const UE:
 ULevelSequence* FUsdLevelSequenceHelperImpl::FindOrAddSequenceForAttribute( const UE::FUsdAttribute& Attribute )
 {
 	if ( !Attribute || !Attribute.GetPrim() )
+	{
+		return nullptr;
+	}
+
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
 	{
 		return nullptr;
 	}
@@ -546,10 +414,16 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindOrAddSequenceForLayer( const UE
 
 	if ( !Sequence )
 	{
+		AUsdStageActor* ValidStageActor = StageActor.Get();
+		if ( !ValidStageActor )
+		{
+			return nullptr;
+		}
+
 		// This needs to be unique, or else when we reload the stage we will end up with a new ULevelSequence with the same class, outer and name as the
 		// previous one. Also note that the previous level sequence, even though unreferenced by the stage actor, is likely still alive and valid due to references
 		// from the transaction buffer, so we would basically end up creating a identical new object on top of an existing one (the new object has the same address as the existing one)
-		FName UniqueSequenceName = MakeUniqueObjectName( GetTransientPackage(), ULevelSequence::StaticClass(), *UsdLevelSequenceHelperImpl::SanitizeObjectName( SequenceDisplayName ) );
+		FName UniqueSequenceName = MakeUniqueObjectName( GetTransientPackage(), ULevelSequence::StaticClass(), *ObjectTools::SanitizeObjectName( SequenceDisplayName ) );
 
 		Sequence = NewObject< ULevelSequence >( GetTransientPackage(), UniqueSequenceName, FUsdLevelSequenceHelperImpl::DefaultObjFlags );
 		Sequence->Initialize();
@@ -561,7 +435,7 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindOrAddSequenceForLayer( const UE
 		}
 
 		LayerIdentifierByLevelSequenceName.Add( Sequence->GetFName(), Layer.GetIdentifier() );
-		LevelSequencesByIdentifier.Add( SequenceIdentifier, Sequence );
+		ValidStageActor->LevelSequencesByIdentifier.Add( SequenceIdentifier, Sequence );
 
 		const FLayerTimeInfo LayerTimeInfo = FindOrAddLayerTimeInfo( Layer );
 
@@ -625,7 +499,7 @@ void FUsdLevelSequenceHelperImpl::CreateSubSequenceSection( ULevelSequence& Sequ
 		return;
 	}
 
-	if ( !UsdStage )
+	if ( !StageActor.IsValid() || !StageActor->GetUsdStage() )
 	{
 		return;
 	}
@@ -676,12 +550,12 @@ void FUsdLevelSequenceHelperImpl::CreateSubSequenceSection( ULevelSequence& Sequ
 
 	if ( PrimPathsForSequence.Num() > 0 )
 	{
-		if ( UE::FUsdPrim SequencePrim = UsdStage.GetPrimAtPath( UE::FSdfPath( *PrimPathsForSequence[0] ) ) )
+		if ( UE::FUsdPrim SequencePrim = StageActor->GetUsdStage().GetPrimAtPath( UE::FSdfPath( *PrimPathsForSequence[0] ) ) )
 		{
 			SubLayerOffset = UsdUtils::GetLayerToStageOffset( GetXformAttribute( SequencePrim ) );
 		}
 	}
-	else if ( UsdStage.HasLocalLayer( SubLayer ) )
+	else if ( StageActor->GetUsdStage().HasLocalLayer( SubLayer ) )
 	{
 		const FLayerOffsetInfo* SubLayerOffsetPtr = Algo::FindByPredicate( LayerTimeInfo->SubLayersOffsets,
 			[ &SubLayerIdentifier ]( const FLayerOffsetInfo& Other )
@@ -725,9 +599,9 @@ void FUsdLevelSequenceHelperImpl::CreateSubSequenceSection( ULevelSequence& Sequ
 
 	SubSection->Parameters.TimeScale = FMath::IsNearlyZero( SubLayerOffset.Scale ) ? 0.f : 1.f / SubLayerOffset.Scale;
 
-	if ( MainLevelSequence )
+	if ( StageActor->LevelSequence )
 	{
-		UMovieSceneCompiledDataManager::CompileHierarchy( MainLevelSequence, &SequenceHierarchyCache, EMovieSceneServerClientMask::All );
+		UMovieSceneCompiledDataManager::CompileHierarchy( StageActor->LevelSequence, &SequenceHierarchyCache );
 
 		for ( const TTuple< FMovieSceneSequenceID, FMovieSceneSubSequenceData >& Pair : SequenceHierarchyCache.AllSubSequenceData() )
 		{
@@ -753,9 +627,9 @@ void FUsdLevelSequenceHelperImpl::RemoveSubSequenceSection( ULevelSequence& Sequ
 			SubTrack->Modify();
 			SubTrack->RemoveSection( *SubSection );
 
-			if ( MainLevelSequence )
+			if ( StageActor->LevelSequence )
 			{
-				UMovieSceneCompiledDataManager::CompileHierarchy( MainLevelSequence, &SequenceHierarchyCache, EMovieSceneServerClientMask::All );
+				UMovieSceneCompiledDataManager::CompileHierarchy( StageActor->LevelSequence, &SequenceHierarchyCache );
 			}
 		}
 	}
@@ -765,7 +639,7 @@ void FUsdLevelSequenceHelperImpl::CreateTimeTrack(const FLayerTimeInfo& Info)
 {
 	ULevelSequence* Sequence = FindSequenceForIdentifier( Info.Identifier );
 
-	if (!Sequence || !StageActorBinding.IsValid())
+	if (!Sequence)
 	{
 		return;
 	}
@@ -830,43 +704,16 @@ void FUsdLevelSequenceHelperImpl::CreateTimeTrack(const FLayerTimeInfo& Info)
 	}
 }
 
-void FUsdLevelSequenceHelperImpl::RemoveTimeTrack(const FLayerTimeInfo* LayerTimeInfo)
-{
-	if ( !UsdStage || !LayerTimeInfo || !StageActorBinding.IsValid() )
-	{
-		return;
-	}
-
-	ULevelSequence* Sequence = FindSequenceForIdentifier( LayerTimeInfo->Identifier );
-
-	if ( !Sequence )
-	{
-		return;
-	}
-
-	UMovieScene* MovieScene = Sequence->GetMovieScene();
-
-	if ( !MovieScene )
-	{
-		return;
-	}
-
-	UMovieSceneFloatTrack* TimeTrack = MovieScene->FindTrack< UMovieSceneFloatTrack >( StageActorBinding, FName( FUsdLevelSequenceHelperImpl::TimeTrackName ) );
-	if ( TimeTrack )
-	{
-		MovieScene->RemoveTrack( *TimeTrack );
-	}
-}
-
 void FUsdLevelSequenceHelperImpl::AddPrim( UUsdPrimTwin& PrimTwin )
 {
-	if ( !UsdStage )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
 	{
 		return;
 	}
 
 	UE::FSdfPath PrimPath( *PrimTwin.PrimPath );
-	UE::FUsdPrim UsdPrim( UsdStage.GetPrimAtPath( PrimPath ) );
+	UE::FUsdPrim UsdPrim( ValidStageActor->GetUsdStage().GetPrimAtPath( PrimPath ) );
 
 	TArray< UE::FUsdAttribute > PrimAttributes = UsdPrim.GetAttributes();
 
@@ -881,11 +728,10 @@ void FUsdLevelSequenceHelperImpl::AddPrim( UUsdPrimTwin& PrimTwin )
 				if ( !SequencesID.Contains( AttributeSequence ) )
 				{
 					UE::FSdfLayer PrimLayer = UsdUtils::FindLayerForPrim( UsdPrim );
-					if ( ULevelSequence* PrimSequence = FindSequenceForIdentifier( PrimLayer.GetIdentifier() ) )
-					{
-						// Create new subsequence section for this referencing prim
-						CreateSubSequenceSection( *PrimSequence, *AttributeSequence );
-					}
+					ULevelSequence* PrimSequence = FindSequenceForIdentifier( PrimLayer.GetIdentifier() );
+
+					// Create new subsequence section for this referencing prim
+					CreateSubSequenceSection( *PrimSequence, *AttributeSequence );
 				}
 			}
 		}
@@ -898,8 +744,7 @@ void FUsdLevelSequenceHelperImpl::AddPrim( UUsdPrimTwin& PrimTwin )
 		{
 			if ( ULevelSequence* TransformSequence = FindOrAddSequenceForAttribute( TransformAttribute ) )
 			{
-				const bool bIsMuted = UsdUtils::IsAttributeMuted( TransformAttribute, UsdStage );
-				AddXformTrack( PrimTwin, *TransformSequence, bIsMuted );
+				AddXformTrack( PrimTwin, *TransformSequence );
 			}
 		}
 	}
@@ -907,7 +752,7 @@ void FUsdLevelSequenceHelperImpl::AddPrim( UUsdPrimTwin& PrimTwin )
 	RefreshSequencer();
 }
 
-void FUsdLevelSequenceHelperImpl::AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelSequence& Sequence, bool bIsMuted /* = false */ )
+void FUsdLevelSequenceHelperImpl::AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelSequence& Sequence )
 {
 	UMovieScene* MovieScene = Sequence.GetMovieScene();
 
@@ -961,25 +806,13 @@ void FUsdLevelSequenceHelperImpl::AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelS
 		XformTrack->SetPropertyNameAndPath( TransformPropertyName, TransformPropertyName.ToString() );
 	}
 
-	if ( bIsMuted )
-	{
-#if WITH_EDITOR
-		// We need to update the MovieScene too, because if MuteNodes disagrees with Track->IsEvalDisabled() the sequencer
-		// will chose in favor of MuteNodes
-		MovieScene->Modify();
-		MovieScene->GetMuteNodes().AddUnique( FString::Printf( TEXT( "%s.%s" ), *ComponentBinding.ToString(), *XformTrack->GetName() ) );
-#endif // WITH_EDITOR
-
-		XformTrack->Modify();
-		XformTrack->SetEvalDisabled( bIsMuted );
-	}
-
-	if ( !UsdStage )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
 	{
 		return;
 	}
 
-	UE::FUsdGeomXformable Xformable( UsdStage.GetPrimAtPath( UE::FSdfPath( *PrimTwin.PrimPath ) ) );
+	UE::FUsdGeomXformable Xformable( ValidStageActor->GetUsdStage().GetPrimAtPath( UE::FSdfPath( *PrimTwin.PrimPath ) ) );
 
 
 	FMovieSceneSequenceTransform SequenceTransform;
@@ -995,12 +828,13 @@ void FUsdLevelSequenceHelperImpl::AddXformTrack( UUsdPrimTwin& PrimTwin, ULevelS
 
 void FUsdLevelSequenceHelperImpl::RemovePrim( const UUsdPrimTwin& PrimTwin )
 {
-	if ( !UsdStage )
+	// We can't assume that the UsdPrim still exists in the stage, it might have been removed already so work from the PrimTwin PrimPath.
+
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
 	{
 		return;
 	}
-
-	// We can't assume that the UsdPrim still exists in the stage, it might have been removed already so work from the PrimTwin PrimPath.
 
 	TSet< FName > PrimSequences;
 
@@ -1016,7 +850,7 @@ void FUsdLevelSequenceHelperImpl::RemovePrim( const UUsdPrimTwin& PrimTwin )
 
 	for ( const FName& PrimSequenceName : PrimSequences )
 	{
-		for ( const TPair< FString, ULevelSequence* >& IdentifierSequencePair : LevelSequencesByIdentifier )
+		for ( const TPair< FString, ULevelSequence* >& IdentifierSequencePair : ValidStageActor->LevelSequencesByIdentifier )
 		{
 			if ( IdentifierSequencePair.Value && IdentifierSequencePair.Value->GetFName() == PrimSequenceName )
 			{
@@ -1024,7 +858,7 @@ void FUsdLevelSequenceHelperImpl::RemovePrim( const UUsdPrimTwin& PrimTwin )
 			}
 		}
 	}
-
+	
 	if ( ULevelSequence* TransformSequence = SceneComponentsBindings.FindRef( &PrimTwin ).Key )
 	{
 		RemoveXformTrack( *TransformSequence, PrimTwin );
@@ -1050,7 +884,7 @@ void FUsdLevelSequenceHelperImpl::RemoveSequenceForPrim( ULevelSequence& Sequenc
 		// If Sequence isn't used anymore, remove it and its subsection
 		if ( !PrimPathByLevelSequenceName.Contains( Sequence.GetFName() ) && !LocalLayersSequences.Contains( Sequence.GetFName() ) )
 		{
-			ULevelSequence* ParentSequence = MainLevelSequence;
+			ULevelSequence* ParentSequence = StageActor->LevelSequence;
 			FMovieSceneSequenceID SequenceID = SequencesID.FindRef( &Sequence );
 
 			if ( FMovieSceneSequenceHierarchyNode* NodeData = SequenceHierarchyCache.FindNode( SequenceID ) )
@@ -1068,7 +902,7 @@ void FUsdLevelSequenceHelperImpl::RemoveSequenceForPrim( ULevelSequence& Sequenc
 				RemoveSubSequenceSection( *ParentSequence, Sequence );
 			}
 
-			LevelSequencesByIdentifier.Remove( PrimTwin.PrimPath );
+			StageActor->LevelSequencesByIdentifier.Remove( PrimTwin.PrimPath );
 			SequencesID.Remove( &Sequence );
 		}
 	}
@@ -1076,6 +910,12 @@ void FUsdLevelSequenceHelperImpl::RemoveSequenceForPrim( ULevelSequence& Sequenc
 
 void FUsdLevelSequenceHelperImpl::RemoveXformTrack( ULevelSequence& Sequence, const UUsdPrimTwin& PrimTwin )
 {
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
+	{
+		return;
+	}
+
 	UMovieScene* MovieScene = Sequence.GetMovieScene();
 
 	if ( !MovieScene )
@@ -1101,14 +941,14 @@ void FUsdLevelSequenceHelperImpl::RemoveXformTrack( ULevelSequence& Sequence, co
 
 void FUsdLevelSequenceHelperImpl::RefreshSequencer()
 {
-#if WITH_EDITOR
-	if ( !MainLevelSequence || !GIsEditor )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor || !ValidStageActor->LevelSequence )
 	{
 		return;
 	}
 
 	const bool bFocusIfOpen = false;
-	IAssetEditorInstance* AssetEditor = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(MainLevelSequence, bFocusIfOpen);
+	IAssetEditorInstance* AssetEditor = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(ValidStageActor->LevelSequence, bFocusIfOpen);
 	ILevelSequenceEditorToolkit* LevelSequenceEditor = static_cast<ILevelSequenceEditorToolkit*>(AssetEditor);
 	TWeakPtr<ISequencer> WeakSequencer = LevelSequenceEditor ? LevelSequenceEditor->GetSequencer() : nullptr;
 
@@ -1117,7 +957,6 @@ void FUsdLevelSequenceHelperImpl::RefreshSequencer()
 		Sequencer->RefreshTree();
 		Sequencer->NotifyMovieSceneDataChanged( EMovieSceneDataChangeType::TrackValueChanged );
 	}
-#endif // WITH_EDITOR
 }
 
 void FUsdLevelSequenceHelperImpl::UpdateUsdLayerOffsetFromSection(const UMovieSceneSequence* Sequence, const UMovieSceneSubSection* Section)
@@ -1178,12 +1017,7 @@ void FUsdLevelSequenceHelperImpl::UpdateUsdLayerOffsetFromSection(const UMovieSc
 	}
 
 	// Prevent twins from being rebuilt when we update the layer offsets
-	TOptional< FScopedBlockNoticeListening > BlockNotices;
-
-	if ( StageActor.IsValid() )
-	{
-		BlockNotices.Emplace( StageActor.Get() );
-	}
+	FScopedBlockNotices BlockNotices( StageActor.Get()->GetUsdListener() );
 
 	if ( LocalLayersSequences.Contains( SubSequence->GetFName() ) )
 	{
@@ -1217,7 +1051,7 @@ void FUsdLevelSequenceHelperImpl::UpdateUsdLayerOffsetFromSection(const UMovieSc
 
 		for ( const FString& PrimPath : PrimPathsForSequence )
 		{
-			UsdUtils::SetRefOrPayloadLayerOffset( UsdStage.GetPrimAtPath( UE::FSdfPath( *PrimPath ) ), NewLayerOffset );
+			UsdUtils::SetRefOrPayloadLayerOffset( StageActor->GetUsdStage().GetPrimAtPath( UE::FSdfPath( *PrimPath ) ), NewLayerOffset );
 		}
 	}
 
@@ -1226,7 +1060,12 @@ void FUsdLevelSequenceHelperImpl::UpdateUsdLayerOffsetFromSection(const UMovieSc
 
 void FUsdLevelSequenceHelperImpl::UpdateMovieSceneReadonlyFlags()
 {
-	for ( const TPair< FString, ULevelSequence* >& SequenceIndentifierToSequence : LevelSequencesByIdentifier )
+	if ( !StageActor.IsValid() )
+	{
+		return;
+	}
+
+	for ( const TPair< FString, ULevelSequence* >& SequenceIndentifierToSequence : StageActor->LevelSequencesByIdentifier )
 	{
 		if ( ULevelSequence* Sequence = SequenceIndentifierToSequence.Value )
 		{
@@ -1243,16 +1082,14 @@ void FUsdLevelSequenceHelperImpl::UpdateMovieSceneReadonlyFlags()
 
 void FUsdLevelSequenceHelperImpl::UpdateMovieSceneReadonlyFlag( UMovieScene& MovieScene, const FString& LayerIdentifier )
 {
-#if WITH_EDITOR
-	if ( !UsdStage )
+	if ( !StageActor.IsValid() )
 	{
 		return;
 	}
 
 	UE::FSdfLayer Layer = UE::FSdfLayer::FindOrOpen( *LayerIdentifier );
-	const bool bIsReadOnly = ( Layer != UsdStage.GetEditTarget() );
+	const bool bIsReadOnly = ( Layer != StageActor->GetUsdStage().GetEditTarget() );
 	MovieScene.SetReadOnly( bIsReadOnly );
-#endif // WITH_EDITOR
 }
 
 void FUsdLevelSequenceHelperImpl::UpdateMovieSceneTimeRanges( UMovieScene& MovieScene, const FLayerTimeInfo& LayerTimeInfo )
@@ -1281,35 +1118,18 @@ void FUsdLevelSequenceHelperImpl::UpdateMovieSceneTimeRanges( UMovieScene& Movie
 	MovieScene.SetDisplayRate( FFrameRate( FramesPerSecond, 1 ) );
 }
 
-void FUsdLevelSequenceHelperImpl::BlockMonitoringChangesForThisTransaction()
-{
-	if ( ITransaction* Trans = GUndo )
-	{
-		FTransactionContext Context = Trans->GetContext();
-
-		// We're already blocking this one, so ignore this so that we don't increment our counter too many times
-		if ( BlockedTransactionGuids.Contains( Context.TransactionId ) )
-		{
-			return;
-		}
-
-		BlockedTransactionGuids.Add( Context.TransactionId );
-	}
-
-	// Also block via the regular way in case we're receiving a notice due to a Python change and the user hasn't manually created a transaction
-	StopMonitoringChanges();
-}
-
 void FUsdLevelSequenceHelperImpl::OnObjectTransacted(UObject* Object, const class FTransactionObjectEvent& Event)
 {
-	if ( !MainLevelSequence || !IsMonitoringChanges() || !Object || Object->IsPendingKill() || !UsdStage || BlockedTransactionGuids.Contains( Event.GetTransactionId() ) )
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+
+	if ( !ValidStageActor || !ValidStageActor->LevelSequence || !bMonitorChanges )
 	{
 		return;
 	}
 
 	if ( UMovieScene* MovieScene = Cast< UMovieScene >( Object ) )
 	{
-		HandleMovieSceneChange( *MovieScene );
+		HandleMovieSceneChange(*MovieScene);
 	}
 	else if ( UMovieSceneSubSection* Section = Cast<UMovieSceneSubSection>(Object) )
 	{
@@ -1317,46 +1137,36 @@ void FUsdLevelSequenceHelperImpl::OnObjectTransacted(UObject* Object, const clas
 	}
 	else if ( UMovieScene3DTransformTrack* TransformTrack = Cast<UMovieScene3DTransformTrack>(Object) )
 	{
-		const bool bIsMuteChange = Event.GetChangedProperties().Contains( TEXT( "bIsEvalDisabled" ) );
-		HandleTransformTrackChange( *TransformTrack, bIsMuteChange );
+		HandleTransformTrackChange(*TransformTrack);
 	}
 	else if ( UMovieScene3DTransformSection* TransformSection = Cast<UMovieScene3DTransformSection>(Object) )
 	{
 		if ( UMovieScene3DTransformTrack* SectionTrack = TransformSection->GetTypedOuter<UMovieScene3DTransformTrack>() )
 		{
-			const bool bIsMuteChange = Event.GetChangedProperties().Contains( TEXT( "bIsActive" ) );
-			HandleTransformTrackChange( *SectionTrack, bIsMuteChange );
+			HandleTransformTrackChange(*SectionTrack);
 		}
-	}
-}
-
-void FUsdLevelSequenceHelperImpl::HandleTransactionStateChanged( const FTransactionContext& InTransactionContext, const ETransactionStateEventType InTransactionState )
-{
-	if ( InTransactionState == ETransactionStateEventType::TransactionFinalized && BlockedTransactionGuids.Contains( InTransactionContext.TransactionId ) )
-	{
-		StartMonitoringChanges();
 	}
 }
 
 double FUsdLevelSequenceHelperImpl::GetFramesPerSecond() const
 {
-	if ( !UsdStage )
+	if ( !StageActor.IsValid() || !StageActor->GetUsdStage() )
 	{
 		return DefaultFramerate;
 	}
 
-	const double StageFramesPerSecond = UsdStage.GetFramesPerSecond();
+	const double StageFramesPerSecond = StageActor->GetUsdStage().GetFramesPerSecond();
 	return FMath::IsNearlyZero( StageFramesPerSecond ) ? DefaultFramerate : StageFramesPerSecond;
 }
 
 double FUsdLevelSequenceHelperImpl::GetTimeCodesPerSecond() const
 {
-	if ( !UsdStage )
+	if ( !StageActor.IsValid() || !StageActor->GetUsdStage() )
 	{
 		return DefaultFramerate;
 	}
 
-	const double StageTimeCodesPerSecond = UsdStage.GetTimeCodesPerSecond();
+	const double StageTimeCodesPerSecond = StageActor->GetUsdStage().GetTimeCodesPerSecond();
 	return FMath::IsNearlyZero( StageTimeCodesPerSecond ) ? DefaultFramerate : StageTimeCodesPerSecond;
 }
 
@@ -1379,16 +1189,13 @@ UE::FUsdAttribute FUsdLevelSequenceHelperImpl::GetXformAttribute( const UE::FUsd
 
 void FUsdLevelSequenceHelperImpl::HandleMovieSceneChange( UMovieScene& MovieScene )
 {
-	// It's possible to get this called when the actor and it's level sequences are being all destroyed in one go.
-	// We need the FScopedBlockNotices in this function, but if our StageActor is already being destroyed, we can't reliably
-	// use its listener, and so then we can't do anything. We likely don't want to write back to the stage at this point anyway.
-	AUsdStageActor* StageActorPtr = StageActor.Get();
-	if ( !MainLevelSequence || !UsdStage || !StageActorPtr || StageActorPtr->IsActorBeingDestroyed() )
+	if ( !StageActor.IsValid() )
 	{
 		return;
 	}
 
 	ULevelSequence* Sequence = MovieScene.GetTypedOuter< ULevelSequence >();
+
 	if ( !Sequence )
 	{
 		return;
@@ -1396,12 +1203,14 @@ void FUsdLevelSequenceHelperImpl::HandleMovieSceneChange( UMovieScene& MovieScen
 
 	const FString LayerIdentifier = LayerIdentifierByLevelSequenceName.FindRef( Sequence->GetFName() );
 	FLayerTimeInfo* LayerTimeInfo = LayerTimeInfosByLayerIdentifier.Find( LayerIdentifier );
+
 	if ( !LayerTimeInfo )
 	{
 		return;
 	}
 
 	UE::FSdfLayer Layer = UE::FSdfLayer::FindOrOpen( *LayerTimeInfo->Identifier );
+
 	if ( !Layer )
 	{
 		return;
@@ -1416,10 +1225,10 @@ void FUsdLevelSequenceHelperImpl::HandleMovieSceneChange( UMovieScene& MovieScen
 	UE::FSdfChangeBlock ChangeBlock;
 	if ( !FMath::IsNearlyEqual( DisplayRate.AsDecimal(), GetFramesPerSecond() ) )
 	{
-		UsdStage.SetFramesPerSecond( DisplayRate.AsDecimal() );
+		StageActor->GetUsdStage().SetFramesPerSecond( DisplayRate.AsDecimal() );
 
 		// Propagate to all movie scenes, as USD only uses the stage FramesPerSecond so the sequences should have a unified DisplayRate to reflect that
-		for ( TPair< FString, ULevelSequence* >& SequenceByIdentifier : LevelSequencesByIdentifier )
+		for ( TPair< FString, ULevelSequence* >& SequenceByIdentifier : StageActor->LevelSequencesByIdentifier )
 		{
 			if ( ULevelSequence* OtherSequence = SequenceByIdentifier.Value )
 			{
@@ -1436,9 +1245,9 @@ void FUsdLevelSequenceHelperImpl::HandleMovieSceneChange( UMovieScene& MovieScen
 
 	UpdateLayerTimeInfoFromLayer( *LayerTimeInfo, Layer );
 
-	if ( Sequence == MainLevelSequence )
+	if ( Sequence == StageActor->LevelSequence )
 	{
-		CreateTimeTrack( FindOrAddLayerTimeInfo( UsdStage.GetRootLayer() ) );
+		CreateTimeTrack( FindOrAddLayerTimeInfo( StageActor->GetUsdStage().GetRootLayer() ) );
 	}
 
 	// Check if we deleted a track
@@ -1453,7 +1262,7 @@ void FUsdLevelSequenceHelperImpl::HandleMovieSceneChange( UMovieScene& MovieScen
 				SceneComponentBindingIt.RemoveCurrent();
 
 				// Clear the anim for that xform
-				if ( UE::FUsdPrim UsdPrim = UsdStage.GetPrimAtPath( UE::FSdfPath( *UsdPrimTwin->PrimPath ) ) )
+				if ( UE::FUsdPrim UsdPrim = StageActor->GetUsdStage().GetPrimAtPath( UE::FSdfPath( *UsdPrimTwin->PrimPath ) ) )
 				{
 					UE::FUsdGeomXformable Xformable( UsdPrim );
 					if ( Xformable )
@@ -1484,13 +1293,8 @@ void FUsdLevelSequenceHelperImpl::HandleSubSectionChange( UMovieSceneSubSection&
 	UpdateUsdLayerOffsetFromSection(ParentSequence, &Section);
 }
 
-void FUsdLevelSequenceHelperImpl::HandleTransformTrackChange( const UMovieScene3DTransformTrack& TransformTrack, bool bIsMuteChange )
+void FUsdLevelSequenceHelperImpl::HandleTransformTrackChange( const UMovieScene3DTransformTrack& TransformTrack )
 {
-	if ( !StageActor.IsValid() )
-	{
-		return;
-	}
-
 	ULevelSequence* Sequence = TransformTrack.GetTypedOuter< ULevelSequence >();
 	if ( !Sequence )
 	{
@@ -1526,50 +1330,22 @@ void FUsdLevelSequenceHelperImpl::HandleTransformTrackChange( const UMovieScene3
 		{
 			if ( UUsdPrimTwin* PrimTwin = StageActor->RootUsdTwin->Find( BoundSceneComponent ) )
 			{
-				FScopedBlockNoticeListening BlockNotices( StageActor.Get() );
-				UE::FUsdPrim UsdPrim = UsdStage.GetPrimAtPath( UE::FSdfPath( *PrimTwin->PrimPath ) );
+				FScopedBlockNotices BlockNotices( StageActor->GetUsdListener() );
+				UE::FUsdPrim UsdPrim = StageActor->GetUsdStage().GetPrimAtPath( UE::FSdfPath( *PrimTwin->PrimPath ) );
 
 				SceneComponentsBindings.Emplace( PrimTwin ) = TPair< ULevelSequence*, FGuid >( Sequence, PossessableGuid ); // Make sure we track this binding
 
-				if ( bIsMuteChange )
+				FMovieSceneSequenceTransform SequenceTransform;
+
+				if ( const FMovieSceneSequenceID* SequenceID = SequencesID.Find( Sequence ) )
 				{
-					UE::FUsdAttribute TransformAttribute = GetXformAttribute( UsdPrim );
-
-					bool bAllSectionsMuted = true;
-					for ( const UMovieSceneSection* Section : TransformTrack.GetAllSections() ) // There's no const version of "FindSection"
+					if ( FMovieSceneSubSequenceData* SubSequenceData = SequenceHierarchyCache.FindSubData( *SequenceID ) )
 					{
-						if ( const UMovieScene3DTransformSection* TransformSection = Cast< const UMovieScene3DTransformSection >( Section ) )
-						{
-							bAllSectionsMuted &= !TransformSection->IsActive();
-						}
+						SequenceTransform = SubSequenceData->RootToSequenceTransform;
 					}
-
-					if ( TransformTrack.IsEvalDisabled() || bAllSectionsMuted )
-					{
-						UsdUtils::MuteAttribute( TransformAttribute, UsdStage );
-					}
-					else
-					{
-						UsdUtils::UnmuteAttribute( TransformAttribute, UsdStage );
-					}
-
-					// The attribute may have an effect on the stage, so animate it right away
-					StageActor->OnTimeChanged.Broadcast();
 				}
-				else
-				{
-					FMovieSceneSequenceTransform SequenceTransform;
 
-					if ( const FMovieSceneSequenceID* SequenceID = SequencesID.Find( Sequence ) )
-					{
-						if ( FMovieSceneSubSequenceData* SubSequenceData = SequenceHierarchyCache.FindSubData( *SequenceID ) )
-						{
-							SequenceTransform = SubSequenceData->RootToSequenceTransform;
-						}
-					}
-
-					UnrealToUsd::ConvertXformable( TransformTrack, UsdPrim, SequenceTransform );
-				}
+				UnrealToUsd::ConvertXformable( TransformTrack, UsdPrim, SequenceTransform );
 			}
 		}
 	}
@@ -1577,7 +1353,9 @@ void FUsdLevelSequenceHelperImpl::HandleTransformTrackChange( const UMovieScene3
 
 FUsdLevelSequenceHelperImpl::FLayerTimeInfo& FUsdLevelSequenceHelperImpl::FindOrAddLayerTimeInfo( const UE::FSdfLayer& Layer )
 {
-	if ( FLayerTimeInfo* LayerTimeInfo = FindLayerTimeInfo( Layer ) )
+	const FString Identifier = Layer.GetIdentifier();
+
+	if ( FLayerTimeInfo* LayerTimeInfo = LayerTimeInfosByLayerIdentifier.Find( Identifier ) )
 	{
 		return *LayerTimeInfo;
 	}
@@ -1590,13 +1368,7 @@ FUsdLevelSequenceHelperImpl::FLayerTimeInfo& FUsdLevelSequenceHelperImpl::FindOr
 		LayerTimeInfo.StartTimeCode.IsSet() ? *LexToString(LayerTimeInfo.StartTimeCode.GetValue()) : TEXT("null"),
 		LayerTimeInfo.EndTimeCode.IsSet() ? *LexToString(LayerTimeInfo.EndTimeCode.GetValue()) : TEXT("null"));
 
-	return LayerTimeInfosByLayerIdentifier.Add( Layer.GetIdentifier(), LayerTimeInfo );
-}
-
-FUsdLevelSequenceHelperImpl::FLayerTimeInfo* FUsdLevelSequenceHelperImpl::FindLayerTimeInfo( const UE::FSdfLayer& Layer )
-{
-	const FString Identifier = Layer.GetIdentifier();
-	return LayerTimeInfosByLayerIdentifier.Find( Identifier );
+	return LayerTimeInfosByLayerIdentifier.Add( Identifier, LayerTimeInfo );
 }
 
 void FUsdLevelSequenceHelperImpl::UpdateLayerTimeInfoFromLayer( FLayerTimeInfo& LayerTimeInfo, const UE::FSdfLayer& Layer )
@@ -1610,19 +1382,6 @@ void FUsdLevelSequenceHelperImpl::UpdateLayerTimeInfoFromLayer( FLayerTimeInfo& 
 	LayerTimeInfo.FilePath           = Layer.GetRealPath();
 	LayerTimeInfo.StartTimeCode      = Layer.HasStartTimeCode() ? Layer.GetStartTimeCode() : TOptional<double>();
 	LayerTimeInfo.EndTimeCode        = Layer.HasEndTimeCode() ? Layer.GetEndTimeCode() : TOptional<double>();
-
-	if ( LayerTimeInfo.StartTimeCode.IsSet() && LayerTimeInfo.EndTimeCode.IsSet() && LayerTimeInfo.EndTimeCode.GetValue() < LayerTimeInfo.StartTimeCode.GetValue() )
-	{
-		UE_LOG( LogUsd, Warning, TEXT( "Sublayer '%s' has end time code (%f) before start time code (%f)! These values will be automatically swapped" ),
-			*Layer.GetIdentifier(),
-			LayerTimeInfo.EndTimeCode.GetValue(),
-			LayerTimeInfo.StartTimeCode.GetValue()
-		);
-
-		TOptional<double> Temp = LayerTimeInfo.StartTimeCode;
-		LayerTimeInfo.StartTimeCode = LayerTimeInfo.EndTimeCode;
-		LayerTimeInfo.EndTimeCode = Temp;
-	}
 
 	const TArray< FString >& SubLayerPaths = Layer.GetSubLayerPaths();
 	LayerTimeInfo.SubLayersOffsets.Empty( SubLayerPaths.Num() );
@@ -1646,10 +1405,16 @@ void FUsdLevelSequenceHelperImpl::UpdateLayerTimeInfoFromLayer( FLayerTimeInfo& 
 	}
 }
 
-ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForIdentifier( const FString& SequenceIdentitifer )
+ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForIdentifier( const FString& SequenceIdentitifer ) const
 {
+	AUsdStageActor* ValidStageActor = StageActor.Get();
+	if ( !ValidStageActor )
+	{
+		return nullptr;
+	}
+
 	ULevelSequence* Sequence = nullptr;
-	if ( ULevelSequence** FoundSequence = LevelSequencesByIdentifier.Find( SequenceIdentitifer ) )
+	if ( ULevelSequence** FoundSequence = ValidStageActor->LevelSequencesByIdentifier.Find( SequenceIdentitifer ) )
 	{
 		Sequence = *FoundSequence;
 	}
@@ -1660,80 +1425,35 @@ ULevelSequence* FUsdLevelSequenceHelperImpl::FindSequenceForIdentifier( const FS
 class FUsdLevelSequenceHelperImpl
 {
 public:
-	FUsdLevelSequenceHelperImpl() {}
-	~FUsdLevelSequenceHelperImpl() {}
+	FUsdLevelSequenceHelperImpl(TWeakObjectPtr<AUsdStageActor> InStageActor) {}
+	~FUsdLevelSequenceHelperImpl(){}
 
-	ULevelSequence* Init(const UE::FUsdStage& InUsdStage) { return nullptr; }
-	void Clear() {};
+	void CreateLocalLayersSequences(){}
 
-	void CreateLocalLayersSequences() {}
+	void AddPrim( UUsdPrimTwin& PrimTwin ){}
+	void RemovePrim(const UUsdPrimTwin& PrimTwin){}
 
-	void BindToUsdStageActor( AUsdStageActor* InStageActor ) {}
-	void UnbindFromUsdStageActor() {}
-
-	void AddPrim( UUsdPrimTwin& PrimTwin ) {}
-	void RemovePrim(const UUsdPrimTwin& PrimTwin) {}
-
-	void StartMonitoringChanges() {}
-	void StopMonitoringChanges() {}
-	void BlockMonitoringChangesForThisTransaction() {}
-
-	ULevelSequence* GetMainLevelSequence() const { return nullptr; }
-	TArray< ULevelSequence* > GetSubSequences() const { return {}; }
+	void StartMonitoringChanges(){}
+	void StopMonitoringChanges(){}
 };
 #endif // USE_USD_SDK
 
 
 FUsdLevelSequenceHelper::FUsdLevelSequenceHelper(TWeakObjectPtr<AUsdStageActor> InStageActor)
-	: FUsdLevelSequenceHelper()
 {
 	if (AUsdStageActor* ValidStageActor = InStageActor.Get())
 	{
-		Init( InStageActor->GetOrLoadUsdStage() );
-		BindToUsdStageActor(ValidStageActor);
+		UsdSequencerImpl = MakeUnique<FUsdLevelSequenceHelperImpl>(InStageActor);
 	}
 }
 
+// These are required in order to be a member of AUsdStageActor,
+// and have a TUniquePtr to a forward declared Impl
 FUsdLevelSequenceHelper::FUsdLevelSequenceHelper()
 {
-	UsdSequencerImpl = MakeUnique<FUsdLevelSequenceHelperImpl>();
 }
-
-FUsdLevelSequenceHelper::~FUsdLevelSequenceHelper() = default;
-
-FUsdLevelSequenceHelper::FUsdLevelSequenceHelper(const FUsdLevelSequenceHelper& Other)
-	: FUsdLevelSequenceHelper()
+FUsdLevelSequenceHelper::~FUsdLevelSequenceHelper()
 {
-}
-
-FUsdLevelSequenceHelper& FUsdLevelSequenceHelper::operator=(const FUsdLevelSequenceHelper& Other)
-{
-	// No copying, start fresh
-	UsdSequencerImpl = MakeUnique<FUsdLevelSequenceHelperImpl>();
-	return *this;
-}
-
-FUsdLevelSequenceHelper::FUsdLevelSequenceHelper(FUsdLevelSequenceHelper&& Other) = default;
-FUsdLevelSequenceHelper& FUsdLevelSequenceHelper::operator=(FUsdLevelSequenceHelper&& Other) = default;
-
-ULevelSequence* FUsdLevelSequenceHelper::Init(const UE::FUsdStage& UsdStage)
-{
-	if ( UsdSequencerImpl.IsValid() )
-	{
-		return UsdSequencerImpl->Init(UsdStage);
-	}
-	else
-	{
-		return nullptr;
-	}
-}
-
-void FUsdLevelSequenceHelper::Clear()
-{
-	if ( UsdSequencerImpl.IsValid() )
-	{
-		UsdSequencerImpl->Clear();
-	}
 }
 
 void FUsdLevelSequenceHelper::InitLevelSequence(const UE::FUsdStage& UsdStage)
@@ -1743,22 +1463,6 @@ void FUsdLevelSequenceHelper::InitLevelSequence(const UE::FUsdStage& UsdStage)
 		UE_LOG(LogUsd, Verbose, TEXT("InitLevelSequence"));
 
 		UsdSequencerImpl->CreateLocalLayersSequences();
-	}
-}
-
-void FUsdLevelSequenceHelper::BindToUsdStageActor(AUsdStageActor* StageActor)
-{
-	if (UsdSequencerImpl.IsValid())
-	{
-		UsdSequencerImpl->BindToUsdStageActor(StageActor);
-	}
-}
-
-void FUsdLevelSequenceHelper::UnbindFromUsdStageActor()
-{
-	if (UsdSequencerImpl.IsValid())
-	{
-		UsdSequencerImpl->UnbindFromUsdStageActor();
 	}
 }
 
@@ -1791,37 +1495,5 @@ void FUsdLevelSequenceHelper::StopMonitoringChanges()
 	if (UsdSequencerImpl.IsValid())
 	{
 		UsdSequencerImpl->StopMonitoringChanges();
-	}
-}
-
-void FUsdLevelSequenceHelper::BlockMonitoringChangesForThisTransaction()
-{
-	if ( UsdSequencerImpl.IsValid() )
-	{
-		UsdSequencerImpl->BlockMonitoringChangesForThisTransaction();
-	}
-}
-
-ULevelSequence* FUsdLevelSequenceHelper::GetMainLevelSequence() const
-{
-	if (UsdSequencerImpl.IsValid())
-	{
-		return UsdSequencerImpl->GetMainLevelSequence();
-	}
-	else
-	{
-		return nullptr;
-	}
-}
-
-TArray< ULevelSequence* > FUsdLevelSequenceHelper::GetSubSequences() const
-{
-	if (UsdSequencerImpl.IsValid())
-	{
-		return UsdSequencerImpl->GetSubSequences();
-	}
-	else
-	{
-		return {};
 	}
 }

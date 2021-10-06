@@ -22,11 +22,11 @@ struct ClusterId
 		: Id(nullptr)
 		, NumChildren(0) 
 	{}
-	ClusterId(FPBDRigidParticleHandle* NewId, int NumChildrenIn)
+	ClusterId(TPBDRigidParticleHandle<float, 3>* NewId, int NumChildrenIn)
 		: Id(NewId)
 		, NumChildren(NumChildrenIn) 
 	{}
-	FPBDRigidParticleHandle* Id;
+	TPBDRigidParticleHandle<float, 3>* Id;
 	int32 NumChildren;
 };
 
@@ -54,7 +54,7 @@ struct FMultiChildProxyId
 	FMultiChildProxyId()
 		: Id(nullptr) 
 	{}
-	FPBDRigidParticleHandle* Id;
+	TPBDRigidParticleHandle<float, 3>* Id;
 };
 
 /**
@@ -208,7 +208,5 @@ class TPBDRigidClusteredParticles : public TPBDRigidParticles<T, d>
 
 	  TArrayCollectionArray<TArray<TConnectivityEdge<T>>> MConnectivityEdges;
 };
-
-using FPBDRigidClusteredParticles = TPBDRigidClusteredParticles<FReal, 3>;
 
 } // namespace Chaos

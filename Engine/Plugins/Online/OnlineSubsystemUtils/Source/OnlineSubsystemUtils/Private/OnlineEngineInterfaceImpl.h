@@ -28,7 +28,6 @@ public:
 	virtual void ShutdownOnlineSubsystem(FName OnlineIdentifier) override;
 	virtual void DestroyOnlineSubsystem(FName OnlineIdentifier) override;
 	virtual FName GetDefaultOnlineSubsystemName() const override;
-	virtual bool IsCompatibleUniqueNetId(const FUniqueNetId& InUniqueNetId) const override;
 
 	/**
 	 * Utils
@@ -37,14 +36,7 @@ public:
 	virtual FName GetSubsystemFromReplicationHash(uint8 InHash) const override;
 
 private:
-	/** Mapping of unique net ids that should not be treated as foreign ids to the local subsystem. */
-	UPROPERTY(config)
-	TMap<FName, FName> MappedUniqueNetIdTypes;
 
-	/** Array of unique net ids that are deemed valid when tested against gameplay login checks. */
-	UPROPERTY(config)
-	TArray<FName> CompatibleUniqueNetIdTypes;
-	
 	/** Allow the subsystem used for voice functions to be overridden, in case it needs to be different than the default subsystem. May be useful on console platforms. */
 	UPROPERTY(config)
 	FName VoiceSubsystemNameOverride;
@@ -60,8 +52,8 @@ private:
 	 */
 public:
 
-	virtual FUniqueNetIdPtr CreateUniquePlayerId(const FString& Str, FName Type) override;
-	virtual FUniqueNetIdPtr GetUniquePlayerId(UWorld* World, int32 LocalUserNum, FName Type) override;
+	virtual TSharedPtr<const FUniqueNetId> CreateUniquePlayerId(const FString& Str, FName Type) override;
+	virtual TSharedPtr<const FUniqueNetId> GetUniquePlayerId(UWorld* World, int32 LocalUserNum, FName Type) override;
 
 	virtual FString GetPlayerNickname(UWorld* World, const FUniqueNetId& UniqueId) override;
 	virtual bool GetPlayerPlatformNickname(UWorld* World, int32 LocalUserNum, FString& OutNickname) override;
@@ -88,7 +80,7 @@ public:
 
 	virtual void RegisterPlayer(UWorld* World, FName SessionName, const FUniqueNetId& UniqueId, bool bWasInvited) override;
 	virtual void UnregisterPlayer(UWorld* World, FName SessionName, const FUniqueNetId& UniqueId) override;
-	virtual void UnregisterPlayers(UWorld* World, FName SessionName, const TArray< FUniqueNetIdRef >& Players) override;
+	virtual void UnregisterPlayers(UWorld* World, FName SessionName, const TArray< TSharedRef<const FUniqueNetId> >& Players) override;
 
 	virtual bool GetResolvedConnectString(UWorld* World, FName SessionName, FString& URL) override;
 

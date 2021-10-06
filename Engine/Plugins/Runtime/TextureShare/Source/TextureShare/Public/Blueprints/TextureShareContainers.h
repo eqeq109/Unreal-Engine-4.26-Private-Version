@@ -2,26 +2,26 @@
 
 #pragma once
 #include "CoreMinimal.h"
-
 #include "TextureShareEnums.h"
-#include "TextureShareCoreContainers.h"
 #include "Containers/TextureShareCoreGenericContainers.h"
+#include "TextureShareCoreContainers.h"
 
 #include "RHI.h"
 #include "RHIResources.h"
 
-#include "Engine/Texture2D.h"
-#include "Engine/TextureRenderTarget2D.h"
-
 #include "TextureShareContainers.generated.h"
+
+class UTextureRenderTarget2D;
+class UTexture2D;
+
 
 USTRUCT(BlueprintType)
 struct FTextureShareBPAdditionalData
 {
 	GENERATED_BODY()
-
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
-	int FrameNumber = 0;
+	int FrameNumber;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	FMatrix PrjMatrix;
@@ -37,13 +37,6 @@ struct FTextureShareBPAdditionalData
 
 	//@todo: add more data
 
-	FTextureShareBPAdditionalData()
-		: PrjMatrix(ForceInitToZero)
-		, ViewLocation(ForceInitToZero)
-		, ViewRotation(ForceInitToZero)
-		, ViewScale(ForceInitToZero)
-	{}
-
 	// Convert type from bp back to cpp
 	FTextureShareAdditionalData operator*() const;
 };
@@ -53,7 +46,7 @@ USTRUCT(BlueprintType)
 struct FTextureShareBPTexture2D
 {
 	GENERATED_BODY()
-
+public:
 	// Texture unique name
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	FString Id;
@@ -65,11 +58,6 @@ struct FTextureShareBPTexture2D
 	// Texture source (optional)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	UTexture2D* Texture;
-
-	FTextureShareBPTexture2D()
-		: RTT(nullptr)
-		, Texture(nullptr)
-	{}
 
 	//Helpers:
 	bool          IsValid() const;
@@ -83,7 +71,7 @@ USTRUCT(BlueprintType)
 struct FTextureShareBPPostprocess
 {
 	GENERATED_BODY()
-
+public:
 	// Send Additional data
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	FTextureShareBPAdditionalData AdditionalData;
@@ -101,7 +89,7 @@ USTRUCT(BlueprintType)
 struct FTextureShareBPSyncPolicy
 {
 	GENERATED_BODY()
-
+public:
 	// Synchronize Session state events (BeginSession/EndSession)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	ETextureShareBPSyncConnect Connection = ETextureShareBPSyncConnect::Default;
@@ -126,7 +114,7 @@ USTRUCT(BlueprintType)
 struct FTextureShareBPTimeOut
 {
 	GENERATED_BODY()
-
+public:
 	// Wait for processes shares connection (ETextureShareBPSyncConnect::Sync) [Seconds, zero for infinite]
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	float ConnectionSync = 0;
@@ -149,7 +137,6 @@ struct FTextureShareBPTimeOut
 
 	FTextureShareBPTimeOut()
 	{}
-
 	FTextureShareBPTimeOut(const FTextureShareTimeOut& Init);
 
 	FTextureShareTimeOut operator*() const;
@@ -159,7 +146,7 @@ USTRUCT(BlueprintType)
 struct FTextureShareBPSyncPolicySettings
 {
 	GENERATED_BODY()
-
+public:
 	// Default values for sync policy on local process
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TextureShare")
 	FTextureShareBPSyncPolicy DefaultSyncPolicy;
@@ -170,7 +157,6 @@ struct FTextureShareBPSyncPolicySettings
 
 	FTextureShareBPSyncPolicySettings()
 	{};
-
 	FTextureShareBPSyncPolicySettings(const FTextureShareSyncPolicySettings& Init);
 
 	FTextureShareSyncPolicySettings operator*() const;

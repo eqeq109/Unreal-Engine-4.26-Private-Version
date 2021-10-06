@@ -368,14 +368,6 @@ struct FConstraintDescriptionEx
 		return Ar;
 	}
 };
-template<>
-struct TStructOpsTypeTraits<FConstraintDescriptionEx> : public TStructOpsTypeTraitsBase2<FConstraintDescriptionEx>
-{
-	enum
-	{
-		WithPureVirtual = true,
-	};
-};
 
 /** Transform Constraint Types*/
 UENUM()

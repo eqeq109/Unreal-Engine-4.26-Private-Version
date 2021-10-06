@@ -390,7 +390,7 @@ export class BotNotifications implements BotEventHandler {
 	async onBlockage(blockage: Blockage) {
 		const changeInfo = blockage.change
 
-		if (changeInfo.userRequest) {
+		if (changeInfo.isManual) {
 			// maybe DM?
 			return
 		}
@@ -651,7 +651,7 @@ export class BotNotifications implements BotEventHandler {
 
 		// Append footer
 		attachCollection.push({
-			pretext: "You can get help via the Slack channel <#C9321FLTU> (if you don't have access to 'robomerge-help', please contact the IT helpdesk)",
+			pretext: "If you need help, please let us know in <#C9321FLTU>!",
 			mrkdwn_in: ["pretext"]
 		})
 

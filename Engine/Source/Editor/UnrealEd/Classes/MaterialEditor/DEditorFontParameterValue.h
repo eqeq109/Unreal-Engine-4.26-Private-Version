@@ -14,10 +14,10 @@ struct UNREALED_API FDFontParameters
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, Category = DFontParameter)
-	class UFont* FontValue = nullptr;
+	class UFont* FontValue;
 
 	UPROPERTY(EditAnywhere, Category = DFontParameter)
-	int32 FontPage=0;
+	int32 FontPage;
 };
 
 UCLASS(hidecategories = Object, collapsecategories)

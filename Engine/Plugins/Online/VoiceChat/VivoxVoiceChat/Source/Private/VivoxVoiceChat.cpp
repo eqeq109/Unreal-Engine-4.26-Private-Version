@@ -531,7 +531,10 @@ void FVivoxVoiceChatUser::BlockPlayers(const TArray<FString>& PlayerNames)
 	}
 	else
 	{
-		VIVOXVOICECHATUSER_LOG(Log, TEXT("Players blocked: [%s]"), *FString::Join(PlayerNames, TEXT(", ")));
+		for (const FString& PlayerName : PlayerNames)
+		{
+			VIVOXVOICECHATUSER_LOG(Verbose, TEXT("Player blocked: [%s]"), *PlayerName);
+		}
 	}
 }
 
@@ -551,7 +554,10 @@ void FVivoxVoiceChatUser::UnblockPlayers(const TArray<FString>& PlayerNames)
 	}
 	else
 	{
-		VIVOXVOICECHATUSER_LOG(Log, TEXT("Players unblocked: [%s]"), *FString::Join(PlayerNames, TEXT(", ")));
+		for (const FString& PlayerName : PlayerNames)
+		{
+			VIVOXVOICECHATUSER_LOG(Verbose, TEXT("Player unblocked: [%s]"), *PlayerName);
+		}
 	}
 }
 
@@ -1761,25 +1767,25 @@ void FVivoxVoiceChatUser::onAudioUnitBeforeRecvAudioRendered(const char* Session
 
 static void* VivoxMalloc(size_t bytes)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	return FMemory::Malloc(bytes);
 }
 
 static void VivoxFree(void* ptr)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	FMemory::Free(ptr);
 }
 
 static void* VivoxRealloc(void* ptr, size_t bytes)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	return FMemory::Realloc(ptr, bytes);
 }
 
 static void* VivoxCalloc(size_t num, size_t bytes)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	const size_t Size = bytes * num;
 	void* Ret = FMemory::Malloc(Size);
 	FMemory::Memzero(Ret, Size);
@@ -1788,13 +1794,13 @@ static void* VivoxCalloc(size_t num, size_t bytes)
 
 static void* VivoxMallocAligned(size_t alignment, size_t bytes)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	return FMemory::Malloc(bytes, alignment);
 }
 
 static void VivoxFreeAligned(void* ptr)
 {
-	LLM_SCOPE(ELLMTag::RealTimeCommunications);
+	LLM_SCOPE(ELLMTag::AudioVoiceChat);
 	FMemory::Free(ptr);
 }
 

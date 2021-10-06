@@ -17,23 +17,18 @@
 #include "Algo/Transform.h"
 #include "EditorLevelUtils.h"
 #include "Modules/ModuleManager.h"
-#include "HAL/ThreadManager.h"
 
 #if WITH_EDITOR
 #include "Engine/LODActor.h"
-#include "LevelUtils.h"
 #include "ObjectTools.h"
 #include "IHierarchicalLODUtilities.h"
 #include "HierarchicalLODUtilitiesModule.h"
-#include "HierarchicalLODProxyProcessor.h"
 #include "../Classes/Editor/EditorEngine.h"
 #include "Editor.h"
 #include "UnrealEdGlobals.h"
 #include "HLOD/HLODEngineSubsystem.h"
 #include "IMeshMergeUtilities.h"
 #include "MeshMergeModule.h"
-#include "MeshDescription.h"
-#include "StaticMeshOperations.h"
 #endif // WITH_EDITOR
 
 
@@ -76,18 +71,16 @@ void UHierarchicalLODSettings::PostEditChangeProperty(struct FPropertyChangedEve
 	}
 }
 
-FHierarchicalLODBuilder::FHierarchicalLODBuilder(UWorld* InWorld, bool bInPersistentLevelOnly /*= false*/)
-	: World(InWorld)
-	, bPersistentLevelOnly(bInPersistentLevelOnly)
+FHierarchicalLODBuilder::FHierarchicalLODBuilder(UWorld* InWorld)
+:	World(InWorld)
 {
 	checkf(InWorld != nullptr, TEXT("Invalid nullptr world provided"));
 	HLODSettings = GetDefault<UHierarchicalLODSettings>();
 }
 
 FHierarchicalLODBuilder::FHierarchicalLODBuilder()
-	: World(nullptr)
-	, bPersistentLevelOnly(false)
-	, HLODSettings(nullptr)
+	: World(nullptr), 
+	  HLODSettings(nullptr)
 {
 	EnsureRetrievingVTablePtrDuringCtor(TEXT("FHierarchicalLODBuilder()"));
 }
@@ -203,16 +196,14 @@ void FHierarchicalLODBuilder::BuildClusters(ULevel* InLevel)
 								// Reassess whether or not objects that were excluded from the previous HLOD level should be included in this one
 								if (BuildLODLevelSettings[LODId - 1].bAllowSpecificExclusion)
 								{
-									for (int RejectedIndex = RejectedActorsInLevel.Num() - 1; RejectedIndex >= 0; RejectedIndex--)
+									for (AActor* Actor : RejectedActorsInLevel)
 									{
-										AActor* Actor = RejectedActorsInLevel[RejectedIndex];
 										if (!ShouldGenerateCluster(Actor, LODId - 1) && ShouldGenerateCluster(Actor, LODId))
 										{
 											FBox ActorBox = Actor->GetComponentsBoundingBox(true);
 											if (HLODVolumeBox.IsInside(ActorBox) || (Volume->bIncludeOverlappingActors && HLODVolumeBox.Intersect(ActorBox)))
 											{
 												PreviousActorCluster += Actor;
-												RejectedActorsInLevel.RemoveAt(RejectedIndex); // Don't use it again later once it's in a cluster
 											}
 										}
 									}
@@ -225,15 +216,13 @@ void FHierarchicalLODBuilder::BuildClusters(ULevel* InLevel)
 							const FBoxSphereBounds ClusterBounds(PreviousLODActor->GetComponentsBoundingBox(true));
 							if (BuildLODLevelSettings[LODId - 1].bAllowSpecificExclusion)
 							{
-								for (int RejectedIndex = RejectedActorsInLevel.Num() - 1; RejectedIndex >= 0; RejectedIndex--)
+								for (AActor* Actor : RejectedActorsInLevel)
 								{
-									AActor* Actor = RejectedActorsInLevel[RejectedIndex];
 									if (Actor && FBoxSphereBounds::SpheresIntersect(ClusterBounds, FSphere(Actor->GetActorLocation(), Actor->GetComponentsBoundingBox().GetSize().Size())))
 									{
 										if (!ShouldGenerateCluster(Actor, LODId - 1) && ShouldGenerateCluster(Actor, LODId))
 										{
 											PreviousActorCluster += Actor;
-											RejectedActorsInLevel.RemoveAt(RejectedIndex); // Don't use it again later once it's in a cluster
 										}
 									}
 								}
@@ -538,14 +527,13 @@ void FHierarchicalLODBuilder::InitializeClusters(ULevel* InLevel, const int32 LO
 				const bool bShouldGenerate = ShouldGenerateCluster(Actor, LODIdx);
 				if (bShouldGenerate)
 				{
-					if (!ProcessVolumeClusters(Actor))
+					if (bVolumesOnly)
 					{
-						if (bVolumesOnly)
-						{
-							// Add them to the RejectedActorsInLevel to be re-considered at the next LOD in case that one isn't using bVolumesOnly
-							RejectedActorsInLevel.Add(Actor);
-						}
-						else
+						ProcessVolumeClusters(Actor);
+					}
+					else
+					{
+						if (!ProcessVolumeClusters(Actor))
 						{
 							ValidStaticMeshActorsInLevel.Add(Actor);
 						}
@@ -695,12 +683,6 @@ bool FHierarchicalLODBuilder::ShouldBuildHLODForLevel(const UWorld* InWorld, con
 		return false;
 	}
 
-	// If we only want to build HLODs for the persistent level
-	if (bPersistentLevelOnly && InLevel != InWorld->PersistentLevel)
-	{
-		return false;
-	}
-
 	ULevelStreaming* const* SourceLevelStreamingPtr = InWorld->GetStreamingLevels().FindByPredicate([InLevel](ULevelStreaming* LS) { return LS && LS->GetLoadedLevel() == InLevel; });
 	ULevelStreaming* SourceLevelStreaming = SourceLevelStreamingPtr ? *SourceLevelStreamingPtr : nullptr;
 	if (SourceLevelStreaming && SourceLevelStreaming->HasAnyFlags(RF_Transient))
@@ -842,7 +824,7 @@ void FHierarchicalLODBuilder::BuildMeshesForLODActors(bool bForceAll)
 	bool bVisibleLevelsWarning = false;
 
 	const TArray<ULevel*>& Levels = World->GetLevels();
-	for (ULevel* LevelIter : Levels)
+	for (const ULevel* LevelIter : Levels)
 	{
 		if (!ShouldBuildHLODForLevel(World, LevelIter))
 		{
@@ -900,17 +882,6 @@ void FHierarchicalLODBuilder::BuildMeshesForLODActors(bool bForceAll)
 			// If there are any available process them
 			if (NumLODActors)
 			{
-				const FTransform& HLODBakingTransform = LevelIter->GetWorldSettings()->HLODBakingTransform;
-				bool bUseCustomTransformForHLODBaking = !HLODBakingTransform.Equals(FTransform::Identity);
-
-				// Apply the HLOD transform prior to baking
-				if (bUseCustomTransformForHLODBaking)
-				{
-					FLevelUtils::FApplyLevelTransformParams TransformParams(LevelIter, HLODBakingTransform);
-					TransformParams.bDoPostEditMove = false;
-					FLevelUtils::ApplyLevelTransform(TransformParams);
-				}
-
 				// Only create the outer package if we are going to save something to it (otherwise we end up with an empty HLOD folder)
 				const int32 NumLODLevels = LODLevelActors.Num();
 
@@ -962,59 +933,6 @@ void FHierarchicalLODBuilder::BuildMeshesForLODActors(bool bForceAll)
 						if (Proxy)
 						{
 							Proxy->Clean();
-						}
-					}
-				}
-
-				// Ensure HLOD proxy generation has completed
-				FHierarchicalLODProxyProcessor* Processor = Module.GetProxyProcessor();
-				while (Processor->IsProxyGenerationRunning())
-				{
-					FTicker::GetCoreTicker().Tick(FApp::GetDeltaTime());
-					FThreadManager::Get().Tick();
-					FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
-					FPlatformProcess::Sleep(0.1f);
-				}
-
-				if (bUseCustomTransformForHLODBaking)
-				{
-					const FTransform TransformInv = HLODBakingTransform.Inverse();
-
-					FLevelUtils::FApplyLevelTransformParams TransformParams(LevelIter, TransformInv);
-					TransformParams.bDoPostEditMove = false;
-
-					// Undo HLOD transform that was performed prior to baking
-					FLevelUtils::ApplyLevelTransform(TransformParams);
-
-					for (int32 LODIndex = 0; LODIndex < NumLODLevels; ++LODIndex)
-					{
-						const FHierarchicalSimplification& LODLevelSettings = BuildLODLevelSettings[LODIndex];
-
-						for (ALODActor* LODActor : LODLevelActors[LODIndex])
-						{
-							UStaticMesh* StaticMesh = LODActor->GetStaticMeshComponent() ? LODActor->GetStaticMeshComponent()->GetStaticMesh() : nullptr;
-							if (StaticMesh == nullptr)
-							{
-								continue;
-							}
-
-							FMeshDescription* SMDesc = StaticMesh->GetMeshDescription(0);
-
-							if (LODLevelSettings.bSimplifyMesh || LODLevelSettings.MergeSetting.bPivotPointAtZero)
-							{
-								LODActor->SetActorTransform(FTransform::Identity);
-								FStaticMeshOperations::ApplyTransform(*SMDesc, TransformInv);
-							}
-							else
-							{
-								FStaticMeshOperations::ApplyTransform(*SMDesc, FTransform(TransformInv.GetRotation()));
-							}
-
-							StaticMesh->CommitMeshDescription(0);
-							StaticMesh->PostEditChange();
-
-							// Update key since positions have changed
-							LODActor->GetProxy()->AddMesh(LODActor, StaticMesh, UHLODProxy::GenerateKeyForActor(LODActor));
 						}
 					}
 				}
@@ -1123,7 +1041,7 @@ void FHierarchicalLODBuilder::GetMeshesPackagesToSave(ULevel* InLevel, TSet<UPac
 			// We might have created imposters static mesh packages during the HLOD generation, we must save them too.
 			for (ALODActor* LODActor : LODLevelActors[LODIndex])
 			{
-				for (UInstancedStaticMeshComponent* Component : LODActor->GetInstancedStaticMeshComponents())
+				for (UInstancedStaticMeshComponent* Component : LODActor->GetImpostersStaticMeshComponents())
 				{
 					if (Component->GetStaticMesh())
 					{

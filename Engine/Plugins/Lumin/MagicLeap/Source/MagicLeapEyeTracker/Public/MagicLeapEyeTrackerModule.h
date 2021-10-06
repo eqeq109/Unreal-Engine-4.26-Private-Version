@@ -21,11 +21,11 @@ struct MAGICLEAPEYETRACKER_API FMagicLeapEyeBlinkState
 public:
 	/** True if eyes are inside a blink. When not wearing the device, values can be arbitrary. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Eye Blink State")
-	bool LeftEyeBlinked = false;
+	bool LeftEyeBlinked;
 
 	/** True if eyes are inside a blink. When not wearing the device, values can be arbitrary. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Eye Blink State")
-	bool RightEyeBlinked = false;
+	bool RightEyeBlinked;
 };
 
 /**

@@ -347,7 +347,7 @@ const TCHAR* ReadNumberFormattingOptionsFromBuffer(const TCHAR* Buffer, FNumberF
 	return Buffer;
 }
 
-void WriteNumberOrPercentToBuffer(FString& Buffer, const TCHAR* TokenMarker, const FFormatArgumentValue& SourceValue, const TOptional<FNumberFormattingOptions>& FormatOptions, FCulturePtr TargetCulture, const bool bStripPackageNamespace)
+void WriteNumberOrPercentToBuffer(FString& Buffer, const TCHAR* TokenMarker, const FFormatArgumentValue& SourceValue, const TOptional<FNumberFormattingOptions>& FormatOptions, FCulturePtr TargetCulture)
 {
 	FString Suffix;
 	FString CustomOptions;
@@ -376,7 +376,7 @@ void WriteNumberOrPercentToBuffer(FString& Buffer, const TCHAR* TokenMarker, con
 	Buffer += TokenMarker;
 	Buffer += Suffix;
 	Buffer += TEXT("(");
-	SourceValue.ToExportedString(Buffer, bStripPackageNamespace);
+	SourceValue.ToExportedString(Buffer);
 	if (Suffix == CustomSuffix)
 	{
 		Buffer += TEXT(", ");
@@ -455,7 +455,7 @@ const TCHAR* ReadNumberOrPercentFromBuffer(const TCHAR* Buffer, const FString& T
 	return nullptr;
 }
 
-void WriteDateTimeToBuffer(FString& Buffer, const TCHAR* TokenMarker, const FDateTime& DateTime, const EDateTimeStyle::Type* DateStylePtr, const EDateTimeStyle::Type* TimeStylePtr, const FString& TimeZone, FCulturePtr TargetCulture, const bool bStripPackageNamespace)
+void WriteDateTimeToBuffer(FString& Buffer, const TCHAR* TokenMarker, const FDateTime& DateTime, const EDateTimeStyle::Type* DateStylePtr, const EDateTimeStyle::Type* TimeStylePtr, const FString& TimeZone, FCulturePtr TargetCulture)
 {
 	auto WriteDateTimeStyle = [](FString& OutValueBuffer, const EDateTimeStyle::Type& InValue)
 	{
@@ -478,7 +478,7 @@ void WriteDateTimeToBuffer(FString& Buffer, const TCHAR* TokenMarker, const FDat
 	Buffer += TokenMarker;
 	Buffer += Suffix;
 	Buffer += TEXT("(");
-	FFormatArgumentValue(DateTime.ToUnixTimestamp()).ToExportedString(Buffer, bStripPackageNamespace);
+	FFormatArgumentValue(DateTime.ToUnixTimestamp()).ToExportedString(Buffer);
 	if (DateStylePtr)
 	{
 		Buffer += TEXT(", ");
@@ -608,13 +608,13 @@ const TCHAR* ReadDateTimeFromBuffer(const TCHAR* Buffer, const FString& TokenMar
 }
 
 typedef TFunctionRef<void(const FString*, const FFormatArgumentValue&)> FTextFormatArgumentEnumeratorCallback;
-void WriteTextFormatToBuffer(FString& Buffer, const FString& TokenMarker, const FTextFormat& SourceFmt, const bool bStripPackageNamespace, TFunctionRef<void(FTextFormatArgumentEnumeratorCallback)> ArgumentEnumerator)
+void WriteTextFormatToBuffer(FString& Buffer, const FString& TokenMarker, const FTextFormat& SourceFmt, TFunctionRef<void(FTextFormatArgumentEnumeratorCallback)> ArgumentEnumerator)
 {
 	// Produces LOCGEN_FORMAT_NAMED(..., [...]) or LOCGEN_FORMAT_ORDERED(..., [...])
 	Buffer += TokenMarker;
 	Buffer += TEXT("(");
-	FTextStringHelper::WriteToBuffer(Buffer, SourceFmt.GetSourceText(), /*bRequireQuotes*/true, bStripPackageNamespace);
-	ArgumentEnumerator([&Buffer, bStripPackageNamespace](const FString* InKey, const FFormatArgumentValue& InValue)
+	FTextStringHelper::WriteToBuffer(Buffer, SourceFmt.GetSourceText(), true);
+	ArgumentEnumerator([&Buffer](const FString* InKey, const FFormatArgumentValue& InValue)
 	{
 		if (InKey)
 		{
@@ -624,7 +624,7 @@ void WriteTextFormatToBuffer(FString& Buffer, const FString& TokenMarker, const 
 		}
 
 		Buffer += TEXT(", ");
-		InValue.ToExportedString(Buffer, bStripPackageNamespace);
+		InValue.ToExportedString(Buffer);
 	});
 	Buffer += TEXT(")");
 }
@@ -703,7 +703,7 @@ const TCHAR* FTextHistory::ReadFromBuffer(const TCHAR* Buffer, const TCHAR* Text
 	return nullptr;
 }
 
-bool FTextHistory::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
 	return false;
 }
@@ -1020,7 +1020,7 @@ const TCHAR* FTextHistory_Base::ReadFromBuffer(const TCHAR* Buffer, const TCHAR*
 	return nullptr;
 }
 
-bool FTextHistory_Base::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_Base::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
 	FString Namespace;
 	FString Key;
@@ -1028,11 +1028,6 @@ bool FTextHistory_Base::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr Dis
 
 	if (bFoundNamespaceAndKey)
 	{
-		if (bStripPackageNamespace)
-		{
-			TextNamespaceUtil::StripPackageNamespaceInline(Namespace);
-		}
-
 #define LOC_DEFINE_REGION
 		// Produces NSLOCTEXT("...", "...", "...")
 		Buffer += TEXT("NSLOCTEXT(\"");
@@ -1199,9 +1194,9 @@ const TCHAR* FTextHistory_NamedFormat::ReadFromBuffer(const TCHAR* Buffer, const
 	return nullptr;
 }
 
-bool FTextHistory_NamedFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_NamedFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatNamedMarker, SourceFmt, bStripPackageNamespace, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
+	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatNamedMarker, SourceFmt, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
 	{
 		for (const auto& ArgumentPair : Arguments)
 		{
@@ -1366,9 +1361,9 @@ const TCHAR* FTextHistory_OrderedFormat::ReadFromBuffer(const TCHAR* Buffer, con
 	return nullptr;
 }
 
-bool FTextHistory_OrderedFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_OrderedFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatOrderedMarker, SourceFmt, bStripPackageNamespace, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
+	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatOrderedMarker, SourceFmt, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
 	{
 		for (const FFormatArgumentValue& ArgumentValue : Arguments)
 		{
@@ -1498,9 +1493,9 @@ const TCHAR* FTextHistory_ArgumentDataFormat::ReadFromBuffer(const TCHAR* Buffer
 	return nullptr;
 }
 
-bool FTextHistory_ArgumentDataFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_ArgumentDataFormat::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatNamedMarker, SourceFmt, bStripPackageNamespace, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
+	TextStringificationUtil::WriteTextFormatToBuffer(Buffer, TextStringificationUtil::LocGenFormatNamedMarker, SourceFmt, [this](TextStringificationUtil::FTextFormatArgumentEnumeratorCallback Callback)
 	{
 		for (const FFormatArgumentData& Argument : Arguments)
 		{
@@ -1724,9 +1719,9 @@ const TCHAR* FTextHistory_AsNumber::ReadFromBuffer(const TCHAR* Buffer, const TC
 	return Buffer;
 }
 
-bool FTextHistory_AsNumber::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsNumber::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteNumberOrPercentToBuffer(Buffer, TextStringificationUtil::LocGenNumberMarker, SourceValue, FormatOptions, TargetCulture, bStripPackageNamespace);
+	TextStringificationUtil::WriteNumberOrPercentToBuffer(Buffer, TextStringificationUtil::LocGenNumberMarker, SourceValue, FormatOptions, TargetCulture);
 	return true;
 }
 
@@ -1801,9 +1796,9 @@ const TCHAR* FTextHistory_AsPercent::ReadFromBuffer(const TCHAR* Buffer, const T
 	return Buffer;
 }
 
-bool FTextHistory_AsPercent::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsPercent::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteNumberOrPercentToBuffer(Buffer, TextStringificationUtil::LocGenPercentMarker, SourceValue, FormatOptions, TargetCulture, bStripPackageNamespace);
+	TextStringificationUtil::WriteNumberOrPercentToBuffer(Buffer, TextStringificationUtil::LocGenPercentMarker, SourceValue, FormatOptions, TargetCulture);
 	return true;
 }
 
@@ -1952,7 +1947,7 @@ const TCHAR* FTextHistory_AsCurrency::ReadFromBuffer(const TCHAR* Buffer, const 
 	return nullptr;
 }
 
-bool FTextHistory_AsCurrency::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsCurrency::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
 	FInternationalization& I18N = FInternationalization::Get();
 	checkf(I18N.IsInitialized() == true, TEXT("FInternationalization is not initialized. An FText formatting method was likely used in static object initialization - this is not supported."));
@@ -1985,7 +1980,7 @@ bool FTextHistory_AsCurrency::WriteToBuffer(FString& Buffer, FTextDisplayStringP
 
 	// Produces LOCGEN_CURRENCY(..., "...", "...")
 	Buffer += TEXT("LOCGEN_CURRENCY(");
-	FFormatArgumentValue(BaseVal).ToExportedString(Buffer, bStripPackageNamespace);
+	FFormatArgumentValue(BaseVal).ToExportedString(Buffer);
 	Buffer += TEXT(", \"");
 	Buffer += CurrencyCode.ReplaceCharWithEscapedChar();
 	Buffer += TEXT("\", \"");
@@ -2082,9 +2077,9 @@ const TCHAR* FTextHistory_AsDate::ReadFromBuffer(const TCHAR* Buffer, const TCHA
 	return Buffer;
 }
 
-bool FTextHistory_AsDate::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsDate::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenDateMarker, SourceDateTime, &DateStyle, nullptr, TimeZone, TargetCulture, bStripPackageNamespace);
+	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenDateMarker, SourceDateTime, &DateStyle, nullptr, TimeZone, TargetCulture);
 	return true;
 }
 
@@ -2197,9 +2192,9 @@ const TCHAR* FTextHistory_AsTime::ReadFromBuffer(const TCHAR* Buffer, const TCHA
 	return Buffer;
 }
 
-bool FTextHistory_AsTime::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsTime::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenTimeMarker, SourceDateTime, nullptr, &TimeStyle, TimeZone, TargetCulture, bStripPackageNamespace);
+	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenTimeMarker, SourceDateTime, nullptr, &TimeStyle, TimeZone, TargetCulture);
 	return true;
 }
 
@@ -2319,9 +2314,9 @@ const TCHAR* FTextHistory_AsDateTime::ReadFromBuffer(const TCHAR* Buffer, const 
 	return Buffer;
 }
 
-bool FTextHistory_AsDateTime::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_AsDateTime::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
-	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenDateTimeMarker, SourceDateTime, &DateStyle, &TimeStyle, TimeZone, TargetCulture, bStripPackageNamespace);
+	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenDateTimeMarker, SourceDateTime, &DateStyle, &TimeStyle, TimeZone, TargetCulture);
 	return true;
 }
 
@@ -2435,7 +2430,7 @@ const TCHAR* FTextHistory_Transform::ReadFromBuffer(const TCHAR* Buffer, const T
 	return Buffer;
 }
 
-bool FTextHistory_Transform::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_Transform::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
 	// Produces LOCGEN_TOLOWER(...) or LOCGEN_TOUPPER
 	switch (TransformType)
@@ -2449,7 +2444,7 @@ bool FTextHistory_Transform::WriteToBuffer(FString& Buffer, FTextDisplayStringPt
 	default:
 		break;
 	}
-	FTextStringHelper::WriteToBuffer(Buffer, SourceText, /*bRequireQuotes*/true, bStripPackageNamespace);
+	FTextStringHelper::WriteToBuffer(Buffer, SourceText, true);
 	Buffer += TEXT(")");
 
 	return true;
@@ -2692,7 +2687,7 @@ const TCHAR* FTextHistory_StringTableEntry::ReadFromBuffer(const TCHAR* Buffer, 
 	return nullptr;
 }
 
-bool FTextHistory_StringTableEntry::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString, const bool bStripPackageNamespace) const
+bool FTextHistory_StringTableEntry::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr DisplayString) const
 {
 	if (StringTableReferenceData)
 	{

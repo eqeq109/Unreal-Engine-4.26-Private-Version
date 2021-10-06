@@ -199,7 +199,7 @@ private:
 /* UCompositingOpenColorIOPass
 *****************************************************************************/
 
-UCLASS(BlueprintType, Blueprintable, meta = (DisplayName = "OpenColorIO Pass"))
+UCLASS(BlueprintType, Blueprintable)
 class COMPOSURE_API UCompositingOpenColorIOPass : public UCompositingElementTransform
 {
 	GENERATED_BODY()

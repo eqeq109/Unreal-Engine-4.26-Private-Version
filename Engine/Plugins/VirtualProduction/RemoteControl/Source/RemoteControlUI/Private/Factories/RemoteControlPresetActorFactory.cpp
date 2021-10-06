@@ -27,13 +27,13 @@ bool URemoteControlPresetActorFactory::CanCreateActorFrom( const FAssetData& Ass
 	return true;
 }
 
-AActor* URemoteControlPresetActorFactory::SpawnActor(UObject* InAsset, ULevel* InLevel, const FTransform& InTransform, const FActorSpawnParameters& InSpawnParams)
+AActor* URemoteControlPresetActorFactory::SpawnActor( UObject* Asset, ULevel* InLevel, const FTransform& Transform, EObjectFlags InObjectFlags, const FName Name )
 {
-	ARemoteControlPresetActor* NewActor = Cast<ARemoteControlPresetActor>(Super::SpawnActor(InAsset, InLevel, InTransform, InSpawnParams));
+	ARemoteControlPresetActor* NewActor = Cast<ARemoteControlPresetActor>(Super::SpawnActor(Asset, InLevel, Transform, InObjectFlags, Name));
 
 	if (NewActor)
 	{
-		if (URemoteControlPreset* Preset = Cast<URemoteControlPreset>(InAsset))
+		if (URemoteControlPreset* Preset = Cast<URemoteControlPreset>(Asset))
 		{
 			NewActor->Preset = Preset;
 		}

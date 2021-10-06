@@ -1,35 +1,24 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Policy/Domeprojection/DisplayClusterProjectionDomeprojectionPolicyFactory.h"
+#include "Policy/Domeprojection/DX11/DisplayClusterProjectionDomeprojectionPolicyDX11.h"
 
 #include "DisplayClusterProjectionLog.h"
 #include "Misc/DisplayClusterStrings.h"
-
-#include "DisplayClusterConfigurationTypes.h"
-
-#if PLATFORM_WINDOWS
-#include "Policy/Domeprojection/Windows/DX11/DisplayClusterProjectionDomeprojectionPolicyDX11.h"
-#endif
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe> FDisplayClusterProjectionDomeprojectionPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionDomeprojectionPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
 {
-	FString RHIName = GDynamicRHI->GetName();
-
-#if PLATFORM_WINDOWS
 	if (RHIName.Equals(DisplayClusterStrings::rhi::D3D11, ESearchCase::IgnoreCase))
 	{
-		check(InConfigurationProjectionPolicy != nullptr);
-
-		UE_LOG(LogDisplayClusterProjectionDomeprojection, Log, TEXT("Instantiating projection policy <%s> id='%s'"), *InConfigurationProjectionPolicy->Type, *ProjectionPolicyId);
-		return MakeShared<FDisplayClusterProjectionDomeprojectionPolicyDX11, ESPMode::ThreadSafe>(ProjectionPolicyId, InConfigurationProjectionPolicy);
+		UE_LOG(LogDisplayClusterProjectionDomeprojection, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
+		return MakeShared<FDisplayClusterProjectionDomeprojectionPolicyDX11>(ViewportId, Parameters);
 	}
-#endif
 
-	UE_LOG(LogDisplayClusterProjectionDomeprojection, Warning, TEXT("There is no implementation of '%s' projection policy for RHI %s"), *InConfigurationProjectionPolicy->Type, *RHIName);
+	UE_LOG(LogDisplayClusterProjectionDomeprojection, Warning, TEXT("There is no implementation of '%s' projection policy for RHI %s"), *PolicyType, *RHIName);
 
 	return nullptr;
 }

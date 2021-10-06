@@ -141,7 +141,7 @@ enum class EOculusDeviceType : uint8
 	Rift = 100,
 	Rift_S,
 	Quest_Link,
-	Quest2_Link,
+	//OculusPC_Placeholder4102,
 	//OculusPC_Placeholder4103,
 
 	//default
@@ -160,23 +160,23 @@ struct FGuardianTestResult
 
 	/** Is there a triggering interaction between the device/point and specified boundary? */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boundary Test Result")
-	bool IsTriggering = false;
+	bool IsTriggering;
 
 	/** Device type triggering boundary (ETrackedDeviceType::None if BoundaryTestResult corresponds to a point rather than a device) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boundary Test Result")
-	ETrackedDeviceType DeviceType = ETrackedDeviceType::None;
+	ETrackedDeviceType DeviceType;
 
 	/** Distance of device/point to surface of boundary specified by BoundaryType */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boundary Test Result")
-	float ClosestDistance = 0.0f;
+	float ClosestDistance;
 
 	/** Closest point on surface corresponding to specified boundary */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boundary Test Result")
-	FVector ClosestPoint = FVector(0.0f);
+	FVector ClosestPoint;
 
 	/** Normal of closest point */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boundary Test Result")
-	FVector ClosestPointNormal = FVector(0.0f, 0.0f, 1.0f);
+	FVector ClosestPointNormal;
 };
 
 UCLASS()
@@ -394,7 +394,7 @@ class OCULUSHMD_API UOculusFunctionLibrary : public UBlueprintFunctionLibrary
 	static void EnableOrientationTracking(bool bOrientationTracking);
 
 	/**
-	* Set the Color Scale/Offset
+	* Enables/disables orientation tracking on devices that support it.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "OculusLibrary")
 	static void SetColorScaleAndOffset(FLinearColor ColorScale, FLinearColor ColorOffset, bool bApplyToAllLayers = false);

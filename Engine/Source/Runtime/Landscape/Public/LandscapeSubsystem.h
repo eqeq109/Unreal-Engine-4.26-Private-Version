@@ -5,12 +5,13 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Tickable.h"
 #include "LandscapeSubsystem.generated.h"
 
 class ALandscapeProxy;
 
 UCLASS(MinimalAPI)
-class ULandscapeSubsystem : public UTickableWorldSubsystem
+class ULandscapeSubsystem : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 

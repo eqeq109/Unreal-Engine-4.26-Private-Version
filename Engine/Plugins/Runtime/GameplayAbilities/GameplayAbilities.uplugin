@@ -31,10 +31,6 @@
 		{
 			"Name": "GameplayTagsEditor",
 			"Enabled": true
-		},
-		{
-			"Name": "DataRegistry",
-			"Enabled": true
 		}
 	]
 

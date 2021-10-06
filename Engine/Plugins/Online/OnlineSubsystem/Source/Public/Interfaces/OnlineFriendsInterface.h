@@ -87,14 +87,14 @@ struct FFriendSettings
 struct FReportPlayedWithUser
 {
 	FReportPlayedWithUser() = delete;
-	FReportPlayedWithUser(const FUniqueNetIdRef& InUserId, const FString& InPresenceStr)
+	FReportPlayedWithUser(const TSharedRef<const FUniqueNetId>& InUserId, const FString& InPresenceStr)
 		: UserId(InUserId)
 		, PresenceStr(InPresenceStr)
 	{
 	}
 
 	/** UserId to report played with */
-	FUniqueNetIdRef UserId;
+	TSharedRef<const FUniqueNetId> UserId;
 	/** Optional presence string */
 	FString PresenceStr;
 };

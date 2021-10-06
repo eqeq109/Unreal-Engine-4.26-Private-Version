@@ -67,10 +67,6 @@ class CURVEEDITOR_API FRichCurveEditorModelRaw : public FRichCurveEditorModel
 public:
 	FRichCurveEditorModelRaw(FRichCurve* InRichCurve, UObject* InOwner);
 
-	virtual bool IsReadOnly() const override;
-
-	void SetIsReadOnly(TAttribute<bool> InReadOnlyAttribute);
-
 	// FRichCurveEditorModel interface
 	virtual bool IsValid() const override { return RichCurve != nullptr; }
 	virtual FRichCurve& GetRichCurve() override;
@@ -78,5 +74,4 @@ public:
 
 private:
 	FRichCurve* RichCurve;
-	TAttribute<bool> ReadOnlyAttribute;
 };

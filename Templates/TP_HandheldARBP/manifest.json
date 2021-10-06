@@ -54,7 +54,7 @@
 	],
 	"ClassTypes": "Pawn, GameMode, Widget, Actor",
 	"Category": "BlueprintFeature",
-	"FocusAsset": "",
+	"FocusAsset": "/Game/Blueprints/GameFramework/BP_ARPawn.BP_ARPawn",
 	"Thumbnail": "TP_HandheldARBP.png",
 	"Screenshots":
 	[

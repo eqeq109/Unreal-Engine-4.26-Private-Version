@@ -74,6 +74,10 @@ typedef int32_t aaudio_session_id_t;
 #include <android/api-level.h>
 #endif
 
+#ifndef __NDK_MAJOR__
+#define __NDK_MAJOR__ 0
+#endif
+
 namespace oboe {
 
 

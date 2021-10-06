@@ -7,31 +7,32 @@
 
 namespace Chaos
 {
-	class FPerParticleGravity : public FPerParticleRule
+	template<class T, int d>
+	class TPerParticleGravity : public TPerParticleRule<T, d>
 	{
 	public:
-		FPerParticleGravity()
-			: MAcceleration(FVec3(0, 0, (FReal)-980.665)) {}
-		FPerParticleGravity(const FVec3& G)
+		TPerParticleGravity()
+			: MAcceleration(TVector<T, d>(0, 0, (T)-980.665)) {}
+		TPerParticleGravity(const TVector<T, d>& G)
 			: MAcceleration(G) {}
-		FPerParticleGravity(const FVec3& Direction, const FReal Magnitude)
+		TPerParticleGravity(const TVector<T, d>& Direction, const T Magnitude)
 			: MAcceleration(Direction * Magnitude) {}
-		virtual ~FPerParticleGravity() {}
+		virtual ~TPerParticleGravity() {}
 
 		// TODO: Remove this - we should no longer be using indices directly.
 		//       This has been kept around for cloth, which uses it in
 		//       PBDEvolution.
 		template<class T_PARTICLES>
-		inline void ApplyHelper(T_PARTICLES& InParticles, const FReal Dt, const int Index) const
+		inline void ApplyHelper(T_PARTICLES& InParticles, const T Dt, const int Index) const
 		{
 			InParticles.F(Index) += MAcceleration * InParticles.M(Index);
 		}
-		inline void Apply(FPBDParticles& InParticles, const FReal Dt, const int Index) const override //-V762
+		inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int Index) const override //-V762
 		{
 			ApplyHelper(InParticles, Dt, Index);
 		}
 
-		void Apply(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal Dt) const override //-V762
+		void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 		{
 			if(Particle.GravityEnabled())
 			{
@@ -39,16 +40,13 @@ namespace Chaos
 			}
 		}
 
-		void SetAcceleration(const FVec3& Acceleration)
+		void SetAcceleration(const TVector<T, d>& Acceleration)
 		{ MAcceleration = Acceleration; }
 
-		const FVec3& GetAcceleration() const
+		const TVector<T, d>& GetAcceleration() const
 		{ return MAcceleration; }
 
 	private:
-		FVec3 MAcceleration;
+		TVector<T, d> MAcceleration;
 	};
-
-	template<class T, int d>
-	using TPerParticleGravity UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticleGravity instead") = FPerParticleGravity;
 }

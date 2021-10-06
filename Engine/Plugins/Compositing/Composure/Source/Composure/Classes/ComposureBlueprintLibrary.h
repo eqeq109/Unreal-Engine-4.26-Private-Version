@@ -14,8 +14,8 @@
 class UCameraComponent;
 class USceneCaptureComponent2D;
 
-UCLASS(meta=(ScriptName="ComposureLibrary"))
-class COMPOSURE_API UComposureBlueprintLibrary : public UBlueprintFunctionLibrary
+UCLASS(MinimalAPI, meta=(ScriptName="ComposureLibrary"))
+class UComposureBlueprintLibrary : public UBlueprintFunctionLibrary
 {
 	GENERATED_UCLASS_BODY()
 
@@ -69,7 +69,7 @@ class COMPOSURE_API UComposureBlueprintLibrary : public UBlueprintFunctionLibrar
 	static void GetPlayerDisplayGamma(const APlayerCameraManager* PlayerCameraManager, float& DisplayGamma);
 
 	UFUNCTION(BlueprintCallable, Category = "Composure")
-	static void CopyCameraSettingsToSceneCapture(UCameraComponent* SrcCamera, USceneCaptureComponent2D* DstCaptureComponent, float OriginalFocalLength, float OverscanFactor = 1.0f);
+	static void CopyCameraSettingsToSceneCapture(UCameraComponent* SrcCamera, USceneCaptureComponent2D* DstCaptureComponent);
 
 	/**
 	 * Create a new Composure in the level without any parenting relationship.

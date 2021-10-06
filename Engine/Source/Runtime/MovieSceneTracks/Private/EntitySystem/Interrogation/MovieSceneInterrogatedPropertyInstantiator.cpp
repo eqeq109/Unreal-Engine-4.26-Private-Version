@@ -124,7 +124,7 @@ UClass* UMovieSceneInterrogatedPropertyInstantiatorSystem::ResolveBlenderClass(T
 
 	for (FMovieSceneEntityID Input : Inputs)
 	{
-		TOptionalComponentReader<TSubclassOf<UMovieSceneBlenderSystem>> BlenderTypeComponent = Linker->EntityManager.ReadComponent(Input, BuiltInComponents->BlenderType);
+		TComponentPtr<const TSubclassOf<UMovieSceneBlenderSystem>> BlenderTypeComponent = Linker->EntityManager.ReadComponent(Input, BuiltInComponents->BlenderType);
 		if (BlenderTypeComponent)
 		{
 			BlenderClass = BlenderTypeComponent->Get();
@@ -149,6 +149,12 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 
 	check(Inputs.Num() > 0);
 
+	if (PropertySupportsFastPath(Inputs, Output))
+	{
+		Linker->EntityManager.AddComponent(Inputs[0], BuiltInComponents->Interrogation.OutputKey, Key);
+		return;
+	}
+
 	auto FindPropertyIndex = [this, Input = Inputs[0]](const FPropertyDefinition& InDefinition)
 	{
 		return this->Linker->EntityManager.HasComponent(Input, InDefinition.PropertyType);
@@ -158,22 +164,6 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 	const FPropertyDefinition* PropertyDefinition = Algo::FindByPredicate(Properties, FindPropertyIndex);
 	check(PropertyDefinition);
 
-	if (PropertySupportsFastPath(Inputs, Output))
-	{
-		Linker->EntityManager.AddComponent(Inputs[0], BuiltInComponents->Interrogation.OutputKey, Key);
-
-		if (PropertyDefinition->MetaDataTypes.Num() > 0)
-		{
-			FComponentMask NewMask;
-			for (FComponentTypeID Component : PropertyDefinition->MetaDataTypes)
-			{
-				NewMask.Set(Component);
-			}
-			Linker->EntityManager.AddComponents(Inputs[0], NewMask);
-		}
-		return;
-	}
-
 	TArrayView<const FPropertyCompositeDefinition> Composites = BuiltInComponents->PropertyRegistry.GetComposites(*PropertyDefinition);
 
 	// Find the blender class to use
@@ -182,8 +172,7 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 	UMovieSceneBlenderSystem* ExistingBlender = Output->Blender.Get();
 	if (ExistingBlender && BlenderClass != ExistingBlender->GetClass())
 	{
-		const FMovieSceneBlendChannelID BlendChannel(ExistingBlender->GetBlenderSystemID(), Output->BlendChannel);
-		ExistingBlender->ReleaseBlendChannel(BlendChannel);
+		ExistingBlender->ReleaseBlendChannel(Output->BlendChannel);
 		Output->BlendChannel = INVALID_BLEND_CHANNEL;
 	}
 
@@ -192,20 +181,11 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 	const bool bWasAlreadyBlended = Output->BlendChannel != INVALID_BLEND_CHANNEL;
 	if (!bWasAlreadyBlended)
 	{
-		const FMovieSceneBlendChannelID BlendChannel = Output->Blender->AllocateBlendChannel();
-		Output->BlendChannel = BlendChannel.ChannelID;
+		Output->BlendChannel = Output->Blender->AllocateBlendChannel();
 	}
 
 	FComponentMask NewMask;
 	FComponentMask OldMask;
-
-	if (PropertyDefinition->MetaDataTypes.Num() > 0)
-	{
-		for (FComponentTypeID Component : PropertyDefinition->MetaDataTypes)
-		{
-			NewMask.Set(Component);
-		}
-	}
 
 	if (!bWasAlreadyBlended)
 	{
@@ -223,12 +203,10 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 		}
 		NewMask.Set(PropertyDefinition->PropertyType);
 
-		const FMovieSceneBlendChannelID BlendChannel(Output->Blender->GetBlenderSystemID(), Output->BlendChannel);
-
 		// Never seen this property before
 		FMovieSceneEntityID NewEntityID = FEntityBuilder()
 		.Add(BuiltInComponents->Interrogation.OutputKey, Key)
-		.Add(BuiltInComponents->BlendChannelOutput, BlendChannel)
+		.Add(BuiltInComponents->BlendChannelOutput, Output->BlendChannel)
 		.AddTagConditional(BuiltInComponents->Tags.MigratedFromFastPath, Output->PropertyEntityID.IsValid())
 		.AddTag(BuiltInComponents->Tags.NeedsLink)
 		.AddMutualComponents()
@@ -240,7 +218,7 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 			Linker->EntityManager.CopyComponents(Output->PropertyEntityID, NewEntityID, Linker->EntityManager.GetComponents()->GetMigrationMask());
 
 			// Add blend inputs on the first contributor, which was using the fast-path
-			Linker->EntityManager.AddComponent(Output->PropertyEntityID, BuiltInComponents->BlendChannelInput, BlendChannel);
+			Linker->EntityManager.AddComponent(Output->PropertyEntityID, BuiltInComponents->BlendChannelInput, Output->BlendChannel);
 			Linker->EntityManager.RemoveComponents(Output->PropertyEntityID, CleanFastPathMask);
 		}
 
@@ -267,8 +245,7 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::UpdateOutput(UE::MovieSc
 	// Ensure contributors all have the necessary blend inputs and tags
 	for (FMovieSceneEntityID Input : Inputs)
 	{
-		const FMovieSceneBlendChannelID BlendChannel(Output->Blender->GetBlenderSystemID(), Output->BlendChannel);
-		Linker->EntityManager.AddComponent(Input, BuiltInComponents->BlendChannelInput, BlendChannel);
+		Linker->EntityManager.AddComponent(Input, BuiltInComponents->BlendChannelInput, Output->BlendChannel);
 		Linker->EntityManager.RemoveComponents(Input, CleanFastPathMask);
 	}
 }
@@ -279,8 +256,7 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::DestroyOutput(UE::MovieS
 	{
 		if (UMovieSceneBlenderSystem* Blender = Output->Blender.Get())
 		{
-			const FMovieSceneBlendChannelID BlendChannel(Blender->GetBlenderSystemID(), Output->BlendChannel);
-			Blender->ReleaseBlendChannel(BlendChannel);
+			Blender->ReleaseBlendChannel(Output->BlendChannel);
 		}
 		Linker->EntityManager.AddComponents(Output->PropertyEntityID, BuiltInComponents->FinishedMask);
 	}
@@ -293,12 +269,12 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::OnRun(FSystemTaskPrerequ
 	{
 		TArrayView<const FPropertyDefinition> AllProperties = BuiltInComponents->PropertyRegistry.GetProperties();
 
-		auto LinkCallback =  [this, AllProperties](const FEntityAllocation* Allocation, TRead<FInterrogationKey> InterrogationChannels)
+		auto LinkCallback =  [this, AllProperties](const FEntityAllocation* Allocation, TRead<FInterrogationKey> InterrogationChannelAccessor)
 		{
 			const int32 PropertyDefinitionIndex = Algo::IndexOfByPredicate(AllProperties, [=](const FPropertyDefinition& InDefinition){ return Allocation->HasComponent(InDefinition.PropertyType); });
 			if (PropertyDefinitionIndex != INDEX_NONE)
 			{
-				this->PropertyTracker.VisitLinkedAllocation(Allocation, InterrogationChannels);
+				this->PropertyTracker.VisitLinkedAllocation(Allocation, InterrogationChannelAccessor);
 			}
 		};
 		auto UnlinkCallback = [this, AllProperties](const FEntityAllocation* Allocation)
@@ -321,5 +297,5 @@ void UMovieSceneInterrogatedPropertyInstantiatorSystem::OnRun(FSystemTaskPrerequ
 		.Iterate_PerAllocation(&Linker->EntityManager, UnlinkCallback);
 	}
 
-	PropertyTracker.ProcessInvalidatedOutputs(Linker, *this);
+	PropertyTracker.ProcessInvalidatedOutputs(*this);
 }

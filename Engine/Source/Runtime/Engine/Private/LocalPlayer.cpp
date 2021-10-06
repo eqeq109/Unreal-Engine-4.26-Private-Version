@@ -717,7 +717,7 @@ void ULocalPlayer::GetViewPoint(FMinimalViewInfo& OutViewInfo, EStereoscopicPass
 		}
 	}
 
-	for (auto& ViewExt : GEngine->ViewExtensions->GatherActiveExtensions(FSceneViewExtensionContext(ViewportClient->Viewport)))
+	for (auto& ViewExt : GEngine->ViewExtensions->GatherActiveExtensions())
 	{
 		ViewExt->SetupViewPoint(PlayerController, OutViewInfo);
 	};
@@ -1141,7 +1141,7 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 		// Create the projection matrix (and possibly constrain the view rectangle)
 		FMinimalViewInfo::CalculateProjectionMatrixGivenView(ViewInfo, AspectRatioAxisConstraint, Viewport, /*inout*/ ProjectionData);
 
-		for (auto& ViewExt : GEngine->ViewExtensions->GatherActiveExtensions(FSceneViewExtensionContext(Viewport)))
+		for (auto& ViewExt : GEngine->ViewExtensions->GatherActiveExtensions())
         {
 			ViewExt->SetupViewProjectionMatrix(ProjectionData);
 		};
@@ -1626,7 +1626,7 @@ FUniqueNetIdRepl ULocalPlayer::GetCachedUniqueNetId() const
 	return CachedUniqueNetId;
 }
 
-void ULocalPlayer::SetCachedUniqueNetId(FUniqueNetIdPtr NewUniqueNetId)
+void ULocalPlayer::SetCachedUniqueNetId(TSharedPtr<const FUniqueNetId> NewUniqueNetId)
 {
 	CachedUniqueNetId = NewUniqueNetId;
 }

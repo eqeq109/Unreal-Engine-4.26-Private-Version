@@ -152,9 +152,6 @@ bool GIsReconstructingBlueprintInstances = false;
 /** True if actors and objects are being re-instanced. */
 bool GIsReinstancing = false;
 
-/** Settings for when using UE as a library */
-FUELibraryOverrideSettings GUELibraryOverrideSettings;
-
 /**
  * If true, we are running an editor script that should not prompt any dialog modal. The default value of any model will be used.
  * This is used when running an editor utility blueprint or script like Python and we don't want an OK dialog to pop while the script is running.
@@ -227,7 +224,6 @@ FString				GGameUserSettingsIni;										/* User Game Settings ini filename */
 FString				GRuntimeOptionsIni;											/* Runtime Options ini filename */
 FString				GInstallBundleIni;											/* Install Bundle ini filename*/
 FString				GDeviceProfilesIni;											/* Runtime DeviceProfiles ini filename - use LoadLocalIni for other platforms' DPs */
-FString				GGameplayTagsIni;											/* Gameplay tags for the GameplayTagManager */
 
 float					GNearClippingPlane				= 10.0f;				/* Near clipping plane */
 
@@ -261,34 +257,16 @@ static void appNoop()
 {
 }
 
-// This should be left non static to allow *edge* cases only in Core to extern and set this.
-bool GShouldRequestExit = false;
-
-void CORE_API BeginExitIfRequested()
-{
-	if (UNLIKELY(GShouldRequestExit))
-	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		GIsRequestingExit = true;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	}
-}
-
 void CORE_API RequestEngineExit(const TCHAR* ReasonString)
 {
 	ensureMsgf(ReasonString && FCString::Strlen(ReasonString) > 4, TEXT("RequestEngineExit must be given a valid reason (reason \"%s\""), ReasonString);
 
 	FGenericCrashContext::SetEngineExit(true);
 
-#if UE_SET_REQUEST_EXIT_ON_TICK_ONLY
-	UE_LOG(LogCore, Log, TEXT("Engine exit requested (reason: %s%s)"), ReasonString, GShouldRequestExit ? TEXT("; note: exit was already requested") : TEXT(""));
-	GShouldRequestExit = true;
-#else
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UE_LOG(LogCore, Log, TEXT("Engine exit requested (reason: %s%s)"), ReasonString, GIsRequestingExit ? TEXT("; note: exit was already requested") : TEXT(""));
 	GIsRequestingExit = true;
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
-#endif // UE_SET_REQUEST_EXIT_ON_TICK_ONLY
 }
 
 void CORE_API RequestEngineExit(const FString& ReasonString)
@@ -335,8 +313,6 @@ bool					GEventDrivenLoaderEnabled = false;
 
 /** Steadily increasing frame counter.																		*/
 TSAN_ATOMIC(uint64)		GFrameCounter(0);
-
-uint64					GFrameCounterRenderThread(0);
 uint64					GLastGCFrame					= 0;
 /** The time input was sampled, in cycles. */
 uint64					GInputTime					= 0;
@@ -670,6 +646,9 @@ DEFINE_STAT(STAT_TaskGraph_RenderStalls);
 
 DEFINE_STAT(STAT_TaskGraph_GameTasks);
 DEFINE_STAT(STAT_TaskGraph_GameStalls);
+
+DEFINE_STAT(STAT_FlushThreadedLogs);
+DEFINE_STAT(STAT_PumpMessages);
 
 DEFINE_STAT(STAT_CPUTimePct);
 DEFINE_STAT(STAT_CPUTimePctRelative);

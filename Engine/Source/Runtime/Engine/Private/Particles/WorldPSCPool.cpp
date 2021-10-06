@@ -3,7 +3,6 @@
 #include "Particles/WorldPSCPool.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/World.h"
-#include "GameFramework/WorldSettings.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "ParticleHelper.h"
 
@@ -28,6 +27,12 @@ static FAutoConsoleVariableRef ParticleSystemPoolingCleanTime(
 	TEXT("How often should the pool be cleaned (in seconds).")
 );
 
+FPSCPool::FPSCPool()
+	: MaxUsed(0)
+{
+
+}
+
 void FPSCPool::Cleanup()
 {
 	for (FPSCPoolElem& Elem : FreeElements)
@@ -43,12 +48,31 @@ void FPSCPool::Cleanup()
 		}
 	}
 
-	FreeElements.Empty();
+	for (UParticleSystemComponent* PSC : InUseComponents_Auto)
+	{
+		//It's possible for people to manually destroy these so we have to guard against it. Though we warn about it in UParticleSystemComponent::BeginDestroy
+		if (PSC)
+		{
+			PSC->PoolingMethod = EPSCPoolMethod::None;//Reset so we don't trigger warnings about destroying pooled PSCs.
+			PSC->DestroyComponent();
+		}
+	}
 
-#if ENABLE_PSC_POOL_DEBUGGING
+	//Warn if there are any manually released PSCs still in the world at cleanup time.
+	for (UParticleSystemComponent* PSC : InUseComponents_Manual)
+	{
+		//It's possible for people to manually destroy these so we have to guard against it. Though we warn about it in UParticleSystemComponent::BeginDestroy
+		if (PSC)
+		{
+			UE_LOG(LogParticles, Warning, TEXT("Pooled PSC set to manual release is still in use as the pool is being cleaned up. %s"), *PSC->Template->GetFullName());
+			PSC->PoolingMethod = EPSCPoolMethod::None;//Reset so we don't trigger warnings about destroying pooled PSCs.
+			PSC->DestroyComponent();
+		}
+	}
+
+	FreeElements.Empty();
 	InUseComponents_Auto.Empty();
 	InUseComponents_Manual.Empty();
-#endif
 }
 
 UParticleSystemComponent* FPSCPool::Acquire(UWorld* World, UParticleSystem* Template, EPSCPoolMethod PoolingMethod)
@@ -78,10 +102,7 @@ UParticleSystemComponent* FPSCPool::Acquire(UWorld* World, UParticleSystem* Temp
 	else
 	{
 		//None in the pool so create a new one.
-		AActor* OuterActor = World->GetWorldSettings();
-		UObject* OuterObject = OuterActor ? static_cast<UObject*>(OuterActor) : static_cast<UObject*>(World);
-
-		RetElem.PSC = NewObject<UParticleSystemComponent>(OuterObject);
+		RetElem.PSC = NewObject<UParticleSystemComponent>(World);
 		RetElem.PSC->bAutoDestroy = false;//<<< We don't auto destroy. We'll just periodically clear up the pool.
 		RetElem.PSC->SecondsBeforeInactive = 0.0f;
 		RetElem.PSC->bAutoActivate = false;
@@ -95,15 +116,15 @@ UParticleSystemComponent* FPSCPool::Acquire(UWorld* World, UParticleSystem* Temp
 #if ENABLE_PSC_POOL_DEBUGGING
 	if (PoolingMethod == EPSCPoolMethod::AutoRelease)
 	{
-		InUseComponents_Auto.Emplace(RetElem.PSC);
+		InUseComponents_Auto.Add(RetElem.PSC);
 	}
 	else if (PoolingMethod == EPSCPoolMethod::ManualRelease)
 	{
-		InUseComponents_Manual.Emplace(RetElem.PSC);
+		InUseComponents_Manual.Add(RetElem.PSC);
 	}
+#endif 
 
 	MaxUsed = FMath::Max(MaxUsed, InUseComponents_Manual.Num() + InUseComponents_Auto.Num());
-#endif 
 
 	//UE_LOG(LogParticles, Log, TEXT("FPSCPool::Acquire() - World: %p - PSC: %p - Sys: %s"), World, RetElem.PSC, *Template->GetFullName());
 
@@ -117,17 +138,25 @@ void FPSCPool::Reclaim(UParticleSystemComponent* PSC, const float CurrentTimeSec
 	//UE_LOG(LogParticles, Log, TEXT("FPSCPool::Reclaim() - World: %p - PSC: %p - Sys: %s"), PSC->GetWorld(), PSC, *PSC->Template->GetFullName());
 
 #if ENABLE_PSC_POOL_DEBUGGING
-	bool bWasInList = false;
+	int32 InUseIdx = INDEX_NONE;
 	if (PSC->PoolingMethod == EPSCPoolMethod::AutoRelease)
 	{
-		bWasInList = InUseComponents_Auto.RemoveSingleSwap(PSC) > 0;
+		InUseIdx = InUseComponents_Auto.IndexOfByKey(PSC);
+		if (InUseIdx != INDEX_NONE)
+		{
+			InUseComponents_Auto.RemoveAtSwap(InUseIdx);
+		}
 	}
 	else if (PSC->PoolingMethod == EPSCPoolMethod::ManualRelease)
 	{
-		bWasInList = InUseComponents_Manual.RemoveSingleSwap(PSC) > 0;
+		InUseIdx = InUseComponents_Manual.IndexOfByKey(PSC);
+		if (InUseIdx != INDEX_NONE)
+		{
+			InUseComponents_Manual.RemoveAtSwap(InUseIdx);
+		}
 	}
-
-	if (!bWasInList)
+	
+	if(InUseIdx == INDEX_NONE)
 	{
 		UE_LOG(LogParticles, Error, TEXT("World Particle System Pool is reclaiming a component that is not in it's InUse list!"));
 	}
@@ -192,16 +221,36 @@ void FPSCPool::KillUnusedComponents(float KillTime, UParticleSystem* Template)
 	FreeElements.Shrink();
 
 #if ENABLE_PSC_POOL_DEBUGGING
-	// Clean up any in use components that have been cleared out from under the pool. This could happen in someone manually destroys a component for example.
-	if (InUseComponents_Manual.RemoveAllSwap([](const TWeakObjectPtr<UParticleSystemComponent>& WeakPtr) { return !WeakPtr.IsValid(); }) > 0)
+	//Clean up any in use components that have been cleared out from under the pool. This could happen in someone manually destroys a component for example.
+	i = 0;
+	while (i < InUseComponents_Manual.Num())
 	{
-		UE_LOG(LogParticles, Log, TEXT("Manual Pooled PSC has been destroyed! Possibly via a DestroyComponent() call. You should not destroy these but rather call ReleaseToPool on the component so it can be re-used. |\t System: %s"), *Template->GetFullName());
+		if (!InUseComponents_Manual[i])
+		{
+			UE_LOG(LogParticles, Log, TEXT("Manual Pooled PSC has been destroyed! Possibly via a DestroyComponent() call. You should not destroy these but rather call ReleaseToPool on the component so it can be re-used. |\t System: %s"), *Template->GetFullName());
+			InUseComponents_Manual.RemoveAtSwap(i, 1, false);
+		}
+		else
+		{
+			++i;
+		}
 	}
+	InUseComponents_Manual.Shrink();
 
-	if (InUseComponents_Auto.RemoveAllSwap([](const TWeakObjectPtr<UParticleSystemComponent>& WeakPtr) { return !WeakPtr.IsValid(); }) > 0)
+	i = 0;
+	while (i < InUseComponents_Auto.Num())
 	{
-		UE_LOG(LogParticles, Log, TEXT("Auto Pooled PSC has been destroyed! Possibly via a DestroyComponent() call. You should not destroy these manually. Just deactivate them and allow then to be reclaimed by the pool automatically. |\t System: %s"), *Template->GetFullName());
+		if (!InUseComponents_Auto[i])
+		{
+			UE_LOG(LogParticles, Log, TEXT("Auto Pooled PSC has been destroyed! Possibly via a DestroyComponent() call. You should not destroy these manually. Just deactivate them and allow then to be reclaimed by the pool automatically. |\t System: %s"), *Template->GetFullName());
+			InUseComponents_Auto.RemoveAtSwap(i, 1, false);
+		}
+		else
+		{
+			++i;
+		}
 	}
+	InUseComponents_Auto.Shrink();
 #endif
 }
 
@@ -216,10 +265,10 @@ FWorldPSCPool::FWorldPSCPool()
 
 FWorldPSCPool::~FWorldPSCPool()
 {
-	Cleanup(nullptr);
+	Cleanup();
 }
 
-void FWorldPSCPool::Cleanup(UWorld* World)
+void FWorldPSCPool::Cleanup()
 {
 	for (TPair<UParticleSystem*, FPSCPool>& Pool : WorldParticleSystemPools)
 	{
@@ -227,25 +276,6 @@ void FWorldPSCPool::Cleanup(UWorld* World)
 	}
 
 	WorldParticleSystemPools.Empty();
-
-	// If we passed in a world make sure we cleanup any pooled components for that world
-	// This is generally used on world cleanup to ensure all pooled components are cleaned up as they can not be returned back to the component pool.
-	if (World != nullptr)
-	{
-		if (AWorldSettings* WorldSettings = World->GetWorldSettings())
-		{
-			TArray<UParticleSystemComponent*> ActiveComponents;
-			WorldSettings->GetComponents(ActiveComponents);
-			for (UParticleSystemComponent* Comp : ActiveComponents)
-			{
-				if ((Comp->PoolingMethod == EPSCPoolMethod::AutoRelease) || (Comp->PoolingMethod == EPSCPoolMethod::ManualRelease))
-				{
-					Comp->PoolingMethod = EPSCPoolMethod::None;
-					Comp->DestroyComponent();
-				}
-			}
-		}
-	}
 }
 
 UParticleSystemComponent* FWorldPSCPool::CreateWorldParticleSystem(UParticleSystem* Template, UWorld* World, EPSCPoolMethod PoolingMethod)
@@ -335,6 +365,34 @@ void FWorldPSCPool::ReclaimWorldParticleSystem(UParticleSystemComponent* PSC)
 	}
 }
 
+void FWorldPSCPool::ReclaimActiveParticleSystems()
+{
+	check(IsInGameThread());
+
+	for (TPair<UParticleSystem*, FPSCPool>& Pair : WorldParticleSystemPools)
+	{
+		FPSCPool& Pool = Pair.Value;
+
+		for(int32 i = Pool.InUseComponents_Auto.Num() - 1; i >= 0; --i)
+		{
+			UParticleSystemComponent* PSC = Pool.InUseComponents_Auto[i];
+			if (ensureAlways(PSC))
+			{
+				PSC->Complete();
+			}
+		}
+
+		for(int32 i = Pool.InUseComponents_Manual.Num() - 1; i >= 0; --i)
+		{
+			UParticleSystemComponent* PSC = Pool.InUseComponents_Manual[i];
+			if (ensureAlways(PSC))
+			{
+				PSC->Complete();
+			}
+		}
+	}
+}
+
 void FWorldPSCPool::Dump()
 {
 #if ENABLE_PSC_POOL_DEBUGGING
@@ -354,17 +412,15 @@ void FWorldPSCPool::Dump()
 			}
 		}
 		uint32 InUseMemUsage = 0;
-		for (auto WeakPSC : Pool.InUseComponents_Auto)
+		for (UParticleSystemComponent* PSC : Pool.InUseComponents_Auto)
 		{
-			UParticleSystemComponent* PSC = WeakPSC.Get();
 			if (ensureAlways(PSC))
 			{
 				InUseMemUsage += PSC->GetApproxMemoryUsage();				
 			}
 		}
-		for (auto WeakPSC : Pool.InUseComponents_Manual)
+		for (UParticleSystemComponent* PSC : Pool.InUseComponents_Manual)
 		{
-			UParticleSystemComponent* PSC = WeakPSC.Get();
 			if (ensureAlways(PSC))
 			{
 				InUseMemUsage += PSC->GetApproxMemoryUsage();

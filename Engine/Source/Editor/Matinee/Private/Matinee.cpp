@@ -997,7 +997,7 @@ void FMatinee::InitMatinee(const EToolkitMode::Type Mode, const TSharedPtr< clas
 
 FMatinee::~FMatinee()
 {
-	OnClosed();
+	OnClose();
 
 	RestoreLevelViewports();
 
@@ -1037,7 +1037,7 @@ void FMatinee::AddReferencedObjects( FReferenceCollector& Collector )
 		Collector.AddReferencedObject( Pair.Value.TrackHelper );
 	}
 
-	// Check for non-NULL, as these references will be cleared in OnClosed.
+	// Check for non-NULL, as these references will be cleared in OnClose.
 	if ( TrackWindow.IsValid() && TrackWindow->InterpEdVC.IsValid() )
 	{
 		TrackWindow->InterpEdVC->AddReferencedObjects( Collector );
@@ -1998,7 +1998,8 @@ int32 FMatinee::GetNumCameraActors(void) const
 	return CameraCount;
 }
 
-void FMatinee::OnClosed()
+
+void FMatinee::OnClose()
 {
 	// Safely stop recording if it is in progress
 	if (IsRecordingInterpValues())

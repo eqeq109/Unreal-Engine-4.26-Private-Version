@@ -168,8 +168,5 @@ private:
 
 	// Expands split pins for a graph
 	void ExpandSplitPins(UEdGraph* InGraph);
-
-	// Create a uniquely named variable corresponding to an object in the current class
-	FProperty* CreateUniqueVariable(UObject* InForObject, const FEdGraphPinType& Type);
 };
 

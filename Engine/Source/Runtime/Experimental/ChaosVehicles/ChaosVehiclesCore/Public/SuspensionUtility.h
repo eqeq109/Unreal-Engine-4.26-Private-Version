@@ -7,7 +7,6 @@
 #include "Templates/Function.h"
 #include "Containers/Array.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogVehicleUtility, Log, All);
 
 struct FSuspensionUtility
 {

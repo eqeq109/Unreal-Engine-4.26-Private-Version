@@ -437,10 +437,6 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 					]
 				];
 			}
-			else
-			{
-				Row.ToolTip(FMaterialPropertyHelpers::GetParameterExpressionDescription(StackParameterData->Parameter, MaterialEditorInstance));
-			}
 
 			bisPaddedProperty = true;
 		}
@@ -608,8 +604,8 @@ TSharedPtr<class FAssetThumbnailPool> SMaterialParametersOverviewTree::GetTreeTh
 void SMaterialParametersOverviewTree::CreateGroupsWidget()
 {
 	check(MaterialEditorInstance);
-	UnsortedParameters.Reset();
-	SortedParameters.Reset();
+	UnsortedParameters.Empty();
+	SortedParameters.Empty();
 
 	const TArray<TSharedRef<IDetailTreeNode>> TestData = GetOwner().Pin()->GetGenerator()->GetRootTreeNodes();
 	if (TestData.Num() == 0)
@@ -720,6 +716,9 @@ void SMaterialParametersOverviewTree::CreateGroupsWidget()
 		NonLayerProperty.ParameterNode = DeferredResults[Idx];
 		NonLayerProperty.ParameterHandle = NonLayerProperty.ParameterNode->CreatePropertyHandle();
 	}
+
+	DeferredResults.Empty();
+	DeferredSearches.Empty();
 
 	ShowSubParameters();
 	RequestTreeRefresh();

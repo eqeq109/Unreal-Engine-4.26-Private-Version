@@ -18,7 +18,6 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "GlobalShader.h"
 #include "CommonRenderResources.h"
-#include "ImgMediaLoader.h"
 #include "RHIStaticStates.h"
 #include "SceneUtils.h"
 #include "ShaderParameterUtils.h"
@@ -35,9 +34,12 @@
 #include "D3D12DirectCommandListManager.h"
 
 #define READ_IN_CHUNKS 1
-#define EXR_ENABLE_MIPS 1
 
-DECLARE_GPU_STAT_NAMED(ExrImgMediaReaderGpu, TEXT("ExrImgMediaReaderGpu"));
+class CustomFence : public FD3D12GPUFence
+{
+public:
+	void ResetValue() { Value = 0; }
+};
 
 namespace {
 	/** This function is similar to DrawScreenPass in OpenColorIODisplayExtension.cpp except it is catered for Viewless texture rendering. */
@@ -90,7 +92,6 @@ FExrImgMediaReaderGpu::~FExrImgMediaReaderGpu()
 	ENQUEUE_RENDER_COMMAND(DeletePooledBuffers)([this, &bUnlocked](FRHICommandListImmediate& RHICmdList)
 	{
 		FScopeLock ScopeLock(&AllocatorCriticalSecion);
-		SCOPED_DRAW_EVENT(RHICmdList, FExrImgMediaReaderGpu_ReleaseMemoryPool);
 		TArray<uint32> KeysForIteration;
 		MemoryPool.GetKeys(KeysForIteration);
 		for (uint32 Key : KeysForIteration)
@@ -122,25 +123,18 @@ FExrImgMediaReaderGpu::~FExrImgMediaReaderGpu()
 /* FExrImgMediaReaderGpu interface
  *****************************************************************************/
 
-bool FExrImgMediaReaderGpu::ReadFrame(int32 FrameId, int32 MipLevel, const FImgMediaTileSelection& InTileSelection, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame)
+bool FExrImgMediaReaderGpu::ReadFrame(const FString& ImagePath, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame, int32 FrameId)
 {
-	TSharedPtr<FImgMediaLoader, ESPMode::ThreadSafe> Loader = LoaderPtr.Pin();
-	if (Loader.IsValid() == false)
-	{
-		return false;
-	}
-
-	const FString& LargestImagePath = Loader->GetImagePath(FrameId, 0);
-	FRgbaInputFile InputFile(LargestImagePath);
+	FRgbaInputFile InputFile(ImagePath);
 
 	if (!GetInfo(InputFile, OutFrame->Info))
 	{
 		return false;
 	}
 
-	const FIntPoint& LargestDim = OutFrame->Info.Dim;
+	const FIntPoint& Dim = OutFrame->Info.Dim;
 
-	if (LargestDim.GetMin() <= 0)
+	if (Dim.GetMin() <= 0)
 	{
 		return false;
 	}
@@ -148,108 +142,66 @@ bool FExrImgMediaReaderGpu::ReadFrame(int32 FrameId, int32 MipLevel, const FImgM
 	const int32 NumChannels = OutFrame->Info.NumChannels;
 	const int32 PixelSize = sizeof(uint16) * NumChannels;
 
-	FStructuredBufferPoolItemSharedPtr BufferDataArray[FImgMediaLoader::MAX_MIPMAP_LEVELS];
-
-	int32 NumMipLevels = Loader->GetNumMipLevels();
+	// At the beginning of each row of B G R channel planes there is 2x4 byte data that has information
+	// about number of pixels in the current row and row's number.
+	const uint16 PlanePadding = 8;
+	const SIZE_T BufferSize = Dim.X * Dim.Y * sizeof(uint16) * NumChannels + Dim.Y * PlanePadding;
+	FStructuredBufferPoolItemSharedPtr BufferData;
 	{
-		// Loop over all mips.
-		FIntPoint Dim = LargestDim;
-		for (int32 CurrentMipLevel = 0; CurrentMipLevel < NumMipLevels; ++CurrentMipLevel)
-		{
-			// Do we want to read in this mip?
-			bool IsThisLevelPresent = (OutFrame->MipMapsPresent & (1 << CurrentMipLevel)) != 0;
-			bool ReadThisMip = (CurrentMipLevel >= MipLevel) &&
-				(IsThisLevelPresent == false);
-
-#if EXR_ENABLE_MIPS == 0
-			// Just read in mip 0 if we don't already have it.
-			if ((CurrentMipLevel > 0) || (OutFrame->MipMapsPresent != 0))
-			{
-				break;
-			}
-			ReadThisMip = true;
-#endif // EXR_ENABLE_MIPS == 0
-
-			if (ReadThisMip)
-			{
-				// Get for our frame/mip level.
-				const FString& ImagePath = Loader->GetImagePath(FrameId, CurrentMipLevel);
-				bool bResult = false;
-				
-				const SIZE_T BufferSize = GetBufferSize(Dim, NumChannels);
-				FStructuredBufferPoolItemSharedPtr& BufferData = BufferDataArray[CurrentMipLevel];
-				BufferData = AllocateGpuBufferFromPool(BufferSize);
-				uint16* MipDataPtr = static_cast<uint16*>(BufferData->MappedBuffer);
+		BufferData = AllocateGpuBufferFromPool(BufferSize);
+		bool bResult = false;
 
 #if READ_IN_CHUNKS
-				bResult = ReadInChunks(MipDataPtr, ImagePath, FrameId, Dim, BufferSize, PixelSize, NumChannels);
+		bResult = ReadInChunks(static_cast<uint16*>(BufferData->MappedBuffer), ImagePath, FrameId, Dim, BufferSize, PixelSize, NumChannels);
 #else
-				bResult = FExrReader::GenerateTextureData(MipDataPtr, ImagePath, Dim.X, Dim.Y, PixelSize, NumChannels);
+		bResult = FExrReader::GenerateTextureData(Buffer, ImagePath, Dim.X, Dim.Y, PixelSize, NumChannels);
 #endif
 
-				if (!bResult)
-				{
-					return false;
-				}
-			}
-
-			// Next level.
-			Dim /= 2;
+		if (!bResult)
+		{
+			return false;
 		}
 	}
 
-	OutFrame->Format = NumChannels <= 3 ? EMediaTextureSampleFormat::FloatRGB : EMediaTextureSampleFormat::FloatRGBA;
-	OutFrame->Stride = LargestDim.X * PixelSize;
-	auto RenderThreadSwizzler = [this, BufferDataArray, LargestDim, FrameId, NumChannels, NumMipLevels](FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef RenderTargetTextureRHI)->bool
+	OutFrame->Format = NumChannels == 3 ? EMediaTextureSampleFormat::FloatRGB : EMediaTextureSampleFormat::FloatRGBA;
+	OutFrame->Stride = Dim.X * PixelSize;
+	auto RenderThreadSwizzler = [this, BufferSize, BufferData, Dim, FrameId, NumChannels](FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef RenderTargetTextureRHI)->bool
 	{
-		SCOPED_DRAW_EVENT(RHICmdList, FExrImgMediaReaderGpu_Convert);
-		SCOPED_GPU_STAT(RHICmdList, ExrImgMediaReaderGpu);
-
-		FIntPoint Dim = LargestDim;
-		for (int32 MipLevel = 0; MipLevel < NumMipLevels; ++MipLevel)
+		if (!BufferData->BufferRef->IsValid())
 		{
-			FStructuredBufferPoolItemSharedPtr BufferData = BufferDataArray[MipLevel];
-			if (BufferData.IsValid())
-			{
-				if (!BufferData->BufferRef->IsValid())
-				{
-					continue;
-				}
-				// This flag will indicate that we should wait for poll to complete.
-				BufferData->bWillBeSignaled = true;
-
-				FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::DontLoad_Store, nullptr, MipLevel);
-				RHICmdList.BeginRenderPass(RPInfo, TEXT("ExrTextureSwizzle"));
-
-				FExrSwizzlePS::FPermutationDomain PermutationVector;
-				PermutationVector.Set<FExrSwizzlePS::FRgbaSwizzle>(NumChannels);
-				FExrSwizzlePS::FParameters Parameters = FExrSwizzlePS::FParameters();
-				Parameters.TextureWidth = Dim.X;
-				Parameters.TextureHeight = Dim.Y;
-
-				Parameters.UnswizzledBuffer = RHICreateShaderResourceView(BufferData->BufferRef);
-
-				FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
-
-				TShaderMapRef<FExrSwizzleVS> SwizzleShaderVS(ShaderMap);
-				TShaderMapRef<FExrSwizzlePS> SwizzleShaderPS(ShaderMap, PermutationVector);
-
-				FScreenPassPipelineState PipelineState(SwizzleShaderVS, SwizzleShaderPS, TStaticBlendState<>::GetRHI(), TStaticDepthStencilState<false, CF_Always>::GetRHI());
-				DrawScreenPass(RHICmdList, Dim, PipelineState, [&](FRHICommandListImmediate& RHICmdList)
-				{
-					SetShaderParameters(RHICmdList, SwizzleShaderPS, SwizzleShaderPS.GetPixelShader(), Parameters);
-				});
-
-				// Resolve render target.
-				RHICmdList.EndRenderPass();
-
-				// Mark this render command for this buffer as complete, so we can poll it and transfer later.
-				RHICmdList.WriteGPUFence(BufferData->Fence);
-			}
-
-			// Next level.
-			Dim /= 2;
+			return false;
 		}
+		
+		// This flag will indicate that we should wait for poll to complete.
+		BufferData->bWillBeSignaled = true;
+
+		FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::DontLoad_Store);
+		RHICmdList.BeginRenderPass(RPInfo, TEXT("ExrTextureSwizzle"));
+
+		FExrSwizzlePS::FPermutationDomain PermutationVector;
+		PermutationVector.Set<FExrSwizzlePS::FRgbaSwizzle>(NumChannels > 3);
+		FExrSwizzlePS::FParameters Parameters = FExrSwizzlePS::FParameters();
+		Parameters.TextureWidth = Dim.X;
+		Parameters.TextureHeight = Dim.Y;
+
+		Parameters.UnswizzledBuffer = RHICreateShaderResourceView(BufferData->BufferRef);
+
+		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+
+		TShaderMapRef<FExrSwizzleVS> SwizzleShaderVS(ShaderMap);
+		TShaderMapRef<FExrSwizzlePS> SwizzleShaderPS(ShaderMap, PermutationVector);
+
+		FScreenPassPipelineState PipelineState(SwizzleShaderVS, SwizzleShaderPS, TStaticBlendState<>::GetRHI(), TStaticDepthStencilState<false, CF_Always>::GetRHI());
+		DrawScreenPass(RHICmdList, Dim, PipelineState, [&](FRHICommandListImmediate& RHICmdList)
+		{
+			SetShaderParameters(RHICmdList, SwizzleShaderPS, SwizzleShaderPS.GetPixelShader(), Parameters);
+		});
+
+		// Resolve render target.
+		RHICmdList.EndRenderPass();
+
+		// Mark this render command for this buffer as complete, so we can poll it and transfer later.
+		static_cast<FD3D12GPUFence*>(BufferData->Fence.GetReference())->WriteInternal(ED3D12CommandQueueType::Default);
 
 		//Doesn't need further conversion so returning false.
 		return false;
@@ -258,15 +210,13 @@ bool FExrImgMediaReaderGpu::ReadFrame(int32 FrameId, int32 MipLevel, const FImgM
 	FExrMediaTextureSampleConverter* SampleConverter = new FExrMediaTextureSampleConverter();
 	SampleConverter->ConvertExrBufferCallback = FExrConvertBufferCallback::CreateLambda(RenderThreadSwizzler);
 	OutFrame->SampleConverter = MakeShareable(SampleConverter);
-	OutFrame->MipMapsPresent = 1 << MipLevel;
-	UE_LOG(LogImgMedia, Verbose, TEXT("Reader %p: Read Pixels Complete. %i"), this, FrameId);
+	UE_LOG(LogImgMedia, Log, TEXT("Reader %p: Read Pixels Complete. %i"), this, FrameId);
 
 	return true;
 }
 
-void FExrImgMediaReaderGpu::PreAllocateMemoryPool(int32 NumFrames, const FImgMediaFrameInfo& FrameInfo)
+void FExrImgMediaReaderGpu::PreAllocateMemoryPool(int32 NumFrames, int32 AllocSize)
 {
-	SIZE_T AllocSize = GetBufferSize(FrameInfo.Dim, FrameInfo.NumChannels);
 	for (int32 FrameCacheNum = 0; FrameCacheNum < NumFrames; FrameCacheNum++)
 	{
 		AllocateGpuBufferFromPool(AllocSize, FrameCacheNum == NumFrames - 1);
@@ -335,16 +285,6 @@ bool FExrImgMediaReaderGpu::ReadInChunks(uint16* Buffer, const FString& ImagePat
 	return bResult;
 }
 
-SIZE_T FExrImgMediaReaderGpu::GetBufferSize(const FIntPoint& Dim, int32 NumChannels)
-{
-	// At the beginning of each row of B G R channel planes there is 2x4 byte data that has information
-	// about number of pixels in the current row and row's number.
-	const uint16 PlanePadding = 8;
-
-	SIZE_T BufferSize = Dim.X * Dim.Y * sizeof(uint16) * NumChannels + Dim.Y * PlanePadding;
-	return BufferSize;
-}
-
 FStructuredBufferPoolItemSharedPtr FExrImgMediaReaderGpu::AllocateGpuBufferFromPool(uint32 AllocSize, bool bWait)
 {
 	// This function is attached to the shared pointer and is used to return any allocated memory to staging pool.
@@ -373,18 +313,14 @@ FStructuredBufferPoolItemSharedPtr FExrImgMediaReaderGpu::AllocateGpuBufferFromP
 			AllocatedBuffer = MakeShareable(new FStructuredBufferPoolItem(), MoveTemp(BufferDeleter));
 
 			// Allocate and unlock the structured buffer on render thread.
-			ENQUEUE_RENDER_COMMAND(CreatePooledBuffer)([AllocatedBuffer, AllocSize, &bInitDone, this, bWait](FRHICommandListImmediate& RHICmdList)
+			ENQUEUE_RENDER_COMMAND(CreatePooledBuffer)([AllocatedBuffer, AllocSize, &bInitDone, this](FRHICommandListImmediate& RHICmdList)
 			{
 				FScopeLock ScopeLock(&AllocatorCriticalSecion);
-				SCOPED_DRAW_EVENT(RHICmdList, FExrImgMediaReaderGpu_AllocateBuffer);
 				FRHIResourceCreateInfo CreateInfo;
 				AllocatedBuffer->BufferRef = RHICreateStructuredBuffer(sizeof(uint16) * 2., AllocSize, BUF_ShaderResource | BUF_Dynamic | BUF_FastVRAM | BUF_Transient, CreateInfo);
 				AllocatedBuffer->MappedBuffer = static_cast<uint16*>(RHILockStructuredBuffer(AllocatedBuffer->BufferRef, 0, AllocSize, RLM_WriteOnly));
 				AllocatedBuffer->Fence = RHICreateGPUFence(TEXT("BufferNoLongerInUseFence"));
-				if (bWait)
-				{
-					bInitDone = true;
-				}
+				bInitDone = true;
 			});
 		}
 
@@ -407,8 +343,6 @@ void FExrImgMediaReaderGpu::ReturnGpuBufferToStagingPool(uint32 AllocSize, FStru
 	{
 		ENQUEUE_RENDER_COMMAND(DeletePooledBuffers)([this, Buffer](FRHICommandListImmediate& RHICmdList)
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, FExrImgMediaReaderGpu_ReleaseBuffer);
-
 			// By this point we don't need a lock because the destructor was already called and it 
 			// is guaranteed that this buffer is no longer used anywhere else.
 			RHIUnlockStructuredBuffer(Buffer->BufferRef);
@@ -430,7 +364,6 @@ void FExrImgMediaReaderGpu::TransferFromStagingBuffer()
 	ENQUEUE_RENDER_COMMAND(CreatePooledBuffer)([&, this](FRHICommandListImmediate& RHICmdList)
 	{
 		FScopeLock ScopeLock(&AllocatorCriticalSecion);
-		SCOPED_DRAW_EVENT(RHICmdList, FExrImgMediaReaderGpu_TransferFromStagingBuffer);
 
 		TArray<uint32> KeysForIteration;
 		StagingMemoryPool.GetKeys(KeysForIteration);

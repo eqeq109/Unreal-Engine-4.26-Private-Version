@@ -77,13 +77,12 @@ FConcertClientPackageManager::FConcertClientPackageManager(TSharedRef<FConcertSy
 		SandboxPlatformFile->Initialize(&FPlatformFileManager::Get().GetPlatformFile(), TEXT(""));
 	}
 
-	// Previously these event handlers were wrapped in the GIsEditor below.  We moved them out to support take recording
-	// on nodes running in -game mode. This is a very focused use case and it is not safe to rely on these working
-	// correctly outside of take recorder.  There is a lot of code in MultiUser that assumes that in -game mode is
-	// "receive" only.
-	//
-	UPackage::PackageDirtyStateChangedEvent.AddRaw(this, &FConcertClientPackageManager::HandlePackageDirtyStateChanged);
-	PackageBridge->OnLocalPackageEvent().AddRaw(this, &FConcertClientPackageManager::HandleLocalPackageEvent);
+	if (GIsEditor)
+	{
+		// Register Package Events
+		UPackage::PackageDirtyStateChangedEvent.AddRaw(this, &FConcertClientPackageManager::HandlePackageDirtyStateChanged);
+		PackageBridge->OnLocalPackageEvent().AddRaw(this, &FConcertClientPackageManager::HandleLocalPackageEvent);
+	}
 #endif	// WITH_EDITOR
 
 	LiveSession->GetSession().RegisterCustomEventHandler<FConcertPackageRejectedEvent>(this, &FConcertClientPackageManager::HandlePackageRejectedEvent);
@@ -92,9 +91,12 @@ FConcertClientPackageManager::FConcertClientPackageManager(TSharedRef<FConcertSy
 FConcertClientPackageManager::~FConcertClientPackageManager()
 {
 #if WITH_EDITOR
-	// Unregister Package Events
-	UPackage::PackageDirtyStateChangedEvent.RemoveAll(this);
-	PackageBridge->OnLocalPackageEvent().RemoveAll(this);
+	if (GIsEditor)
+	{
+		// Unregister Package Events
+		UPackage::PackageDirtyStateChangedEvent.RemoveAll(this);
+		PackageBridge->OnLocalPackageEvent().RemoveAll(this);
+	}
 
 	if (SandboxPlatformFile)
 	{
@@ -432,7 +434,7 @@ void FConcertClientPackageManager::HandleLocalPackageEvent(const FConcertPackage
 			if (CanExchangePackageDataAsByteArray(static_cast<uint64>(PackageFileSize)))
 			{
 				// Embed the package data directly in the event.
-				if (!FFileHelper::LoadFileToArray(Event.Package.PackageData.Bytes, *PackagePathname))
+				if (!FFileHelper::LoadFileToArray(Event.Package.PackageData, *PackagePathname))
 				{
 					UE_LOG(LogConcert, Error, TEXT("Failed to load file data '%s' in memory"), *PackagePathname);
 					return;
@@ -477,7 +479,6 @@ void FConcertClientPackageManager::SavePackageFile(const FConcertPackageInfo& Pa
 		return;
 	}
 
-	SCOPED_CONCERT_TRACE(FConcertClientPackageManager_SavePackageFile);
 	FString PackageName = PackageInfo.PackageName.ToString();
 	ConcertSyncClientUtil::FlushPackageLoading(PackageName);
 
@@ -536,10 +537,8 @@ bool FConcertClientPackageManager::CanHotReloadOrPurge() const
 
 void FConcertClientPackageManager::HotReloadPendingPackages()
 {
-	SCOPED_CONCERT_TRACE(FConcertClientPackageManager_HotReloadPendingPackages);
 	if (CanHotReloadOrPurge())
 	{
-		LiveSession->GetSessionDatabase().FlushAsynchronousTasks();
 		ConcertSyncClientUtil::HotReloadPackages(PackagesPendingHotReload);
 		PackagesPendingHotReload.Reset();
 	}
@@ -547,7 +546,6 @@ void FConcertClientPackageManager::HotReloadPendingPackages()
 
 void FConcertClientPackageManager::PurgePendingPackages()
 {
-	SCOPED_CONCERT_TRACE(FConcertClientPackageManager_PurgePendingPackages);
 	if (CanHotReloadOrPurge())
 	{
 		ConcertSyncClientUtil::PurgePackages(PackagesPendingPurge);

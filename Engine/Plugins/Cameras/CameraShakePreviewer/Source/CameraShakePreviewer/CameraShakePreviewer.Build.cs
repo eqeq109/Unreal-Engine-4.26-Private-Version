@@ -11,8 +11,8 @@ public class CameraShakePreviewer : ModuleRules
 				"AssetTools",
 				"AssetRegistry",
 				"ContentBrowser",
-				"WorkspaceMenuStructure",
-				}
+                "WorkspaceMenuStructure",
+            }
 		);
 
 		PrivateDependencyModuleNames.AddRange(
@@ -21,7 +21,6 @@ public class CameraShakePreviewer : ModuleRules
 				"SlateCore",
 				"AppFramework",
 				"EditorStyle",
-				"GameplayCameras",
 				"LevelEditor",
 				"PropertyEditor",
 				"Slate",

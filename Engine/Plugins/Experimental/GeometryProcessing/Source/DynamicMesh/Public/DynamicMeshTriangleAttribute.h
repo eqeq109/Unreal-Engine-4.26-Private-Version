@@ -67,13 +67,9 @@ public:
 	}
 
 	/** Create an overlay for the given parent mesh */
-	TDynamicMeshTriangleAttribute(FDynamicMesh3* ParentMeshIn, bool bAutoInit = true)
+	TDynamicMeshTriangleAttribute(FDynamicMesh3* ParentMeshIn)
 	{
 		ParentMesh = ParentMeshIn;
-		if (bAutoInit)
-		{
-			Initialize();
-		}
 	}
 
 private:
@@ -106,7 +102,6 @@ public:
 	/** Set this overlay to contain the same arrays as the copy overlay */
 	void Copy(const TDynamicMeshTriangleAttribute<AttribValueType, AttribDimension>& Copy)
 	{
-		CopyParentClassData(Copy);
 		AttribValues = Copy.AttribValues;
 	}
 
@@ -135,7 +130,6 @@ public:
 
 	void CompactCopy(const FCompactMaps& CompactMaps, const TDynamicMeshTriangleAttribute<AttribValueType, AttribDimension>& ToCopy)
 	{
-		CopyParentClassData(ToCopy);
 		check(CompactMaps.MapT.Num() <= int(ToCopy.AttribValues.Num() / AttribDimension));
 		AttribValueType Data[AttribDimension];
 		for (int TID = 0; TID < CompactMaps.MapT.Num(); TID++)
@@ -173,49 +167,6 @@ public:
 	//
 	// Accessors/Queries
 	//  
-
-	virtual bool CopyThroughMapping(const TDynamicAttributeBase<FDynamicMesh3>* Source, const FMeshIndexMappings& Mapping) override
-	{
-		AttribValueType BufferData[AttribDimension];
-		int BufferSize = sizeof(BufferData);
-		for (const TPair<int32, int32>& MapTID : Mapping.GetTriangleMap().GetForwardMap())
-		{
-			if (!ensure(Source->CopyOut(MapTID.Key, BufferData, BufferSize)))
-			{
-				return false;
-			}
-			SetValue(MapTID.Value, BufferData);
-		}
-		return true;
-	}
-	virtual bool CopyOut(int RawID, void* Buffer, int BufferSize) const override
-	{
-		if (sizeof(AttribValueType) * AttribDimension != BufferSize)
-		{
-			return false;
-		}
-		AttribValueType* BufferData = static_cast<AttribValueType*>(Buffer);
-		int k = RawID * AttribDimension;
-		for (int i = 0; i < AttribDimension; ++i)
-		{
-			BufferData[i] = AttribValues[k + i];
-		}
-		return true;
-	}
-	virtual bool CopyIn(int RawID, void* Buffer, int BufferSize) override
-	{
-		if (sizeof(AttribValueType) * AttribDimension != BufferSize)
-		{
-			return false;
-		}
-		AttribValueType* BufferData = static_cast<AttribValueType*>(Buffer);
-		int k = RawID * AttribDimension;
-		for (int i = 0; i < AttribDimension; ++i)
-		{
-			AttribValues[k + i] = BufferData[i];
-		}
-		return true;
-	}
 
 	/** Get the element at a given index */
 	inline void GetValue(int TriangleID, AttribValueType* Data) const

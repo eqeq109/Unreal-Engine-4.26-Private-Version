@@ -1,8 +1,6 @@
 # Copyright Epic Games, Inc. All Rights Reserved.
-import time
-
 from PySide2 import QtCore, QtGui, QtWidgets
-
+import time
 
 DEVICE_LIST_WIDGET_HEIGHT = 54
 DEVICE_HEADER_LIST_WIDGET_HEIGHT = 40
@@ -29,25 +27,22 @@ class MultiSelectionComboBox(QtWidgets.QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.model().itemChanged.connect(self.on_stateChanged)
-
-        # Only "editable" to use the edit control for display; read-only, selection disallowed.
+        # an editable combo has a lineedit at the first entry which we can use to show a list of all selected entries
         self.setEditable(True)
-        self.lineEdit().setReadOnly(True)
-        self.lineEdit().selectionChanged.connect(lambda: self.lineEdit().setSelection(0, 0))
-
-        # Hook mouse button events on the line edit to open/close the combo.
-        self.lineEdit().installEventFilter(self)
-
         super().addItem("")
         item = self.model().item(0, 0)
         item.setEnabled(False)
+        # we only care about the editablilty as a means to get a lineedit, the user isn't allowed to change the text manually
+        self.lineEdit().installEventFilter(self)
+        self.lineEdit().setReadOnly(True)
+        # disallow text selection
+        self.lineEdit().selectionChanged.connect(lambda: self.lineEdit().setSelection(0, 0))
 
+        self.popup_is_showing = False
         # the combo calls show/hidePopup internally, to avoid messing up the state we only allow showing/hiding the popup
         # if it happened inside a time intervall that could have reasonably been triggered by a user.
         # this is obviously a workaround but there seems to be no way to get better behavior w/o implementing a full-blown combobox.
         self.last_time_popup_was_triggered = time.time()
-        self.popup_toggle_min_interval = 0.2
-        self.popup_is_showing = False
 
     def add_items(self, selected_entries, all_entries):
         for entry in all_entries:
@@ -62,7 +57,8 @@ class MultiSelectionComboBox(QtWidgets.QComboBox):
             self.addItem(entry)
             item = self.model().item(self.count()-1, 0)
             item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
-            item.setCheckState(QtCore.Qt.Checked)
+            state = QtCore.Qt.Checked
+            item.setCheckState(state)
 
             brush = item.foreground()
             brush.setColor(QtCore.Qt.red)
@@ -89,7 +85,7 @@ class MultiSelectionComboBox(QtWidgets.QComboBox):
     def showPopup(self):
         now = time.time()
         diff = abs(now - self.last_time_popup_was_triggered)
-        if diff > self.popup_toggle_min_interval:
+        if diff > 0.1:
             super().showPopup()
             self.popup_is_showing = True
             self.last_time_popup_was_triggered = now
@@ -97,22 +93,21 @@ class MultiSelectionComboBox(QtWidgets.QComboBox):
     def hidePopup(self):
         now = time.time()
         diff = abs(now - self.last_time_popup_was_triggered)
-        if diff > self.popup_toggle_min_interval:
+        if diff > 0.1:
             super().hidePopup()
             self.popup_is_showing = False
             self.last_time_popup_was_triggered = now
 
     def on_stateChanged(self, item):
-        # Without this, display can be incorrect when no items are checked [UE-112543].
-        self.setCurrentIndex(0)
-
+        self.clearEditText()
         selected_entries = []
         for i in range(self.count()):
             item = self.model().item(i, 0)
             if item.checkState() == QtCore.Qt.Checked:
                 selected_entries.append(self.itemText(i))
 
-        self.setEditText(self.separator.join(selected_entries))
+        if len(selected_entries) > 0:
+            self.setEditText(self.separator.join(selected_entries))
         self.signal_selection_changed.emit(selected_entries)
 
 

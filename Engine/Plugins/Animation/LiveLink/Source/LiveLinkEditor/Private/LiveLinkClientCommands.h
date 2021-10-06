@@ -12,7 +12,6 @@ public:
 
 	TSharedPtr<FUICommandInfo> RemoveSource;
 	TSharedPtr<FUICommandInfo> RemoveAllSources;
-	TSharedPtr<FUICommandInfo> RemoveSubject;
 
 	/** Initialize commands */
 	virtual void RegisterCommands() override;

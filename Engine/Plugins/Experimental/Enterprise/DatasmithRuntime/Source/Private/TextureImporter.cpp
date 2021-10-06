@@ -227,10 +227,7 @@ namespace DatasmithRuntime
 
 		if (Texture)
 		{
-			// Apply metadata on newly created texture if any
-			ApplyMetadata(AssetData.MetadataId, Texture);
-
-			uint32 TextureHash = GetTypeHash(TextureElement->CalculateElementHash(true), EDataType::Texture);
+			DirectLink::FElementHash TextureHash = GetTypeHash(TextureElement->CalculateElementHash(true));
 
 			FAssetRegistry::UnregisteredAssetsData(THelper, SceneKey, [this, &Texture, TextureHash](FAssetData& AssetData) -> void
 				{
@@ -318,13 +315,20 @@ namespace DatasmithRuntime
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(FSceneImporter::ProcessTextureData);
 
-		FAssetData& AssetData = AssetDataList[TextureId];
+		// Textures are added in two steps. Make sure the associated FTextureData is created
+		if (!TextureDataList.Contains(TextureId))
+		{
+			TextureDataList.Add(TextureId);
+		}
 
-		// Something is wrong. Do not go any further
+		FAssetData& AssetData = AssetDataList[TextureId];
+		FTextureData& TextureData = TextureDataList[TextureId];
+
+		// Clear PendingDelete flag if it is set. Something is wrong. Better safe than sorry
 		if (AssetData.HasState(EAssetState::PendingDelete))
 		{
-			UE_LOG(LogDatasmithRuntime, Error, TEXT("A texture marked for deletion is actually used by the scene"));
-			return;
+			AssetData.ClearState(EAssetState::PendingDelete);
+			UE_LOG(LogDatasmithRuntime, Warning, TEXT("A texture marked for deletion is actually used by the scene"));
 		}
 
 		if (AssetData.HasState(EAssetState::Processed))
@@ -334,7 +338,7 @@ namespace DatasmithRuntime
 
 		IDatasmithTextureElement* TextureElement = static_cast<IDatasmithTextureElement*>(Elements[ TextureId ].Get());
 
-		uint32 TextureHash = GetTypeHash(TextureElement->CalculateElementHash(true), EDataType::Texture);
+		DirectLink::FElementHash TextureHash = GetTypeHash(TextureElement->CalculateElementHash(true));
 
 		if (UObject* Asset = FAssetRegistry::FindObjectFromHash(TextureHash))
 		{
@@ -381,12 +385,6 @@ namespace DatasmithRuntime
 
 			return EActionResult::Succeeded;
 		};
-
-		// Textures are added in two steps. Make sure the associated FTextureData is created
-		if (!TextureDataList.Contains(TextureId))
-		{
-			TextureDataList.Add(TextureId);
-		}
 
 		AddToQueue(EQueueTask::TextureQueue, { LoadTaskFunc, {EDataType::Texture, TextureId, 0 } });
 		TasksToComplete |= EWorkerTask::TextureLoad;

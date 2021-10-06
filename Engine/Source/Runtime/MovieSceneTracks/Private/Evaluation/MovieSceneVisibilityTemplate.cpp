@@ -21,7 +21,7 @@ struct FTemporarilyHiddenInGamePreAnimatedToken : IMovieScenePreAnimatedToken
 		, bTemporarilyHiddenInGame(bInTemporarilyHiddenInGame)
 	{}
 
-	virtual void RestoreState(UObject& InObject, const UE::MovieScene::FRestoreStateParams& Params) override
+	virtual void RestoreState(UObject& InObject, IMovieScenePlayer& Player) override
 	{
 		if (InObject.IsA(AActor::StaticClass()))
 		{

@@ -10,14 +10,15 @@ DECLARE_CYCLE_STAT(TEXT("Chaos PBD Long Range Per Particle Constraint"), STAT_PB
 
 namespace Chaos
 {
-class FPerParticlePBDLongRangeConstraints : public FPerParticleRule, public FPBDLongRangeConstraintsBase
+template<class T, int d>
+class TPerParticlePBDLongRangeConstraints : public TPerParticleRule<T, d>, public TPBDLongRangeConstraintsBase<T, d>
 {
-	typedef FPBDLongRangeConstraintsBase Base;
+	typedef TPBDLongRangeConstraintsBase<T, d> Base;
 	using Base::MConstraints;
 
   public:
-	FPerParticlePBDLongRangeConstraints(const FDynamicParticles& InParticles, const TMap<int32, TSet<uint32>>& PointToNeighbors, const int32 NumberOfAttachments = 1, const FReal Stiffness = (FReal)1)
-	    : FPBDLongRangeConstraintsBase(InParticles, PointToNeighbors, NumberOfAttachments, Stiffness)
+	TPerParticlePBDLongRangeConstraints(const TDynamicParticles<T, d>& InParticles, const TMap<int32, TSet<uint32>>& PointToNeighbors, const int32 NumberOfAttachments = 1, const T Stiffness = (T)1)
+	    : TPBDLongRangeConstraintsBase<T, d>(InParticles, PointToNeighbors, NumberOfAttachments, Stiffness)
 	{
 		MParticleToConstraints.SetNum(InParticles.Size());
 		for (int32 i = 0; i < MConstraints.Num(); ++i)
@@ -27,9 +28,9 @@ class FPerParticlePBDLongRangeConstraints : public FPerParticleRule, public FPBD
 			MParticleToConstraints[i2].Add(i);
 		}
 	}
-	virtual ~FPerParticlePBDLongRangeConstraints() {}
+	virtual ~TPerParticlePBDLongRangeConstraints() {}
 
-	void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		for (int32 i = 0; i < MParticleToConstraints[Index].Num(); ++i)
 		{
@@ -41,7 +42,7 @@ class FPerParticlePBDLongRangeConstraints : public FPerParticleRule, public FPBD
 		}
 	}
 
-	void Apply(FPBDParticles& InParticles, const FReal Dt) const override //-V762
+	void Apply(TPBDParticles<T, d>& InParticles, const T Dt) const override //-V762
 	{
 		SCOPE_CYCLE_COUNTER(STAT_PBD_LongRangePerParticle);
 		PhysicsParallelFor(MParticleToConstraints.Num(), [this, &InParticles, Dt](int32 Index) {

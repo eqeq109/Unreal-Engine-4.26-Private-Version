@@ -635,7 +635,7 @@ UEnvQuery* UEnvQueryManager::FindQueryTemplate(const FString& QueryName) const
 		}
 	}
 
-	for (FThreadSafeObjectIterator It(UEnvQuery::StaticClass()); It; ++It)
+	for (FObjectIterator It(UEnvQuery::StaticClass()); It; ++It)
 	{
 		if (It->GetName() == QueryName)
 		{
@@ -700,25 +700,12 @@ TSharedPtr<FEnvQueryInstance> UEnvQueryManager::CreateQueryInstance(const UEnvQu
 			UEnvQueryOption* MyOption = LocalTemplate->Options[OptionIndex];
 			if (MyOption == nullptr ||
 				MyOption->Generator == nullptr ||
-				MyOption->Generator->IsValidGenerator() == false)
+				MyOption->Generator->ItemType == nullptr)
 			{
-				if (MyOption == nullptr)
-				{
-					UE_LOG(LogEQS, Error, TEXT("Trying to spawn a query with broken Template (null option): %s, option %d"),
-						*GetNameSafe(LocalTemplate), OptionIndex);
-				} 
-				else if (MyOption->Generator == nullptr)
-				{
-					UE_LOG(LogEQS, Error, TEXT("Trying to spawn a query with broken Template (generator:MISSING): %s, option %d"),
-						*GetNameSafe(LocalTemplate), OptionIndex);
-				}
-				else
-				{
-					UE_LOG(LogEQS, Error, TEXT("Trying to spawn a query with broken Template (generator:%s itemType:%s): %s, option %d"),
-						MyOption->Generator->IsValidGenerator() ? TEXT("ok") : TEXT("invalid"),
-						MyOption->Generator->ItemType ? TEXT("ok") : TEXT("MISSING"),
-						*GetNameSafe(LocalTemplate), OptionIndex);
-				}
+				UE_LOG(LogEQS, Error, TEXT("Trying to spawn a query with broken Template (generator:%s itemType:%s): %s, option %d"),
+					MyOption ? (MyOption->Generator ? TEXT("ok") : TEXT("MISSING")) : TEXT("N/A"),
+					(MyOption && MyOption->Generator) ? (MyOption->Generator->ItemType ? TEXT("ok") : TEXT("MISSING")) : TEXT("N/A"),
+					*GetNameSafe(LocalTemplate), OptionIndex);
 
 				LocalTemplate->Options.RemoveAt(OptionIndex, 1, false);
 				--OptionIndex; // See note at top of for loop.  We cannot iterate backwards here.

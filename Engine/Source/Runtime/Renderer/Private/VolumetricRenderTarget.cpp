@@ -11,7 +11,6 @@
 #include "ScenePrivate.h"
 #include "SceneTextureParameters.h"
 #include "SingleLayerWaterRendering.h"
-#include "VolumetricCloudRendering.h"
 
 //PRAGMA_DISABLE_OPTIMIZATION
 
@@ -27,18 +26,13 @@ static TAutoConsoleVariable<float> CVarVolumetricRenderTargetUvNoiseScale(
 
 static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetMode(
 	TEXT("r.VolumetricRenderTarget.Mode"), 0,
-	TEXT("[0] trace quarter resolution + reconstruct at half resolution + upsample [1] trace half res + reconstruct full res + upsample [2] trace at quarter resolution + reconstruct full resolution (cannot intersect with opaque meshes and forces UpsamplingMode=2 [3] trace 1/8 resolution + reconstruct at half resolution + upsample)"),
+	TEXT("[0] trace quarter resolution + reconstruct at half resolution + upsample [1] trace half res + reconstruct full res + upsample [2] trace at quarter resolution + reconstruct full resolution (cannot intersect with opaque meshes and forces UpsamplingMode=2)"),
 	ECVF_SetByScalability);
 
 static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetUpsamplingMode(
 	TEXT("r.VolumetricRenderTarget.UpsamplingMode"), 4,
 	TEXT("Used in compositing volumetric RT over the scene. [0] bilinear [1] bilinear + jitter [2] nearest + depth test [3] bilinear + jitter + keep closest [4] bilaterial upsampling"),
 	ECVF_SetByScalability);
-
-static TAutoConsoleVariable<int32> CVarVolumetricRenderTargetPreferAsyncCompute(
-	TEXT("r.VolumetricRenderTarget.PreferAsyncCompute"), 0,
-	TEXT("Whether to prefer using async compute to generate volumetric cloud render targets."),
-	ECVF_SetByScalability | ECVF_RenderThreadSafe);
 
 
 static bool ShouldPipelineCompileVolumetricRenderTargetShaders(EShaderPlatform ShaderPlatform)
@@ -57,15 +51,6 @@ bool IsVolumetricRenderTargetEnabled()
 	return CVarVolumetricRenderTarget.GetValueOnRenderThread() > 0;
 }
 
-bool IsVolumetricRenderTargetAsyncCompute()
-{
-	// TODO remove that when we remove the pixel shading path in 5.0
-	static auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VolumetricCloud.DisableCompute"));
-	const bool bCloudComputePathDisabled = CVar && CVar->GetInt() > 1;
-
-	return GSupportsEfficientAsyncCompute && CVarVolumetricRenderTargetPreferAsyncCompute.GetValueOnRenderThread() > 0 && !bCloudComputePathDisabled;
-}
-
 static bool ShouldViewComposeVolumetricRenderTarget(const FViewInfo& ViewInfo)
 {
 	return ShouldViewRenderVolumetricCloudRenderTarget(ViewInfo);
@@ -76,7 +61,6 @@ static uint32 GetMainDownsampleFactor(int32 Mode)
 	switch (Mode)
 	{
 	case 0:
-	case 3:
 		return 2; // Reconstruct at half resolution of view
 		break;
 	case 1:
@@ -93,16 +77,13 @@ static uint32 GetTraceDownsampleFactor(int32 Mode)
 	switch (Mode)
 	{
 	case 0:
-		return 2; // Trace at half resolution of the reconstructed buffer (with it being at the half the resolution of the main view)
+		return 2; // Trace at half resolution of the view
 		break;
 	case 1:
-		return 2; // Trace at half resolution of the reconstructed buffer (with it being at the same resolution as main view)
+		return 2; // Trace at quarter resolution of view (see GetMainDownsampleFactor)
 		break;
 	case 2:
-		return 4; // Trace at quarter resolution of the reconstructed buffer (with it being at the same resolution as main view)
-		break;
-	case 3:
-		return 4; // Trace at quarter resolution of the reconstructed buffer (with it being at the half the resolution of the main view)
+		return 4; // Trace at quarter resolution of view (see GetMainDownsampleFactor)
 		break;
 	}
 	check(false); // unhandled mode
@@ -162,7 +143,7 @@ void FVolumetricRenderTargetViewStateData::Initialise(
 {
 	// Update internal settings
 	UvNoiseScale = InUvNoiseScale;
-	Mode = FMath::Clamp(InMode, 0, 3);
+	Mode = FMath::Clamp(InMode, 0, 2);
 	UpsamplingMode = Mode == 2 ? 2 : FMath::Clamp(InUpsamplingMode, 0, 4); // if we are using mode 2 then we cannot intersect with depth and upsampling should be 2 (simple on/off intersection)
 
 	if (bFirstTimeUsed)
@@ -245,7 +226,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 	{
 		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
 			VolumetricTracingRTResolution, PF_FloatRGBA, FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false);
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
 		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricTracingRT, TEXT("RDGVolumetricTracingRT"), ERenderTargetTransience::NonTransient);
 	}
 
@@ -260,7 +241,7 @@ FRDGTextureRef FVolumetricRenderTargetViewStateData::GetOrCreateVolumetricTracin
 	{
 		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
 			VolumetricTracingRTResolution, PF_G16R16F, FClearValueBinding(FLinearColor(63000.0f, 63000.0f, 63000.0f, 63000.0f)),
-			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV, false);
+			TexCreate_None, TexCreate_ShaderResource | TexCreate_RenderTargetable, false);
 		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, VolumetricTracingRTDepth, TEXT("RDGVolumetricTracingRTDepth"), ERenderTargetTransience::NonTransient);
 	}
 
@@ -422,7 +403,6 @@ class FReconstructVolumetricRenderTargetPS : public FGlobalShader
 		SHADER_PARAMETER(FVector4, DstVolumetricTextureSizeAndInvSize)
 		SHADER_PARAMETER(FVector4, PreviousVolumetricTextureSizeAndInvSize)
 		SHADER_PARAMETER(FIntPoint, CurrentTracingPixelOffset)
-		SHADER_PARAMETER(FIntPoint, ViewViewRectMin)
 		SHADER_PARAMETER(int32, DownSampleFactor)
 		SHADER_PARAMETER(int32, VolumetricRenderTargetMode)
 		SHADER_PARAMETER(FUintVector4, TracingVolumetricTextureValidCoordRect)
@@ -453,7 +433,7 @@ IMPLEMENT_GLOBAL_SHADER(FReconstructVolumetricRenderTargetPS, "/Engine/Private/V
 
 //////////////////////////////////////////////////////////////////////////
 
-void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder, bool bWaitFinishFence)
+void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder)
 {
 	if (!AnyViewRequiresProcessing(Views))
 	{
@@ -472,7 +452,6 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder
 		{
 			continue;
 		}
-
 		FVolumetricRenderTargetViewStateData& VolumetricCloudRT = ViewInfo.ViewState->VolumetricCloudRenderTarget;
 
 		FRDGTextureRef DstVolumetric = VolumetricCloudRT.GetOrCreateDstVolumetricReconstructRT(GraphBuilder);
@@ -489,7 +468,7 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder
 		TShaderMapRef<FReconstructVolumetricRenderTargetPS> PixelShader(ViewInfo.ShaderMap, PermutationVector);
 
 		FReconstructVolumetricRenderTargetPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FReconstructVolumetricRenderTargetPS::FParameters>();
-		PassParameters->ViewUniformBuffer = ViewInfo.VolumetricRenderTargetViewUniformBuffer; // Using a special uniform buffer because the view has some special resolution and no split screen offset.
+		PassParameters->ViewUniformBuffer = ViewInfo.VolumetricRenderTargetViewUniformBuffer;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(DstVolumetric, ERenderTargetLoadAction::ENoAction);
 		PassParameters->RenderTargets[1] = FRenderTargetBinding(DstVolumetricDepth, ERenderTargetLoadAction::ENoAction);
 		PassParameters->TracingVolumetricTexture = SrcTracingVolumetric;
@@ -498,16 +477,9 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder
 		PassParameters->PreviousFrameVolumetricDepthTexture = PreviousFrameVolumetricDepthTexture;
 		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 		PassParameters->CurrentTracingPixelOffset = VolumetricCloudRT.GetCurrentTracingPixelOffset();
-		PassParameters->ViewViewRectMin = ViewInfo.ViewRect.Min / GetMainDownsampleFactor(VolumetricCloudRT.GetMode());// because we use the special VolumetricRenderTargetViewUniformBuffer, we have to specify View.RectMin separately.
 		PassParameters->DownSampleFactor = TracingVolumetricCloudRTDownSample;
 		PassParameters->VolumetricRenderTargetMode = VolumetricCloudRT.GetMode();
-
-		const bool bVisualizeConservativeDensityOrDebugSampleCount = ShouldViewVisualizeVolumetricCloudConservativeDensity(ViewInfo, ViewFamily.EngineShowFlags) || GetVolumetricCloudDebugSampleCountMode(ViewFamily.EngineShowFlags)>0;
-		PassParameters->HalfResDepthTexture = bVisualizeConservativeDensityOrDebugSampleCount ?
-			((bool)ERHIZBuffer::IsInverted ? GSystemTextures.GetBlackDummy(GraphBuilder) : GSystemTextures.GetWhiteDummy(GraphBuilder)) :
-			((VolumetricCloudRT.GetMode() == 0 || VolumetricCloudRT.GetMode() == 3) ?
-				GraphBuilder.RegisterExternalTexture(ViewInfo.HalfResDepthSurfaceCheckerboardMinMax) :
-				GraphBuilder.RegisterExternalTexture(SceneDepthZ));
+		PassParameters->HalfResDepthTexture = VolumetricCloudRT.GetMode() == 0 ? GraphBuilder.RegisterExternalTexture(ViewInfo.HalfResDepthSurfaceCheckerboardMinMax) : GraphBuilder.RegisterExternalTexture(SceneDepthZ);
 
 		GetTextureSafeUvCoordBound(SrcTracingVolumetric, PassParameters->TracingVolumetricTextureValidCoordRect, PassParameters->TracingVolumetricTextureValidUvRect);
 		GetTextureSafeUvCoordBound(PreviousFrameVolumetricTexture, PassParameters->PreviousFrameVolumetricTextureValidCoordRect, PassParameters->PreviousFrameVolumetricTextureValidUvRect);
@@ -519,7 +491,7 @@ void FSceneRenderer::ReconstructVolumetricRenderTarget(FRDGBuilder& GraphBuilder
 		PassParameters->PreviousVolumetricTextureSizeAndInvSize = FVector4(PreviousVolumetricTextureSize.X, PreviousVolumetricTextureSize.Y, 1.0f / PreviousVolumetricTextureSize.X, 1.0f / PreviousVolumetricTextureSize.Y);
 
 		FPixelShaderUtils::AddFullscreenPass<FReconstructVolumetricRenderTargetPS>(
-			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricReconstruct"), PixelShader, PassParameters,
+			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricReconstruct"), PixelShader, PassParameters, 
 			FIntRect(0, 0, DstVolumetricSize.X, DstVolumetricSize.Y));
 	}
 
@@ -541,6 +513,7 @@ class FComposeVolumetricRTOverScenePS : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VolumetricTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, VolumetricDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, WaterLinearDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearTextureSampler)
 		RENDER_TARGET_BINDING_SLOTS()
@@ -551,7 +524,6 @@ class FComposeVolumetricRTOverScenePS : public FGlobalShader
 		SHADER_PARAMETER(FVector4, SceneWithoutSingleLayerWaterViewRect)
 		SHADER_PARAMETER(FUintVector4, VolumetricTextureValidCoordRect)
 		SHADER_PARAMETER(FVector4, VolumetricTextureValidUvRect)
-		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static FPermutationDomain RemapPermutation(FPermutationDomain PermutationVector)
@@ -575,7 +547,7 @@ IMPLEMENT_GLOBAL_SHADER(FComposeVolumetricRTOverScenePS, "/Engine/Private/Volume
 
 //////////////////////////////////////////////////////////////////////////
 
-void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, bool bShouldRenderSingleLayerWater, const FSceneWithoutWaterTextures& WaterPassData, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesWithDepth)
+void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthResolveTexture, bool bShouldRenderSingleLayerWater, const FSceneWithoutWaterTextures& WaterPassData)
 {
 	if (!AnyViewRequiresProcessing(Views))
 	{
@@ -583,6 +555,12 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBu
 	}
 
 	FRHIBlendState* PreMultipliedColorTransmittanceBlend = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha, BO_Add, BF_Zero, BF_One>::GetRHI();
+
+	FRDGTextureRef SceneWaterDepthTexture = GSystemTextures.GetDepthDummy(GraphBuilder);
+	if (bShouldRenderSingleLayerWater)
+	{
+		SceneWaterDepthTexture = WaterPassData.DepthTexture;
+	}
 
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
@@ -611,13 +589,13 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBu
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
 		PassParameters->VolumetricTexture = VolumetricTexture;
 		PassParameters->VolumetricDepthTexture = VolumetricDepthTexture;
+		PassParameters->SceneDepthTexture = SceneDepthResolveTexture;
 		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 		PassParameters->UvOffsetScale = VolumetricCloudRT.GetUvNoiseScale();
 		PassParameters->FullResolutionToVolumetricBufferResolutionScale = FVector2D(1.0f / float(GetMainDownsampleFactor(VRTMode)), float(GetMainDownsampleFactor(VRTMode)));
-		PassParameters->SceneTextures = SceneTexturesWithDepth;
 		GetTextureSafeUvCoordBound(PassParameters->VolumetricTexture, PassParameters->VolumetricTextureValidCoordRect, PassParameters->VolumetricTextureValidUvRect);
 
-		PassParameters->WaterLinearDepthTexture = WaterPassData.DepthTexture;
+		PassParameters->WaterLinearDepthTexture = SceneWaterDepthTexture;
 		if (bShouldRenderSingleLayerWater)
 		{
 			const FSceneWithoutWaterTextures::FView& WaterPassViewData = WaterPassData.Views[ViewIndex];
@@ -637,7 +615,7 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverScene(FRDGBuilder& GraphBu
 
 //////////////////////////////////////////////////////////////////////////
 
-void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilder& GraphBuilder, const FSceneWithoutWaterTextures& WaterPassData, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesWithDepth)
+void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilder& GraphBuilder, const FSceneWithoutWaterTextures& WaterPassData)
 {
 	if (!AnyViewRequiresProcessing(Views))
 	{
@@ -675,6 +653,7 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilde
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(WaterPassData.ColorTexture, ERenderTargetLoadAction::ELoad);
 		PassParameters->VolumetricTexture = VolumetricTexture;
 		PassParameters->VolumetricDepthTexture = VolumetricDepthTexture;
+		PassParameters->SceneDepthTexture = nullptr;
 		PassParameters->WaterLinearDepthTexture = WaterPassData.DepthTexture;
 		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
 		PassParameters->UvOffsetScale = VolumetricCloudRT.GetUvNoiseScale();
@@ -682,7 +661,6 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilde
 		PassParameters->FullResolutionToWaterBufferScale = FVector2D(1.0f / WaterPassData.RefractionDownsampleFactor, WaterPassData.RefractionDownsampleFactor);
 		PassParameters->SceneWithoutSingleLayerWaterViewRect = FVector4(WaterPassViewData.ViewRect.Min.X, WaterPassViewData.ViewRect.Min.Y,
 																		WaterPassViewData.ViewRect.Max.X, WaterPassViewData.ViewRect.Max.Y);
-		PassParameters->SceneTextures = SceneTexturesWithDepth;
 		GetTextureSafeUvCoordBound(PassParameters->VolumetricTexture, PassParameters->VolumetricTextureValidCoordRect, PassParameters->VolumetricTextureValidUvRect);
 
 		FVector2D VolumetricTextureSize = FVector2D(float(VolumetricTexture->Desc.GetSize().X), float(VolumetricTexture->Desc.GetSize().Y));
@@ -691,56 +669,6 @@ void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneUnderWater(FRDGBuilde
 		FPixelShaderUtils::AddFullscreenPass<FComposeVolumetricRTOverScenePS>(
 			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricComposeOverScene"), PixelShader, PassParameters, WaterPassViewData.ViewRect,
 			PreMultipliedColorTransmittanceBlend);
-	}
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-void FSceneRenderer::ComposeVolumetricRenderTargetOverSceneForVisualization(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesWithDepth)
-{
-	if (!AnyViewRequiresProcessing(Views))
-	{
-		return;
-	}
-
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{
-		FViewInfo& ViewInfo = Views[ViewIndex];
-		if (!ShouldViewRenderVolumetricCloudRenderTarget(ViewInfo))
-		{
-			continue;
-		}
-		FVolumetricRenderTargetViewStateData& VolumetricCloudRT = ViewInfo.ViewState->VolumetricCloudRenderTarget;
-		FRDGTextureRef VolumetricTexture = VolumetricCloudRT.GetOrCreateDstVolumetricReconstructRT(GraphBuilder);
-		FRDGTextureRef VolumetricDepthTexture = VolumetricCloudRT.GetOrCreateDstVolumetricReconstructRTDepth(GraphBuilder);
-
-		// When reconstructed and back buffer resolution matches, force using a pixel perfect upsampling.
-		const uint32 VRTMode = VolumetricCloudRT.GetMode();
-
-		FComposeVolumetricRTOverScenePS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FUpsamplingMode>(0);
-		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FRenderUnderWaterBuffer>(0);
-		PermutationVector.Set<FComposeVolumetricRTOverScenePS::FRenderCameraUnderWater>(0);
-		TShaderMapRef<FComposeVolumetricRTOverScenePS> PixelShader(ViewInfo.ShaderMap, PermutationVector);
-
-		FComposeVolumetricRTOverScenePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FComposeVolumetricRTOverScenePS::FParameters>();
-		PassParameters->ViewUniformBuffer = ViewInfo.ViewUniformBuffer;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
-		PassParameters->VolumetricTexture = VolumetricTexture;
-		PassParameters->VolumetricDepthTexture = VolumetricDepthTexture;
-		PassParameters->LinearTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-		PassParameters->UvOffsetScale = VolumetricCloudRT.GetUvNoiseScale();
-		PassParameters->FullResolutionToVolumetricBufferResolutionScale = FVector2D(1.0f / float(GetMainDownsampleFactor(VRTMode)), float(GetMainDownsampleFactor(VRTMode)));
-		PassParameters->SceneTextures = SceneTexturesWithDepth;
-		GetTextureSafeUvCoordBound(PassParameters->VolumetricTexture, PassParameters->VolumetricTextureValidCoordRect, PassParameters->VolumetricTextureValidUvRect);
-
-		PassParameters->WaterLinearDepthTexture = GSystemTextures.GetBlackDummy(GraphBuilder);
-
-		FVector2D VolumetricTextureSize = FVector2D(float(VolumetricTexture->Desc.GetSize().X), float(VolumetricTexture->Desc.GetSize().Y));
-		PassParameters->VolumetricTextureSizeAndInvSize = FVector4(VolumetricTextureSize.X, VolumetricTextureSize.Y, 1.0f / VolumetricTextureSize.X, 1.0f / VolumetricTextureSize.Y);
-
-		FPixelShaderUtils::AddFullscreenPass<FComposeVolumetricRTOverScenePS>(
-			GraphBuilder, ViewInfo.ShaderMap, RDG_EVENT_NAME("VolumetricComposeOverSceneForVisualization"), PixelShader, PassParameters, ViewInfo.ViewRect);
 	}
 }
 

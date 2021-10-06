@@ -386,26 +386,6 @@ TLinkedList<FSceneViewStateReference*>*& FSceneViewStateReference::GetSceneViewS
 	return List;
 }
 
-FString LexToString(EMaterialQualityLevel::Type QualityLevel)
-{
-	switch (QualityLevel)
-	{
-		case EMaterialQualityLevel::Low:
-			return TEXT("Low");
-		case EMaterialQualityLevel::High:
-			return TEXT("High");
-		case EMaterialQualityLevel::Medium:
-			return TEXT("Medium");
-		case EMaterialQualityLevel::Epic:
-			return TEXT("Epic");
-		case EMaterialQualityLevel::Num:
-			return TEXT("Default");
-		default:
-			break;
-	}
-	return TEXT("UnknownFeatureLevel");
-}
-
 /**
  * Utility function to create the inverse depth projection transform to be used
  * by the shader system.
@@ -718,7 +698,6 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, bShouldBindInstancedViewUB(false)
 	, UnderwaterDepth(-1.0f)
 	, bForceCameraVisibilityReset(false)
-	, bForcePathTracerReset(false)
 	, GlobalClippingPlane(FPlane(0, 0, 0, 0))
 	, LensPrincipalPointOffsetScale(0.0f, 0.0f, 1.0f, 1.0f)
 #if WITH_EDITOR
@@ -769,13 +748,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	// OpenGL Gamma space output in GLSL flips Y when rendering directly to the back buffer (so not needed on PC, as we never render directly into the back buffer)
 	auto ShaderPlatform = GShaderPlatformForFeatureLevel[FeatureLevel];
 	bool bUsingMobileRenderer = FSceneInterface::GetShadingPath(FeatureLevel) == EShadingPath::Mobile;
-
-	bool bPlatformRequiresReverseCulling = IsOpenGLPlatform(ShaderPlatform);
-	bPlatformRequiresReverseCulling = bPlatformRequiresReverseCulling || FDataDrivenShaderPlatformInfo::GetRequiresReverseCullingOnMobile(ShaderPlatform);
-	bPlatformRequiresReverseCulling = bPlatformRequiresReverseCulling && bUsingMobileRenderer;
-	bPlatformRequiresReverseCulling = bPlatformRequiresReverseCulling && !IsPCPlatform(ShaderPlatform);
-	bPlatformRequiresReverseCulling = bPlatformRequiresReverseCulling && !IsVulkanMobilePlatform(ShaderPlatform);
-
+	bool bPlatformRequiresReverseCulling = ((IsOpenGLPlatform(ShaderPlatform) || IsSwitchPlatform(ShaderPlatform)) && bUsingMobileRenderer && !IsPCPlatform(ShaderPlatform) && !IsVulkanMobilePlatform(ShaderPlatform));
 	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 	check(MobileHDRCvar);
 	const bool bSkipPostprocessing = MobileHDRCvar->GetValueOnAnyThread() == 0;
@@ -834,7 +807,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	SetupAntiAliasingMethod();
 
-	if ((AntiAliasingMethod == AAM_TemporalAA) &&
+	if ((AntiAliasingMethod == AAM_TemporalAA && GetFeatureLevel() >= ERHIFeatureLevel::SM5) &&
 		(CVarEnableTemporalUpsample.GetValueOnAnyThread() || (Family && Family->GetTemporalUpscalerInterface() != nullptr)))
 	{
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
@@ -865,6 +838,7 @@ bool FSceneView::VerifyMembersChecks() const
 {
 	if (PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale)
 	{
+		checkf(GetFeatureLevel() >= ERHIFeatureLevel::SM5, TEXT("Temporal upsample is SM5 only."));
 		checkf(AntiAliasingMethod == AAM_TemporalAA, TEXT("ScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale requires AntiAliasingMethod == AAM_TemporalAA"));
 	}
 
@@ -935,7 +909,7 @@ void FSceneView::SetupAntiAliasingMethod()
 		}
 
 		// Overides the anti aliasing method to temporal AA when using a custom temporal upscaler.
-		if (Family->GetTemporalUpscalerInterface() != nullptr)
+		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Family->GetTemporalUpscalerInterface() != nullptr)
 		{
 			AntiAliasingMethod = AAM_TemporalAA;
 		}
@@ -1207,9 +1181,9 @@ void FSceneView::DeprojectScreenToWorld(const FVector2D& ScreenPos, const FIntRe
 	const float ScreenSpaceY = ((1.0f - NormalizedY) - 0.5f) * 2.0f;
 
 	// The start of the ray trace is defined to be at mousex,mousey,1 in projection space (z=1 is near, z=0 is far - this gives us better precision)
-	// To get the direction of the ray trace we need to use any z between the near and the far plane, so let's use (mousex, mousey, 0.01)
+	// To get the direction of the ray trace we need to use any z between the near and the far plane, so let's use (mousex, mousey, 0.5)
 	const FVector4 RayStartProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 1.0f, 1.0f);
-	const FVector4 RayEndProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 0.01f, 1.0f);
+	const FVector4 RayEndProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 0.5f, 1.0f);
 
 	// Projection (changing the W coordinate) is not handled by the FMatrix transforms that work with vectors, so multiplications
 	// by the projection matrix should use homogeneous coordinates (i.e. FPlane).
@@ -1257,9 +1231,9 @@ void FSceneView::DeprojectScreenToWorld(const FVector2D& ScreenPos, const FIntRe
 	const float ScreenSpaceY = ((1.0f - NormalizedY) - 0.5f) * 2.0f;
 
 	// The start of the ray trace is defined to be at mousex,mousey,1 in projection space (z=1 is near, z=0 is far - this gives us better precision)
-	// To get the direction of the ray trace we need to use any z between the near and the far plane, so let's use (mousex, mousey, 0.01)
+	// To get the direction of the ray trace we need to use any z between the near and the far plane, so let's use (mousex, mousey, 0.5)
 	const FVector4 RayStartProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 1.0f, 1.0f);
-	const FVector4 RayEndProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 0.01f, 1.0f);
+	const FVector4 RayEndProjectionSpace = FVector4(ScreenSpaceX, ScreenSpaceY, 0.5f, 1.0f);
 
 	// Projection (changing the W coordinate) is not handled by the FMatrix transforms that work with vectors, so multiplications
 	// by the projection matrix should use homogeneous coordinates (i.e. FPlane).
@@ -1333,10 +1307,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		FFinalPostProcessSettings& Dest = FinalPostProcessSettings;
 
 		// The following code needs to be adjusted when settings in FPostProcessSettings change.
-		if (Src.bOverride_TemperatureType)
-		{
-			Dest.TemperatureType = Src.TemperatureType;
-		}
 		LERP_PP(WhiteTemp);
 		LERP_PP(WhiteTint);
 
@@ -1579,25 +1549,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.PathTracingSamplesPerPixel = Src.PathTracingSamplesPerPixel;
 		}
 
-		if (Src.bOverride_PathTracingFilterWidth)
-		{
-			Dest.PathTracingFilterWidth = Src.PathTracingFilterWidth;
-		}
-
-		if (Src.bOverride_PathTracingEnableEmissive)
-		{
-			Dest.PathTracingEnableEmissive = Src.PathTracingEnableEmissive;
-		}
-
-		if (Src.bOverride_PathTracingMaxPathExposure)
-		{
-			Dest.PathTracingMaxPathExposure = Src.PathTracingMaxPathExposure;
-		}
-
-		if (Src.bOverride_PathTracingEnableDenoiser)
-		{
-			Dest.PathTracingEnableDenoiser = Src.PathTracingEnableDenoiser;
-		}
 
 		if (Src.bOverride_DepthOfFieldBladeCount)
 		{
@@ -2502,7 +2453,7 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 		InPrevViewMatrices.GetTemporalAAJitter().X, InPrevViewMatrices.GetTemporalAAJitter().Y );
 
 	ViewUniformShaderParameters.DebugViewModeMask = Family->UseDebugViewPS() ? 1 : 0;
-	ViewUniformShaderParameters.UnlitViewmodeMask = !Family->EngineShowFlags.Lighting || Family->EngineShowFlags.PathTracing ? 1 : 0;
+	ViewUniformShaderParameters.UnlitViewmodeMask = !Family->EngineShowFlags.Lighting ? 1 : 0;
 	ViewUniformShaderParameters.OutOfBoundsMask = Family->EngineShowFlags.VisualizeOutOfBoundsPixels ? 1 : 0;
 
 	ViewUniformShaderParameters.GameTime = Family->CurrentWorldTime;
@@ -2588,13 +2539,10 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	bIsHDR(false),
 	bRequireMultiView(false),
 	GammaCorrection(CVS.GammaCorrection),
-	bLateLatchingEnabled(false),
 	SecondaryViewFraction(1.0f),
 	SecondaryScreenPercentageMethod(ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation),
 	ScreenPercentageInterface(nullptr),
-	TemporalUpscalerInterface(nullptr),
-	PrimarySpatialUpscalerInterface(nullptr),
-	SecondarySpatialUpscalerInterface(nullptr)
+	TemporalUpscalerInterface(nullptr)
 {
 	// If we do not pass a valid scene pointer then SetWorldTimes must be called to initialized with valid times.
 	ensure(CVS.bTimesSet);
@@ -2669,18 +2617,6 @@ FSceneViewFamily::~FSceneViewFamily()
 	if (ScreenPercentageInterface)
 	{
 		delete ScreenPercentageInterface;
-	}
-
-	if (PrimarySpatialUpscalerInterface)
-	{
-		// ISpatialUpscaler* is only defined in renderer's private header because no backward compatibility is provided between major version.
-		delete reinterpret_cast<ISceneViewFamilyExtention*>(PrimarySpatialUpscalerInterface);
-	}
-
-	if (SecondarySpatialUpscalerInterface)
-	{
-		// ISpatialUpscaler* is only defined in renderer's private header because no backward compatibility is provided between major version.
-		delete reinterpret_cast<ISceneViewFamilyExtention*>(SecondarySpatialUpscalerInterface);
 	}
 }
 
@@ -2768,7 +2704,7 @@ void FSceneView::SetupRayTracedRendering()
 
 	const FEngineShowFlags& ShowFlags = Family->EngineShowFlags;
 
-	if (ShowFlags.PathTracing && FDataDrivenShaderPlatformInfo::GetSupportsPathTracing(GetShaderPlatform()))
+	if (ShowFlags.PathTracing)
 	{
 		RayTracingRenderMode = ERayTracingRenderMode::PathTracing;
 	}	

@@ -6,10 +6,10 @@
 namespace Chaos
 {
 
-FRealSingle LinearEtherDragOverride = -1.f;
+float LinearEtherDragOverride = -1.f;
 FAutoConsoleVariableRef CVarLinearEtherDragOverride(TEXT("p.LinearEtherDragOverride"), LinearEtherDragOverride, TEXT("Set an override linear ether drag value. -1.f to disable"));
 
-FRealSingle AngularEtherDragOverride = -1.f;
+float AngularEtherDragOverride = -1.f;
 FAutoConsoleVariableRef CVarAngularEtherDragOverride(TEXT("p.AngularEtherDragOverride"), AngularEtherDragOverride, TEXT("Set an override angular ether drag value. -1.f to disable"));
 
 }

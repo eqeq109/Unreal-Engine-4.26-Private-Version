@@ -15,7 +15,7 @@
 		#include <dxgi1_2.h>
 	THIRD_PARTY_INCLUDES_END
 
-	#include "Microsoft/COMPointer.h"
+	#include "Windows/COMPointer.h"
 	#include "Windows/HideWindowsPlatformTypes.h"
 #endif
 

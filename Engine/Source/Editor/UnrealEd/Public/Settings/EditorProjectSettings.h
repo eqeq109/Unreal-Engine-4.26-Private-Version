@@ -214,23 +214,3 @@ public:
 	// End of UObject interface
 };
 
-UCLASS(config=Editor, meta=(DisplayName="DDC"), defaultconfig)
-class UNREALED_API UDDCProjectSettings : public UDeveloperSettings
-{
-	GENERATED_BODY()
-
-public:
-	UDDCProjectSettings() { }
-
-	/**
-	 * 
-	 */
-	UPROPERTY(EditAnywhere, config, Category=Blueprints)
-	bool RecommendEveryoneSetupAGlobalLocalDDCPath;
-
-	/**
-	 * 
-	 */
-	UPROPERTY(EditAnywhere, config, Category=Blueprints)
-	bool RecommendEveryoneSetupAGlobalS3DDCPath;
-};

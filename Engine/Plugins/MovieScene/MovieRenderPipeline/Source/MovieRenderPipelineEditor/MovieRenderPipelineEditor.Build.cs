@@ -54,9 +54,7 @@ public class MovieRenderPipelineEditor : ModuleRules
 				"EditorStyle",
 				"LevelSequenceEditor",
 				"DeveloperSettings",
-				"MessageLog",
-				"Sequencer",
-				"ToolMenus"
+				"MessageLog"
 			}
         );
 

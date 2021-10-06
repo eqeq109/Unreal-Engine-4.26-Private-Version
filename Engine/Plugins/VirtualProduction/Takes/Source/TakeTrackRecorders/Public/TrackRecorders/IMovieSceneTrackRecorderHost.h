@@ -187,5 +187,4 @@ public:
 	virtual ULevelSequence* GetMasterLevelSequence() const = 0;
 
 	/**/
-	virtual FMovieSceneSequenceID GetSequenceID() const = 0;
 };

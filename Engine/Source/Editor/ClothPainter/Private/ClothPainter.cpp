@@ -177,7 +177,7 @@ void FClothPainter::RefreshClothingAssets()
 
 	if(USkeletalMesh* Mesh = SkeletalMeshComponent->SkeletalMesh)
 	{
-		for(UClothingAssetBase* BaseClothingAsset : Mesh->GetMeshClothingAssets())
+		for(UClothingAssetBase* BaseClothingAsset : Mesh->MeshClothingAssets)
 		{
 			if(UClothingAssetCommon* ActualAsset = Cast<UClothingAssetCommon>(BaseClothingAsset))
 			{
@@ -302,6 +302,19 @@ void FClothPainter::FinishPainting()
 	{		
 		EndTransaction();
 		Adapter->PostEdit();
+
+		if(SkeletalMeshComponent)
+		{
+			FComponentReregisterContext ReregisterContext(SkeletalMeshComponent);
+
+			if(USkeletalMesh* SkelMesh = SkeletalMeshComponent->SkeletalMesh)
+			{
+				for(UClothingAssetBase* AssetBase : SkelMesh->MeshClothingAssets)
+				{
+					AssetBase->InvalidateCachedData();
+				}
+			}
+		}
 
 		/** If necessary, recalculate view ranges when set to auto mode */
 		RecalculateAutoViewRange();

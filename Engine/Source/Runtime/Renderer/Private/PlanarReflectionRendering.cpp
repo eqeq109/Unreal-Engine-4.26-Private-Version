@@ -112,13 +112,20 @@ void SetupPlanarReflectionUniformParameters(const class FSceneView& View, const 
 					break;
 				}
 			}
-			// Clamp the index to not go out of bounds (can happen for example in split screen with > 2 players).
-			ViewIndex = FMath::Min(ViewIndex, GPlanarReflectionUniformMaxReflectionViews - 1);
+
+			FMatrix ProjectionWithExtraFOVValue[2];
+
 			// Make sure the current view's value is at index 0
-			OutParameters.ProjectionWithExtraFOV[0] = ReflectionSceneProxy->ProjectionWithExtraFOV[ViewIndex];
-			OutParameters.ProjectionWithExtraFOV[1] = FMatrix::Identity;
-			OutParameters.PlanarReflectionScreenScaleBias[0] = ScreenScaleBiasValue[ViewIndex];
-			OutParameters.PlanarReflectionScreenScaleBias[1] = FVector4(0, 0, 0, 0);
+			ProjectionWithExtraFOVValue[0] = ReflectionSceneProxy->ProjectionWithExtraFOV[ViewIndex];
+			ProjectionWithExtraFOVValue[1] = FMatrix::Identity;
+
+			ScreenScaleBiasValue[1] = FVector4(0, 0, 0, 0);
+
+			OutParameters.ProjectionWithExtraFOV[0] = ProjectionWithExtraFOVValue[0];
+			OutParameters.ProjectionWithExtraFOV[1] = ProjectionWithExtraFOVValue[1];
+
+			OutParameters.PlanarReflectionScreenScaleBias[0] = ScreenScaleBiasValue[0];
+			OutParameters.PlanarReflectionScreenScaleBias[1] = ScreenScaleBiasValue[1];
 		}
 	}
 	else
@@ -471,7 +478,7 @@ static void UpdatePlanarReflectionContentsWithoutRendering_RenderThread(
 			}
 		}
 
-		SceneRenderer->PrepareViewRectsForRendering(RHICmdList);
+		SceneRenderer->PrepareViewRectsForRendering();
 
 		SceneProxy->RenderTarget = RenderTarget;
 

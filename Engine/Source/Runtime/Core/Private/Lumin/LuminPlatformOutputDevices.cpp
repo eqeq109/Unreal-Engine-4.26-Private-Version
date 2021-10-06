@@ -19,7 +19,8 @@ void FLuminOutputDevices::SetupOutputDevices()
 {
 	check(GLog);
 
-	ResetCachedAbsoluteFilename();
+	InitDefaultOutputDeviceFile();
+
 	GLog->AddOutputDevice(FPlatformOutputDevices::GetLog());
 
 #if !NO_LOGGING
@@ -33,7 +34,7 @@ void FLuminOutputDevices::SetupOutputDevices()
 	// unless logging is turned off
 	if (FPlatformMisc::HasSeparateChannelForDebugOutput())
 	{
-		// Use FLuminOutputDeviceDebug instead of the default FOutputDeviceDebug so that ml_log can respect the verbosity in the output
+        // Use FLuminOutputDeviceDebug instead of the default FOutputDeviceDebug so that ml_log can respect the verbosity in the output
 		GLog->AddOutputDevice(new FLuminOutputDeviceDebug());
 	}
 #endif

@@ -13,7 +13,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogGenericPlatformTime, Log, All);
 
 double FGenericPlatformTime::SecondsPerCycle = 0.0;	
 double FGenericPlatformTime::SecondsPerCycle64 = 0.0;
-double FGenericPlatformTime::LastIntervalCPUTimeInSeconds = 0.0;
 
 double FGenericPlatformTime::GetSecondsPerCycle64()
 {

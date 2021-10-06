@@ -513,13 +513,8 @@ bool FAudioDeviceManager::InitializeManager()
 	{
 		check(AudioDeviceModule);
 
-		UAudioSettings* AudioSettings = GetMutableDefault<UAudioSettings>();
-		check(AudioSettings);
-
-		AudioSettings->LoadDefaultObjects();
-
 		const bool bIsAudioMixerEnabled = AudioDeviceModule->IsAudioMixerModule();
-		AudioSettings->SetAudioMixerEnabled(bIsAudioMixerEnabled);
+		GetMutableDefault<UAudioSettings>()->SetAudioMixerEnabled(bIsAudioMixerEnabled);
 
 #if WITH_EDITOR
 		if (bIsAudioMixerEnabled)
@@ -555,11 +550,6 @@ bool FAudioDeviceManager::CreateMainAudioDevice()
 		{
 			UE_LOG(LogAudio, Display, TEXT("Main audio device could not be initialized. Please check the value for AudioDeviceModuleName and AudioMixerModuleName in [Platform]Engine.ini."));
 			return false;
-		}
-
-		if (GWorld)
-		{
-			GWorld->SetAudioDevice(MainAudioDeviceHandle);
 		}
 
 		FAudioThread::StartAudioThread();
@@ -987,7 +977,7 @@ void FAudioDeviceManager::InitSoundClasses()
 	);
 }
 
-void FAudioDeviceManager::RegisterSoundSubmix(USoundSubmixBase* SoundSubmix)
+void FAudioDeviceManager::RegisterSoundSubmix(const USoundSubmixBase* SoundSubmix)
 {
 	IterateOverAllDevices(
 		[&SoundSubmix](Audio::FDeviceId, FAudioDevice* InDevice)

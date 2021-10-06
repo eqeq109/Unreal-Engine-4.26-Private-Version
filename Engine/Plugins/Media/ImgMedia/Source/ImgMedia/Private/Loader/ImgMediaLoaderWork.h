@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ImgMediaMipMapInfo.h"
 #include "Misc/IQueuedWork.h"
 
 class FImgMediaLoader;
@@ -34,12 +33,10 @@ public:
 	 * Initialize this work item.
 	 *
 	 * @param InFrameNumber The number of the image frame.
-	 * @param InMipLevel Will read in this level and all higher levels.
-	 * @param InTileSelection Which tiles to read.
-	 * @param InExistingFrame If set, then use this frame to load into.
+	 * @param InImagePath The file path to the image frame to read.
 	 * @see Shutdown
 	 */
-	void Initialize(int32 InFrameNumber, int32 InMipLevel, const FImgMediaTileSelection& InTileSelection, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> InExistingFrame);
+	void Initialize(int32 InFrameNumber, const FString& InImagePath);
 
 public:
 
@@ -62,14 +59,8 @@ private:
 	/** The number of the image frame. */
 	int32 FrameNumber;
 
-	/** Mip level of the image frame. */
-	int32 MipLevel;
-
-	/** Which tiles we should load. */
-	FImgMediaTileSelection TileSelection;
-	
-	/** If set, then load the image into this frame instead of making a new one. */
-	TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> ExistingFrame;
+	/** The file path to the image frame to read. */
+	FString ImagePath;
 
 	/** The loader that created this reader task. */
 	TWeakPtr<FImgMediaLoader, ESPMode::ThreadSafe> OwnerPtr;

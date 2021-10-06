@@ -12,10 +12,10 @@
 
 #if WITH_EDITOR
 
-FHLODISMComponentDesc::FHLODISMComponentDesc(const UInstancedStaticMeshComponent* InISMComponent)
+FHLODISMComponentDesc::FHLODISMComponentDesc(const UInstancedStaticMeshComponent* InISMComponent, const UMaterialInterface* InMaterial)
 {
+	Material = InMaterial;
 	StaticMesh = InISMComponent->GetStaticMesh();
-	Material = InISMComponent->GetMaterial(0);
 
 	Instances.Reset(InISMComponent->GetInstanceCount());
 
@@ -89,22 +89,19 @@ bool UHLODProxyDesc::UpdateFromLODActor(const ALODActor* InLODActor)
 			check(SubLODActor->ProxyDesc);
 			SubHLODDescs.Emplace(SubLODActor->ProxyDesc);
 		}
-		else if (SubActor)
+		else
 		{
 			SubActors.Emplace(SubActor->GetFName());
 		}
 	}
 
-	StaticMesh = InLODActor->StaticMeshComponent ? InLODActor->StaticMeshComponent->GetStaticMesh() : nullptr;
+	StaticMesh = InLODActor->StaticMeshComponent->GetStaticMesh();
 
-	const TMap<FHLODInstancingKey, UInstancedStaticMeshComponent*>& ISMComponents = InLODActor->InstancedStaticMeshComponents;
+	const TMap<const UMaterialInterface*, UInstancedStaticMeshComponent*>& ISMComponents = InLODActor->ImpostersStaticMeshComponents;
 	ISMComponentsDesc.Reset(ISMComponents.Num());
 	for (auto const& Pair : ISMComponents)
 	{
-		if (Pair.Key.IsValid() && Pair.Value->GetInstanceCount() != 0)
-		{
-			ISMComponentsDesc.Emplace(Pair.Value);
-		}
+		ISMComponentsDesc.Emplace(Pair.Value, Pair.Key);
 	}
 
 	LODDrawDistance = InLODActor->GetDrawDistance();
@@ -119,8 +116,6 @@ bool UHLODProxyDesc::UpdateFromLODActor(const ALODActor* InLODActor)
 	LODActorTag = InLODActor->LODActorTag;
 
 	Location = RemoveStreamingLevelTransform(InLODActor->GetLevel(), FTransform(InLODActor->GetActorLocation())).GetTranslation();
-
-	HLODBakingTransform = InLODActor->GetWorldSettings()->HLODBakingTransform;
 
 	return true;
 }
@@ -138,7 +133,7 @@ bool UHLODProxyDesc::ShouldUpdateDesc(const ALODActor* InLODActor) const
 			check(SubLODActor->ProxyDesc);
 			LocalSubHLODDescs.Emplace(SubLODActor->ProxyDesc);
 		}
-		else if (SubActor)
+		else
 		{
 			LocalSubActors.Emplace(SubActor->GetFName());
 		}
@@ -154,21 +149,17 @@ bool UHLODProxyDesc::ShouldUpdateDesc(const ALODActor* InLODActor) const
 		return true;
 	}
 
-	UStaticMesh* LocalStaticMesh = InLODActor->StaticMeshComponent ? InLODActor->StaticMeshComponent->GetStaticMesh() : nullptr;
-	if (StaticMesh != LocalStaticMesh)
+	if (StaticMesh != InLODActor->StaticMeshComponent->GetStaticMesh())
 	{
 		return true;
 	}
 
 	TArray<FHLODISMComponentDesc> LocalISMComponentsDesc;
-	const TMap<FHLODInstancingKey, UInstancedStaticMeshComponent*>& ISMComponents = InLODActor->InstancedStaticMeshComponents;
+	const TMap<const UMaterialInterface*, UInstancedStaticMeshComponent*>& ISMComponents = InLODActor->ImpostersStaticMeshComponents;
 	LocalISMComponentsDesc.Reset(ISMComponents.Num());
 	for (auto const& Pair : ISMComponents)
 	{
-		if (Pair.Key.IsValid())
-		{
-			LocalISMComponentsDesc.Emplace(Pair.Value);
-		}
+		LocalISMComponentsDesc.Emplace(Pair.Value, Pair.Key);
 	}
 
 	if (LocalISMComponentsDesc != ISMComponentsDesc)
@@ -228,11 +219,6 @@ bool UHLODProxyDesc::ShouldUpdateDesc(const ALODActor* InLODActor) const
 		return true;
 	}
 
-	if (!HLODBakingTransform.Equals(InLODActor->GetWorldSettings()->HLODBakingTransform))
-	{
-		return true;
-	}
-
 	return false;
 }
 
@@ -270,11 +256,6 @@ ALODActor* UHLODProxyDesc::SpawnLODActor(ULevel* InLevel) const
 
 	for (const FHLODISMComponentDesc& ISMComponentDesc : ISMComponentsDesc)
 	{
-		if (!ISMComponentDesc.StaticMesh || !ISMComponentDesc.Material || ISMComponentDesc.Instances.Num() == 0)
-		{
-			continue;
-		}
-		
 		// Apply transform to HISM instances
 		const bool bTransformInstances = !ActorTransform.Equals(FTransform::Identity);
 		if (bTransformInstances)
@@ -285,11 +266,11 @@ ALODActor* UHLODProxyDesc::SpawnLODActor(ULevel* InLevel) const
 				Transform *= ActorTransform;
 			}
 
-			LODActor->AddInstances(ISMComponentDesc.StaticMesh, ISMComponentDesc.Material, Transforms);
+			LODActor->SetupImposters(ISMComponentDesc.Material, ISMComponentDesc.StaticMesh, Transforms);
 		}
 		else
 		{
-			LODActor->AddInstances(ISMComponentDesc.StaticMesh, ISMComponentDesc.Material, ISMComponentDesc.Instances);
+			LODActor->SetupImposters(ISMComponentDesc.Material, ISMComponentDesc.StaticMesh, ISMComponentDesc.Instances);
 		}
 	}
 
@@ -340,8 +321,6 @@ ALODActor* UHLODProxyDesc::SpawnLODActor(ULevel* InLevel) const
 	{
 		InLevel->GetOutermost()->SetDirtyFlag(false);
 	}
-
-	LODActor->GetWorldSettings()->HLODBakingTransform = HLODBakingTransform;
 
 	return LODActor;
 }

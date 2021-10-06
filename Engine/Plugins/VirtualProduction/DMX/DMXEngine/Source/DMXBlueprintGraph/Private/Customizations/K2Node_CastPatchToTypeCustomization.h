@@ -7,7 +7,7 @@
 #include "IDetailCustomization.h"
 
 class IDetailLayoutBuilder;
-class UDEPRECATED_K2Node_CastPatchToType;
+class UK2Node_CastPatchToType;
 
 class K2Node_CastPatchToTypeCustomization : public IDetailCustomization
 {
@@ -24,7 +24,7 @@ private:
 
 	FReply ResetAttributesClicked();
 
-	UDEPRECATED_K2Node_CastPatchToType* GetK2Node_CastPatchToType() const;
+	UK2Node_CastPatchToType* GetK2Node_CastPatchToType() const;
 
 private:
 

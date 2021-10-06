@@ -2,25 +2,10 @@
 
 #include "AzureSpatialAnchorsBase.h"
 
-void FAzureSpatialAnchorsBase::Startup()
-{
-	CacheSessionHandle = IAzureSpatialAnchors::ASASessionUpdatedDelegate.AddRaw(this, &FAzureSpatialAnchorsBase::CacheSessionStatus);
-}
-
-void FAzureSpatialAnchorsBase::Shutdown()
-{
-	IAzureSpatialAnchors::ASASessionUpdatedDelegate.Remove(CacheSessionHandle);
-}
 
 void FAzureSpatialAnchorsBase::DestroySession()
 {
 	CloudAnchors.Reset();
-}
-
-const FAzureSpatialAnchorsSessionStatus& FAzureSpatialAnchorsBase::GetSessionStatus()
-{
-	check(IsInGameThread());
-	return CachedSessionStatus;
 }
 
 bool FAzureSpatialAnchorsBase::GetCloudAnchor(UARPin*& InARPin, UAzureCloudSpatialAnchor*& OutCloudAnchor)
@@ -122,14 +107,4 @@ void FAzureSpatialAnchorsBase::SessionUpdatedCallback(float InReadyForCreateProg
 {
 	const EAzureSpatialAnchorsSessionUserFeedback SessionUserFeedback = static_cast<EAzureSpatialAnchorsSessionUserFeedback>(InSessionUserFeedback);
 	TGraphTask< IAzureSpatialAnchors::FASASessionUpdatedTask >::CreateTask().ConstructAndDispatchWhenReady(InReadyForCreateProgress, InRecommendedForCreateProgress, InSessionCreateHash, InSessionLocateHash, SessionUserFeedback);
-}
-
-void FAzureSpatialAnchorsBase::CacheSessionStatus(float ReadyForCreateProgress, float ReccomendedForCreateProgress, int CreateHash, int LocateHash, EAzureSpatialAnchorsSessionUserFeedback Feedback)
-{
-	check(IsInGameThread());
-	CachedSessionStatus.ReadyForCreateProgress = ReadyForCreateProgress;
-	CachedSessionStatus.RecommendedForCreateProgress = ReccomendedForCreateProgress;
-	CachedSessionStatus.SessionCreateHash = CreateHash;
-	CachedSessionStatus.SessionLocateHash = LocateHash;
-	CachedSessionStatus.feedback = Feedback;
 }

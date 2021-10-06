@@ -16,11 +16,8 @@ UOculusHandComponent::UOculusHandComponent(const FObjectInitializer& ObjectIniti
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 
 	bHasAuthority = false;
-
-	RuntimeSkeletalMesh = nullptr;
-	CachedBaseMaterial = nullptr;
-
 	bAutoActivate = true;
+
 	bWantsInitializeComponent = true;
 
 	for (uint8 BoneIndex = 0; BoneIndex < (uint8)EBone::Bone_Max; BoneIndex++)
@@ -164,7 +161,7 @@ void UOculusHandComponent::UpdateBonePose()
 			else
 			{
 				// Set Remaing Bone Rotations
-				int32 BoneIndex = SkeletalMesh->GetRefSkeleton().FindBoneIndex(BoneElem.Value);
+				int32 BoneIndex = SkeletalMesh->RefSkeleton.FindBoneIndex(BoneElem.Value);
 				if (BoneIndex >= 0)
 				{
 					FQuat BoneRotation = UOculusInputFunctionLibrary::GetBoneRotation(SkeletonType, (EBone)BoneElem.Key);
@@ -182,7 +179,7 @@ void UOculusHandComponent::UpdateBonePose()
 		BoneSpaceTransforms[0].SetRotation(RootBoneRotation);
 
 		// Set Remaining Bone Rotations
-		for (uint32 BoneIndex = 1; BoneIndex < (uint32)SkeletalMesh->GetRefSkeleton().GetNum(); BoneIndex++)
+		for (uint32 BoneIndex = 1; BoneIndex < (uint32)SkeletalMesh->RefSkeleton.GetNum(); BoneIndex++)
 		{
 			FQuat BoneRotation = UOculusInputFunctionLibrary::GetBoneRotation(SkeletonType, (EBone)BoneIndex);
 			BoneSpaceTransforms[BoneIndex].SetRotation(BoneRotation);

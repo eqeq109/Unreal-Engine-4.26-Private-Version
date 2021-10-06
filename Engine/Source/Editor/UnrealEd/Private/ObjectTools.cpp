@@ -392,7 +392,7 @@ namespace ObjectTools
 			,	IgnoreClasses( InIgnoreClasses )
 	{
 		// Mark objects.
-		for ( FThreadSafeObjectIterator It; It ; ++It )
+		for ( FObjectIterator It ; It ; ++It )
 		{
 			if ( ShouldSearchForAssets(*It) )
 			{
@@ -772,12 +772,6 @@ namespace ObjectTools
 				DupObject->GetOutermost()->SetPackageFlags(PKG_DisallowExport);
 			}
 
-			// When duplicating a World Composition map, make sure to properly initialize WorldTileInfo
-			if (Object->GetOutermost()->WorldTileInfo.IsValid())
-			{
-				DupObject->GetOutermost()->WorldTileInfo = MakeUnique<FWorldTileInfo>(*Object->GetOutermost()->WorldTileInfo);
-			}
-
 			// Notify the asset registry
 			FAssetRegistryModule::AssetCreated(DupObject);
 
@@ -902,7 +896,7 @@ namespace ObjectTools
 				}
 			}
 
-			for ( FThreadSafeObjectIterator ObjIter; ObjIter; ++ObjIter )
+			for ( FObjectIterator ObjIter; ObjIter; ++ObjIter )
 			{
 				// Always clear the root set flags
 				UObject* CurrentObject = *ObjIter;
@@ -996,7 +990,7 @@ namespace ObjectTools
 		// Find the referencers of the objects to be replaced
 		FFindReferencersArchive FindRefsArchive( nullptr, OutInfo.ReplaceableObjects );
 
-		for ( FThreadSafeObjectIterator ObjIter; ObjIter; ++ObjIter )
+		for ( FObjectIterator ObjIter; ObjIter; ++ObjIter )
 		{
 			UObject* CurObject = *ObjIter;
 
@@ -2326,14 +2320,6 @@ namespace ObjectTools
 				}
 			}
 		}
-
-		// Allows to inject extra assets to delete without modifying the engine source.
-		FEditorDelegates::OnAssetsAddExtraObjectsToDelete.Broadcast(ObjectsToDelete);
-
-		//This method is called 2x in the deletion flow. Make sure there is no duplicates in the array as we can't rely on the methods registered to the delegate to uniquely add.
-		TSet<UObject*> CleanupDuplicatesSet(MoveTemp(ObjectsToDelete)); // Move items into the set to remove duplicate pointers.
-		ObjectsToDelete = CleanupDuplicatesSet.Array(); // Copy elements back again
-
 	}
 
 	bool ContainsWorldInUse(const TArray< UObject* >& ObjectsToDelete)
@@ -2762,7 +2748,7 @@ namespace ObjectTools
 				Algo::Sort(InterestSet, TLess<UObject*>());
 				InterestSetAdditions.Reset();
 
-				for (FThreadSafeObjectIterator It; It; ++It)
+				for (FObjectIterator It; It; ++It)
 				{
 					UObject* Object = *It;
 					if (Algo::BinarySearch(InterestSet, Object, TLess<UObject*>()) != INDEX_NONE)
@@ -3659,7 +3645,6 @@ namespace ObjectTools
 						NewPackage->SetPackageFlags(PKG_DisallowExport);
 					}
 
-					// When renaming a World Composition map, make sure to properly initialize WorldTileInfo
 					if (Object->GetOutermost()->WorldTileInfo.IsValid())
 					{
 						NewPackage->WorldTileInfo = MakeUnique<FWorldTileInfo>(*Object->GetOutermost()->WorldTileInfo);
@@ -4219,7 +4204,7 @@ namespace ObjectTools
 
 		TArray<UObject*> ObjectsInLevels;
 
-		for( FThreadSafeObjectIterator It; It; ++It )
+		for( FObjectIterator It; It; ++It )
 		{
 			UObject* Obj = *It;
 

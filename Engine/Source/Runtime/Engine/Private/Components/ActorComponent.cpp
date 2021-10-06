@@ -1882,17 +1882,6 @@ void UActorComponent::RemoveUserDataOfClass(TSubclassOf<UAssetUserData> InUserDa
 	}
 }
 
-void UActorComponent::OnCreatedFromReplication()
-{
-	RegisterComponent();
-	SetIsReplicated(true);
-}
-
-void UActorComponent::OnDestroyedFromReplication()
-{
-	DestroyComponent();
-}
-
 void UActorComponent::SetNetAddressable()
 {
 	bNetAddressable = true;

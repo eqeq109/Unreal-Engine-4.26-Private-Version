@@ -57,19 +57,19 @@ struct MAGICLEAPPLANES_API FMagicLeapPlaneResult
 public:
 	/** Position of the center of the plane in world coordinates. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planes|MagicLeap")
-	FVector PlanePosition = FVector(0.0f);
+	FVector PlanePosition;
 
 	/** Orientation of the plane. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planes|MagicLeap")
-	FRotator PlaneOrientation = FRotator(0.0f);
+	FRotator PlaneOrientation;
 
 	/** Orientation of the content with its up-vector orthogonal to the plane. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planes|MagicLeap")
-	FRotator ContentOrientation = FRotator(0.0f);
+	FRotator ContentOrientation;
 
 	/** Width and height of the plane (in Unreal units). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planes|MagicLeap")
-	FVector2D PlaneDimensions = FVector2D(0.0f);
+	FVector2D PlaneDimensions;
 
 	/** The flags which describe this plane. TODO: Should be a TSet but that is misbehaving in the editor.*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planes|MagicLeap")

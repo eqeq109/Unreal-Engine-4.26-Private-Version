@@ -18,10 +18,10 @@ struct FMovieSceneTrackInstanceEntry
 	GENERATED_BODY()
 
 	UPROPERTY()
-	UObject* BoundObject = nullptr;
+	UObject* BoundObject;
 
 	UPROPERTY()
-	UMovieSceneTrackInstance* TrackInstance = nullptr;
+	UMovieSceneTrackInstance* TrackInstance;
 };
 
 

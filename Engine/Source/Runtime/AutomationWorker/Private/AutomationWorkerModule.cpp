@@ -273,8 +273,6 @@ void FAutomationWorkerModule::SendTests( const FMessageAddress& ControllerAddres
 		Reply->Tests.Emplace(FAutomationWorkerSingleTestReply(TestInfo[TestIndex]));
 	}
 
-	UE_LOG(LogAutomationWorker, Log, TEXT("Set %d tests to %s"), TestInfo.Num(), *ControllerAddress.ToString());
-
 	MessageEndpoint->Send(Reply, ControllerAddress);
 }
 
@@ -284,11 +282,11 @@ void FAutomationWorkerModule::SendTests( const FMessageAddress& ControllerAddres
 
 void FAutomationWorkerModule::HandleFindWorkersMessage(const FAutomationWorkerFindWorkers& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context)
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received FindWorkersMessage from %s"), *Context->GetSender().ToString());
-
 	// Set the Instance name to be the same as the session browser. This information should be shared at some point
 	if ((Message.SessionId == FApp::GetSessionId()) && (Message.Changelist == 10000))
 	{
+		TestRequesterAddress = Context->GetSender();
+
 #if WITH_EDITOR
 		//If the asset registry is loading assets then we'll wait for it to stop before running our automation tests.
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
@@ -296,10 +294,7 @@ void FAutomationWorkerModule::HandleFindWorkersMessage(const FAutomationWorkerFi
 		{
 			if (!AssetRegistryModule.Get().OnFilesLoaded().IsBoundToObject(this))
 			{
-				AssetRegistryModule.Get().OnFilesLoaded().AddLambda([this, Context] {
-						SendWorkerFound(Context->GetSender());
-					}
-				);
+				AssetRegistryModule.Get().OnFilesLoaded().AddRaw(this, &FAutomationWorkerModule::SendWorkerFound);
 				GLog->Logf(ELogVerbosity::Log, TEXT("...Forcing Asset Registry Load For Automation"));
 			}
 		}
@@ -307,13 +302,13 @@ void FAutomationWorkerModule::HandleFindWorkersMessage(const FAutomationWorkerFi
 #endif
 		{
 			//If the registry is not loading then we'll just go ahead and run our tests.
-			SendWorkerFound(Context->GetSender());
+			SendWorkerFound();
 		}
 	}
 }
 
 
-void FAutomationWorkerModule::SendWorkerFound(const FMessageAddress& ControllerAddress)
+void FAutomationWorkerModule::SendWorkerFound()
 {
 	FAutomationWorkerFindWorkersResponse* Response = new FAutomationWorkerFindWorkersResponse();
 
@@ -338,14 +333,13 @@ void FAutomationWorkerModule::SendWorkerFound(const FMessageAddress& ControllerA
 	Response->RenderModeName = TEXT("Unknown");
 #endif
 
-	MessageEndpoint->Send(Response, ControllerAddress);
+	MessageEndpoint->Send(Response, TestRequesterAddress);
+	TestRequesterAddress.Invalidate();
 }
 
 
 void FAutomationWorkerModule::HandleNextNetworkCommandReplyMessage( const FAutomationWorkerNextNetworkCommandReply& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context )
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received NextNetworkCommandReplyMessage from %s"), *Context->GetSender().ToString());
-
 	// Allow the next command to execute
 	bExecuteNextNetworkCommand = true;
 
@@ -362,16 +356,12 @@ void FAutomationWorkerModule::HandlePingMessage( const FAutomationWorkerPing& Me
 
 void FAutomationWorkerModule::HandleResetTests( const FAutomationWorkerResetTests& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context )
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received ResetTests from %s"), *Context->GetSender().ToString());
-
 	FAutomationTestFramework::Get().ResetTests();
 }
 
 
 void FAutomationWorkerModule::HandleRequestTestsMessage( const FAutomationWorkerRequestTests& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context )
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received RequestTestsMessage from %s"), *Context->GetSender().ToString());
-
 	FAutomationTestFramework::Get().LoadTestModules();
 	FAutomationTestFramework::Get().SetDeveloperDirectoryIncluded(Message.DeveloperDirectoryIncluded);
 	FAutomationTestFramework::Get().SetRequestedTestFilter(Message.RequestedTestFlags);
@@ -401,8 +391,6 @@ void FAutomationWorkerModule::HandlePostTestingEvent()
 
 void FAutomationWorkerModule::HandleScreenShotCompared(const FAutomationWorkerImageComparisonResults& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context)
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received ScreenShotCompared from %s"), *Context->GetSender().ToString());
-
 	// Image comparison finished.
 	FAutomationScreenshotCompareResults CompareResults;
 	CompareResults.UniqueId = Message.UniqueId;
@@ -417,15 +405,11 @@ void FAutomationWorkerModule::HandleScreenShotCompared(const FAutomationWorkerIm
 
 void FAutomationWorkerModule::HandleTestDataRetrieved(const FAutomationWorkerTestDataResponse& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context)
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received TestDataRetrieved from %s"), *Context->GetSender().ToString());
-
 	FAutomationTestFramework::Get().NotifyTestDataRetrieved(Message.bIsNew, Message.JsonData);
 }
 
 void FAutomationWorkerModule::HandlePerformanceDataRetrieved(const FAutomationWorkerPerformanceDataResponse& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context)
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received PerformanceDataRetrieved from %s"), *Context->GetSender().ToString());
-
 	FAutomationTestFramework::Get().NotifyPerformanceDataRetrieved(Message.bSuccess, Message.ErrorMessage);
 }
 
@@ -456,7 +440,7 @@ void FAutomationWorkerModule::HandleScreenShotAndTraceCapturedWithName(const TAr
 		Message->FrameTrace = CapturedFrameTrace;
 		Message->Metadata = Metadata;
 
-		UE_LOG(LogAutomationWorker, Log, TEXT("Sending screenshot %s to %s"), *Message->ScreenShotName, *TestRequesterAddress.ToString());
+		UE_LOG(LogAutomationWorker, Log, TEXT("Sending screenshot %s"), *Message->ScreenShotName);
 
 		MessageEndpoint->Send(Message, TestRequesterAddress);
 	}
@@ -511,32 +495,6 @@ void FAutomationWorkerModule::HandleScreenShotAndTraceCapturedWithName(const TAr
 
 void FAutomationWorkerModule::HandleRunTestsMessage( const FAutomationWorkerRunTests& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context )
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received RunTests %s from %s"), *Message.BeautifiedTestName, *Context->GetSender().ToString());
-
-	if (TestRequesterAddress.IsValid() && !TestName.IsEmpty())
-	{
-		if (TestRequesterAddress == Context->GetSender())
-		{
-			UE_LOG(LogAutomationWorker, Log, TEXT("Worker is already running test '%s' from %s. Request is ignored."), *BeautifiedTestName, *TestRequesterAddress.ToString());
-			return;
-		}
-
-		FString LogMessage = FString::Format(TEXT("Worker is already running test '%s' from %s. '%s' won't be run."), 
-			{ *BeautifiedTestName, *TestRequesterAddress.ToString(), *Message.BeautifiedTestName });
-		UE_LOG(LogAutomationWorker, Warning, TEXT("%s"), *LogMessage);
-
-		// Let the sender know it won't happen
-		FAutomationWorkerRunTestsReply* OutMessage = new FAutomationWorkerRunTestsReply();
-		OutMessage->TestName = Message.TestName;
-		OutMessage->ExecutionCount = Message.ExecutionCount;
-		OutMessage->Success = false;
-		OutMessage->Entries.Add(FAutomationExecutionEntry(FAutomationEvent(EAutomationEventType::Error, LogMessage)));
-		OutMessage->ErrorTotal = 1;
-		MessageEndpoint->Send(OutMessage, Context->GetSender());
-
-		return;
-	}
-
 	ExecutionCount = Message.ExecutionCount;
 	TestName = Message.TestName;
 	BeautifiedTestName = Message.BeautifiedTestName;
@@ -555,8 +513,6 @@ void FAutomationWorkerModule::HandleRunTestsMessage( const FAutomationWorkerRunT
 
 void FAutomationWorkerModule::HandleStopTestsMessage(const FAutomationWorkerStopTests& Message, const TSharedRef<IMessageContext, ESPMode::ThreadSafe>& Context)
 {
-	UE_LOG(LogAutomationWorker, Log, TEXT("Received StopTests from %s"), *Context->GetSender().ToString());
-
 	if (GIsAutomationTesting)
 	{
 		FAutomationTestFramework::Get().DequeueAllCommands();

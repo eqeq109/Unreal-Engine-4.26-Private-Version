@@ -53,7 +53,7 @@ public:
 	virtual void OnRetriangulatePolygons( const UEditableMesh* EditableMesh, const TArray<FPolygonID>& PolygonIDs ) PURE_VIRTUAL(,);
 
 #if WITH_EDITOR
-	virtual void GeometryHitTest(const FHitParamsIn& InParams, FHitParamsOut& OutParams) {};
+	virtual void GeometryHitTest(const FHitParamsIn& InParams, FHitParamsOut& OutParams) PURE_VIRTUAL(, );
 #endif // WITH_EDITOR
 
 };

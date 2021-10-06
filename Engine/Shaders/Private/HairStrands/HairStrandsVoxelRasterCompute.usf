@@ -19,7 +19,6 @@ float3			HairStrandsVF_PositionOffset;
 uint			HairStrandsVF_VertexCount;
 float4x4		HairStrandsVF_LocalToWorldPrimitiveTransform;
 Buffer<uint4>	HairStrandsVF_PositionBuffer;
-Buffer<float4>	HairStrandsVF_PositionOffsetBuffer;
 
 #if PERMUTATION_CULLING == 1
 Buffer<uint>	HairStrandsVF_CullingIndirectBuffer;
@@ -35,6 +34,7 @@ uint3			VirtualVoxelParams_PageCountResolution;
 uint3			VirtualVoxelParams_PageTextureResolution;
 
 Buffer<uint>	VirtualVoxelParams_PageIndexBuffer;
+Buffer<uint4>	VirtualVoxelParams_PageIndexCoordBuffer;
 StructuredBuffer<FPackedVirtualVoxelNodeDesc> VirtualVoxelParams_NodeDescBuffer;
 
 RWTexture3D<uint> OutPageTexture;
@@ -96,11 +96,9 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 	}
 #endif
 
-	const float4 PositionOffset = HairStrandsVF_PositionOffsetBuffer[0];
-
 	const FHairControlPoint CP0 = UnpackHairControlPoint(
 		HairStrandsVF_PositionBuffer[VertexIndex0],
-		PositionOffset,
+		HairStrandsVF_PositionOffset,
 		HairStrandsVF_Radius * LodRadiusScale0,
 		HairStrandsVF_Length);
 
@@ -109,7 +107,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 
 	const FHairControlPoint CP1 = UnpackHairControlPoint(
 		HairStrandsVF_PositionBuffer[VertexIndex1],
-		PositionOffset,
+		HairStrandsVF_PositionOffset,
 		HairStrandsVF_Radius * LodRadiusScale1,
 		HairStrandsVF_Length);
 

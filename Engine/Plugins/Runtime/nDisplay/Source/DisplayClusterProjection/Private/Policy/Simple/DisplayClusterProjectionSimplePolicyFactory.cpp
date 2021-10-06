@@ -5,15 +5,12 @@
 
 #include "DisplayClusterProjectionLog.h"
 
-#include "DisplayClusterConfigurationTypes.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe> FDisplayClusterProjectionSimplePolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionSimplePolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
 {
-	check(InConfigurationProjectionPolicy != nullptr);
-
-	UE_LOG(LogDisplayClusterProjectionSimple, Log, TEXT("Instantiating projection policy <%s> id='%s'"), *InConfigurationProjectionPolicy->Type, *ProjectionPolicyId);
-	return  MakeShared<FDisplayClusterProjectionSimplePolicy, ESPMode::ThreadSafe>(ProjectionPolicyId, InConfigurationProjectionPolicy);
+	UE_LOG(LogDisplayClusterProjectionSimple, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
+	return MakeShared<FDisplayClusterProjectionSimplePolicy>(ViewportId, Parameters);
 }

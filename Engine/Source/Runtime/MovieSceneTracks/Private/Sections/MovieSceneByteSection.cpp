@@ -1,12 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneByteSection.h"
-#include "Channels/MovieSceneChannelProxy.h"
 #include "Evaluation/MovieScenePropertyTemplates.h"
-#include "MovieSceneTracksComponentTypes.h"
-#include "Systems/MovieScenePiecewiseByteBlenderSystem.h"
-#include "Tracks/MovieScenePropertyTrack.h"
 #include "UObject/SequencerObjectVersion.h"
+#include "Channels/MovieSceneChannelProxy.h"
 
 UMovieSceneByteSection::UMovieSceneByteSection( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )
@@ -28,28 +25,4 @@ UMovieSceneByteSection::UMovieSceneByteSection( const FObjectInitializer& Object
 	ChannelProxy = MakeShared<FMovieSceneChannelProxy>(ByteCurve);
 
 #endif
-}
-
-bool UMovieSceneByteSection::PopulateEvaluationFieldImpl(const TRange<FFrameNumber>& EffectiveRange, const FMovieSceneEvaluationFieldEntityMetaData& InMetaData, FMovieSceneEntityComponentFieldBuilder* OutFieldBuilder)
-{
-	FMovieScenePropertyTrackEntityImportHelper::PopulateEvaluationField(*this, EffectiveRange, InMetaData, OutFieldBuilder);
-	return true;
-}
-
-void UMovieSceneByteSection::ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity)
-{
-	using namespace UE::MovieScene;
-
-	if (!ByteCurve.HasAnyData())
-	{
-		return;
-	}
-
-	const FBuiltInComponentTypes* Components = FBuiltInComponentTypes::Get();
-	const FMovieSceneTracksComponentTypes* TracksComponents = FMovieSceneTracksComponentTypes::Get();
-
-	FPropertyTrackEntityImportHelper(TracksComponents->Byte)
-		.Add(Components->ByteChannel, &ByteCurve)
-		.Add(Components->BlenderType, UMovieScenePiecewiseByteBlenderSystem::StaticClass())
-		.Commit(this, Params, OutImportedEntity);
 }

@@ -18,11 +18,6 @@ namespace EditorScriptingUtils
 {
 	bool CheckIfInEditorAndPIE()
 	{
-		return IsInEditorAndNotPlaying();
-	}
-
-	bool IsInEditorAndNotPlaying()
-	{
 		if (!IsInGameThread())
 		{
 			UE_LOG(LogEditorScripting, Error, TEXT("You are not on the main thread."));
@@ -90,7 +85,7 @@ namespace EditorScriptingUtils
 		}
 
 		// Make sure we are not creating an FName that is too large
-		if (ObjectPath.Len() >= NAME_SIZE)
+		if (ObjectPath.Len() > NAME_SIZE)
 		{
 			OutFailureReason = TEXT("This asset name is too long (") + FString::FromInt(ObjectPath.Len()) + TEXT(" characters), the maximum is ") + FString::FromInt(NAME_SIZE) + TEXT(". Please choose a shorter name.");
 			return false;

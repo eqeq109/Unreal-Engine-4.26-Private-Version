@@ -44,10 +44,10 @@ struct FRigUnit_ApplyFK : public FRigUnitMutable
 	FTransformFilter Filter;
 
 	UPROPERTY(EditAnywhere, Category = "ApplyFK", meta = (Input))
-	EApplyTransformMode ApplyTransformMode = EApplyTransformMode::Override;
+	EApplyTransformMode ApplyTransformMode;
 
 	UPROPERTY(EditAnywhere, Category = "ApplyFK", meta = (Input))
-	ETransformSpaceMode ApplyTransformSpace = ETransformSpaceMode::LocalSpace;
+	ETransformSpaceMode ApplyTransformSpace;
 
 	// Transform op option. Use if ETransformSpace is BaseTransform
 	UPROPERTY(EditAnywhere, Category = "ApplyFK", meta = (Input))

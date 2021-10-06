@@ -84,27 +84,6 @@ namespace
 	}
 }
 
-/* Return a readable string of the provided EFunctionalTestResult enum */
-FString LexToString(const EFunctionalTestResult TestResult)
-{
-	switch (TestResult)
-	{
-		case EFunctionalTestResult::Default:
-			return FString("Default");
-		case EFunctionalTestResult::Invalid:
-			return FString("Invalid");
-		case EFunctionalTestResult::Error:
-			return FString("Error");
-		case EFunctionalTestResult::Running:
-			return FString("Running");
-		case EFunctionalTestResult::Failed:
-			return FString("Failed");
-		case EFunctionalTestResult::Succeeded:
-			return FString("Succeeded");
-	}
-	return FString("Unhandled EFunctionalTestResult Enum!");
-}
-
 
 AFunctionalTest::AFunctionalTest( const FObjectInitializer& ObjectInitializer )
 	: Super(ObjectInitializer)
@@ -355,22 +334,39 @@ void AFunctionalTest::FinishTest(EFunctionalTestResult TestResult, const FString
 	
 	// Do reporting first. When we start cleaning things up internal states that capture results
 	// are reset.
+	
 	Result = TestResult;
+	
+	const static UEnum* FTestResultTypeEnum = StaticEnum<EFunctionalTestResult>();
+	
+	const FText ResultText = FTestResultTypeEnum->GetDisplayNameTextByValue( (int64)TestResult );
+	
+	//Output map and test name along with results
+	UWorld* World = GetWorld();
+	FString WorldName = (World ? UWorld::RemovePIEPrefix(World->GetMapName()) : "");
+	const FString OutMessage = FString::Printf(TEXT("%s %s %s: \"%s\"")
+											   , *WorldName
+											   , *GetName()
+											   , *ResultText.ToString()
+											   , Message.IsEmpty() == false ? *Message : TEXT("Test finished"));
 	
 	switch (TestResult)
 	{
 		case EFunctionalTestResult::Invalid:
 		case EFunctionalTestResult::Error:
 		case EFunctionalTestResult::Failed:
-			AddError(FString::Printf(TEXT("FinishTest TestResult=%s. %s"), *LexToString(TestResult), *Message));
+			UE_VLOG(this, LogFunctionalTest, Error, TEXT("%s"), *OutMessage);
+			UE_LOG(LogFunctionalTest, Error, TEXT("%s"), *OutMessage);
 			break;
 			
 		case EFunctionalTestResult::Running:
-			AddWarning(FString::Printf(TEXT("FinishTest TestResult=%s. %s"), *LexToString(TestResult), *Message));
+			UE_VLOG(this, LogFunctionalTest, Warning, TEXT("%s"), *OutMessage);
+			UE_LOG(LogFunctionalTest, Warning, TEXT("%s"), *OutMessage);
 			break;
 			
 		default:
-			LogStep(ELogVerbosity::Log, *Message);
+			UE_VLOG(this, LogFunctionalTest, Log, TEXT("%s"), *OutMessage);
+			UE_LOG(LogFunctionalTest, Log, TEXT("%s"), *OutMessage);
 			break;
 	}
 	

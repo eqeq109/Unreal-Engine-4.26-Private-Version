@@ -21,7 +21,7 @@ struct FMovieSceneTrackEvaluationFieldEntry
 	GENERATED_BODY()
 
 	UPROPERTY()
-	UMovieSceneSection* Section = nullptr;
+	UMovieSceneSection* Section;
 
 	UPROPERTY()
 	FFrameNumberRange Range;
@@ -30,10 +30,10 @@ struct FMovieSceneTrackEvaluationFieldEntry
 	FFrameNumber ForcedTime;
 
 	UPROPERTY()
-	ESectionEvaluationFlags Flags = ESectionEvaluationFlags::None;
+	ESectionEvaluationFlags Flags;
 
 	UPROPERTY()
-	int16 LegacySortOrder = 0;
+	int16 LegacySortOrder;
 };
 
 USTRUCT()

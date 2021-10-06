@@ -5,7 +5,6 @@
 #include "Misc/ScopeLock.h"
 #include "Misc/App.h"
 #include "SessionServiceMessages.h"
-#include "Misc/ScopeExit.h"
 
 
 /* FSessionService structors
@@ -74,24 +73,18 @@ void FSessionService::SendLog(const TCHAR* Data, ELogVerbosity::Type Verbosity, 
 
 	FScopeLock Lock(&LogSubscribersLock);
 
-	// Guard against going recursive from logging in messaging code
-	if (!IsInSendLog)
+	if (LogSubscribers.Num() > 0)
 	{
-		TGuardValue<bool> Guard(IsInSendLog, true);
-		
-		if (LogSubscribers.Num() > 0)
-		{
-			MessageEndpoint->Send(
-				new FSessionServiceLog(
-					Category,
-					Data,
-					FApp::GetInstanceId(),
-					FPlatformTime::Seconds() - GStartTime,
-					Verbosity
-				),
-				LogSubscribers
-			);
-		}	
+		MessageEndpoint->Send(
+			new FSessionServiceLog(
+				Category,
+				Data,
+				FApp::GetInstanceId(),
+				FPlatformTime::Seconds() - GStartTime,
+				Verbosity
+			),
+			LogSubscribers
+		);
 	}
 }
 

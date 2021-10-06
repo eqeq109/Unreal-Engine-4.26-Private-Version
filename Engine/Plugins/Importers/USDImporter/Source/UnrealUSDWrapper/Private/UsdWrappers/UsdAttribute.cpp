@@ -4,7 +4,6 @@
 
 #include "UsdWrappers/SdfPath.h"
 #include "UsdWrappers/UsdPrim.h"
-#include "UsdWrappers/VtValue.h"
 
 #include "USDMemory.h"
 
@@ -144,42 +143,6 @@ namespace UE
 	}
 #endif // #if USE_USD_SDK
 
-	bool FUsdAttribute::GetMetadata( const TCHAR* Key, UE::FVtValue& Value ) const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().GetMetadata( pxr::TfToken{ TCHAR_TO_ANSI( Key ) }, &Value.GetUsdValue() );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::HasMetadata( const TCHAR* Key ) const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().HasMetadata( pxr::TfToken{ TCHAR_TO_ANSI( Key ) } );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::SetMetadata( const TCHAR* Key, const UE::FVtValue& Value ) const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().SetMetadata( pxr::TfToken{ TCHAR_TO_ANSI( Key ) }, Value.GetUsdValue() );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::ClearMetadata( const TCHAR* Key ) const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().ClearMetadata( pxr::TfToken{ TCHAR_TO_ANSI( Key ) } );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
 	FName FUsdAttribute::GetName() const
 	{
 #if USE_USD_SDK
@@ -207,91 +170,10 @@ namespace UE
 #endif // #if USE_USD_SDK
 	}
 
-	bool FUsdAttribute::GetTimeSamples( TArray<double>& Times ) const
-	{
-#if USE_USD_SDK
-		FScopedUsdAllocs Allocs;
-
-		std::vector<double> UsdTimes;
-		bool bResult = Impl->PxrUsdAttribute.Get().GetTimeSamples( &UsdTimes );
-		if ( !bResult )
-		{
-			return false;
-		}
-
-		Times.SetNumUninitialized( UsdTimes.size() );
-		FMemory::Memcpy( Times.GetData(), UsdTimes.data(), UsdTimes.size() * sizeof( double ) );
-
-		return true;
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::HasValue() const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().HasValue();
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::HasFallbackValue() const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().HasFallbackValue();
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
 	bool FUsdAttribute::ValueMightBeTimeVarying() const
 	{
 #if USE_USD_SDK
 		return Impl->PxrUsdAttribute.Get().ValueMightBeTimeVarying();
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::Get( UE::FVtValue & Value, TOptional<double> Time /*= {} */ ) const
-	{
-#if USE_USD_SDK
-		FScopedUsdAllocs UsdAllocs;
-
-		pxr::UsdTimeCode TimeCode = Time.IsSet() ? Time.GetValue() : pxr::UsdTimeCode::Default();
-		return Impl->PxrUsdAttribute.Get().Get( &Value.GetUsdValue(), TimeCode );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::Set( const UE::FVtValue & Value, TOptional<double> Time /*= {} */ ) const
-	{
-#if USE_USD_SDK
-		FScopedUsdAllocs UsdAllocs;
-
-		pxr::UsdTimeCode TimeCode = Time.IsSet() ? Time.GetValue() : pxr::UsdTimeCode::Default();
-		return Impl->PxrUsdAttribute.Get().Set( Value.GetUsdValue(), TimeCode );
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::Clear() const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().Clear();
-#else
-		return false;
-#endif // #if USE_USD_SDK
-	}
-
-	bool FUsdAttribute::ClearAtTime( double Time ) const
-	{
-#if USE_USD_SDK
-		return Impl->PxrUsdAttribute.Get().ClearAtTime( pxr::UsdTimeCode( Time ) );
 #else
 		return false;
 #endif // #if USE_USD_SDK

@@ -1137,7 +1137,7 @@ FString FEmitDefaultValueHelper::HandleNonNativeComponent(FEmitterLocalContext& 
 					const FObjectProperty* ParentVariableProperty = FindFProperty<FObjectProperty>(BPGC, *CleanParentVariableName);
 					ParentVariableName = ParentVariableProperty ? FEmitHelper::GetCppName(ParentVariableProperty) : CleanParentVariableName;
 				}
-				else if (USceneComponent* ParentComponentTemplate = Node->GetParentComponentTemplate(BPGC))
+				else if (USceneComponent* ParentComponentTemplate = Node->GetParentComponentTemplate(CastChecked<UBlueprint>(BPGC->ClassGeneratedBy)))
 				{
 					ParentVariableName = Context.FindGloballyMappedObject(ParentComponentTemplate, USceneComponent::StaticClass());
 				}

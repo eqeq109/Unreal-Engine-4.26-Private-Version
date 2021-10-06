@@ -9,7 +9,8 @@ class IDisplayClusterConfiguratorItem
 	: public TSharedFromThis<IDisplayClusterConfiguratorItem>
 {
 public:
-	virtual ~IDisplayClusterConfiguratorItem() = default;
+	virtual ~IDisplayClusterConfiguratorItem()
+	{ }
 
 public:
 	/** Get the object represented by this item, if any */

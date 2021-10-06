@@ -1,6 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-using System;
 using System.IO;
 
 namespace UnrealBuildTool.Rules
@@ -44,8 +43,6 @@ namespace UnrealBuildTool.Rules
 					}
 				);
 			}
-
-			PrivateDefinitions.Add("VIVOXVOICECHAT_PACKAGE");
 		}
 	}
 }

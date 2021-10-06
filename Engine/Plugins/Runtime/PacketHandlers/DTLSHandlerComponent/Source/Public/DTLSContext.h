@@ -63,8 +63,9 @@ public:
 */
 struct FDTLSContext
 {
-public:
 	FDTLSContext() = delete;
+
+public:
 	FDTLSContext(EDTLSContextType InContextType);
 	~FDTLSContext();
 

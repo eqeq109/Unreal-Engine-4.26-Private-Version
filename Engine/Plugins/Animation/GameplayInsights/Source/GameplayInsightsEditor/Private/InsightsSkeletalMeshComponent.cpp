@@ -31,13 +31,12 @@ void UInsightsSkeletalMeshComponent::InitAnim(bool bForceReInit)
 {
 	if(SkeletalMesh)
 	{
-		const FReferenceSkeleton& SkeletalMeshRefSkeleton = SkeletalMesh->GetRefSkeleton();
 		// set up bone visibility states as this gets skipped since we allocate the component array before registration
 		for (int32 BaseIndex = 0; BaseIndex < 2; ++BaseIndex)
 		{
-			BoneVisibilityStates[BaseIndex].SetNum(SkeletalMeshRefSkeleton.GetNum());
+			BoneVisibilityStates[BaseIndex].SetNum(SkeletalMesh->RefSkeleton.GetNum());
 
-			for (int32 BoneIndex = 0; BoneIndex < SkeletalMeshRefSkeleton.GetNum(); BoneIndex++)
+			for (int32 BoneIndex = 0; BoneIndex < SkeletalMesh->RefSkeleton.GetNum(); BoneIndex++)
 			{
 				BoneVisibilityStates[BaseIndex][BoneIndex] = BVS_Visible;
 			}

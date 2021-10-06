@@ -168,13 +168,13 @@ static bool GetShaderPipelineCacheSaveBoundPSOLog()
 		bOnce = true;
 		bCmdLineForce = FParse::Param(FCommandLine::Get(), TEXT("logpso"));
 	}
-	return GRHISupportsPipelineFileCache && (bCmdLineForce || CVarPSOFileCacheSaveBoundPSOLog.GetValueOnAnyThread() == 1);
+	return (bCmdLineForce || CVarPSOFileCacheSaveBoundPSOLog.GetValueOnAnyThread() == 1);
 }
 
 static bool GetPSOFileCacheSaveUserCache()
 {
 	static const auto CVarPSOFileCacheSaveUserCache = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ShaderPipelineCache.SaveUserCache"));
-	return GRHISupportsPipelineFileCache && (CVarPSOFileCacheSaveUserCache && CVarPSOFileCacheSaveUserCache->GetInt() > 0);
+	return (CVarPSOFileCacheSaveUserCache && CVarPSOFileCacheSaveUserCache->GetInt() > 0);
 }
 
 void ConsoleCommandLoadPipelineFileCache(const TArray< FString >& Args)
@@ -1276,7 +1276,7 @@ void FShaderPipelineCache::Tick( float DeltaTime )
 	}
 
 	// HACK: note for the time being until the code further upstream properly uses the OnPrecompilationComplete delegate, we need to provide some delays to make sure it gets the messaging properly (the -10.0f and the -20.0f below).
-	if (((FMath::Max(0ll, FPlatformAtomics::AtomicRead(&TotalWaitingTasks)) == 0 && FMath::Max(0ll, FPlatformAtomics::AtomicRead(&TotalActiveTasks)) == 0 && FPlatformAtomics::AtomicRead(&TotalCompleteTasks) != 0) || (CVarPSOFileCacheMaxPrecompileTime.GetValueOnAnyThread() > 0.0 && TotalPrecompileWallTime - 10.0f > CVarPSOFileCacheMaxPrecompileTime.GetValueOnAnyThread() && TotalPrecompileTasks > 0)) && !LastPrecompileRHIFence.GetReference())
+	if (((FPlatformAtomics::AtomicRead(&TotalWaitingTasks) == 0 && FPlatformAtomics::AtomicRead(&TotalActiveTasks) == 0 && FPlatformAtomics::AtomicRead(&TotalCompleteTasks) != 0) || (CVarPSOFileCacheMaxPrecompileTime.GetValueOnAnyThread() > 0.0 && TotalPrecompileWallTime - 10.0f > CVarPSOFileCacheMaxPrecompileTime.GetValueOnAnyThread() && TotalPrecompileTasks > 0)) && !LastPrecompileRHIFence.GetReference())
     {
 		UE_LOG(LogRHI, Warning, TEXT("FShaderPipelineCache completed %u tasks in %.2fs (%.2fs wall time since intial open)."), (uint32)TotalCompleteTasks, FPlatformTime::ToSeconds64(TotalPrecompileTime), TotalPrecompileWallTime);
         if (OnPrecompilationComplete.IsBound())

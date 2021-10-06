@@ -9,7 +9,6 @@
 #include "EntitySystem/MovieSceneComponentAccessors.h"
 #include "EntitySystem/MovieSceneEntityManager.h"
 #include "EntitySystem/MovieSceneSystemTaskDependencies.h"
-#include "EntitySystem/MovieSceneComponentPtr.h"
 
 #include "Templates/AndOrNot.h"
 
@@ -23,12 +22,6 @@ namespace MovieScene
 DECLARE_CYCLE_STAT(TEXT("Aquire Component Access Locks"), MovieSceneEval_AquireComponentAccessLocks, STATGROUP_MovieSceneECS);
 DECLARE_CYCLE_STAT(TEXT("Release Component Access Locks"), MovieSceneEval_ReleaseComponentAccessLocks, STATGROUP_MovieSceneECS);
 
-template<typename> struct TReadAccess;
-template<typename> struct TOptionalReadAccess;
-template<typename> struct TWriteAccess;
-template<typename> struct TOptionalWriteAccess;
-template<typename...> struct TReadOneOfAccessor;
-template<typename...> struct TReadOneOrMoreOfAccessor;
 
 template<typename...> struct TFilteredEntityTask;
 template<typename...> struct TEntityTaskComponents;
@@ -235,7 +228,7 @@ struct TEntityTaskComponents : TEntityTaskComponentsImpl<TMakeIntegerSequence<in
 	 * For example:
 	 * struct FForEachAllocation
 	 * {
-	 *     void ForEachAllocation(FEntityAllocation* InAllocation, const TFilteredEntityTask< FEntityIDAccess, TRead<FMovieSceneFloatChannel> >& InputTask);
+	 *     void ForEachAllocation(FEntityAllocation* InAllocation, const TFilteredEntityTask< FReadEntityIDs, TRead<FMovieSceneFloatChannel> >& InputTask);
 	 * };
 	 *
 	 * TComponentTypeID<FMovieSceneFloatChannel> FloatChannelComponent = ...;
@@ -402,12 +395,14 @@ public:
 template<int... Indices, typename... T>
 struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 {
+	using EntityRangeType = TEntityRange<typename T::AccessType...>;
+
 	/**
 	 * Read the entity ID along with this task. Passed to the task as an FMovieSceneEntityID
 	 */
-	TEntityTaskComponents< T..., FEntityIDAccess > ReadEntityIDs() const
+	TEntityTaskComponents< T..., FReadEntityIDs > ReadEntityIDs() const
 	{
-		return TEntityTaskComponents< T..., FEntityIDAccess >( Accessors.template Get<Indices>()..., FEntityIDAccess{} );
+		return TEntityTaskComponents< T..., FReadEntityIDs >( Accessors.template Get<Indices>()..., FReadEntityIDs{} );
 	}
 
 	/**
@@ -417,9 +412,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @param ComponentType   A valid component type to read.
 	 */
 	template<typename U>
-	TEntityTaskComponents<T..., TReadAccess<U>> Read(TComponentTypeID<U> ComponentType) const
+	TEntityTaskComponents<T..., TRead<U>> Read(TComponentTypeID<U> ComponentType) const
 	{
-		return TEntityTaskComponents<T..., TReadAccess<U> >(Accessors.template Get<Indices>()..., TReadAccess<U>(ComponentType));
+		return TEntityTaskComponents<T..., TRead<U> >(Accessors.template Get<Indices>()..., TRead<U>(ComponentType));
 	}
 
 	/**
@@ -429,9 +424,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @param ComponentTypes  The component types to visit
 	 */
 	template<typename... U>
-	TEntityTaskComponents<T..., TReadOneOfAccessor<U...>> ReadOneOf(TComponentTypeID<U>... ComponentTypes) const
+	TEntityTaskComponents<T..., TReadOneOf<U...>> ReadOneOf(TComponentTypeID<U>... ComponentTypes) const
 	{
-		return TEntityTaskComponents<T..., TReadOneOfAccessor<U...> >( Accessors.template Get<Indices>()..., TReadOneOfAccessor<U...>(ComponentTypes...) );
+		return TEntityTaskComponents<T..., TReadOneOf<U...> >( Accessors.template Get<Indices>()..., TReadOneOf<U...>(ComponentTypes...) );
 	}
 
 	/**
@@ -440,9 +435,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @param ComponentTypes  The component types to visit
 	 */
 	template<typename... U>
-	TEntityTaskComponents<T..., TReadOneOrMoreOfAccessor<U...>> ReadOneOrMoreOf(TComponentTypeID<U>... ComponentTypes) const
+	TEntityTaskComponents<T..., TReadOneOrMoreOf<U...>> ReadOneOrMoreOf(TComponentTypeID<U>... ComponentTypes) const
 	{
-		return TEntityTaskComponents<T..., TReadOneOrMoreOfAccessor<U...> >(Accessors.template Get<Indices>()..., TReadOneOrMoreOfAccessor<U...>(ComponentTypes...));
+		return TEntityTaskComponents<T..., TReadOneOrMoreOf<U...> >(Accessors.template Get<Indices>()..., TReadOneOrMoreOf<U...>(ComponentTypes...));
 	}
 
 	/**
@@ -451,20 +446,33 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @param ComponentTypes  The component types to visit
 	 */
 	template<typename... U>
-	TEntityTaskComponents<T..., TReadAccess<U>...> ReadAllOf(TComponentTypeID<U>... ComponentTypes) const
+	TEntityTaskComponents<T..., TRead<U>...> ReadAllOf(TComponentTypeID<U>... ComponentTypes) const
 	{
-		return TEntityTaskComponents<T..., TReadAccess<U>... >( Accessors.template Get<Indices>()..., TReadAccess<U>(ComponentTypes)... );
+		return TEntityTaskComponents<T..., TRead<U>... >( Accessors.template Get<Indices>()..., TRead<U>(ComponentTypes)... );
 	}
 
 	/**
-	 * Read any of the specified components and pass them through to the task as individual optional parameters
+	 * Projected Read of a component value. Type passed to the task will be the result of the invocation of the projection.
+	 * @note Supplying an invalid ComponentType will be handled gracefully, but will result in no task being dispatched.
+	 * @note For example:
+	 * 
+	 * struct FForEachEntity
+	 * {
+	 *     void ForEachEntity(float InX);
+	 * };
 	 *
-	 * @param ComponentTypes  The component types to visit
+	 * TComponentTypeID<FVector> VectorComponent = ...;
+	 *
+	 * FGraphEventRef Task = FEntityTaskBuilder()
+	 * .ReadEntityIDs()
+	 * .ReadProjected(VectorComponent, &FVector::X)
+	 * .Dispatch_PerEntity<FForEachEntity>(...);
 	 */
-	template<typename... U>
-	TEntityTaskComponents<T..., TOptionalReadAccess<U>...> ReadAnyOf(TComponentTypeID<U>... ComponentTypes) const
+	template<typename U, typename ProjectionType>
+	TEntityTaskComponents<T..., TReadProjected< U, typename TRemoveReference<ProjectionType>::Type >> ReadProjected(TComponentTypeID<U> ComponentType, ProjectionType&& Projection) const
 	{
-		return TEntityTaskComponents<T..., TOptionalReadAccess<U>... >( Accessors.template Get<Indices>()..., TOptionalReadAccess<U>(ComponentTypes)... );
+		using FReturnType = TReadProjected< U, typename TRemoveReference<ProjectionType>::Type >;
+		return TEntityTaskComponents<T..., FReturnType >(Accessors.template Get<Indices>()..., FReturnType(ComponentType, Forward<ProjectionType>(Projection)));
 	}
 
 	/**
@@ -473,9 +481,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 *
 	 * @param ComponentType   A valid component type to read.
 	 */
-	TEntityTaskComponents<T..., FErasedReadAccess> ReadErased(FComponentTypeID ComponentType) const
+	TEntityTaskComponents<T..., FReadErased> ReadErased(FComponentTypeID ComponentType) const
 	{
-		return TEntityTaskComponents<T..., FErasedReadAccess >(Accessors.template Get<Indices>()..., FErasedReadAccess(ComponentType));
+		return TEntityTaskComponents<T..., FReadErased >(Accessors.template Get<Indices>()..., FReadErased(ComponentType));
 	}
 
 	/**
@@ -483,9 +491,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @note Always passed to the task as a const T* pointer which must be checked for null
 	 */
 	template<typename U>
-	TEntityTaskComponents<T..., TOptionalReadAccess<U>> ReadOptional(TComponentTypeID<U> ComponentType) const
+	TEntityTaskComponents<T..., TReadOptional<U>> ReadOptional(TComponentTypeID<U> ComponentType) const
 	{
-		return TEntityTaskComponents<T..., TOptionalReadAccess<U> >(Accessors.template Get<Indices>()..., TOptionalReadAccess<U>(ComponentType));
+		return TEntityTaskComponents<T..., TReadOptional<U> >(Accessors.template Get<Indices>()..., TReadOptional<U>(ComponentType));
 	}
 
 	/**
@@ -495,20 +503,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @param ComponentType   A valid component type to read.
 	 */
 	template<typename U>
-	TEntityTaskComponents<T..., TWriteAccess<U>> Write(TComponentTypeID<U> ComponentType) const
+	TEntityTaskComponents<T..., TWrite<U>> Write(TComponentTypeID<U> ComponentType) const
 	{
-		return TEntityTaskComponents<T..., TWriteAccess<U> >(Accessors.template Get<Indices>()..., TWriteAccess<U>(ComponentType));
-	}
-
-	/**
-	 * Write the type-erased value of a component. Passed to the task as a void*
-	 * @note Supplying an invalid ComponentType will be handled gracefully, but will result in no task being dispatched.
-	 *
-	 * @param ComponentType   A valid component type to read.
-	 */
-	TEntityTaskComponents<T..., FErasedWriteAccess> WriteErased(FComponentTypeID ComponentType) const
-	{
-		return TEntityTaskComponents<T..., FErasedWriteAccess >(Accessors.template Get<Indices>()..., FErasedWriteAccess(ComponentType));
+		return TEntityTaskComponents<T..., TWrite<U> >(Accessors.template Get<Indices>()..., TWrite<U>(ComponentType));
 	}
 
 
@@ -517,9 +514,9 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	 * @note Always passed to the task as a T* pointer which must be checked for null
 	 */
 	template<typename U>
-	TEntityTaskComponents<T..., TOptionalWriteAccess<U>> WriteOptional(TComponentTypeID<U> ComponentType) const
+	TEntityTaskComponents<T..., TWriteOptional<U>> WriteOptional(TComponentTypeID<U> ComponentType) const
 	{
-		return TEntityTaskComponents<T..., TOptionalWriteAccess<U> >(Accessors.template Get<Indices>()..., TOptionalWriteAccess<U>(ComponentType));
+		return TEntityTaskComponents<T..., TWriteOptional<U> >(Accessors.template Get<Indices>()..., TWriteOptional<U>(ComponentType));
 	}
 
 	bool HasBeenWrittenToSince(uint32 InSystemVersion)
@@ -571,35 +568,55 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 		(void)Temp;
 	}
 
+	/** Lock the component headers that we need to access */
+	void Lock(FEntityAllocation* Allocation) const
+	{
+		//SCOPE_CYCLE_COUNTER(MovieSceneEval_AquireComponentAccessLocks);
+
+		int Temp[] = { (LockHeader(&Accessors.template Get<Indices>(), Allocation), 0)..., 0 };
+		(void)Temp;
+	}
+
+	/** Unlock the component headers that we accessed in Lock() */
+	void Unlock(FEntityAllocation* Allocation, uint64 SystemSerial) const
+	{
+		//SCOPE_CYCLE_COUNTER(MovieSceneEval_ReleaseComponentAccessLocks);
+
+		int Temp[] = { ( UnlockHeader(&Accessors.template Get<Indices>(), Allocation, SystemSerial), 0)..., 0 };
+		(void)Temp;
+	}
+
 	/**
 	 * Perform a thread-safe iteration of the specified allocation using this task, inline on the current thread
-	 * @note: This is highly unsafe as it circumvents all the thread-safety mechanisms that protect component data
 	 *
 	 * @param Allocation  The allocation to iterate
 	 * @return An iterator that defines the full range of entities in the allocation
 	 */
-	TEntityRange<typename T::AccessType...> IterateAllocation(const FEntityAllocation* Allocation, FEntityAllocationWriteContext WriteContext) const
+	EntityRangeType IterateAllocation(const FEntityAllocation* Allocation) const
 	{
+		EntityRangeType Result(Allocation->Num());
+
+		static_assert(TAnd<TSupportsDirectEntityIteration<T>...>::Value, "Accessor type(s) do not support direct entity iteration - must be resolved separately.");
+
 		checkf(IsValid(), TEXT("Attempting to use a component pack with an invalid component type."));
 
-		auto LockedComponentData = MakeTuple( Accessors.template Get<Indices>().LockComponentData(Allocation, WriteContext)... );
+		int Unused[] = { (Result.template GetComponentArrayReference<Indices>() = Accessors.template Get<Indices>().Resolve(Allocation), 0)..., 0 };
+		(void)Unused;
 
-		// WARNING: This is highly unsafe as it circumvents all the thread-safety mechanisms that protect component data
-		return TEntityRange<typename T::AccessType...>(Allocation->Num(), LockedComponentData.template Get<Indices>().AsPtr()... );
+		return Result;
 	}
 
 	/**
 	 * Perform a thread-safe iteration of the specified entity range using this task, inline on the current thread
-	 * @note: This is highly unsafe as it circumvents all the thread-safety mechanisms that protect component data
 	 *
 	 * @param Allocation  The allocation to iterate
 	 * @return An iterator that defines the full range of entities in the allocation
 	 */
-	TEntityRange<typename T::AccessType...> IterateRange(const FEntityRange& EntityRange, FEntityAllocationWriteContext WriteContext) const
+	EntityRangeType IterateRange(const FEntityRange& EntityRange) const
 	{
 		check(EntityRange.ComponentStartOffset >= 0 && EntityRange.ComponentStartOffset + EntityRange.Num <= EntityRange.Allocation->Num());
 
-		TEntityRange<typename T::AccessType...> Result = IterateAllocation(EntityRange.Allocation, WriteContext);
+		EntityRangeType Result = IterateAllocation(EntityRange.Allocation);
 		Result.Slice(EntityRange.ComponentStartOffset, EntityRange.Num);
 		return Result;
 	}
@@ -642,24 +659,29 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	template<typename Callback>
 	void Iterate_PerEntityImpl(FEntityManager* EntityManager, const FEntityComponentFilter& Filter, Callback&& InCallback) const
 	{
-		using TupleType = TTuple< decltype(Accessors.template Get<Indices>().LockComponentData(nullptr, DeclVal<FEntityAllocationWriteContext>()))... >;
-
 		if (IsValid())
 		{
-			FEntityAllocationWriteContext WriteContext(*EntityManager);
-
+			const uint64 SystemSerial = EntityManager->GetSystemSerial();
 			for (FEntityAllocation* Allocation : EntityManager->Iterate(&Filter))
 			{
 				FEntityIterationResult Result;
 
-				// Lock the components we want to access
-				TupleType ComponentData( Accessors.template Get<Indices>().LockComponentData(Allocation, WriteContext)... );
+				// Lock on the components we want to access
+				Lock(Allocation);
+
+				auto IterState = MakeTuple( Accessors.template Get<Indices>().CreateIterState(Allocation)... );
 
 				const int32 Num = Allocation->Num();
 				for (int32 ComponentOffset = 0; ComponentOffset < Num && Result.Value; ++ComponentOffset )
 				{
-					Result = (InCallback( ComponentData.template Get<Indices>().ComponentAtIndex(ComponentOffset)... ), Result);
+					Result = (InCallback( *IterState.template Get<Indices>()... ), Result);
+
+					int Temp[] = { (++IterState.template Get<Indices>(), 0)..., 0 };
+					(void)Temp;
 				}
+
+				// Unlock from the components we wanted to access
+				Unlock(Allocation, SystemSerial);
 			}
 		}
 	}
@@ -676,15 +698,16 @@ struct TEntityTaskComponentsImpl<TIntegerSequence<int, Indices...>, T...>
 	{
 		if (IsValid())
 		{
-			FEntityAllocationWriteContext WriteContext(*EntityManager);
-			for (FEntityAllocationIteratorItem Item : EntityManager->Iterate(&Filter))
+			const uint64 SystemSerial = EntityManager->GetSystemSerial();
+			for (FEntityAllocation* Allocation : EntityManager->Iterate(&Filter))
 			{
-				FEntityAllocation* Allocation = Item;
-
 				// Lock on the components we want to access
-				auto ComponentData = MakeTuple( Accessors.template Get<Indices>().LockComponentData(Allocation, WriteContext)... );
+				Lock(Allocation);
 
-				FEntityIterationResult Result = (InCallback(Item, ComponentData.template Get<Indices>()...), FEntityIterationResult{});
+				FEntityIterationResult Result = (InCallback(Allocation, Accessors.template Get<Indices>()...), FEntityIterationResult{});
+
+				// Unlock from the components we wanted to access
+				Unlock(Allocation, SystemSerial);
 
 				if (!Result)
 				{
@@ -1079,13 +1102,13 @@ struct TEntityTaskBase
 	explicit TEntityTaskBase(FEntityManager* InEntityManager, const TEntityTaskComponents<ComponentTypes...>& InComponents)
 		: FilteredTask(InComponents)
 		, EntityManager(InEntityManager)
-		, WriteContext(*InEntityManager)
+		, SystemSerial(InEntityManager->GetSystemSerial())
 	{}
 
 	explicit TEntityTaskBase(FEntityManager* InEntityManager, const TFilteredEntityTask<ComponentTypes...>& InFilteredTask)
 		: FilteredTask(InFilteredTask)
 		, EntityManager(InEntityManager)
-		, WriteContext(*InEntityManager)
+		, SystemSerial(InEntityManager->GetSystemSerial())
 	{}
 
 	void Run(TaskImpl& TaskImplInstance)
@@ -1096,7 +1119,11 @@ struct TEntityTaskBase
 
 		for (FEntityAllocation* Allocation : EntityManager->Iterate(&FilteredTask.GetFilter()))
 		{
-			Caller::ForEachEntityImpl(TaskImplInstance, Allocation, WriteContext, FilteredTask.GetComponents());
+			FilteredTask.GetComponents().Lock(Allocation);
+
+			Caller::ForEachEntity(TaskImplInstance, Allocation, FilteredTask.GetComponents());
+
+			FilteredTask.GetComponents().Unlock(Allocation, SystemSerial);
 		}
 
 		PostTask(&TaskImplInstance);
@@ -1120,7 +1147,7 @@ private:
 
 	TFilteredEntityTask<ComponentTypes...> FilteredTask;
 	FEntityManager* EntityManager;
-	FEntityAllocationWriteContext WriteContext;
+	uint64 SystemSerial;
 };
 
 
@@ -1193,13 +1220,13 @@ struct TEntityAllocationTaskBase
 	explicit TEntityAllocationTaskBase(FEntityManager* InEntityManager, const TEntityTaskComponents<ComponentTypes...>& InComponents)
 		: ComponentFilter(InComponents)
 		, EntityManager(InEntityManager)
-		, WriteContext(*InEntityManager)
+		, SystemSerial(InEntityManager->GetSystemSerial())
 	{}
 
 	explicit TEntityAllocationTaskBase(FEntityManager* InEntityManager, const TFilteredEntityTask<ComponentTypes...>& InComponentFilter)
 		: ComponentFilter(InComponentFilter)
 		, EntityManager(InEntityManager)
-		, WriteContext(*InEntityManager)
+		, SystemSerial(InEntityManager->GetSystemSerial())
 	{}
 
 	void Run(TaskImpl& TaskImplInstance)
@@ -1208,9 +1235,15 @@ struct TEntityAllocationTaskBase
 
 		PreTask(&TaskImplInstance);
 
-		for (FEntityAllocationIteratorItem Item : EntityManager->Iterate(&ComponentFilter.GetFilter()))
+		for (FEntityAllocation* Allocation : EntityManager->Iterate(&ComponentFilter.GetFilter()))
 		{
-			Caller::ForEachAllocationImpl(TaskImplInstance, Item, WriteContext, ComponentFilter.GetComponents());
+			// Lock on the components we want to access
+			ComponentFilter.GetComponents().Lock(Allocation);
+
+			Caller::ForEachAllocation(TaskImplInstance, Allocation, ComponentFilter.GetComponents());
+
+			// Unlock from the components we wanted to access
+			ComponentFilter.GetComponents().Unlock(Allocation, SystemSerial);
 		}
 
 		PostTask(&TaskImplInstance);
@@ -1236,7 +1269,7 @@ protected:
 
 	TFilteredEntityTask<ComponentTypes...> ComponentFilter;
 	FEntityManager* EntityManager;
-	FEntityAllocationWriteContext WriteContext;
+	uint64 SystemSerial;
 };
 
 template<typename TaskImpl, typename... ComponentTypes>
@@ -1308,26 +1341,24 @@ template<typename...> struct TEntityTaskCaller_AutoExpansion;
 template<typename TaskImpl, int... Indices>
 struct TEntityTaskCaller_AutoExpansion<TaskImpl, TIntegerSequence<int, Indices...>>
 {
-	template<typename... AccessorTypes>
-	FORCEINLINE static void ForEachEntityImpl(TaskImpl& TaskImplInstance, const FEntityAllocation* Allocation, FEntityAllocationWriteContext WriteContext, const TEntityTaskComponents<AccessorTypes...>& Components)
+	template<typename... ComponentTypes>
+	FORCEINLINE static void ForEachEntity(TaskImpl& TaskImplInstance, const FEntityAllocation* Allocation, const TEntityTaskComponents<ComponentTypes...>& Components)
 	{
-		FEntityIterationResult Result;
-
-		// Lock the components we want to access
-		auto LockedComponentData = MakeTuple( Components.template GetAccessor<Indices>().LockComponentData(Allocation, WriteContext)... );
+		auto IterState = MakeTuple( Components.template GetAccessor<Indices>().CreateIterState(Allocation)... );
 
 		const int32 Num = Allocation->Num();
-		for (int32 ComponentOffset = 0; ComponentOffset < Num && Result.Value; ++ComponentOffset )
+		for (int32 ComponentOffset = 0; ComponentOffset < Num; ++ComponentOffset )
 		{
-			Result = (TaskImplInstance.ForEachEntity(LockedComponentData.template Get<Indices>().ComponentAtIndex(ComponentOffset)... ), Result);
+			TaskImplInstance.ForEachEntity( *IterState.template Get<Indices>()... );
+			int Temp[] = { (++IterState.template Get<Indices>(), 0)... };
+			(void)Temp;
 		}
 	}
 
-	template<typename... AccessorTypes>
-	FORCEINLINE static void ForEachAllocationImpl(TaskImpl& TaskImplInstance, FEntityAllocationIteratorItem Item, FEntityAllocationWriteContext WriteContext, const TEntityTaskComponents<AccessorTypes...>& Components)
+	template<typename... ComponentTypes>
+	FORCEINLINE static void ForEachAllocation(TaskImpl& TaskImplInstance, const FEntityAllocation* Allocation, const TEntityTaskComponents<ComponentTypes...>& Components)
 	{
-		auto LockedComponentData = MakeTuple( Components.template GetAccessor<Indices>().LockComponentData(Item.GetAllocation(), WriteContext)... );
-		TaskImplInstance.ForEachAllocation(Item, LockedComponentData.template Get<Indices>()...);
+		TaskImplInstance.ForEachAllocation(Allocation, Components.template GetAccessor<Indices>()...);
 	}
 };
 
@@ -1339,15 +1370,19 @@ struct TEntityTaskCaller<TaskImpl, NumComponents, true> : TEntityTaskCaller_Auto
 template<typename TaskImpl, int32 NumComponents>
 struct TEntityTaskCaller<TaskImpl, NumComponents, false>
 {
-	FORCEINLINE static void ForEachEntityImpl(...)
+	template<typename... ComponentTypes>
+	FORCEINLINE static void ForEachEntity(TaskImpl& TaskImplInstance, const FEntityAllocation* Allocation, const TEntityTaskComponents<ComponentTypes...>& Components)
 	{
-		static_assert(TNot<TIsSame<TaskImpl, TaskImpl>>::Value, "non-expanded entity iteration is not supported");
+		for (const auto& Entity : Components.IterateAllocation(Allocation))
+		{
+			TaskImplInstance.ForEachEntity(Entity);
+		}
 	}
 
-	template<typename... AccessorTypes>
-	FORCEINLINE static void ForEachAllocationImpl(TaskImpl& TaskImplInstance, FEntityAllocationIteratorItem Item, const TEntityTaskComponents<AccessorTypes...>& Components)
+	template<typename... ComponentTypes>
+	FORCEINLINE static void ForEachAllocation(TaskImpl& TaskImplInstance, const FEntityAllocation* Allocation, const TEntityTaskComponents<ComponentTypes...>& Components)
 	{
-		TaskImplInstance.ForEachAllocation(Item, Components);
+		TaskImplInstance.ForEachAllocation(Allocation, Components);
 	}
 };
 

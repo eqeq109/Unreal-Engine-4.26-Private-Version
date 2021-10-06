@@ -142,19 +142,13 @@ namespace Audio
 
 	void FQuartzClockTickRate::SetFramesPerTick(int32 InNewFramesPerTick)
 	{
-		if (InNewFramesPerTick < 1)
-		{
-			UE_LOG(LogAudioQuartz, Warning, TEXT("Quartz Metronme requires at least 1 frame per tick, clamping request"));
-			InNewFramesPerTick = 1;
-		}
-
 		FramesPerTick = InNewFramesPerTick;
 		RecalculateDurationsBasedOnFramesPerTick();
 	}
 
 	void FQuartzClockTickRate::SetMillisecondsPerTick(float InNewMillisecondsPerTick)
 	{
-		FramesPerTick = FMath::Max(1.0f, (InNewMillisecondsPerTick * SampleRate) / 1000.f);
+		FramesPerTick = (InNewMillisecondsPerTick / 1000.f) * SampleRate;
 		RecalculateDurationsBasedOnFramesPerTick();
 	}
 
@@ -162,7 +156,7 @@ namespace Audio
 	{
 		check(InNewThirtySecondNotesPerMinute > 0);
 
-		FramesPerTick = FMath::Max(1.0f, (60.f * SampleRate ) / InNewThirtySecondNotesPerMinute);
+		FramesPerTick = (60.f / InNewThirtySecondNotesPerMinute) * SampleRate;
 		RecalculateDurationsBasedOnFramesPerTick();
 	}
 
@@ -175,7 +169,7 @@ namespace Audio
 		// FramesPerTick = 1/8 * (60.f / (InNewBeatsPerMinute)) * SampleRate;
 		// (60.0 / 8.0) = 7.5f
 
-		FramesPerTick = FMath::Max(1.0f, (7.5f * SampleRate) / InNewBeatsPerMinute);
+		FramesPerTick = (7.5f / InNewBeatsPerMinute) * SampleRate;
 		RecalculateDurationsBasedOnFramesPerTick();
 	}
 
@@ -183,7 +177,7 @@ namespace Audio
 	{
 		check(InNewSampleRate >= 0);
 
-		FramesPerTick = FMath::Max(1.0f, (InNewSampleRate / SampleRate) * static_cast<float>(FramesPerTick));
+		FramesPerTick = (InNewSampleRate / SampleRate) * static_cast<float>(FramesPerTick);
 		SampleRate = InNewSampleRate;
 
 		RecalculateDurationsBasedOnFramesPerTick();
@@ -192,12 +186,10 @@ namespace Audio
 	int64 FQuartzClockTickRate::GetFramesPerDuration(EQuartzCommandQuantization InDuration) const
 	{
 		const int64 FramesPerDotted16th = FramesPerTick * 3;
-		const int64 FramesPer16thTriplet = 4.f * FramesPerTick / 3.f;
+		const int64 FramesPer16thTriplet = 8.f * FramesPerTick / 3.f;
 
 		switch (InDuration)
 		{
-		case EQuartzCommandQuantization::None:
-			return 0;
 
 			// NORMAL
 		case EQuartzCommandQuantization::Tick:
@@ -361,7 +353,6 @@ namespace Audio
 	)
 		: ClockName(RHS.ClockName)
 		, ClockHandleName(RHS.ClockHandleName)
-		, OtherClockName(RHS.OtherClockName)
 		, QuantizedCommandPtr(RHS.QuantizedCommandPtr)
 		, QuantizationBoundary(RHS.QuantizationBoundary)
 		, GameThreadCommandQueue(RHS.GameThreadCommandQueue)
@@ -380,11 +371,7 @@ namespace Audio
 
 	void IQuartzQuantizedCommand::OnQueued(const FQuartzQuantizedCommandInitInfo& InCommandInitInfo)
 	{
-		Audio::FMixerDevice* MixerDevice = InCommandInitInfo.OwningClockPointer->GetMixerDevice();
-		if (MixerDevice)
-		{
-			MixerDevice->QuantizedEventClockManager.PushLatencyTrackerResult(FQuartzCrossThreadMessage::RequestRecieved());
-		}
+		InCommandInitInfo.OwningClockPointer->GetMixerDevice()->QuantizedEventClockManager.PushLatencyTrackerResult(FQuartzCrossThreadMessage::RequestRecieved());
 
 		GameThreadCommandQueue = InCommandInitInfo.GameThreadCommandQueue; 
 		GameThreadDelegateID = InCommandInitInfo.GameThreadDelegateID;
@@ -401,7 +388,6 @@ namespace Audio
 			GameThreadCommandQueue->PushEvent(Data);
 		}
 
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("OnQueued() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		OnQueuedCustom(InCommandInitInfo);
 	}
 
@@ -417,21 +403,11 @@ namespace Audio
 			GameThreadCommandQueue->PushEvent(Data);
 		}
 
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("FailedToQueue() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		FailedToQueueCustom();
 	}
 
 	void IQuartzQuantizedCommand::AboutToStart()
 	{
-		// only call once for the lifespan of this event
-		if (bAboutToStartHasBeenCalled)
-		{
-			return;
-		}
-
-		bAboutToStartHasBeenCalled = true;
-
-
 		if (GameThreadCommandQueue.IsValid())
 		{
 			FQuartzQuantizedCommandDelegateData Data;
@@ -444,7 +420,6 @@ namespace Audio
 			GameThreadCommandQueue->PushEvent(Data);
 		}
 
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("AboutToStart() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		AboutToStartCustom();
 	}
 
@@ -461,29 +436,26 @@ namespace Audio
 
 			GameThreadCommandQueue->PushEvent(OnStartedData);
 
-			// 			if (!IsLooping())
-			// 			{
-			// 				FQuartzQuantizedCommandDelegateData CompletedData;
-			// 				CompletedData.DelegateSubType = EQuartzCommandDelegateSubType::CommandCompleted;
-			// 				CompletedData.DelegateID = GameThreadDelegateID;
-			// 
-			// 				GameThreadCommandQueue->PushEvent(CompletedData);
-			// 			}
+// 			if (!IsLooping())
+// 			{
+// 				FQuartzQuantizedCommandDelegateData CompletedData;
+// 				CompletedData.DelegateSubType = EQuartzCommandDelegateSubType::CommandCompleted;
+// 				CompletedData.DelegateID = GameThreadDelegateID;
+// 
+// 				GameThreadCommandQueue->PushEvent(CompletedData);
+// 			}
 		}
 
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("OnFinalCallback() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		OnFinalCallbackCustom(InNumFramesLeft);
 	}
 
 	void IQuartzQuantizedCommand::OnClockPaused()
 	{
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("OnClockPaused() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		OnClockPausedCustom();
 	}
 
 	void IQuartzQuantizedCommand::OnClockStarted()
 	{
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("OnClockStarted() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		OnClockStartedCustom();
 	}
 
@@ -501,7 +473,6 @@ namespace Audio
 			GameThreadCommandQueue->PushEvent(Data);
 		}
 
-		UE_LOG(LogAudioQuartz, Verbose, TEXT("Cancel() called for quantized event type: [%s]"), *GetCommandName().ToString());
 		CancelCustom();
 	}
 
@@ -514,7 +485,6 @@ namespace Audio
 
 		if (CommandPtr && MixerDevice && !OwningClockName.IsNone())
 		{
-			UE_LOG(LogAudioQuartz, Verbose, TEXT("OnQueued() called for quantized event type: [%s]"), *CommandPtr->GetCommandName().ToString());
 			return MixerDevice->QuantizedEventClockManager.CancelCommandOnClock(OwningClockName, CommandPtr);
 		}
 
@@ -616,15 +586,3 @@ namespace Audio
 
 
 } // namespace Audio
-
-bool FQuartzTransportTimeStamp::IsZero() const
-{
-	return (!Bars) && (!Beat) && FMath::IsNearlyZero(BeatFraction);
-}
-
-void FQuartzTransportTimeStamp::Reset()
-{
-	Bars = 0;
-	Beat = 0;
-	BeatFraction = 0.f;
-}

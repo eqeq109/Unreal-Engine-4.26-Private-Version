@@ -26,22 +26,17 @@ struct FEditorParameterGroup
 {
 	GENERATED_USTRUCT_BODY()
 
-	FEditorParameterGroup()
-		: GroupAssociation(GlobalParameter)
-		, GroupSortPriority(0)
-	{}
-
 	UPROPERTY()
 	FName GroupName;
 
 	UPROPERTY()
-	TEnumAsByte<EMaterialParameterAssociation> GroupAssociation= EMaterialParameterAssociation::LayerParameter;
+	TEnumAsByte<EMaterialParameterAssociation> GroupAssociation;
 
 	UPROPERTY(EditAnywhere, editfixedsize, Instanced, Category=EditorParameterGroup)
 	TArray<class UDEditorParameterValue*> Parameters;
 
 	UPROPERTY()
-	int32 GroupSortPriority=0;
+	int32 GroupSortPriority;
 };
 
 USTRUCT()
@@ -324,9 +319,8 @@ class UNREALED_API UMaterialEditorInstanceConstant : public UObject
 	 *
 	 * @param ParentMaterial		Name of material to search for groups.
 	 * @param ParameterValue		Current data to be grouped
-	 * @param OptionalGroupName		Optional Group Name that be used directly instead of resolving it from the material
 	 */
-	void AssignParameterToGroup(UMaterial* ParentMaterial, UDEditorParameterValue* ParameterValue, const FName* OptionalGroupName = nullptr);
+	void AssignParameterToGroup(UMaterial* ParentMaterial, UDEditorParameterValue* ParameterValue);
 
 	static FName GlobalGroupPrefix;
 

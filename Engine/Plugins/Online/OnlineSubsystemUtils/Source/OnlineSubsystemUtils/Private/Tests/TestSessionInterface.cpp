@@ -4,7 +4,6 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/GameMode.h"
 #include "Kismet/GameplayStatics.h"
-#include "UObject/CoreOnlineFwd.h"
 #include "OnlineSubsystemUtils.h"
 #include "OnlineSubsystemSessionSettings.h"
 
@@ -178,7 +177,7 @@ void FTestSessionInterface::Test(UWorld* InWorld, bool bTestLAN, bool bIsPresenc
 
 		OnMatchmakingCompleteDelegateHandle = SessionInt->AddOnMatchmakingCompleteDelegate_Handle(OnMatchmakingCompleteDelegate);
 
-		TArray<FUniqueNetIdRef> LocalPlayers;
+		TArray<TSharedRef<const FUniqueNetId>> LocalPlayers;
 		LocalPlayers.Add(UserId.ToSharedRef());
 
 		SessionInt->StartMatchmaking(LocalPlayers, NAME_GameSession, *HostSettings, SearchSettingsRef);
@@ -229,7 +228,7 @@ void FTestSessionInterface::OnReadFriendsListComplete(int32 LocalUserNum, bool b
 	}
 }
 
-void FTestSessionInterface::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId, FUniqueNetIdPtr InUserId, const FOnlineSessionSearchResult& SearchResult)
+void FTestSessionInterface::OnSessionUserInviteAccepted(bool bWasSuccessful, int32 ControllerId, TSharedPtr<const FUniqueNetId> InUserId, const FOnlineSessionSearchResult& SearchResult)
 {
 	UE_LOG_ONLINE_SESSION(Verbose, TEXT("OnSessionInviteAccepted ControllerId: %d bSuccess: %d"), ControllerId, bWasSuccessful);
 	// Don't clear invite accept delegate
@@ -268,13 +267,13 @@ FDelegateHandle FTestSessionInterface::DestroyExistingSession(FName SessionName,
 	return DelegateHandle;
 }
 
-void FTestSessionInterface::OnRegisterPlayerComplete(FName SessionName, const TArray< FUniqueNetIdRef >& Players, bool bWasSuccessful)
+void FTestSessionInterface::OnRegisterPlayerComplete(FName SessionName, const TArray< TSharedRef<const FUniqueNetId> >& Players, bool bWasSuccessful)
 {
 	UE_LOG_ONLINE_SESSION(Verbose, TEXT("OnRegisterPlayerComplete %s bSuccess: %d"), *SessionName.ToString(), bWasSuccessful);
 	SessionInt->ClearOnRegisterPlayersCompleteDelegate_Handle(OnRegisterPlayersCompleteDelegateHandle);
 }
 
-void FTestSessionInterface::OnUnregisterPlayerComplete(FName SessionName, const TArray< FUniqueNetIdRef >& Players, bool bWasSuccessful)
+void FTestSessionInterface::OnUnregisterPlayerComplete(FName SessionName, const TArray< TSharedRef<const FUniqueNetId> >& Players, bool bWasSuccessful)
 {
 	UE_LOG_ONLINE_SESSION(Verbose, TEXT("OnUnregisterPlayerComplete %s bSuccess: %d"), *SessionName.ToString(), bWasSuccessful);
 	SessionInt->ClearOnUnregisterPlayersCompleteDelegate_Handle(OnUnregisterPlayersCompleteDelegateHandle);
@@ -489,12 +488,12 @@ bool FTestSessionInterface::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevic
 			FString SessionIdStr;
 			if (FParse::Token(Cmd, SessionIdStr, true))
 			{
-				FUniqueNetIdPtr SessionId = SessionInt->CreateSessionIdFromString(SessionIdStr);
+				TSharedPtr<const FUniqueNetId> SessionId = SessionInt->CreateSessionIdFromString(SessionIdStr);
 				if (SessionId.IsValid())
 				{
 					FOnSingleSessionResultCompleteDelegate CompletionDelegate;
 					CompletionDelegate.BindRaw(this, &FTestSessionInterface::OnFindSessionByIdComplete);
-					FUniqueNetIdPtr LocalUserId = Identity->GetUniquePlayerId(LocalUserNum);
+					TSharedPtr<const FUniqueNetId> LocalUserId = Identity->GetUniquePlayerId(LocalUserNum);
 					check(LocalUserId.IsValid());
 					SessionInt->FindSessionById(*LocalUserId, *SessionId, *LocalUserId, CompletionDelegate);
 				}
@@ -539,7 +538,7 @@ bool FTestSessionInterface::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevic
 				TCHAR FriendIdStr[256];
 				if (FParse::Token(Cmd, FriendIdStr, UE_ARRAY_COUNT(FriendIdStr), true))
 				{
-					FUniqueNetIdPtr FriendId = Identity->CreateUniquePlayerId((uint8*)FriendIdStr, FCString::Strlen(FriendIdStr));
+					TSharedPtr<const FUniqueNetId> FriendId = Identity->CreateUniquePlayerId((uint8*)FriendIdStr, FCString::Strlen(FriendIdStr));
 					if (!FriendId.IsValid())
 					{
 						FriendId = Identity->CreateUniquePlayerId(FriendIdStr);
@@ -556,7 +555,7 @@ bool FTestSessionInterface::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevic
 		}
 		else if (FParse::Command(&Cmd, TEXT("LISTFRIENDSESSIONS")))
 		{
-			TArray<FUniqueNetIdRef> FriendList;
+			TArray<TSharedRef<const FUniqueNetId>> FriendList;
 			for (int32 FriendIdx = 0; FriendIdx < FriendsCache.Num(); FriendIdx++)
 			{
 				const FOnlineFriend& Friend = *FriendsCache[FriendIdx];
@@ -642,7 +641,7 @@ bool FTestSessionInterface::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevic
 					if (!bFound)
 					{
 						// use friend str as id instead of display name
-						FUniqueNetIdPtr FriendUserId = Identity->CreateUniquePlayerId(FriendStr);
+						TSharedPtr<const FUniqueNetId> FriendUserId = Identity->CreateUniquePlayerId(FriendStr);
 						if (FriendUserId.IsValid())
 						{	
 							SessionInt->SendSessionInviteToFriend(LocalUserNum, SessionName, *FriendUserId);

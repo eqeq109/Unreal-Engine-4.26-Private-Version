@@ -52,10 +52,7 @@ void FCurveEditorDragOperation_Marquee::OnEndDrag(FVector2D InitialPosition, FVe
 
 	if (LockedToView)
 	{
-		if (!LockedToView->GetPointsWithinWidgetRange(Marquee, &AllPoints))
-		{
-			LockedToView->GetCurveWithinWidgetRange(Marquee, &AllPoints);
-		}
+		LockedToView->GetPointsWithinWidgetRange(Marquee, &AllPoints);
 	}
 	else
 	{
@@ -73,58 +70,48 @@ void FCurveEditorDragOperation_Marquee::OnEndDrag(FVector2D InitialPosition, FVe
 
 			if (ClippedLocalMarquee.IsValid() && !ClippedLocalMarquee.IsEmpty())
 			{
-				if (!View->GetPointsWithinWidgetRange(ClippedLocalMarquee, &AllPoints))
-				{
-					View->GetCurveWithinWidgetRange(ClippedLocalMarquee, &AllPoints);
-				}
+				View->GetPointsWithinWidgetRange(ClippedLocalMarquee, &AllPoints);
 			}
 		}
 	}
 
 	const bool bIsShiftDown = MouseEvent.IsShiftDown();
-	const bool bIsAltDown = MouseEvent.IsAltDown();
-	const bool bIsControlDown = MouseEvent.IsControlDown();
+	const bool bRemoveFromSelection = MouseEvent.IsAltDown();
 
-	if (!bIsShiftDown && !bIsAltDown && !bIsControlDown)
+	TOptional<ECurvePointType> MatchPointType;
+
+	if (!bIsShiftDown && !bRemoveFromSelection)
 	{
 		CurveEditor->Selection.Clear();
 	}
-
-	// If there are any points to be selected, prefer selecting points over tangents
-	bool bPreferPointSelection = false;
-	for (const FCurvePointHandle& Point : AllPoints)
+	else if (CurveEditor->Selection.Count() != 0)
 	{
-		if (Point.PointType == ECurvePointType::Key)
-		{
-			bPreferPointSelection = true;
-			break;
-		}
+		MatchPointType = CurveEditor->Selection.GetSelectionType();
 	}
 
 	// Now that we've gathered the overlapping points, perform the relevant selection
 	for (const FCurvePointHandle& Point : AllPoints)
 	{
-		if (bIsAltDown)
+		// If we're able to specify a point type, prefer keys
+		if (!MatchPointType.IsSet() && Point.PointType == ECurvePointType::Key)
+		{
+			// We found a key, so start selecting with keys
+			CurveEditor->Selection.Clear();
+			MatchPointType.Emplace(ECurvePointType::Key);
+		}
+
+		if (MatchPointType.IsSet() && Point.PointType != MatchPointType.GetValue())
+		{
+			// Point does not match what we want
+			continue;
+		}
+		else if (bRemoveFromSelection)
 		{
 			CurveEditor->Selection.Remove(Point);
 		}
-		else if (bIsControlDown)
-		{
-			CurveEditor->Selection.Toggle(Point);
-		}
 		else
 		{
-			if (bPreferPointSelection)
-			{
-				if (Point.PointType == ECurvePointType::Key)
-				{
-					CurveEditor->Selection.Add(Point);
-				}
-			}
-			else
-			{
-				CurveEditor->Selection.Add(Point);
-			}
+			CurveEditor->Selection.Add(Point);
 		}
 	}
 }

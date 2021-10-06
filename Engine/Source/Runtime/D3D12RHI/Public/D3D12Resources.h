@@ -9,12 +9,10 @@
 #include "BoundShaderStateCache.h"
 #include "D3D12ShaderResources.h"
 
-constexpr D3D12_RESOURCE_STATES BackBufferBarrierWriteTransitionTargets = D3D12_RESOURCE_STATES(
-	uint32(D3D12_RESOURCE_STATE_RENDER_TARGET) |
-	uint32(D3D12_RESOURCE_STATE_UNORDERED_ACCESS) |
-	uint32(D3D12_RESOURCE_STATE_STREAM_OUT) |
-	uint32(D3D12_RESOURCE_STATE_COPY_DEST) |
-	uint32(D3D12_RESOURCE_STATE_RESOLVE_DEST));
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+constexpr D3D12_RESOURCE_STATES BackBufferBarrierWriteTransitionTargets = D3D12_RESOURCE_STATE_RENDER_TARGET | D3D12_RESOURCE_STATE_UNORDERED_ACCESS |
+	D3D12_RESOURCE_STATE_STREAM_OUT | D3D12_RESOURCE_STATE_COPY_DEST | D3D12_RESOURCE_STATE_RESOLVE_DEST;
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 // Forward Decls
 class FD3D12Resource;
@@ -129,17 +127,13 @@ private:
 	bool bRequiresResourceStateTracking : 1;
 	bool bDepthStencil : 1;
 	bool bDeferDelete : 1;
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 	bool bBackBuffer : 1;
-
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 	D3D12_HEAP_TYPE HeapType;
 	D3D12_GPU_VIRTUAL_ADDRESS GPUVirtualAddress;
 	void* ResourceBaseAddress;
-	int32 NumMapCalls = 0;
 	FName DebugName;
-
-#if NV_AFTERMATH
-	GFSDK_Aftermath_ResourceHandle AftermathHandle;
-#endif
 
 #if UE_BUILD_DEBUG
 	static int64 TotalResourceCount;
@@ -172,16 +166,8 @@ public:
 
 	inline void* Map(const D3D12_RANGE* ReadRange = nullptr)
 	{
-		if (NumMapCalls == 0)
-		{
-			check(Resource);
-			VERIFYD3D12RESULT(Resource->Map(0, ReadRange, &ResourceBaseAddress));
-		}
-		else
-		{
-			check(ResourceBaseAddress);
-		}
-		++NumMapCalls;
+		check(Resource);
+		VERIFYD3D12RESULT(Resource->Map(0, ReadRange, &ResourceBaseAddress));
 
 		return ResourceBaseAddress;
 	}
@@ -190,17 +176,11 @@ public:
 	{
 		check(Resource);
 		check(ResourceBaseAddress);
-		check(NumMapCalls > 0);
+		Resource->Unmap(0, nullptr);
 
-		--NumMapCalls;
-		if (NumMapCalls == 0)
-		{
-			Resource->Unmap(0, nullptr);
-			ResourceBaseAddress = nullptr;
-		}
+		ResourceBaseAddress = nullptr;
 	}
 
-	ID3D12Pageable* GetPageable();
 	D3D12_RESOURCE_DESC const& GetDesc() const { return Desc; }
 	D3D12_HEAP_TYPE GetHeapType() const { return HeapType; }
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const { return GPUVirtualAddress; }
@@ -224,9 +204,10 @@ public:
 	void SetCompressedState(D3D12_RESOURCE_STATES State) { CompressedState = State; }
 #endif
 	bool RequiresResourceStateTracking() const { return bRequiresResourceStateTracking; }
-
+#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 	inline bool IsBackBuffer() const { return bBackBuffer; }
 	inline void SetIsBackBuffer(bool bBackBufferIn) { bBackBuffer = bBackBufferIn; }
+#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 	void SetName(const TCHAR* Name)
 	{
@@ -708,8 +689,6 @@ public:
 	};
 
 private:
-
-	FCriticalSection DeleteTaskCS;
 	TQueue<FAsyncTask<FD3D12AsyncDeletionWorker>*> DeleteTasks;
 
 };

@@ -2501,8 +2501,7 @@ bool UUnrealEdEngine::Exec_Actor( UWorld* InWorld, const TCHAR* Str, FOutputDevi
 		{
 			const FScopedTransaction Transaction( bComponentsSelected ? NSLOCTEXT("UnrealEd", "DeleteComponents", "Delete Components") : NSLOCTEXT("UnrealEd", "DeleteActors", "Delete Actors") );
 			FEditorDelegates::OnDeleteActorsBegin.Broadcast();
-			const bool bCheckRef = GetDefault<ULevelEditorMiscSettings>()->bCheckReferencesOnDelete;
-			edactDeleteSelected(InWorld, true, bCheckRef, bCheckRef);
+			edactDeleteSelected( InWorld );
 			FEditorDelegates::OnDeleteActorsEnd.Broadcast();
 		}
 		return true;

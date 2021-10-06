@@ -9,11 +9,9 @@
 #include "DatasmithFacadeMesh.h"
 #include "DatasmithFacadeMetaData.h"
 #include "DatasmithFacadeTexture.h"
-#include "DatasmithFacadeVariant.h"
 
 // Datasmith SDK.
 #include "DatasmithExporterManager.h"
-#include "DatasmithExportOptions.h"
 #include "DatasmithSceneExporter.h"
 
 #include "Misc/Paths.h"
@@ -24,30 +22,21 @@ FDatasmithFacadeScene::FDatasmithFacadeScene(
 	const TCHAR* InApplicationProductName,
 	const TCHAR* InApplicationProductVersion
 ) :
+	ApplicationHostName(InApplicationHostName),
+	ApplicationVendorName(InApplicationVendorName),
+	ApplicationProductName(InApplicationProductName),
+	ApplicationProductVersion(InApplicationProductVersion),
 	SceneRef(FDatasmithSceneFactory::CreateScene(TEXT(""))),
-	SceneExporterRef(MakeShared<FDatasmithSceneExporter>())
+	ExportedTextureSet(MakeShared<TSet<FString>>()),
+	bCleanUpNeeded(true)
 {
-	// Set the name of the host application used to build the scene.
-	SceneRef->SetHost(InApplicationHostName);
-
-	// Set the vendor name of the application used to build the scene.
-	SceneRef->SetVendor(InApplicationVendorName);
-
-	// Set the product name of the application used to build the scene.
-	SceneRef->SetProductName(InApplicationProductName);
-
-	// Set the product version of the application used to build the scene.
-	SceneRef->SetProductVersion(InApplicationProductVersion);
 }
 
 void FDatasmithFacadeScene::AddActor(
 	FDatasmithFacadeActor* InActorPtr
 )
 {
-	if (InActorPtr)
-	{
-		SceneRef->AddActor(InActorPtr->GetDatasmithActorElement());
-	}
+	InActorPtr->BuildScene(*this);
 }
 
 int32 FDatasmithFacadeScene::GetActorsCount() const
@@ -79,10 +68,7 @@ void FDatasmithFacadeScene::AddMaterial(
 	FDatasmithFacadeBaseMaterial* InMaterialPtr
 )
 {
-	if (InMaterialPtr)
-	{
-		SceneRef->AddMaterial(InMaterialPtr->GetDatasmithBaseMaterial());
-	}
+	InMaterialPtr->BuildScene( *this );
 }
 
 int32 FDatasmithFacadeScene::GetMaterialsCount() const
@@ -112,90 +98,18 @@ void FDatasmithFacadeScene::RemoveMaterial(
 	}
 }
 
-FDatasmithFacadeMeshElement* FDatasmithFacadeScene::ExportDatasmithMesh(
-	FDatasmithFacadeMesh* Mesh,
-	FDatasmithFacadeMesh* CollisionMesh /*= nullptr*/
-)
-{
-	TSharedPtr<IDatasmithMeshElement> ExportedMeshElement;
-	FString AssetOutputPath = SceneExporterRef->GetAssetsOutputPath();
-
-	if (Mesh && !AssetOutputPath.IsEmpty())
-	{
-		FDatasmithMesh& MeshRef = Mesh->GetDatasmithMesh();
-		FDatasmithMesh* CollitionMeshPtr = CollisionMesh ? &CollisionMesh->GetDatasmithMesh() : nullptr;
-		ExportedMeshElement = FDatasmithMeshExporter().ExportToUObject( *AssetOutputPath, Mesh->GetName(), MeshRef, CollitionMeshPtr, FDatasmithExportOptions::LightmapUV );
-	}
-	return ExportedMeshElement.IsValid() ? new FDatasmithFacadeMeshElement(ExportedMeshElement.ToSharedRef()) : nullptr;
-}
-
-bool FDatasmithFacadeScene::ExportDatasmithMesh(
-	FDatasmithFacadeMeshElement* MeshElement,
-	FDatasmithFacadeMesh* Mesh,
-	FDatasmithFacadeMesh* CollisionMesh /*= nullptr*/
-)
-{
-	TSharedPtr<IDatasmithMeshElement> ExportedMeshElement;
-	FString AssetOutputPath = SceneExporterRef->GetAssetsOutputPath();
-
-	if (MeshElement && Mesh && !AssetOutputPath.IsEmpty())
-	{
-		TSharedPtr<IDatasmithMeshElement> MeshElementSharedPtr = MeshElement->GetDatasmithMeshElement();
-		FDatasmithMesh& MeshRef = Mesh->GetDatasmithMesh();
-		FDatasmithMesh* CollitionMeshPtr = CollisionMesh ? &CollisionMesh->GetDatasmithMesh() : nullptr;
-		return FDatasmithMeshExporter().ExportToUObject(MeshElementSharedPtr, *AssetOutputPath, MeshRef, CollitionMeshPtr, FDatasmithExportOptions::LightmapUV);
-	}
-	return false;
-}
-
 void FDatasmithFacadeScene::AddMesh(
-	FDatasmithFacadeMeshElement* InMeshPtr
+	FDatasmithFacadeMesh* InMeshPtr
 )
 {
-	if (InMeshPtr)
-	{
-		SceneRef->AddMesh(InMeshPtr->GetDatasmithMeshElement());
-	}
-}
-
-FDatasmithFacadeMeshElement* FDatasmithFacadeScene::GetNewMesh(
-	int32 MeshIndex
-)
-{
-	if (const TSharedPtr<IDatasmithMeshElement> DSMesh = SceneRef->GetMesh(MeshIndex))
-	{
-		return new FDatasmithFacadeMeshElement(DSMesh.ToSharedRef());
-	}
-
-	return nullptr;
-}
-
-void FDatasmithFacadeScene::RemoveMesh(
-	FDatasmithFacadeMeshElement* InMeshElementPtr
-)
-{
-	if (InMeshElementPtr)
-	{
-		SceneRef->RemoveMesh(InMeshElementPtr->GetDatasmithMeshElement());
-	}
+	SceneElementSet.Add( TSharedPtr<FDatasmithFacadeElement>( InMeshPtr ) );
 }
 
 void FDatasmithFacadeScene::AddTexture(
 	FDatasmithFacadeTexture* InTexturePtr
 )
 {
-	if (InTexturePtr)
-	{
-		// Make sure ElementHash is valid
-		TSharedRef<IDatasmithTextureElement> TextureElement = InTexturePtr->GetDatasmithTextureElement();
-
-		FMD5Hash FileHash = FMD5Hash::HashFile(TextureElement->GetFile());
-		TextureElement->SetFileHash(FileHash);
-
-		TextureElement->CalculateElementHash(true);
-
-		SceneRef->AddTexture(TextureElement);
-	}
+	InTexturePtr->BuildScene( *this );
 }
 
 int32 FDatasmithFacadeScene::GetTexturesCount() const
@@ -222,48 +136,11 @@ void FDatasmithFacadeScene::RemoveTexture(
 	SceneRef->RemoveTexture(InTexturePtr->GetDatasmithTextureElement());
 }
 
-void FDatasmithFacadeScene::AddLevelVariantSets(
-	FDatasmithFacadeLevelVariantSets* InLevelVariantSetsPtr
-)
-{
-	if (InLevelVariantSetsPtr)
-	{
-		SceneRef->AddLevelVariantSets(InLevelVariantSetsPtr->GetDatasmithLevelVariantSets());
-	}
-}
-
-int32 FDatasmithFacadeScene::GetLevelVariantSetsCount() const
-{
-	return SceneRef->GetLevelVariantSetsCount();
-}
-
-FDatasmithFacadeLevelVariantSets* FDatasmithFacadeScene::GetNewLevelVariantSets(
-	int32 LevelVariantSetsIndex
-)
-{
-	if (TSharedPtr<IDatasmithLevelVariantSetsElement> LevelVariantSetsElement = SceneRef->GetLevelVariantSets(LevelVariantSetsIndex))
-	{
-		return new FDatasmithFacadeLevelVariantSets(LevelVariantSetsElement.ToSharedRef());
-	}
-
-	return nullptr;
-}
-
-void FDatasmithFacadeScene::RemoveLevelVariantSets(
-	FDatasmithFacadeLevelVariantSets* InLevelVariantSetsPtr
-)
-{
-	SceneRef->RemoveLevelVariantSets(InLevelVariantSetsPtr->GetDatasmithLevelVariantSets());
-}
-
 void FDatasmithFacadeScene::AddMetaData(
 	FDatasmithFacadeMetaData* InMetaData
 )
 {
-	if (InMetaData)
-	{
-		SceneRef->AddMetaData(InMetaData->GetDatasmithMetaDataElement());
-	}
+	InMetaData->BuildScene( *this );
 }
 
 int32 FDatasmithFacadeScene::GetMetaDataCount() const
@@ -283,26 +160,34 @@ FDatasmithFacadeMetaData* FDatasmithFacadeScene::GetNewMetaData(
 	return nullptr;
 }
 
-FDatasmithFacadeMetaData* FDatasmithFacadeScene::GetNewMetaData(
-	FDatasmithFacadeElement* Element
-)
-{
-	if (Element)
-	{
-		if (TSharedPtr<IDatasmithMetaDataElement> MetaDataElement = SceneRef->GetMetaData(Element->GetDatasmithElement()))
-		{
-			return new FDatasmithFacadeMetaData(MetaDataElement.ToSharedRef());
-		}
-	}
-
-	return nullptr;
-}
-
 void FDatasmithFacadeScene::RemoveMetaData(
 	FDatasmithFacadeMetaData* InMetaDataPtr
 )
 {
 	SceneRef->RemoveMetaData(InMetaDataPtr->GetDatasmithMetaDataElement());
+}
+
+void FDatasmithFacadeScene::ExportAssets(
+	const TCHAR* InAssetFolder
+)
+{
+	// If applicable, update SceneExporter with new folder
+	if (FCString::Strlen(SceneExporterRef->GetAssetsOutputPath()) == 0)
+	{
+		SceneExporterRef->SetOutputPath(InAssetFolder);
+	}
+	else
+	{
+		ensure(FCString::Strcmp(SceneExporterRef->GetAssetsOutputPath(), InAssetFolder) == 0);
+	}
+
+	FString AssetFolder(InAssetFolder);
+
+	// Build and export the Datasmith scene element assets.
+	for (TSharedPtr<FDatasmithFacadeElement> ElementPtr : SceneElementSet)
+	{
+		ElementPtr->ExportAsset(AssetFolder);
+	}
 }
 
 //This function is a temporary workaround to make sure Materials and texture are not deleted from the scene.
@@ -407,9 +292,42 @@ void ResetBuiltFacadeElement(TSharedRef<IDatasmithScene>& SceneRef)
 	}
 }
 
-void FDatasmithFacadeScene::CleanUp()
+void FDatasmithFacadeScene::BuildScene(
+	const TCHAR* InSceneName
+)
 {
-	FDatasmithSceneUtils::CleanUpScene(SceneRef, true);
+	// Initialize the Datasmith scene.
+	SceneRef->SetName(InSceneName);
+	ResetBuiltFacadeElement(SceneRef);
+
+	// Set the name of the host application used to build the scene.
+	SceneRef->SetHost(*ApplicationHostName);
+
+	// Set the vendor name of the application used to build the scene.
+	SceneRef->SetVendor(*ApplicationVendorName);
+
+	// Set the product name of the application used to build the scene.
+	SceneRef->SetProductName(*ApplicationProductName);
+
+	// Set the product version of the application used to build the scene.
+	SceneRef->SetProductVersion(*ApplicationProductVersion);
+
+	// Set Sets the original path resources were stored.
+	SceneRef->SetResourcePath(SceneExporterRef->GetOutputPath());
+
+	// Build the collected scene elements and add them to the Datasmith scene.
+	for (TSharedPtr<FDatasmithFacadeElement> ElementPtr : SceneElementSet)
+	{
+		ElementPtr->BuildScene(*this);
+	}
+
+	if (bCleanUpNeeded)
+	{
+		// Remove unused assets
+		FDatasmithSceneUtils::CleanUpScene(SceneRef, true);
+	}
+
+	SceneElementSet.Empty();
 }
 
 void FDatasmithFacadeScene::PreExport()
@@ -418,37 +336,10 @@ void FDatasmithFacadeScene::PreExport()
 	FDatasmithExporterManager::Initialize();
 
 	// Create a Datasmith scene exporter.
-	SceneExporterRef->Reset();
+	SceneExporterRef = MakeShared<FDatasmithSceneExporter>();
 
 	// Start measuring the time taken to export the scene.
 	SceneExporterRef->PreExport();
-}
-
-void FDatasmithFacadeScene::SetName(const TCHAR* InName)
-{
-	SceneExporterRef->SetName(InName);
-	SceneRef->SetName(SceneExporterRef->GetName());
-}
-
-const TCHAR* FDatasmithFacadeScene::GetName() const
-{
-	return SceneExporterRef->GetName();
-}
-
-void FDatasmithFacadeScene::SetOutputPath(const TCHAR* InOutputPath)
-{
-	SceneExporterRef->SetOutputPath(InOutputPath);
-	SceneRef->SetResourcePath(SceneExporterRef->GetOutputPath());
-}
-
-const TCHAR* FDatasmithFacadeScene::GetOutputPath() const
-{
-	return SceneExporterRef->GetOutputPath();
-}
-
-const TCHAR* FDatasmithFacadeScene::GetAssetsOutputPath() const
-{
-	return SceneExporterRef->GetAssetsOutputPath();
 }
 
 void FDatasmithFacadeScene::Shutdown()
@@ -456,41 +347,49 @@ void FDatasmithFacadeScene::Shutdown()
 	FDatasmithExporterManager::Shutdown();
 }
 
-bool FDatasmithFacadeScene::ExportScene(
-	const TCHAR* InOutputPath,
-	bool bCleanupUnusedElements
+void FDatasmithFacadeScene::ExportScene(
+	const TCHAR* InOutputPath
 )
 {
+	if (!SceneExporterRef.IsValid())
+	{
+		return;
+	}
+
 	FString OutputPath = InOutputPath;
 
 	// Set the name of the scene to export and let Datasmith sanitize it when required.
 	FString SceneName = FPaths::GetBaseFilename(OutputPath);
-	SetName(*SceneName);
+	SceneExporterRef->SetName(*SceneName);
 
 	// Set the output folder where this scene will be exported.
 	FString SceneFolder = FPaths::GetPath(OutputPath);
-	SetOutputPath(*SceneFolder);
+	SceneExporterRef->SetOutputPath(*SceneFolder);
 
-	return ExportScene(bCleanupUnusedElements);
-}
+	// Build and export the Datasmith scene element assets.
+	ExportAssets(SceneExporterRef->GetAssetsOutputPath());
 
-bool FDatasmithFacadeScene::ExportScene(bool bCleanupUnusedElements)
-{
-	if ( FCString::Strlen(SceneExporterRef->GetName()) == 0
-		|| FCString::Strlen(SceneExporterRef->GetOutputPath()) == 0)
-	{
-		return false;
-	}
+	// No clean up needed as it will be performed by the SceneExporter
+	bCleanUpNeeded = false;
+
+	// Build the Datasmith scene instance.
+	BuildScene(*SceneName);
+
+	// Restore bCleanUpNeeded to its default value
+	bCleanUpNeeded = true;
 
 	// Export the Datasmith scene instance into its file.
-	SceneExporterRef->Export(SceneRef, bCleanupUnusedElements);
-
-	return true;
+	SceneExporterRef->Export(SceneRef);
 }
 
 TSharedRef<IDatasmithScene> FDatasmithFacadeScene::GetScene() const
 {
 	return SceneRef;
+}
+
+TSharedRef<TSet<FString>> FDatasmithFacadeScene::GetExportedTextures() const
+{
+	return ExportedTextureSet;
 }
 
 void FDatasmithFacadeScene::SetLabel(const TCHAR* InSceneLabel)

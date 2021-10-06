@@ -1,20 +1,20 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Core.h"
 #include "Chaos/Framework/Parallel.h"
 #include "Chaos/ParticleRule.h"
 
 namespace Chaos
 {
-class FPBDChainUpdateFromDeltaPosition : public FParticleRule
+template<class T, int d>
+class TPBDChainUpdateFromDeltaPosition : public TParticleRule<T, d>
 {
   public:
-	FPBDChainUpdateFromDeltaPosition(TArray<TArray<int32>>&& Constraints, const FReal Damping)
+	TPBDChainUpdateFromDeltaPosition(TArray<TArray<int32>>&& Constraints, const T Damping)
 	    : MConstraints(MoveTemp(Constraints)), MDamping(Damping) {}
-	virtual ~FPBDChainUpdateFromDeltaPosition() {}
+	virtual ~TPBDChainUpdateFromDeltaPosition() {}
 
-	inline void Apply(FPBDParticles& InParticles, const FReal Dt) const override //-V762
+	inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt) const override //-V762
 	{
 		PhysicsParallelFor(MConstraints.Num(), [&](int32 index) {
 			{
@@ -39,9 +39,6 @@ class FPBDChainUpdateFromDeltaPosition : public FParticleRule
 
   private:
 	TArray<TArray<int32>> MConstraints;
-	FReal MDamping;
+	T MDamping;
 };
-
-template<class T, int d>
-using TPBDChainUpdateFromDeltaPosition UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPBDChainUpdateFromDeltaPosition instead") = FPBDChainUpdateFromDeltaPosition;
 }

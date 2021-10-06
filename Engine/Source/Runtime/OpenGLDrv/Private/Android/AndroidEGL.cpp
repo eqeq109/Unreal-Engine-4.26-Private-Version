@@ -789,6 +789,7 @@ void AndroidEGL::Init(APIVariant API, uint32 MajorVersion, uint32 MinorVersion, 
 	// Getting the hardware window is valid during preinit as we have GAndroidWindowLock held.
 	PImplData->Window = (ANativeWindow*)FAndroidWindow::GetHardwareWindow_EventThread();
 	PImplData->Initalized   = true;
+//	INITIATE_GL_FRAME_DUMP();
 }
 
 AndroidEGL::~AndroidEGL()

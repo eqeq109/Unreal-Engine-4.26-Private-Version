@@ -22,13 +22,7 @@ class ENGINE_API UCameraComponent : public USceneComponent
 {
 	GENERATED_UCLASS_BODY()
 
-	/** 
-	 * The horizontal field of view (in degrees) in perspective mode (ignored in Orthographic mode)
-	 *
-	 * If the aspect ratio axis constraint (from ULocalPlayer, ALevelSequenceActor, etc.) is set to maintain vertical FOV, the AspectRatio
-	 * property will be used to convert this property's value to a vertical FOV.
-	 *
-	 */
+	/** The horizontal field of view (in degrees) in perspective mode (ignored in Orthographic mode) */
 	UPROPERTY(Interp, EditAnywhere, BlueprintReadWrite, Category = CameraSettings, meta = (UIMin = "5.0", UIMax = "170", ClampMin = "0.001", ClampMax = "360.0", Units = deg))
 	float FieldOfView;
 	UFUNCTION(BlueprintCallable, Category = Camera)

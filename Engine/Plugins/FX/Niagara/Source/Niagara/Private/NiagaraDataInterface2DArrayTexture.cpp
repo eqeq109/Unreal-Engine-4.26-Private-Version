@@ -29,8 +29,7 @@ void UNiagaraDataInterface2DArrayTexture::PostInitProperties()
 
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
-		ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable | ENiagaraTypeRegistryFlags::AllowParameter;
-		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), Flags);
+		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 
 	MarkRenderDataDirty();
@@ -116,29 +115,24 @@ void UNiagaraDataInterface2DArrayTexture::GetVMExternalFunction(const FVMExterna
 	}
 }
 
-bool UNiagaraDataInterface2DArrayTexture::PerInstanceTick(void* PerInstanceData, FNiagaraSystemInstance* SystemInstance, float DeltaSeconds)
-{
-	const FIntVector CurrentTextureSize = Texture != nullptr ? FIntVector(Texture->GetSizeX(), Texture->GetSizeY(), Texture->GetNumSlices()) : FIntVector::ZeroValue;
-	if ( CurrentTextureSize != TextureSize )
-	{
-		TextureSize = CurrentTextureSize;
-		MarkRenderDataDirty();
-	}
-	return false;
-}
-
 void UNiagaraDataInterface2DArrayTexture::GetTextureDimensions(FVectorVMContext& Context)
 {
 	FNDIOutputParam<FVector> DimensionsOut(Context);
 
-	const FVector FloatTextureSize(TextureSize.X, TextureSize.Y, TextureSize.Z);
+	FVector TextureDimensions = FVector::ZeroVector;
+	if (Texture)
+	{
+		TextureDimensions.X = Texture->GetSizeX();
+		TextureDimensions.Y = Texture->GetSizeY();
+		TextureDimensions.Z = Texture->GetNumSlices();
+	}
+
 	for (int32 i = 0; i < Context.NumInstances; ++i)
 	{
-		DimensionsOut.SetAndAdvance(FloatTextureSize);
+		DimensionsOut.SetAndAdvance(TextureDimensions);
 	}
 }
 
-#if WITH_EDITORONLY_DATA
 bool UNiagaraDataInterface2DArrayTexture::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
 {
 	if (FunctionInfo.DefinitionName == SampleTextureName)
@@ -169,7 +163,6 @@ void UNiagaraDataInterface2DArrayTexture::GetParameterDefinitionHLSL(const FNiag
 	OutHLSL += TEXT("SamplerState ") + HLSLSamplerName + TEXT(";\n");
 	OutHLSL += TEXT("float3 ") + DimensionsBaseName + ParamInfo.DataInterfaceHLSLSymbol + TEXT(";\n");
 }
-#endif
 
 struct FNiagaraDataInterfaceParametersCS_2DArrayTexture : public FNiagaraDataInterfaceParametersCS
 {
@@ -237,21 +230,21 @@ void UNiagaraDataInterface2DArrayTexture::PushToRenderThreadImpl()
 {
 	FNiagaraDataInterfaceProxy2DArrayTexture* RT_Proxy = GetProxyAs<FNiagaraDataInterfaceProxy2DArrayTexture>();
 
-	TextureSize = FIntVector::ZeroValue;
+	FVector RT_TexDims(EForceInit::ForceInitToZero);
 	if (Texture)
 	{
-		TextureSize.X = Texture->GetSizeX();
-		TextureSize.Y = Texture->GetSizeY();
-		TextureSize.Z = Texture->GetNumSlices();
+		RT_TexDims.X = Texture->GetSizeX();
+		RT_TexDims.Y = Texture->GetSizeY();
+		RT_TexDims.Z = Texture->GetNumSlices();
 	}
 
 	ENQUEUE_RENDER_COMMAND(FPushDITextureToRT)
 	(
-		[RT_Proxy, RT_Resource=Texture ? Texture->Resource : nullptr, RT_TexDims=TextureSize](FRHICommandListImmediate& RHICmdList)
+		[RT_Proxy, RT_Resource=Texture ? Texture->Resource : nullptr, RT_TexDims](FRHICommandListImmediate& RHICmdList)
 		{
 			RT_Proxy->TextureRHI = RT_Resource ? RT_Resource->TextureRHI : nullptr;
 			RT_Proxy->SamplerStateRHI = RT_Resource ? RT_Resource->SamplerStateRHI : nullptr;
-			RT_Proxy->TexDims = FVector(RT_TexDims.X, RT_TexDims.Y, RT_TexDims.Z);
+			RT_Proxy->TexDims = RT_TexDims;
 		}
 	);
 }

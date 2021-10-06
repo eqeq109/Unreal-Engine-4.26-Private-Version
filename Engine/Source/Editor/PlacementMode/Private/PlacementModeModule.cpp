@@ -5,7 +5,6 @@
 #include "Modules/ModuleManager.h"
 #include "UObject/Object.h"
 #include "Misc/Guid.h"
-#include "Misc/BlacklistNames.h"
 #include "UObject/Class.h"
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectIterator.h"
@@ -72,16 +71,13 @@ TOptional<FLinearColor> GetBasicShapeColorOverride()
 	return BasicShapeColorOverride;
 }
 
-FPlacementModeModule::FPlacementModeModule()
-	: CategoryBlacklist(MakeShareable(new FBlacklistNames()))
-{
-	CategoryBlacklist->OnFilterChanged().AddRaw(this, &FPlacementModeModule::OnCategoryBlacklistChanged);
-}
-
 void FPlacementModeModule::StartupModule()
 {
 	TArray< FString > RecentlyPlacedAsStrings;
 	GConfig->GetArray(TEXT("PlacementMode"), TEXT("RecentlyPlaced"), RecentlyPlacedAsStrings, GEditorPerProjectIni);
+
+	//FString ActivePaletteName;
+	//GConfig->GetString( TEXT( "PlacementMode" ), TEXT( "ActivePalette" ), ActivePaletteName, GEditorPerProjectIni );
 
 	for (int Index = 0; Index < RecentlyPlacedAsStrings.Num(); Index++)
 	{
@@ -94,17 +90,10 @@ void FPlacementModeModule::StartupModule()
 		FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.PlacementMode", "LevelEditor.PlacementMode.Small"),
 		GetDefault<UEditorStyleSettings>()->bEnableLegacyEditorModeUI, 0);
 
-	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-	AssetRegistry.OnAssetRemoved().AddRaw(this, &FPlacementModeModule::OnAssetRemoved);
-	AssetRegistry.OnAssetRenamed().AddRaw(this, &FPlacementModeModule::OnAssetRenamed);
-	if (AssetRegistry.IsLoadingAssets())
-	{
-		AssetRegistry.OnFilesLoaded().AddRaw(this, &FPlacementModeModule::OnInitialAssetsScanComplete);
-	}
-	else
-	{
-		AssetRegistry.OnAssetAdded().AddRaw(this, &FPlacementModeModule::OnAssetAdded);
-	}
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	AssetRegistryModule.Get().OnAssetRemoved().AddRaw(this, &FPlacementModeModule::OnAssetRemoved);
+	AssetRegistryModule.Get().OnAssetRenamed().AddRaw(this, &FPlacementModeModule::OnAssetRenamed);
+	AssetRegistryModule.Get().OnAssetAdded().AddRaw(this, &FPlacementModeModule::OnAssetAdded);
 
 	TOptional<FLinearColor> BasicShapeColorOverride = GetBasicShapeColorOverride();
 
@@ -234,7 +223,6 @@ void FPlacementModeModule::PreUnloadCallback()
 		AssetRegistryModule->Get().OnAssetRemoved().RemoveAll(this);
 		AssetRegistryModule->Get().OnAssetRenamed().RemoveAll(this);
 		AssetRegistryModule->Get().OnAssetAdded().RemoveAll(this);
-		AssetRegistryModule->Get().OnFilesLoaded().RemoveAll(this);
 	}
 }
 
@@ -330,15 +318,6 @@ void FPlacementModeModule::OnAssetAdded(const FAssetData& AssetData)
 	AllPlaceableAssetsChanged.Broadcast();
 }
 
-void FPlacementModeModule::OnInitialAssetsScanComplete()
-{
-	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-	AssetRegistry.OnAssetAdded().AddRaw(this, &FPlacementModeModule::OnAssetAdded);
-	AssetRegistry.OnFilesLoaded().RemoveAll(this);
-
-	AllPlaceableAssetsChanged.Broadcast();
-}
-
 void FPlacementModeModule::AddToRecentlyPlaced(UObject* Asset, UActorFactory* FactoryUsed /* = NULL */)
 {
 	TArray< UObject* > Assets;
@@ -359,16 +338,12 @@ bool FPlacementModeModule::RegisterPlacementCategory(const FPlacementCategoryInf
 	}
 
 	Categories.Add(Info.UniqueHandle, Info);
-	PlacementModeCategoryListChanged.Broadcast();
 	return true;
 }
 
 void FPlacementModeModule::UnregisterPlacementCategory(FName Handle)
 {
-	if (Categories.Remove(Handle))
-	{
-		PlacementModeCategoryListChanged.Broadcast();
-	}
+	Categories.Remove(Handle);
 }
 
 void FPlacementModeModule::GetSortedCategories(TArray<FPlacementCategoryInfo>& OutCategories) const
@@ -383,10 +358,7 @@ void FPlacementModeModule::GetSortedCategories(TArray<FPlacementCategoryInfo>& O
 	OutCategories.Reset(Categories.Num());
 	for (const FName& Name : SortedNames)
 	{
-		if (CategoryBlacklist->PassesFilter(Name))
-		{
-			OutCategories.Add(Categories[Name]);
-		}
+		OutCategories.Add(Categories[Name]);
 	}
 }
 
@@ -411,26 +383,6 @@ void FPlacementModeModule::UnregisterPlaceableItem(FPlacementModeID ID)
 	}
 }
 
-bool FPlacementModeModule::RegisterPlaceableItemFilter(TPlaceableItemPredicate Predicate, FName OwnerName)
-{
-	TPlaceableItemPredicate& ExistingPredicate = PlaceableItemPredicates.FindOrAdd(OwnerName);
-	if (!ExistingPredicate)
-	{
-		ExistingPredicate = MoveTemp(Predicate);
-		PlaceableItemFilteringChanged.Broadcast();
-		return true;
-	}
-	return false;
-}
-
-void FPlacementModeModule::UnregisterPlaceableItemFilter(FName OwnerName)
-{
-	if (PlaceableItemPredicates.Remove(OwnerName))
-	{
-		PlaceableItemFilteringChanged.Broadcast();
-	}
-}
-
 void FPlacementModeModule::GetItemsForCategory(FName CategoryName, TArray<TSharedPtr<FPlaceableItem>>& OutItems) const
 {
 	const FPlacementCategory* Category = Categories.Find(CategoryName);
@@ -438,10 +390,7 @@ void FPlacementModeModule::GetItemsForCategory(FName CategoryName, TArray<TShare
 	{
 		for (auto& Pair : Category->Items)
 		{
-			if (PassesFilters(Pair.Value))
-			{
-				OutItems.Add(Pair.Value);
-			}
+			OutItems.Add(Pair.Value);
 		}
 	}
 }
@@ -453,12 +402,9 @@ void FPlacementModeModule::GetFilteredItemsForCategory(FName CategoryName, TArra
 	{
 		for (auto& Pair : Category->Items)
 		{
-			if (PassesFilters(Pair.Value))
+			if (Filter(Pair.Value))
 			{
-				if (Filter(Pair.Value))
-				{
-					OutItems.Add(Pair.Value);
-				}
+				OutItems.Add(Pair.Value);
 			}
 		}
 	}
@@ -484,7 +430,9 @@ void FPlacementModeModule::RegenerateItemsForCategory(FName Category)
 
 void FPlacementModeModule::RefreshRecentlyPlaced()
 {
-	FPlacementCategory* Category = Categories.Find(FBuiltInPlacementCategories::RecentlyPlaced());
+	FName CategoryName = FBuiltInPlacementCategories::RecentlyPlaced();
+
+	FPlacementCategory* Category = Categories.Find(CategoryName);
 	if (!Category)
 	{
 		return;
@@ -522,7 +470,9 @@ void FPlacementModeModule::RefreshRecentlyPlaced()
 
 void FPlacementModeModule::RefreshVolumes()
 {
-	FPlacementCategory* Category = Categories.Find(FBuiltInPlacementCategories::Volumes());
+	FName CategoryName = FBuiltInPlacementCategories::Volumes();
+
+	FPlacementCategory* Category = Categories.Find(CategoryName);
 	if (!Category)
 	{
 		return;
@@ -548,8 +498,10 @@ void FPlacementModeModule::RefreshVolumes()
 
 void FPlacementModeModule::RefreshAllPlaceableClasses()
 {
+	FName CategoryName = FBuiltInPlacementCategories::AllClasses();
+
 	// Unregister old stuff
-	FPlacementCategory* Category = Categories.Find(FBuiltInPlacementCategories::AllClasses());
+	FPlacementCategory* Category = Categories.Find(CategoryName);
 	if (!Category)
 	{
 		return;
@@ -624,26 +576,4 @@ FPlacementModeID FPlacementModeModule::CreateID(FName InCategory)
 	NewID.UniqueID = CreateID();
 	NewID.Category = InCategory;
 	return NewID;
-}
-
-bool FPlacementModeModule::PassesFilters(const TSharedPtr<FPlaceableItem>& Item) const
-{
-	if (PlaceableItemPredicates.Num() == 0)
-	{
-		return true;
-	}
-
-	for (auto& PredicatePair : PlaceableItemPredicates)
-	{
-		if (PredicatePair.Value(Item))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-void FPlacementModeModule::OnCategoryBlacklistChanged()
-{
-	PlacementModeCategoryListChanged.Broadcast();
 }

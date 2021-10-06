@@ -30,7 +30,7 @@ void UNiagaraSimulationStageBase::RequestRecompile()
 	UNiagaraEmitter* Emitter = Cast< UNiagaraEmitter>(GetOuter());
 	if (Emitter)
 	{
-		UNiagaraScriptSourceBase* GraphSource = Emitter->UpdateScriptProps.Script->GetLatestSource();
+		UNiagaraScriptSourceBase* GraphSource = Emitter->UpdateScriptProps.Script->GetSource();
 		if (GraphSource != nullptr)
 		{
 			GraphSource->MarkNotSynchronized(TEXT("SimulationStage changed."));

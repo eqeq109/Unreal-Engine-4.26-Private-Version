@@ -2,7 +2,6 @@
 
 #pragma once
 #include "IOpenXRExtensionPlugin.h"
-#include "Modules/ModuleInterface.h"
 
 class IOculusOpenXRHMDPlugin : public IOpenXRExtensionPlugin, public IModuleInterface
 {

@@ -9,12 +9,10 @@
 #include "Widgets/Text/STextBlock.h"
 #include "AssetData.h"
 #include "ConvexVolume.h"
-#include "LidarPointCloudShared.h"
 
 class ULidarPointCloud;
 struct FLidarPointCloudPoint;
 class SWidget;
-class SLidarPointCloudEditorViewport;
 
 class FLidarPointCloudEditor : public FAssetEditorToolkit, public FGCObject
 {
@@ -26,7 +24,7 @@ private:
 	bool bEditMode;
 
 	/** Preview Viewport widget */
-	TSharedPtr<SLidarPointCloudEditorViewport> Viewport;
+	TSharedPtr<class SLidarPointCloudEditorViewport> Viewport;
 
 public:
 	FLidarPointCloudEditor();
@@ -57,10 +55,8 @@ public:
 
 	ULidarPointCloud* GetPointCloudBeingEdited() const { return PointCloudBeingEdited; }
 
-	void SelectPointsByConvexVolume(const FConvexVolume& ConvexVolume, bool bAdditive);
-	void DeselectPointsByConvexVolume(const FConvexVolume& ConvexVolume);
-	void SelectPointsBySphere(const FSphere& Sphere);
-	void DeselectPointsBySphere(const FSphere& Sphere);
+	void SelectPointsByFrustum(const FConvexVolume& SelectionFrustum, bool bAdditive);
+	void DeselectPointsByFrustum(const FConvexVolume& SelectionFrustum);
 	void DeselectPoints();
 	void InvertSelection();
 	void DeletePoints();
@@ -72,8 +68,6 @@ public:
 	bool HasSelectedPoints() const { return SelectedPoints.Num() > 0; }
 
 	bool IsEditMode() const { return bEditMode; }
-
-	TSharedPtr<SLidarPointCloudEditorViewport> GetViewport() { return Viewport; }
 
 private:
 	bool ConfirmCollisionChange();
@@ -110,7 +104,6 @@ private:
 	TSharedRef<SWidget> GenerateExtractionMenuContent();
 	TSharedRef<SWidget> GenerateCollisionMenuContent();
 	TSharedRef<SWidget> GenerateDeleteMenuContent();
-	TSharedRef<SWidget> GenerateSelectionMenuContent();
 
 	TArray<FAssetData> SelectAssets(const FText& Title);
 	FString GetSaveAsLocation();

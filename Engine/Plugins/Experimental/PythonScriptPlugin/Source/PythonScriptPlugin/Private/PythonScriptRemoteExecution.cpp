@@ -297,13 +297,12 @@ public:
 				.BoundToAddress(MulticastBindAddress)
 				.BoundToPort(MulticastGroupEndpoint.Port)
 #if PLATFORM_SUPPORTS_UDP_MULTICAST_GROUP
-				.JoinedToGroup(MulticastGroupEndpoint.Address, MulticastBindAddress)
+				.JoinedToGroup(MulticastGroupEndpoint.Address)
 				.WithMulticastLoopback()
 #endif
 				.WithSendBufferSize(PythonScriptPluginSettings->RemoteExecutionSendBufferSizeBytes)
 				.WithReceiveBufferSize(PythonScriptPluginSettings->RemoteExecutionReceiveBufferSizeBytes)
-				.WithMulticastTtl(PythonScriptPluginSettings->RemoteExecutionMulticastTtl)
-				.WithMulticastInterface(MulticastBindAddress);
+				.WithMulticastTtl(PythonScriptPluginSettings->RemoteExecutionMulticastTtl);
 		}
 	}
 

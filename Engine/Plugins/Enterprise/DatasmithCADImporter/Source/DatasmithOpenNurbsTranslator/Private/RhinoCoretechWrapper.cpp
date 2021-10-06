@@ -3,7 +3,7 @@
 #include "RhinoCoretechWrapper.h"
 
 
-#ifdef USE_OPENNURBS
+#if defined(CAD_LIBRARY) && defined(USE_OPENNURBS)
 #include "CoreTechHelper.h"
 
 #pragma warning(push)
@@ -31,7 +31,6 @@ void MarkUninitializedMemory(std::vector<T>& VectorOfT)
 };
 
 // Handle surface state without u/v duplication
-// #ue_opennurbs : Remove SurfaceInfo and use CADLibrary::FNurbsSurface directly 
 struct SurfaceInfo
 {
 	ON_NurbsSurface& surf;
@@ -39,14 +38,14 @@ struct SurfaceInfo
 	enum Axis { U, V };
 	struct PerAxisInfo
 	{
-		uint32 Order; // Degree + 1
-		uint32 CtrlVertCount; // number of control points
-		uint32 KnotSize;  // ON knots
-		uint32 KnotCount; // CT knots
+		int Order; // Degree + 1
+		int CtrlVertCount; // number of control points
+		int KnotSize;  // ON knots
+		int KnotCount; // CT knots
 
-		TArray<uint32> KnotsMult; // from ON, not relevant as we send n-plicated knots to CT (dbg only)
-		TArray<uint32> KnotMul; // array of '1' for CT...
-		TArray<double> Knots; // t values with superflux values
+		std::vector<int> KnotsMult; // from ON, not relevant as we send n-plicated knots to CT (dbg only)
+		std::vector<CT_UINT32> KnotMul; // array of '1' for CT...
+		std::vector<double> Knots; // t values with superflux values
 
 		PerAxisInfo(Axis InA, ON_NurbsSurface& InSurf)
 			: surf(InSurf)
@@ -66,7 +65,7 @@ struct SurfaceInfo
 		// detect cases not handled by CT, that is knot vectors with multiplicity < order on either end
 		bool FixMultiplicity()
 		{
-			if (KnotsMult[0] + 1 < Order || KnotsMult.Last() + 1 < Order)
+			if (KnotsMult.front() + 1 < Order || KnotsMult.back() + 1 < Order)
 			{
 				IncreaseDegree();
 				return true;
@@ -82,19 +81,19 @@ struct SurfaceInfo
 			KnotSize = Order + CtrlVertCount;
 			KnotCount = surf.KnotCount(a);
 
-			KnotsMult.Init(-1, KnotSize - 2);
-			//MarkUninitializedMemory(KnotsMult);
-			for (uint32 i = 0; i < KnotSize - 2; ++i)
+			KnotsMult.resize(KnotSize - 2);
+			MarkUninitializedMemory(KnotsMult);
+			for (int i = 0; i < KnotSize - 2; ++i)
 				KnotsMult[i] = surf.KnotMultiplicity(a, i); // 0 and < Order + CV_count - 2
 
-			Knots.Init(-1, KnotSize);
-			//MarkUninitializedMemory(Knots);
-			Knots[0] = surf.SuperfluousKnot(a, 0);
-			for (uint32 i = 0; i < KnotCount; ++i)
+			Knots.resize(KnotSize);
+			MarkUninitializedMemory(Knots);
+			Knots.front() = surf.SuperfluousKnot(a, 0);
+			for (int i = 0; i < KnotCount; ++i)
 				Knots[i + 1] = surf.Knot(a, i);
-			Knots.Last() = surf.SuperfluousKnot(a, 1);
+			Knots.back() = surf.SuperfluousKnot(a, 1);
 
-			KnotMul.Init(1, KnotSize);
+			KnotMul.resize(KnotSize, 1);
 		}
 
 		ON_NurbsSurface& surf;
@@ -104,7 +103,7 @@ struct SurfaceInfo
 	PerAxisInfo u;
 	PerAxisInfo v;
 	int CtrlVertDim; // Number of doubles per ctrl vertex
-	TArray<double> CtrlHull; // [xyzw...]
+	std::vector<double> CtrlHull; // [xyzw...]
 
 	SurfaceInfo(ON_NurbsSurface& inSurf)
 		: surf(inSurf)
@@ -117,12 +116,13 @@ struct SurfaceInfo
 
 	void BuildHull()
 	{
-		CtrlHull.Init(-1, u.CtrlVertCount * v.CtrlVertCount * CtrlVertDim);
-		double* CtrlHullPtr = CtrlHull.GetData();
+		CtrlHull.resize(u.CtrlVertCount * v.CtrlVertCount * CtrlVertDim);
+		MarkUninitializedMemory(CtrlHull);
+		double* CtrlHullPtr = CtrlHull.data();
 		ON::point_style pt_style = surf.IsRational() ? ON::point_style::euclidean_rational : ON::point_style::not_rational;
-		for (uint32 UIndex = 0; UIndex < u.CtrlVertCount; ++UIndex)
+		for (int UIndex = 0; UIndex < u.CtrlVertCount; ++UIndex)
 		{
-			for (uint32 VIndex = 0; VIndex < v.CtrlVertCount; ++VIndex, CtrlHullPtr += CtrlVertDim)
+			for (int VIndex = 0; VIndex < v.CtrlVertCount; ++VIndex, CtrlHullPtr += CtrlVertDim)
 			{
 				surf.GetCV(UIndex, VIndex, pt_style, CtrlHullPtr);
 			}
@@ -135,7 +135,7 @@ struct SurfaceInfo
 		if (surf.IsRational())
 		{
 			bool hasNegativeWeight = false;
-			for (uint32 cvPointIndex = 0; cvPointIndex < u.CtrlVertCount * v.CtrlVertCount; ++cvPointIndex)
+			for (int cvPointIndex = 0; cvPointIndex < u.CtrlVertCount * v.CtrlVertCount; ++cvPointIndex)
 			{
 				double pointDataOffset = cvPointIndex * CtrlVertDim;
 				double weight = CtrlHull[pointDataOffset + CtrlVertDim - 1];
@@ -172,7 +172,7 @@ struct SurfaceInfo
 };
 
 
-uint64 BRepToKernelIOBodyTranslator::CreateCTSurface(ON_NurbsSurface& Surface)
+CT_OBJECT_ID BRepToKernelIOBodyTranslator::CreateCTSurface(ON_NurbsSurface& Surface)
 {
 	if (Surface.Dimension() < 3)
 		return 0;
@@ -180,29 +180,22 @@ uint64 BRepToKernelIOBodyTranslator::CreateCTSurface(ON_NurbsSurface& Surface)
 	SurfaceInfo si(Surface);
 	si.FixUnsupportedParameters();
 
-	CADLibrary::FNurbsSurface CTSurface;
+	CT_OBJECT_ID CTSurfaceID = 0;
+	CADLibrary::CheckedCTError result = CT_SNURBS_IO::Create(CTSurfaceID,
+		si.u.Order, si.v.Order,
+		si.u.KnotSize, si.v.KnotSize,
+		si.u.CtrlVertCount, si.v.CtrlVertCount,
+		si.CtrlVertDim, si.CtrlHull.data(),
+		si.u.Knots.data(), si.v.Knots.data(),
+		si.u.KnotMul.data(), si.v.KnotMul.data()
+	);
 
-	CTSurface.OrderU = si.u.Order;
-	CTSurface.OrderV = si.v.Order;
-	CTSurface.KnotSizeU = si.u.KnotSize;
-	CTSurface.KnotSizeV = si.v.KnotSize;
-	CTSurface.ControlPointDimension = si.CtrlVertDim;
-	CTSurface.ControlPointSizeU = si.u.CtrlVertCount;
-	CTSurface.ControlPointSizeV = si.v.CtrlVertCount;
-
-	CTSurface.KnotValuesU = MoveTemp(si.u.Knots);
-	CTSurface.KnotValuesV = MoveTemp(si.v.Knots);
-	CTSurface.KnotMultiplicityU = MoveTemp(si.u.KnotMul);
-	CTSurface.KnotMultiplicityV = MoveTemp(si.v.KnotMul);
-	CTSurface.ControlPoints = MoveTemp(si.CtrlHull);
-
-	uint64 CTSurfaceID = 0;
-	return CADLibrary::CTKIO_CreateNurbsSurface(CTSurface, CTSurfaceID) ? CTSurfaceID : 0;
+	return CTSurfaceID;
 }
 
-void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face, TArray<uint64>& dest, ON_BoundingBox& outerBBox, ON_NurbsSurface& Surface, bool ignoreInner)
+void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face, CT_LIST_IO& dest, ON_BoundingBox& outerBBox, ON_NurbsSurface& Surface, bool ignoreInner)
 {
-	uint64 SurfaceID = CreateCTSurface(Surface);
+	CT_OBJECT_ID SurfaceID = CreateCTSurface(Surface);
 	if (SurfaceID == 0)
 		return;
 
@@ -210,8 +203,7 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 	bool outerRedefined = realOuterBBox != outerBBox;
 
 	int LoopCount = ignoreInner ? 1 : Face.LoopCount();
-	TArray<uint64> Loops;
-	Loops.Reserve(LoopCount);
+	CT_LIST_IO Loops;
 	for (int LoopIndex = 0; LoopIndex < LoopCount; ++LoopIndex)
 	{
 		const ON_BrepLoop& on_Loop = *Face.Loop(LoopIndex);
@@ -222,11 +214,11 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 		bool bIsOuter = (onLoopType == ON_BrepLoop::TYPE::outer);
 		//assert(bIsOuter == (LoopIndex == 0));
 
+		CT_LIST_IO Coedges;
 		int TrimCount = on_Loop.TrimCount();
-		TArray<uint64> Coedges;
-		Coedges.Reserve(TrimCount);
 		for (int i = 0; i < TrimCount; ++i)
 		{
+			CADLibrary::CheckedCTError err = IO_OK;
 			ON_BrepTrim& Trim = *on_Loop.Trim(i);
 
 			ON_BrepEdge* on_edge = Trim.Edge();
@@ -238,11 +230,10 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 			if (nurbFormSuccess == 0)
 				continue;
 
-			uint64 NewCoedge;
-			if (!CADLibrary::CTKIO_CreateCoedge(Trim.m_bRev3d, NewCoedge))
-			{
+			CT_OBJECT_ID NewCoedge;
+			err = CT_COEDGE_IO::Create(NewCoedge, Trim.m_bRev3d ? CT_ORIENTATION::CT_REVERSE : CT_ORIENTATION::CT_FORWARD);
+			if (err != IO_OK)
 				continue;
-			}
 
 			BrepTrimToCoedge[Trim.m_trim_index] = NewCoedge;
 
@@ -256,76 +247,90 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 					continue;
 				}
 
-				uint64 LinkedCoedgeId = BrepTrimToCoedge[LinkedEdgeIndex];
+				CT_OBJECT_ID LinkedCoedgeId = BrepTrimToCoedge[LinkedEdgeIndex];
 				if (LinkedCoedgeId)
 				{
-					CADLibrary::CTKIO_MatchCoedges(LinkedCoedgeId, NewCoedge);
+					CT_COEDGE_IO::MatchCoedges(LinkedCoedgeId, NewCoedge);
 					break;
 				}
 			}
 
-			CADLibrary::FNurbsCurve CTCurve;
-			CTCurve.Order = nurbs_curve.Order();
+			// fill edge data
+			CT_UINT32 order = nurbs_curve.Order();
 
 			int KnotCount = nurbs_curve.KnotCount();
 			int CtrlVertCount = nurbs_curve.CVCount();
-			CTCurve.KnotSize = CTCurve.Order + CtrlVertCount; // cvCount + degree - 1 for OpenNurb, cvCount + degree + 1 for OpenNurb,
+			CT_UINT32 KnotSize = order + CtrlVertCount; // cvCount + degree - 1 for OpenNurb, cvCount + degree + 1 for OpenNurb,
 
 			// knot data
-			CTCurve.KnotValues.SetNum(CTCurve.KnotSize);
-			CTCurve.KnotValues[0] = nurbs_curve.SuperfluousKnot(0);
+			std::vector<double> Knots;
+			Knots.resize(KnotSize);
+			Knots.front() = nurbs_curve.SuperfluousKnot(0);
 			for (int j = 0; j < KnotCount; ++j)
 			{
-				CTCurve.KnotValues[j + 1] = nurbs_curve.Knot(j);
+				Knots[j + 1] = nurbs_curve.Knot(j);
 			}
-			CTCurve.KnotValues.Last() = nurbs_curve.SuperfluousKnot(1);
+			Knots.back() = nurbs_curve.SuperfluousKnot(1);
 
 			// Control hull
-			CTCurve.ControlPointDimension = nurbs_curve.CVSize(); // = IsRational() ? Dim()+1 : Dim()
-			CTCurve.ControlPointSize = nurbs_curve.CVCount();
-			CTCurve.ControlPoints.SetNum(CTCurve.ControlPointSize * CTCurve.ControlPointDimension);
-			double* ControlPoints = CTCurve.ControlPoints.GetData();
-			for (uint32 j = 0; j < CTCurve.ControlPointSize; ++j, ControlPoints += CTCurve.ControlPointDimension)
+			int ctrl_hull_dim = nurbs_curve.CVSize(); // = IsRational() ? Dim()+1 : Dim()
+			int ctrl_hull_size = nurbs_curve.CVCount();
+			std::vector<double> cv_data;
+			cv_data.resize(ctrl_hull_size * ctrl_hull_dim);
+			double* wp = cv_data.data();
+			for (int j = 0; j < ctrl_hull_size; ++j, wp += ctrl_hull_dim)
 			{
-				nurbs_curve.GetCV(j, nurbs_curve.IsRational() ? ON::point_style::euclidean_rational : ON::point_style::not_rational, ControlPoints);
+				nurbs_curve.GetCV(j, nurbs_curve.IsRational() ? ON::point_style::euclidean_rational : ON::point_style::not_rational, wp);
 			}
 			if (outerRedefined && bIsOuter)
 			{
-				for (int32 j = 0; j < CTCurve.ControlPoints.Num(); j += CTCurve.ControlPointSize)
+				for (int j = 0; j < cv_data.size(); j += ctrl_hull_dim)
 				{
-					CTCurve.ControlPoints[j] = min(max(CTCurve.ControlPoints[j], outerBBox.m_min.x), outerBBox.m_max.x);
+					cv_data[j] = min(max(cv_data[j], outerBBox.m_min.x), outerBBox.m_max.x);
 				}
 			}
 
 			// knot multiplicity (ignored as knots are stored multiple times already)
-			CTCurve.KnotMultiplicity.Init(1, CTCurve.KnotSize);
+			std::vector<CT_UINT32> knotMult;
+			knotMult.resize(KnotSize, 1);
 
 			ON_Interval dom = nurbs_curve.Domain();
-			if (!CADLibrary::CTKIO_SetUVCurve(CTCurve, dom.m_t[0], dom.m_t[1], NewCoedge))
-			{
+			CADLibrary::CheckedCTError setUvCurveError = CT_COEDGE_IO::SetUVCurve(
+				NewCoedge,       /*!< [in] Id of coedge */ // CT documentation is wrong, the edge is already create by CT_COEDGE_IO::Create. This function just set the UV curve of an existing Edge
+				order,           /*!< [in] Order of curve */
+				KnotSize,        /*!< [in] Knot vector size */
+				ctrl_hull_size,  /*!< [in] Control Hull Size */
+				ctrl_hull_dim,   /*!< [in] Control Hull Dimension (2 for non-rational or 3 for rational) */
+				cv_data.data(),  /*!< [in] Control hull array */
+				Knots.data(),    /*!< [in] Value knot array */
+				knotMult.data(), /*!< [in] Multiplicity Knot array */
+				dom.m_t[0],      /*!< [in] start parameter of coedge on the uv curve (t range=[knot[0], knot[knot_size-1]]) */
+				dom.m_t[1]       /*!< [in] end parameter of coedge on the uv curve (t range=[knot[0], knot[knot_size-1]]) */
+			);
+
+			if (!setUvCurveError)
 				continue;
-			}
 
-			Coedges.Add(NewCoedge);
+			Coedges.PushBack(NewCoedge);
 		}
 
-		uint64 Loop;
-		if (!CADLibrary::CTKIO_CreateLoop(Coedges, Loop))
-		{
+		CT_OBJECT_ID Loop;
+		CADLibrary::CheckedCTError LoopCreationError = CT_LOOP_IO::Create(Loop, Coedges);
+		if (!LoopCreationError)
 			continue;
-		}
 
-		Loops.Add(Loop);
+		Loops.PushBack(Loop);
 	}
 
-	uint64 FaceID;
-	if (CADLibrary::CTKIO_CreateFace(SurfaceID, true, Loops, FaceID))
-	{
-		dest.Add(FaceID);
-	}
+	CT_OBJECT_ID FaceID;
+	CT_ORIENTATION faceOrient = CT_ORIENTATION::CT_FORWARD;
+	CADLibrary::CheckedCTError result = CT_FACE_IO::Create(FaceID, SurfaceID, faceOrient, Loops);
+	if (!result)
+		return;
+	dest.PushBack(FaceID);
 }
 
-void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, TArray<uint64>& dest)
+void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, CT_LIST_IO& dest)
 {
 	const ON_BrepLoop* OuterLoop = Face.OuterLoop();
 	if (OuterLoop == nullptr)
@@ -343,7 +348,7 @@ void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, TArray<
 	bool bBadLoopHack = BRep.LoopIsSurfaceBoundary(OuterLoop->m_loop_index) && LoopCount >= 2;
 	if (bBadLoopHack)
 	{
-		TArray<uint64> Coedges;
+		CT_LIST_IO Coedges;
 		int TrimCount = OuterLoop->TrimCount();
 		bool bHasSingularTrim = false;
 		for (int i = 0; i < TrimCount; ++i)
@@ -397,12 +402,12 @@ void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, TArray<
 }
 
 
-bool FRhinoCoretechWrapper::Tessellate(FMeshDescription& Mesh, CADLibrary::FMeshParameters& MeshParameters)
+CT_IO_ERROR FRhinoCoretechWrapper::Tessellate(FMeshDescription& Mesh, CADLibrary::FMeshParameters& MeshParameters)
 {
 	return CADLibrary::Tessellate(MainObjectId, ImportParams, Mesh, MeshParameters);
 }
 
-uint64 BRepToKernelIOBodyTranslator::CreateBody(const ON_3dVector& Offset)
+CT_OBJECT_ID BRepToKernelIOBodyTranslator::CreateBody(const ON_3dVector& Offset)
 {
 	BrepTrimToCoedge.SetNumZeroed(BRep.m_T.Count());
 
@@ -415,9 +420,8 @@ uint64 BRepToKernelIOBodyTranslator::CreateBody(const ON_3dVector& Offset)
 
 	// Create ct faces
 	BRep.FlipReversedSurfaces();
+	CT_LIST_IO FaceList;
 	int FaceCount = BRep.m_F.Count();
-	TArray<uint64> FaceList;
-	FaceList.Reserve(FaceCount);
 	for (int index = 0; index < FaceCount; index++)
 	{
 		const ON_BrepFace& On_face = BRep.m_F[index];
@@ -425,41 +429,56 @@ uint64 BRepToKernelIOBodyTranslator::CreateBody(const ON_3dVector& Offset)
 	}
 	BRep.Translate(-Offset);
 
-	if (FaceList.Num() == 0)
+	if (FaceList.IsEmpty())
 	{
 		return 0;
 	}
 
 	// Create body from faces
-	uint64 BodyID;
-	return CADLibrary::CTKIO_CreateBody(FaceList, BodyID) ? BodyID : 0;
+	CT_OBJECT_ID BodyID;
+	CADLibrary::CheckedCTError Result = CT_BODY_IO::CreateFromFaces(BodyID, CT_BODY_PROP::CT_BODY_PROP_EXACT | CT_BODY_PROP::CT_BODY_PROP_CLOSE, FaceList);
+	if (Result)
+	{
+		return BodyID;
+	}
+	return 0;
 }
 
-bool FRhinoCoretechWrapper::AddBRep(ON_Brep& Brep, const ON_3dVector& Offset)
+CADLibrary::CheckedCTError FRhinoCoretechWrapper::AddBRep(ON_Brep& Brep, const ON_3dVector& Offset)
 {
+	CADLibrary::CheckedCTError Result;
 	if (!IsSessionValid())
 	{
-		ensureMsgf(false, TEXT("bad session init"));
-		return false;
+		Result.RaiseOtherError("bad session init");
+		return Result;
 	}
 
 	BRepToKernelIOBodyTranslator BodyTranslator(Brep);
-	uint64 BodyID = BodyTranslator.CreateBody(Offset);
+	CT_OBJECT_ID BodyID = BodyTranslator.CreateBody(Offset);
 
-	return BodyID ? CADLibrary::CTKIO_AddBodies({ BodyID }, MainObjectId) : false;
+	CT_LIST_IO Bodies;
+	if (BodyID)
+	{
+		Bodies.PushBack(BodyID);
+		// Setup parenting
+		Result = CT_COMPONENT_IO::AddChildren(MainObjectId, Bodies);
+		return Result;
+	}
+
+	return IO_ERROR;
 }
 
 
 
-TSharedPtr<FRhinoCoretechWrapper> FRhinoCoretechWrapper::GetSharedSession()
+TSharedPtr<FRhinoCoretechWrapper> FRhinoCoretechWrapper::GetSharedSession(double SceneUnit, double ScaleFactor)
 {
 	TSharedPtr<FRhinoCoretechWrapper> Session = SharedSession.Pin();
 	if (!Session.IsValid())
 	{
-		Session = MakeShared<FRhinoCoretechWrapper>(TEXT("Rh2CTSharedSession"));
+		Session = MakeShared<FRhinoCoretechWrapper>(TEXT("Rh2CTSharedSession"), SceneUnit, ScaleFactor);
 		SharedSession = Session;
 	}
 	return Session;
 }
 
-#endif // defined(USE_OPENNURBS)
+#endif // defined(CAD_LIBRARY) && defined(USE_OPENNURBS)

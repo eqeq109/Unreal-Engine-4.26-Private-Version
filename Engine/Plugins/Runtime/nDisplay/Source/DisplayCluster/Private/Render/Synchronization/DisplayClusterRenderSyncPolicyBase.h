@@ -16,7 +16,8 @@ public:
 		: Parameters(InParameters)
 	{ }
 
-	virtual ~FDisplayClusterRenderSyncPolicyBase() = default;
+	virtual ~FDisplayClusterRenderSyncPolicyBase() = 0
+	{ }
 
 public:
 	void SyncBarrierRenderThread();
@@ -27,7 +28,8 @@ public:
 	}
 
 protected:
-	virtual void WaitForFrameCompletion();
+	virtual void WaitForFrameCompletion()
+	{ }
 
 private:
 	TMap<FString, FString> Parameters;

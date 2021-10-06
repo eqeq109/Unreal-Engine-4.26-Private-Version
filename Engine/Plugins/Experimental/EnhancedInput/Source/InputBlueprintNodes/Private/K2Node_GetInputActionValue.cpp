@@ -173,28 +173,29 @@ void UK2Node_GetInputActionValue::GetMenuActions(FBlueprintActionDatabaseRegistr
 	// Do a first time registration using the node's class to pull in all existing actions
 	if (ActionRegistrar.IsOpenForRegistration(GetClass()))
 	{
-		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+		auto OnAssetsLoaded = [this, &ActionRegistrar, CustomizeInputNodeLambda]() {
+			TArray<FAssetData> ActionAssets;
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get().GetAssetsByClass(UInputAction::StaticClass()->GetFName(), ActionAssets);
 
-		static bool bRegisterOnce = true;
-		if (bRegisterOnce)
-		{
-			bRegisterOnce = false;
-			if (AssetRegistry.IsLoadingAssets())
+			for (const FAssetData& ActionAsset : ActionAssets)
 			{
-				AssetRegistry.OnFilesLoaded().AddLambda([]() { FBlueprintActionDatabase::Get().RefreshClassActions(StaticClass()); });
+				UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(GetClass());
+				check(NodeSpawner != nullptr);
+
+				const UInputAction* Action = Cast<const UInputAction>(ActionAsset.GetAsset());
+				NodeSpawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(CustomizeInputNodeLambda, TWeakObjectPtr<const UInputAction>(Action));
+				ActionRegistrar.AddBlueprintAction(Action, NodeSpawner);
 			}
-		}
+		};
 
-		TArray<FAssetData> ActionAssets;
-		AssetRegistry.GetAssetsByClass(UInputAction::StaticClass()->GetFName(), ActionAssets);
-		for (const FAssetData& ActionAsset : ActionAssets)
+		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+		if (AssetRegistry.IsLoadingAssets())
 		{
-			UBlueprintNodeSpawner* NodeSpawner = UBlueprintNodeSpawner::Create(GetClass());
-			check(NodeSpawner != nullptr);
-
-			const UInputAction* Action = Cast<const UInputAction>(ActionAsset.GetAsset());
-			NodeSpawner->CustomizeNodeDelegate = UBlueprintNodeSpawner::FCustomizeNodeDelegate::CreateStatic(CustomizeInputNodeLambda, TWeakObjectPtr<const UInputAction>(Action));
-			ActionRegistrar.AddBlueprintAction(Action, NodeSpawner);
+			AssetRegistry.OnFilesLoaded().AddLambda(OnAssetsLoaded);
+		}
+		else
+		{
+			OnAssetsLoaded();
 		}
 	}
 	else if (const UInputAction* Action = Cast<const UInputAction>(ActionRegistrar.GetActionKeyFilter()))

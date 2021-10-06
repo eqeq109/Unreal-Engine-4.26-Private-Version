@@ -13,7 +13,9 @@ namespace PropertyTemplate
 	template<>
 	UObject* ConvertFromIntermediateType<UObject*, FMovieSceneObjectBindingID>(const FMovieSceneObjectBindingID& InObjectBinding, const FMovieSceneEvaluationOperand& Operand, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player)
 	{
-		for (TWeakObjectPtr<> WeakObject : InObjectBinding.ResolveBoundObjects(Operand.SequenceID, Player))
+		FMovieSceneObjectBindingID ResolvedID = InObjectBinding.ResolveLocalToRoot(Operand.SequenceID, Player);
+
+		for (TWeakObjectPtr<>& WeakObject : Player.FindBoundObjects(ResolvedID.GetGuid(), ResolvedID.GetSequenceID()))
 		{
 			if (AActor* Actor = Cast<AActor>(WeakObject.Get()))
 			{

@@ -97,6 +97,8 @@ IVirtualTextureFinalizer* FLightmapPreviewVirtualTexture::ProducePageData(
 		}
 	}
 
+	check(TileRequest.OutputRenderTargets[0] != nullptr || TileRequest.OutputRenderTargets[1] != nullptr || TileRequest.OutputRenderTargets[2] != nullptr);
+
 	LightmapRenderer->AddRequest(TileRequest);
 
 	return LightmapRenderer;

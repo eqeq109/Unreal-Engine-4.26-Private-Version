@@ -13,6 +13,7 @@
 
 namespace GeometryCollectionTest
 {
+	template<class T>
 	void TestDeleteCoincidentVertices()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform(FQuat::MakeFromEuler(FVector(0.f, 0.f, 0.f)), FVector(0.f, 0.f, 0.f)), FVector(1.0));
@@ -42,7 +43,11 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::VerticesGroup), 24);
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::FacesGroup), 36);
 	}
+	template void TestDeleteCoincidentVertices<float>();
 
+	
+
+	template<class T>
 	void TestDeleteCoincidentVertices2()
 	{
 		FGeometryCollection* Coll = FGeometryCollection::NewGeometryCollection(FracturedGeometry::RawVertexArray,
@@ -63,7 +68,9 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::VerticesGroup), 270);
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::FacesGroup), 493);
 	}
+	template void TestDeleteCoincidentVertices2<float>();
 
+	template<class T>
 	void TestDeleteZeroAreaFaces()
 	{
 		FGeometryCollection* Coll = FGeometryCollection::NewGeometryCollection(FracturedGeometry::RawVertexArray,
@@ -85,7 +92,9 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::VerticesGroup), 667);
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::FacesGroup), 493);
 	}
+	template void TestDeleteZeroAreaFaces<float>();
 
+	template<class T>
 	void TestFillHoles()
 	{
 		FGeometryCollection* Coll = FGeometryCollection::NewGeometryCollection(FracturedGeometry::RawVertexArray,
@@ -115,7 +124,7 @@ namespace GeometryCollectionTest
 			return NumHoles;
 		};
 
-		auto CountTinyFaces = [](const FGeometryCollection *InColl, Chaos::FReal InTinyNumber = 1e-4)
+		auto CountTinyFaces = [](const FGeometryCollection *InColl, float InTinyNumber = 1e-4)
 		{
 			int TinyFaces = 0;
 			for (const FIntVector & Face : InColl->Indices)
@@ -158,7 +167,9 @@ namespace GeometryCollectionTest
 		EXPECT_TRUE(Coll->HasContiguousVertices());
 		EXPECT_TRUE(GeometryCollectionAlgo::HasValidGeometryReferences(Coll));
 	}
+	template void TestFillHoles<float>();
 
+	template<class T>
 	void TestDeleteHiddenFaces()
 	{
 		FGeometryCollection* Coll = FGeometryCollection::NewGeometryCollection(FracturedGeometry::RawVertexArray,
@@ -193,5 +204,6 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::VerticesGroup), 667);
 		EXPECT_EQ(Coll->NumElements(FGeometryCollection::FacesGroup), 394);
 	}
+	template void TestDeleteHiddenFaces<float>();
 }
 

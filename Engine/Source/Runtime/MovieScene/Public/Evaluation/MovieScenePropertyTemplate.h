@@ -84,15 +84,9 @@ namespace PropertyTemplate
 		{
 		}
 
-		virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params) override
+		virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player) override
 		{
-			IMovieScenePlayer* Player = Params.GetTerminalPlayer();
-			if (!ensure(Player))
-			{
-				return;
-			}
-
-			auto NewValue = PropertyTemplate::ConvertFromIntermediateType<PropertyValueType, IntermediateType>(Value, *Player);
+			auto NewValue = PropertyTemplate::ConvertFromIntermediateType<PropertyValueType, IntermediateType>(Value, Player);
 			if (IsValueValid(NewValue))
 			{
 				Bindings.CallFunction<PropertyValueType>(Object, NewValue);

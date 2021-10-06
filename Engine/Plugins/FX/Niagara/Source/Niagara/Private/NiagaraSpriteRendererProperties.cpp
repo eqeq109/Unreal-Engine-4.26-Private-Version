@@ -40,10 +40,7 @@ FCookStatsManager::FAutoRegisterCallback NiagaraCutoutCookStats::RegisterCookSta
 #endif // ENABLE_COOK_STATS
 
 UNiagaraSpriteRendererProperties::UNiagaraSpriteRendererProperties()
-	: Material(nullptr)
-	, SourceMode(ENiagaraRendererSourceDataMode::Particles)
-	, MaterialUserParamBinding(FNiagaraTypeDefinition(UMaterialInterface::StaticClass()))
-	, Alignment(ENiagaraSpriteAlignment::Unaligned)
+	: Alignment(ENiagaraSpriteAlignment::Unaligned)
 	, FacingMode(ENiagaraSpriteFacingMode::FaceCamera)
 	, PivotInUVSpace(0.5f, 0.5f)
 	, SortMode(ENiagaraSortMode::None)
@@ -59,7 +56,10 @@ UNiagaraSpriteRendererProperties::UNiagaraSpriteRendererProperties()
 	, AlphaThreshold(0.1f)
 #endif // WITH_EDITORONLY_DATA
 {
-	AttributeBindings.Reserve(27);
+	FNiagaraTypeDefinition MaterialDef(UMaterialInterface::StaticClass());
+	MaterialUserParamBinding.Parameter.SetType(MaterialDef);
+
+	AttributeBindings.Reserve(18);
 
 	// NOTE: These bindings' indices have to align to their counterpart in ENiagaraSpriteVFLayout
 	AttributeBindings.Add(&PositionBinding);
@@ -76,20 +76,9 @@ UNiagaraSpriteRendererProperties::UNiagaraSpriteRendererProperties()
 	AttributeBindings.Add(&DynamicMaterial3Binding);
 	AttributeBindings.Add(&CameraOffsetBinding);
 	AttributeBindings.Add(&UVScaleBinding);
-	AttributeBindings.Add(&PivotOffsetBinding);
 	AttributeBindings.Add(&MaterialRandomBinding);
 	AttributeBindings.Add(&CustomSortingBinding);
 	AttributeBindings.Add(&NormalizedAgeBinding);
-
-	// These bindings are only actually used with accurate motion vectors (indices still need to align)
-	AttributeBindings.Add(&PrevPositionBinding);
-	AttributeBindings.Add(&PrevVelocityBinding);
-	AttributeBindings.Add(&PrevSpriteRotationBinding);
-	AttributeBindings.Add(&PrevSpriteSizeBinding);
-	AttributeBindings.Add(&PrevSpriteFacingBinding);
-	AttributeBindings.Add(&PrevSpriteAlignmentBinding);
-	AttributeBindings.Add(&PrevCameraOffsetBinding);
-	AttributeBindings.Add(&PrevPivotOffsetBinding);
 
 	// The remaining bindings are not associated with attributes in the VF layout
 	AttributeBindings.Add(&RendererVisibilityTagBinding);
@@ -109,12 +98,13 @@ FNiagaraBoundsCalculator* UNiagaraSpriteRendererProperties::CreateBoundsCalculat
 
 void UNiagaraSpriteRendererProperties::GetUsedMaterials(const FNiagaraEmitterInstance* InEmitter, TArray<UMaterialInterface*>& OutMaterials) const
 {
-	UMaterialInterface* UserParamMaterial = nullptr;
-	if (InEmitter != nullptr && MaterialUserParamBinding.Parameter.IsValid() && InEmitter->FindBinding(MaterialUserParamBinding, UserParamMaterial))
+	bool bSet = false;
+	if (InEmitter != nullptr && MaterialUserParamBinding.Parameter.IsValid() && InEmitter->FindBinding(MaterialUserParamBinding, OutMaterials))
 	{
-		OutMaterials.Add(UserParamMaterial);
+		bSet = true;
 	}
-	else
+
+	if (!bSet)
 	{
 		OutMaterials.Add(Material);
 	}
@@ -124,12 +114,8 @@ void UNiagaraSpriteRendererProperties::PostLoad()
 {
 	Super::PostLoad();
 
-	if ( Material )
-	{
-		Material->ConditionalPostLoad();
-	}
-
 #if WITH_EDITORONLY_DATA
+
 	if (MaterialUserParamBinding.Parameter.GetType().GetClass() != UMaterialInterface::StaticClass())
 	{
 		FNiagaraTypeDefinition MaterialDef(UMaterialInterface::StaticClass());
@@ -145,9 +131,6 @@ void UNiagaraSpriteRendererProperties::PostLoad()
 		CacheDerivedData();
 	}
 	PostLoadBindings(SourceMode);
-
-	// Fix up these bindings from their loaded source bindings
-	SetPreviousBindings(nullptr, SourceMode);
 #endif // WITH_EDITORONLY_DATA
 }
 
@@ -225,7 +208,6 @@ void UNiagaraSpriteRendererProperties::InitBindings()
 		DynamicMaterial3Binding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_DYNAMIC_MATERIAL_PARAM_3);
 		CameraOffsetBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_CAMERA_OFFSET);
 		UVScaleBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_UV_SCALE);
-		PivotOffsetBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_PIVOT_OFFSET);
 		MaterialRandomBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_MATERIAL_RANDOM);
 		NormalizedAgeBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_NORMALIZED_AGE);
 		RendererVisibilityTagBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_VISIBILITY_TAG);
@@ -233,28 +215,13 @@ void UNiagaraSpriteRendererProperties::InitBindings()
 		//Default custom sorting to age
 		CustomSortingBinding = FNiagaraConstants::GetAttributeDefaultBinding(SYS_PARAM_PARTICLES_NORMALIZED_AGE);
 	}
-
-	SetPreviousBindings(nullptr, SourceMode);
-}
-
-void UNiagaraSpriteRendererProperties::SetPreviousBindings(const UNiagaraEmitter* SrcEmitter, ENiagaraRendererSourceDataMode InSourceMode)
-{
-	PrevPositionBinding.SetAsPreviousValue(PositionBinding, SrcEmitter, InSourceMode);
-	PrevVelocityBinding.SetAsPreviousValue(VelocityBinding, SrcEmitter, InSourceMode);
-	PrevSpriteRotationBinding.SetAsPreviousValue(SpriteRotationBinding, SrcEmitter, InSourceMode);
-	PrevSpriteSizeBinding.SetAsPreviousValue(SpriteSizeBinding, SrcEmitter, InSourceMode);
-	PrevSpriteFacingBinding.SetAsPreviousValue(SpriteFacingBinding, SrcEmitter, InSourceMode);
-	PrevSpriteAlignmentBinding.SetAsPreviousValue(SpriteAlignmentBinding, SrcEmitter, InSourceMode);
-	PrevCameraOffsetBinding.SetAsPreviousValue(CameraOffsetBinding, SrcEmitter, InSourceMode);
-	PrevPivotOffsetBinding.SetAsPreviousValue(PivotOffsetBinding, SrcEmitter, InSourceMode);
 }
 
 void UNiagaraSpriteRendererProperties::CacheFromCompiledData(const FNiagaraDataSetCompiledData* CompiledData)
 {
 	UpdateSourceModeDerivates(SourceMode);
 
-	const int32 NumLayoutVars = NeedsPreciseMotionVectors() ? ENiagaraSpriteVFLayout::Num_Max : ENiagaraSpriteVFLayout::Num_Default;
-	RendererLayoutWithCustomSort.Initialize(NumLayoutVars);
+	RendererLayoutWithCustomSort.Initialize(ENiagaraSpriteVFLayout::Num);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PositionBinding, ENiagaraSpriteVFLayout::Position);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, VelocityBinding, ENiagaraSpriteVFLayout::Velocity);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, ColorBinding, ENiagaraSpriteVFLayout::Color);
@@ -265,7 +232,6 @@ void UNiagaraSpriteRendererProperties::CacheFromCompiledData(const FNiagaraDataS
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, SubImageIndexBinding, ENiagaraSpriteVFLayout::SubImage);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, CameraOffsetBinding, ENiagaraSpriteVFLayout::CameraOffset);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, UVScaleBinding, ENiagaraSpriteVFLayout::UVScale);
-	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PivotOffsetBinding, ENiagaraSpriteVFLayout::PivotOffset);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, NormalizedAgeBinding, ENiagaraSpriteVFLayout::NormalizedAge);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, MaterialRandomBinding, ENiagaraSpriteVFLayout::MaterialRandom);
 	RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, CustomSortingBinding, ENiagaraSpriteVFLayout::CustomSorting);	
@@ -273,20 +239,9 @@ void UNiagaraSpriteRendererProperties::CacheFromCompiledData(const FNiagaraDataS
 	MaterialParamValidMask |= RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial1Binding, ENiagaraSpriteVFLayout::MaterialParam1) ? 0x2 : 0;
 	MaterialParamValidMask |= RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial2Binding, ENiagaraSpriteVFLayout::MaterialParam2) ? 0x4 : 0;
 	MaterialParamValidMask |= RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial3Binding, ENiagaraSpriteVFLayout::MaterialParam3) ? 0x8 : 0;
-	if (NeedsPreciseMotionVectors())
-	{
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevPositionBinding, ENiagaraSpriteVFLayout::PrevPosition);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevVelocityBinding, ENiagaraSpriteVFLayout::PrevVelocity);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteRotationBinding, ENiagaraSpriteVFLayout::PrevRotation);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteSizeBinding, ENiagaraSpriteVFLayout::PrevSize);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteFacingBinding, ENiagaraSpriteVFLayout::PrevFacing);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteAlignmentBinding, ENiagaraSpriteVFLayout::PrevAlignment);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevCameraOffsetBinding, ENiagaraSpriteVFLayout::PrevCameraOffset);
-		RendererLayoutWithCustomSort.SetVariableFromBinding(CompiledData, PrevPivotOffsetBinding, ENiagaraSpriteVFLayout::PrevPivotOffset);
-	}
 	RendererLayoutWithCustomSort.Finalize();
 
-	RendererLayoutWithoutCustomSort.Initialize(NumLayoutVars);
+	RendererLayoutWithoutCustomSort.Initialize(ENiagaraSpriteVFLayout::Num);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PositionBinding, ENiagaraSpriteVFLayout::Position);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, VelocityBinding, ENiagaraSpriteVFLayout::Velocity);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, ColorBinding, ENiagaraSpriteVFLayout::Color);
@@ -297,24 +252,12 @@ void UNiagaraSpriteRendererProperties::CacheFromCompiledData(const FNiagaraDataS
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, SubImageIndexBinding, ENiagaraSpriteVFLayout::SubImage);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, CameraOffsetBinding, ENiagaraSpriteVFLayout::CameraOffset);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, UVScaleBinding, ENiagaraSpriteVFLayout::UVScale);
-	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PivotOffsetBinding, ENiagaraSpriteVFLayout::PivotOffset);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, NormalizedAgeBinding, ENiagaraSpriteVFLayout::NormalizedAge);
 	RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, MaterialRandomBinding, ENiagaraSpriteVFLayout::MaterialRandom);
 	MaterialParamValidMask = RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterialBinding, ENiagaraSpriteVFLayout::MaterialParam0) ? 0x1 : 0;
 	MaterialParamValidMask |= RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial1Binding, ENiagaraSpriteVFLayout::MaterialParam1) ? 0x2 : 0;
 	MaterialParamValidMask |= RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial2Binding, ENiagaraSpriteVFLayout::MaterialParam2) ? 0x4 : 0;
 	MaterialParamValidMask |= RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, DynamicMaterial3Binding, ENiagaraSpriteVFLayout::MaterialParam3) ? 0x8 : 0;
-	if (NeedsPreciseMotionVectors())
-	{
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevPositionBinding, ENiagaraSpriteVFLayout::PrevPosition);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevVelocityBinding, ENiagaraSpriteVFLayout::PrevVelocity);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteRotationBinding, ENiagaraSpriteVFLayout::PrevRotation);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteSizeBinding, ENiagaraSpriteVFLayout::PrevSize);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteFacingBinding, ENiagaraSpriteVFLayout::PrevFacing);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevSpriteAlignmentBinding, ENiagaraSpriteVFLayout::PrevAlignment);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevCameraOffsetBinding, ENiagaraSpriteVFLayout::PrevCameraOffset);
-		RendererLayoutWithoutCustomSort.SetVariableFromBinding(CompiledData, PrevPivotOffsetBinding, ENiagaraSpriteVFLayout::PrevPivotOffset);
-	}
 	RendererLayoutWithoutCustomSort.Finalize();
 
 }
@@ -344,8 +287,6 @@ bool UNiagaraSpriteRendererProperties::PopulateRequiredBindings(FNiagaraParamete
 
 void UNiagaraSpriteRendererProperties::UpdateSourceModeDerivates(ENiagaraRendererSourceDataMode InSourceMode, bool bFromPropertyEdit)
 {
-	Super::UpdateSourceModeDerivates(InSourceMode, bFromPropertyEdit);
-	
 	UNiagaraEmitter* SrcEmitter = GetTypedOuter<UNiagaraEmitter>();
 	if (SrcEmitter)
 	{
@@ -353,9 +294,9 @@ void UNiagaraSpriteRendererProperties::UpdateSourceModeDerivates(ENiagaraRendere
 		{
 			MaterialParamBinding.CacheValues(SrcEmitter);
 		}
-
-		SetPreviousBindings(SrcEmitter, InSourceMode);
 	}
+
+	Super::UpdateSourceModeDerivates(InSourceMode, bFromPropertyEdit);
 }
 
 #if WITH_EDITORONLY_DATA
@@ -465,6 +406,7 @@ void UNiagaraSpriteRendererProperties::RemoveVariable(const FNiagaraVariableBase
 	}
 }
 
+
 const TArray<FNiagaraVariable>& UNiagaraSpriteRendererProperties::GetOptionalAttributes()
 {
 	static TArray<FNiagaraVariable> Attrs;
@@ -486,27 +428,10 @@ const TArray<FNiagaraVariable>& UNiagaraSpriteRendererProperties::GetOptionalAtt
 		Attrs.Add(SYS_PARAM_PARTICLES_DYNAMIC_MATERIAL_PARAM_3);
 		Attrs.Add(SYS_PARAM_PARTICLES_CAMERA_OFFSET);
 		Attrs.Add(SYS_PARAM_PARTICLES_UV_SCALE);
-		Attrs.Add(SYS_PARAM_PARTICLES_PIVOT_OFFSET);
 		Attrs.Add(SYS_PARAM_PARTICLES_MATERIAL_RANDOM);
 	}
 
 	return Attrs;
-}
-
-void UNiagaraSpriteRendererProperties::GetAdditionalVariables(TArray<FNiagaraVariableBase>& OutArray) const
-{
-	if (NeedsPreciseMotionVectors())
-	{
-		OutArray.Reserve(8);
-		OutArray.Add(PrevPositionBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevVelocityBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevSpriteRotationBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevSpriteSizeBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevSpriteFacingBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevSpriteAlignmentBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevCameraOffsetBinding.GetParamMapBindableVariable());
-		OutArray.Add(PrevPivotOffsetBinding.GetParamMapBindableVariable());		
-	}
 }
 
 void UNiagaraSpriteRendererProperties::GetRendererWidgets(const FNiagaraEmitterInstance* InEmitter, TArray<TSharedPtr<SWidget>>& OutWidgets, TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const
@@ -639,26 +564,6 @@ void UNiagaraSpriteRendererProperties::CacheDerivedData()
 	{
 		DerivedData.BoundingGeometry.Empty();
 	}
-}
-
-FNiagaraVariable UNiagaraSpriteRendererProperties::GetBoundAttribute(const FNiagaraVariableAttributeBinding* Binding) const
-{
-	if (!NeedsPreciseMotionVectors())
-	{
-		if (Binding == &PrevPositionBinding
-			|| Binding == &PrevVelocityBinding
-			|| Binding == &PrevSpriteRotationBinding
-			|| Binding == &PrevSpriteSizeBinding
-			|| Binding == &PrevSpriteFacingBinding
-			|| Binding == &PrevSpriteAlignmentBinding
-			|| Binding == &PrevCameraOffsetBinding
-			|| Binding == &PrevPivotOffsetBinding)
-		{
-			return FNiagaraVariable();
-		}
-	}
-
-	return Super::GetBoundAttribute(Binding);
 }
 
 #endif // WITH_EDITORONLY_DATA

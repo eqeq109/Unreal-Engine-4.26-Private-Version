@@ -5,7 +5,6 @@
 =============================================================================*/
 
 #include "CoreMinimal.h"
-#include "AssetRegistry/AssetData.h"
 #include "Misc/CoreMisc.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
@@ -221,77 +220,71 @@ bool UObject::Rename( const TCHAR* InName, UObject* NewOuter, ERenameFlags Flags
 	{
 		ResetLoaders( GetOuter() );
 	}
-
 	FName OldName = GetFName();
+
 	FName NewName;
-	bool bCreateRedirector = false;
-	UObject* OldOuter = nullptr;
 
+	if (InName == nullptr)
 	{
-		// Make sure that for the remainder of the duration of the rename operation nothing else is going to modify the UObject hash tables.
-		FScopedUObjectHashTablesLock HashTablesLock;
-
-		if (InName == nullptr)
+		// If null, null is passed in, then we are deliberately trying to get a new name
+		// Otherwise if the outer is changing, try and maintain the name
+		if (NewOuter && StaticFindObjectFastInternal(nullptr, NewOuter, OldName) == nullptr)
 		{
-			// If null, null is passed in, then we are deliberately trying to get a new name
-			// Otherwise if the outer is changing, try and maintain the name
-			if (NewOuter && StaticFindObjectFastInternal(nullptr, NewOuter, OldName) == nullptr)
-			{
-				NewName = OldName;
-			}
-			else
-			{
-				NewName = MakeUniqueObjectName(NameScopeOuter ? NameScopeOuter : GetOuter(), GetClass());
-			}
+			NewName = OldName;
 		}
 		else
 		{
-			NewName = FName(InName);
+			NewName = MakeUniqueObjectName( NameScopeOuter ? NameScopeOuter : GetOuter(), GetClass() );
 		}
-
-		//UE_LOG(LogObj, Log,  TEXT("Renaming %s to %s"), *OldName.ToString(), *NewName.ToString() );
-
-		if (!(Flags & REN_NonTransactional))
-		{
-			// Mark touched packages as dirty.
-			if (Flags & REN_DoNotDirty)
-			{
-				// This will only mark dirty if in a transaction,
-				// the object is transactional, and the object is
-				// not in a PlayInEditor package.
-				Modify(false);
-			}
-			else
-			{
-				// This will maintain previous behavior...
-				// Which was to directly call MarkPackageDirty
-				Modify(true);
-			}
-		}
-
-		OldOuter = GetOuter();
-
-		if (HasAnyFlags(RF_Public))
-		{
-			const bool bUniquePathChanged = ((NewOuter != NULL && OldOuter != NewOuter) || (OldName != NewName));
-			const bool bRootPackage = GetClass() == UPackage::StaticClass() && OldOuter == NULL;
-			const bool bRedirectionAllowed = !FApp::IsGame() && ((Flags & REN_DontCreateRedirectors) == 0);
-
-			// We need to create a redirector if we changed the Outer or Name of an object that can be referenced from other packages
-			// [i.e. has the RF_Public flag] so that references to this object are not broken.
-			bCreateRedirector = bRootPackage == false && bUniquePathChanged == true && bRedirectionAllowed == true && bIsCaseOnlyChange == false;
-		}
-
-		if (NewOuter)
-		{
-			if (!(Flags & REN_DoNotDirty))
-			{
-				NewOuter->MarkPackageDirty();
-			}
-		}
-
-		LowLevelRename(NewName, NewOuter);
 	}
+	else
+	{
+		NewName = FName(InName);
+	}
+
+	//UE_LOG(LogObj, Log,  TEXT("Renaming %s to %s"), *OldName.ToString(), *NewName.ToString() );
+
+	if ( !(Flags & REN_NonTransactional) )
+	{
+		// Mark touched packages as dirty.
+		if (Flags & REN_DoNotDirty)
+		{
+			// This will only mark dirty if in a transaction,
+			// the object is transactional, and the object is
+			// not in a PlayInEditor package.
+			Modify(false);
+		}
+		else
+		{
+			// This will maintain previous behavior...
+			// Which was to directly call MarkPackageDirty
+			Modify(true);
+		}
+	}
+
+	bool bCreateRedirector = false;
+	UObject* OldOuter = GetOuter();
+
+	if ( HasAnyFlags(RF_Public) )
+	{
+		const bool bUniquePathChanged	= ((NewOuter != NULL && OldOuter != NewOuter) || (OldName != NewName));
+		const bool bRootPackage			= GetClass() == UPackage::StaticClass() && OldOuter == NULL;
+		const bool bRedirectionAllowed = !FApp::IsGame() && ((Flags & REN_DontCreateRedirectors) == 0);
+
+		// We need to create a redirector if we changed the Outer or Name of an object that can be referenced from other packages
+		// [i.e. has the RF_Public flag] so that references to this object are not broken.
+		bCreateRedirector = bRootPackage == false && bUniquePathChanged == true && bRedirectionAllowed == true && bIsCaseOnlyChange == false;
+	}
+
+	if( NewOuter )
+	{
+		if (!(Flags & REN_DoNotDirty))
+		{
+			NewOuter->MarkPackageDirty();
+		}
+	}
+
+	LowLevelRename(NewName,NewOuter);
 
 	// Create the redirector AFTER renaming the object. Two objects of different classes may not have the same fully qualified name.
 	if (bCreateRedirector)
@@ -1026,9 +1019,6 @@ bool UObject::ConditionalFinishDestroy()
 #endif
 		FinishDestroy();
 
-		// Make sure this object can't be accessed via weak pointers after it's been FinishDestroyed
-		GUObjectArray.ResetSerialNumber(this);
-
 		// Make sure this object can't be found through any delete listeners (annotation maps etc) after it's been FinishDestroyed
 		GUObjectArray.RemoveObjectFromDeleteListeners(this);
 
@@ -1140,7 +1130,7 @@ void UObject::PostLoadSubobjects( FObjectInstancingGraph* OuterInstanceGraph/*=N
 
 		// Cooked data will already have its subobjects fully instanced as uninstanced subobjects are only due to newly introduced subobjects in
 		// an archetype that an instance of that object hasn't been saved with
-		if (!FPlatformProperties::RequiresCookedData() && !GetPackage()->HasAnyPackageFlags(PKG_Cooked))
+		if (!FPlatformProperties::RequiresCookedData())
 		{
 			FObjectInstancingGraph CurrentInstanceGraph;
 
@@ -1722,35 +1712,29 @@ FString GetConfigFilename( UObject* SourceObject )
 	}
 }
 
-namespace UE { namespace Object { namespace Private {
-
-const FName GAssetBundleDataName("AssetBundleData");
-
-// Thread local state to avoid UObject::GetAssetRegistryTags() API change
-thread_local FAssetBundleData const** TGetAssetRegistryTags_OutBundles = nullptr;
-
-static void GetAssetRegistryTagFromProperty(const void* BaseMemoryLocation, const UObject* OwnerObject, FProperty* Prop, TArray<UObject::FAssetRegistryTag>& OutTags)
+void GetAssetRegistryTagFromProperty(const void* BaseMemoryLocation, const UObject* OwnerObject, FProperty* Prop, TSet<FName>& OutFoundSpecialStructs, TArray<UObject::FAssetRegistryTag>& OutTags)
 {
+	FName TagName;
+	UObject::FAssetRegistryTag::ETagType TagType = UObject::FAssetRegistryTag::ETagType::TT_Alphabetical;
 	FStructProperty* StructProp = CastField<FStructProperty>(Prop);
-	if (StructProp && StructProp->Struct && StructProp->Struct->GetFName() == GAssetBundleDataName)
-	{
-		const FAssetBundleData* Bundles = reinterpret_cast<const FAssetBundleData*>(Prop->ContainerPtrToValuePtr<uint8>(BaseMemoryLocation));
 
-		if (FAssetBundleData const** OutBundles = TGetAssetRegistryTags_OutBundles)
+	if (StructProp && StructProp->Struct && UObject::FAssetRegistryTag::IsUniqueAssetRegistryTagStruct(StructProp->Struct->GetFName(), TagType))
+	{
+		// Special unique structure type
+		TagName = StructProp->Struct->GetFName();
+
+		if (OutFoundSpecialStructs.Contains(TagName))
 		{
-			checkf(*OutBundles == nullptr, TEXT("Object %s has more than one FAssetBundleData!"), *OwnerObject->GetPathName());
-			*OutBundles = Bundles;
+			UE_LOG(LogObj, Error, TEXT("Object %s has more than one unique asset registry struct %s!"), *OwnerObject->GetPathName(), *TagName.ToString());
 		}
 		else
 		{
-			FString PropertyStr;
-			Prop->ExportTextItem(PropertyStr, Bundles, Bundles, nullptr, PPF_None);
-			OutTags.Add(UObject::FAssetRegistryTag(GAssetBundleDataName, MoveTemp(PropertyStr), UObject::FAssetRegistryTag::ETagType::TT_Alphabetical));
+			OutFoundSpecialStructs.Add(TagName);
 		}
 	}
 	else if (Prop->HasAnyPropertyFlags(CPF_AssetRegistrySearchable))
 	{
-		UObject::FAssetRegistryTag::ETagType TagType = UObject::FAssetRegistryTag::ETagType::TT_Alphabetical;
+		TagName = Prop->GetFName();
 
 		if (Prop->IsA(FIntProperty::StaticClass()) ||
 			Prop->IsA(FFloatProperty::StaticClass()) ||
@@ -1783,22 +1767,31 @@ static void GetAssetRegistryTagFromProperty(const void* BaseMemoryLocation, cons
 			// Arrays/maps/sets/structs are hidden, it is often too much information to display and sort
 			TagType = UObject::FAssetRegistryTag::ETagType::TT_Hidden;
 		}
+		else
+		{
+			// All other types are alphabetical, there are special UI parsers for object properties
+			TagType = UObject::FAssetRegistryTag::ETagType::TT_Alphabetical;
+		}
+	}
 
+	if (TagName != NAME_None)
+	{
 		FString PropertyStr;
 		const uint8* PropertyAddr = Prop->ContainerPtrToValuePtr<uint8>(BaseMemoryLocation);
 		Prop->ExportTextItem(PropertyStr, PropertyAddr, PropertyAddr, nullptr, PPF_None);
 
-		OutTags.Add(UObject::FAssetRegistryTag(Prop->GetFName(), MoveTemp(PropertyStr), TagType));
+		OutTags.Add(UObject::FAssetRegistryTag(TagName, PropertyStr, TagType));
 	}
 }
 
-static void GetAssetRegistryTagsFromSearchableProperties(const UObject* Object, TArray<UObject::FAssetRegistryTag>& OutTags)
+void UObject::FAssetRegistryTag::GetAssetRegistryTagsFromSearchableProperties(const UObject* Object, TArray<FAssetRegistryTag>& OutTags)
 {
-	check(nullptr != Object);
+	TSet<FName> FoundSpecialStructs;
 
+	check(nullptr != Object);
 	for (TFieldIterator<FProperty> FieldIt( Object->GetClass() ); FieldIt; ++FieldIt)
 	{
-		GetAssetRegistryTagFromProperty(Object, Object, CastField<FProperty>(*FieldIt), OutTags);
+		GetAssetRegistryTagFromProperty(Object, Object, CastField<FProperty>(*FieldIt), FoundSpecialStructs, OutTags);
 	}
 
 	UScriptStruct* SparseClassDataStruct = Object->GetClass()->GetSparseClassDataStruct();
@@ -1807,21 +1800,29 @@ static void GetAssetRegistryTagsFromSearchableProperties(const UObject* Object, 
 		void* SparseClassData = Object->GetClass()->GetOrCreateSparseClassData();
 		for (TFieldIterator<FProperty> FieldIt(SparseClassDataStruct); FieldIt; ++FieldIt)
 		{
-			GetAssetRegistryTagFromProperty(SparseClassData, Object, CastField<FProperty>(*FieldIt), OutTags);
+			GetAssetRegistryTagFromProperty(SparseClassData, Object, CastField<FProperty>(*FieldIt), FoundSpecialStructs, OutTags);
 		}
 	}
 }
 
-}}} // end namespace UE::Object::Private
+bool UObject::FAssetRegistryTag::IsUniqueAssetRegistryTagStruct(FName StructName, ETagType& TagType)
+{
+	static const FName AssetBundleDataName("AssetBundleData"); // Name of FAssetBundleData in Engine
+
+	if (StructName == AssetBundleDataName)
+	{
+		TagType = FAssetRegistryTag::TT_Hidden;
+		return true;
+	}
+
+	return false;
+}
 
 const FName FPrimaryAssetId::PrimaryAssetTypeTag(TEXT("PrimaryAssetType"));
 const FName FPrimaryAssetId::PrimaryAssetNameTag(TEXT("PrimaryAssetName"));
 
-
 void UObject::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 {
-	using namespace UE::Object::Private;
-
 	// Add primary asset info if valid
 	FPrimaryAssetId PrimaryAssetId = GetPrimaryAssetId();
 	if (PrimaryAssetId.IsValid())
@@ -1830,7 +1831,7 @@ void UObject::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 		OutTags.Add(FAssetRegistryTag(FPrimaryAssetId::PrimaryAssetNameTag, PrimaryAssetId.PrimaryAssetName.ToString(), UObject::FAssetRegistryTag::TT_Alphabetical));
 	}
 
-	GetAssetRegistryTagsFromSearchableProperties(this, OutTags);
+	FAssetRegistryTag::GetAssetRegistryTagsFromSearchableProperties(this, OutTags);
 
 #if WITH_EDITOR
 	// Notify external sources that we need tags.
@@ -1854,47 +1855,6 @@ void UObject::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 		}
 	}
 #endif // WITH_EDITOR
-}
-
-static FAssetDataTagMapSharedView MakeSharedTagMap(TArray<UObject::FAssetRegistryTag>&& Tags)
-{
-	FAssetDataTagMap Out;
-	Out.Reserve(Tags.Num());
-	for (UObject::FAssetRegistryTag& Tag : Tags)
-	{
-		// Don't add empty tags
-		if (!Tag.Name.IsNone() && !Tag.Value.IsEmpty())
-		{
-			Out.Add(Tag.Name, MoveTemp(Tag.Value));
-		}
-	}
-
-	return FAssetDataTagMapSharedView(MoveTemp(Out));
-}
-
-static TSharedPtr<FAssetBundleData, ESPMode::ThreadSafe> MakeSharedBundles(const FAssetBundleData* Bundles)
-{
-	if (Bundles && Bundles->Bundles.Num())
-	{
-		return MakeShared<FAssetBundleData, ESPMode::ThreadSafe>(*Bundles);
-	}
-
-	return TSharedPtr<FAssetBundleData, ESPMode::ThreadSafe>();
-}
-
-void UObject::GetAssetRegistryTags(FAssetData& Out) const
-{
-	using namespace UE::Object::Private;
-
-	const FAssetBundleData* Bundles = nullptr;
-
-	TArray<FAssetRegistryTag> Tags;
-	TGetAssetRegistryTags_OutBundles = &Bundles;
-	GetAssetRegistryTags(Tags);
-	TGetAssetRegistryTags_OutBundles = nullptr;
-
-	Out.TagsAndValues = MakeSharedTagMap(MoveTemp(Tags));
-	Out.TaggedAssetBundles = MakeSharedBundles(Bundles);
 }
 
 const FName& UObject::SourceFileTagName()
@@ -2999,7 +2959,7 @@ void UObject::OutputReferencers( FOutputDevice& Ar, FReferencerInformationList* 
 
 void UObject::RetrieveReferencers( TArray<FReferencerInformation>* OutInternalReferencers, TArray<FReferencerInformation>* OutExternalReferencers )
 {
-	for( FThreadSafeObjectIterator It; It; ++It )
+	for( FObjectIterator It; It; ++It )
 	{
 		UObject* Object = *It;
 
@@ -3557,7 +3517,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 						bool bShowDefaultObjects = FParse::Command(&Str,TEXT("SHOWDEFAULTS"));
 						bool bShowPendingKills = FParse::Command(&Str, TEXT("SHOWPENDINGKILLS"));
 						bool bShowDetailedInfo = FParse::Command(&Str, TEXT("DETAILED"));
-						for ( FThreadSafeObjectIterator It; It; ++It )
+						for ( FObjectIterator It; It; ++It )
 						{
 							UObject* CurrentObject = *It;
 
@@ -3825,7 +3785,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		{
 			Ar.Logf(TEXT("------------------------------------------------------------------------------"));
 
-			for (FThreadSafeObjectIterator It; It; ++It)
+			for (FObjectIterator It; It; ++It)
 			{
 				UObject* Target = *It;
 
@@ -3897,7 +3857,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		{
 			int32 Num=0;
 			int32 NumTransactional=0;
-			for( FThreadSafeObjectIterator It; It; ++It )
+			for( FObjectIterator It; It; ++It )
 			{
 				Num++;
 				if (It->HasAnyFlags(RF_Transactional))
@@ -3912,7 +3872,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		else if( FParse::Command(&Str,TEXT("MARK")) )
 		{
 			UE_LOG(LogObj, Log,  TEXT("Marking objects") );
-			for( FThreadSafeObjectIterator It; It; ++It )
+			for( FObjectIterator It; It; ++It )
 			{
 				DebugMarkAnnotation.Set(*It);
 			}
@@ -3921,7 +3881,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 		else if( FParse::Command(&Str,TEXT("MARKCHECK")) )
 		{
 			UE_LOG(LogObj, Log,  TEXT("Unmarked (new) objects:") );
-			for( FThreadSafeObjectIterator It; It; ++It )
+			for( FObjectIterator It; It; ++It )
 			{
 				if(!DebugMarkAnnotation.Get(*It))
 				{
@@ -3935,7 +3895,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 			UE_LOG(LogObj, Log,  TEXT("InvMarking existing objects") );
 			DebugInvMarkWeakPtrs.Empty();
 			DebugInvMarkNames.Empty();
-			for( FThreadSafeObjectIterator It; It; ++It )
+			for( FObjectIterator It; It; ++It )
 			{
 				DebugInvMarkWeakPtrs.Add(TWeakObjectPtr<>(*It));
 				DebugInvMarkNames.Add(It->GetFullName());
@@ -3971,7 +3931,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 			FlushAsyncLoading();
 
 			DebugSpikeMarkAnnotation.ClearAll();
-			for( FThreadSafeObjectIterator It; It; ++It )
+			for( FObjectIterator It; It; ++It )
 			{
 				DebugSpikeMarkAnnotation.Set(*It);
 			}
@@ -4152,7 +4112,7 @@ bool StaticExec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 				bool bRecurse = FParse::Bool(Str, TEXT("RECURSE"), Dummy);
 
 				// Iterate through the object list
-				for( FThreadSafeObjectIterator It; It; ++It )
+				for( FObjectIterator It; It; ++It )
 				{
 					// if this object is within the package specified, serialize the object
 					// into a specialized archive which logs object names encountered during

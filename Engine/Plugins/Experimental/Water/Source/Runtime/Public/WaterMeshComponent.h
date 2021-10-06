@@ -110,7 +110,6 @@ private:
 	FWaterQuadTree WaterQuadTree;
 
 	/** Unique list of materials used by this component */
-	UPROPERTY(Transient, NonPIEDuplicateTransient, TextExportTransient)
 	TSet<UMaterialInterface*> UsedMaterials;
 
 	/** Dirty flag which will make sure the water mesh is updated properly */

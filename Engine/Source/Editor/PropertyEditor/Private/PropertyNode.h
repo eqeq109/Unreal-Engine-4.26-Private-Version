@@ -605,11 +605,6 @@ public:
 		EPropertyArrayChangeType::Type ChangeType, int32 Index, int32 SwapIndex = INDEX_NONE);
 
 	/**
-	 * Helper function to centralize logic for duplcating an array entry and ensuring that instanced object references are correctly handled
-	 */
-	static void DuplicateArrayEntry(FProperty* NodeProperty, FScriptArrayHelper& ArrayHelper, int32 Index);
-
-	/**
 	 * Gather the list of all instances that will be affected by a container property change
 	 *
 	 * @param	ModifiedObject				Object which property has been modified
@@ -918,7 +913,7 @@ public:
 	/**
 	 * Helper to fetch a list of child property nodes that are expanded
 	 */
-	void GetExpandedChildPropertyPaths(TSet<FString>& OutExpandedChildPropertyPaths) const;
+	void GetExpandedChildPropertyPaths(TSet<FString>& OutExpandedChildPropertyPaths);
 
 	/**
 	 * Helper to set the expansion state of a list of child property nodes

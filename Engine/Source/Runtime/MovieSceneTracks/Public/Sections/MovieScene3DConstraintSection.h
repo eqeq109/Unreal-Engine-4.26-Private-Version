@@ -22,15 +22,21 @@ class UMovieScene3DConstraintSection
 
 public:
 
+	/** Sets the constraint id for this section */
+	virtual void SetConstraintId(const FGuid& InId);
+
+	/** Sets the constraint id for this section based off of the pasted in sequence id */
+	virtual void SetConstraintId(const FGuid& InConstraintId, const FMovieSceneSequenceID& SequenceID);
+
 	/** Gets the constraint binding for this Constraint section */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	const FMovieSceneObjectBindingID& GetConstraintBindingID() const
 	{
 		return ConstraintBindingID;
 	}
 
 	/** Sets the constraint binding for this Constraint section */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	void SetConstraintBindingID(const FMovieSceneObjectBindingID& InConstraintBindingID)
 	{
 		ConstraintBindingID = InConstraintBindingID;

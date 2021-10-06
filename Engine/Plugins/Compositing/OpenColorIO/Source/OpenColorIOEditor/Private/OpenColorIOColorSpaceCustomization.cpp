@@ -104,26 +104,19 @@ void FOpenColorIOColorSpaceCustomization::CustomizeChildren(TSharedRef<IProperty
 
 bool FOpenColorIOColorSpaceCustomization::LoadConfigurationFile(const FFilePath& InFilePath)
 {
-#if WITH_OCIO
 #if !PLATFORM_EXCEPTIONS_DISABLED
 	try
 #endif
 	{
 		FString FullPath;
-		FString ConfigurationFilePath = InFilePath.FilePath;
-		if (ConfigurationFilePath.Contains(TEXT("{Engine}")))
+		if (!FPaths::IsRelative(InFilePath.FilePath))
 		{
-			ConfigurationFilePath = FPaths::ConvertRelativePathToFull(ConfigurationFilePath.Replace(TEXT("{Engine}"), *FPaths::EngineDir()));
-		}    
-
-		if (!FPaths::IsRelative(ConfigurationFilePath))
-		{
-			FullPath = ConfigurationFilePath;
+			FullPath = InFilePath.FilePath;
 		}
 		else
 		{
 			const FString AbsoluteGameDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
-			FullPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(AbsoluteGameDir, ConfigurationFilePath));
+			FullPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(AbsoluteGameDir, InFilePath.FilePath));
 		}
 
 		CachedConfigFile = OCIO_NAMESPACE::Config::CreateFromFile(StringCast<ANSICHAR>(*FullPath).Get());
@@ -140,9 +133,6 @@ bool FOpenColorIOColorSpaceCustomization::LoadConfigurationFile(const FFilePath&
 #endif
 
 	return true;
-#else //WITH_OCIO
-	return false;
-#endif //WITH_OCIO
 }
 
 void FOpenColorIOColorSpaceCustomization::ProcessColorSpaceForMenuGeneration(FMenuBuilder& InMenuBuilder, const int32 InMenuDepth, const FString& InPreviousFamilyHierarchy, const FOpenColorIOColorSpace& InColorSpace, TArray<FString>& InOutExistingMenuFilter)

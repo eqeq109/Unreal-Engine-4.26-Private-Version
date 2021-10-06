@@ -13,6 +13,8 @@ public class DMXBlueprintGraph : ModuleRules
 			{
 				"Core",
                 "DMXProtocol",
+				"DMXProtocolArtNet",
+				"DMXProtocolSACN",
 				"DMXRuntime",
             }
 		);
@@ -39,7 +41,7 @@ public class DMXBlueprintGraph : ModuleRules
                 "Projects",
                 "BlueprintGraph",
                 "GraphEditor",
-                "DMXEditor",
+                "DMXEditor"
             }
 		);
 	}

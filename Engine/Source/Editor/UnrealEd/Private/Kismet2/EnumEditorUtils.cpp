@@ -278,7 +278,7 @@ void FEnumEditorUtils::PostEditUndo(UUserDefinedEnum* Enum)
 
 void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArray<TPair<FName, int64>>& OldNames, bool bResolveData)
 {
-	check(nullptr != Enum);
+	check(NULL != Enum);
 	if (bResolveData)
 	{
 		FArchiveEnumeratorResolver EnumeratorResolver(Enum, OldNames);
@@ -297,13 +297,13 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 					return OwnerClass;	
 				}
 				// Otherwise check for UserDefinedStructs that may have this property
-				else if (UUserDefinedStruct* UserStruct = Cast<UUserDefinedStruct>(Prop->GetOwnerStruct()))
+				else if (UStruct* OwnerStruct = Prop->GetOwnerStruct())
 				{
-					// Exclude UDS compiler artifacts; they don't require regeneration.
-					if (!UserStruct->PrimaryStruct.IsValid())
+					if(UUserDefinedStruct* UserStruct = Cast<UUserDefinedStruct>(OwnerStruct))
 					{
 						EffectedUserStructs.Add(UserStruct);
 					}
+					return OwnerStruct->GetClass();
 				}
 			}
 			return nullptr;
@@ -336,7 +336,7 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 			}
 		}
 
-		for (FThreadSafeObjectIterator ObjIter; ObjIter; ++ObjIter)
+		for (FObjectIterator ObjIter; ObjIter; ++ObjIter)
 		{
 			for (UClass* Class : ClassesToCheck)
 			{
@@ -352,8 +352,6 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 		// serialization in order for the structure editor to get updated properly
 		for(UUserDefinedStruct* Struct : EffectedUserStructs)
 		{
-			Struct->Serialize(EnumeratorResolver);
-
 			FStructureEditorUtils::ModifyStructData(Struct);
 			FStructureEditorUtils::OnStructureChanged(Struct);
 		}

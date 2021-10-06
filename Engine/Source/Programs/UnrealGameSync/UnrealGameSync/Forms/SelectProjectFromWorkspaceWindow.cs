@@ -43,7 +43,7 @@ namespace UnrealGameSync
 					return false;
 				}
 
-				string ClientRoot = ClientSpec.GetField("Root")?.TrimEnd(Path.DirectorySeparatorChar);
+				string ClientRoot = ClientSpec.GetField("Root");
 				if(String.IsNullOrEmpty(ClientRoot))
 				{
 					ErrorMessage = String.Format("Client '{0}' does not have a valid root directory.", ClientName);

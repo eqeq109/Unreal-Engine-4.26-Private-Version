@@ -27,7 +27,7 @@ struct FDenoiserFilterSet
 	TArray<FVector> InputBuffer;
 	TArray<FVector> OutputBuffer;
 
-	FDenoiserFilterSet(FDenoiserContext& Context, FIntPoint NewSize, bool bSHDenoiser = false);
+	FDenoiserFilterSet(FDenoiserContext& Context, FIntPoint NewSize);
 
 	void Execute();
 
@@ -46,7 +46,6 @@ struct FDenoiserContext
 #endif
 
 	TMap<FIntPoint, FDenoiserFilterSet> Filters;
-	TMap<FIntPoint, FDenoiserFilterSet> SHFilters;
 
 	FDenoiserContext()
 	{
@@ -61,30 +60,16 @@ struct FDenoiserContext
 		UE_LOG(LogTemp, Log, TEXT("Denoising: %.2lfs initializing filters (%d), %.2lfs executing filters (%d)"), FilterInitTime, NumFilterInit, FilterExecutionTime, NumFilterExecution);
 	}
 
-	FDenoiserFilterSet& GetFilterForSize(FIntPoint Size, bool bSHDenoiser = false)
+	FDenoiserFilterSet& GetFilterForSize(FIntPoint Size)
 	{
-		if (!bSHDenoiser)
+		if (!Filters.Contains(Size))
 		{
-			if (!Filters.Contains(Size))
-			{
-				Filters.Add(Size, FDenoiserFilterSet(*this, Size));
-			}
-
-			Filters[Size].Clear();
-
-			return Filters[Size];
+			Filters.Add(Size, FDenoiserFilterSet(*this, Size));
 		}
-		else
-		{
-			if (!SHFilters.Contains(Size))
-			{
-				SHFilters.Add(Size, FDenoiserFilterSet(*this, Size, true));
-			}
 
-			SHFilters[Size].Clear();
+		Filters[Size].Clear();
 
-			return SHFilters[Size];
-		}
+		return Filters[Size];
 	}
 };
 

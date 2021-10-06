@@ -1,7 +1,7 @@
 package com.epicgames.ue4.notifications;
 
-import androidx.annotation.DrawableRes;
-import androidx.annotation.NonNull;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
 
 public class EpicFirebaseNotificationMeta {
 	private final int notificationResId;

@@ -28,9 +28,7 @@ namespace EVehicleDifferential4W
 USTRUCT()
 struct FVehicleDifferential4WData
 {
-	GENERATED_BODY()
-
-	FVehicleDifferential4WData();
+	GENERATED_USTRUCT_BODY()
 
 	/** Type of differential */
 	UPROPERTY(EditAnywhere, Category=Setup)
@@ -64,9 +62,7 @@ struct FVehicleDifferential4WData
 USTRUCT()
 struct FVehicleEngineData
 {
-	GENERATED_BODY()
-
-	FVehicleEngineData();
+	GENERATED_USTRUCT_BODY()
 
 	/** Torque (Nm) at a given RPM*/
 	UPROPERTY(EditAnywhere, Category = Setup)
@@ -100,9 +96,7 @@ struct FVehicleEngineData
 USTRUCT()
 struct FVehicleGearData
 {
-	GENERATED_BODY()
-
-	FVehicleGearData();
+	GENERATED_USTRUCT_BODY()
 
 	/** Determines the amount of torque multiplication*/
 	UPROPERTY(EditAnywhere, Category = Setup)
@@ -120,10 +114,7 @@ struct FVehicleGearData
 USTRUCT()
 struct FVehicleTransmissionData
 {
-	GENERATED_BODY()
-
-	FVehicleTransmissionData();
-
+	GENERATED_USTRUCT_BODY()
 	/** Whether to use automatic transmission */
 	UPROPERTY(EditAnywhere, Category = VehicleSetup, meta=(DisplayName = "Automatic Transmission"))
 	bool bUseGearAutoBox;

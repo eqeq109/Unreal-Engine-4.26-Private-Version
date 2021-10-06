@@ -20,7 +20,7 @@ struct FWorldReticleParameters
 	}
 
 	UPROPERTY(BlueprintReadWrite, Category = Reticle)
-	FVector AOEScale = FVector(0.f);
+	FVector AOEScale;
 };
 
 /** Reticles allow targeting to be visualized. Tasks can spawn these. Artists/designers can create BPs for these. */

@@ -7,26 +7,27 @@
 
 namespace Chaos
 {
-class FPerParticleEulerStepVelocity : public FPerParticleRule
+template<class T, int d>
+class TPerParticleEulerStepVelocity : public TPerParticleRule<T, d>
 {
   public:
-	FPerParticleEulerStepVelocity() {}
-	virtual ~FPerParticleEulerStepVelocity() {}
+	TPerParticleEulerStepVelocity() {}
+	virtual ~TPerParticleEulerStepVelocity() {}
 
 	template<class T_PARTICLES>
-	inline void ApplyHelper(T_PARTICLES& InParticles, const FReal Dt, const int32 Index) const
+	inline void ApplyHelper(T_PARTICLES& InParticles, const T Dt, const int32 Index) const
 	{
 		InParticles.V(Index) += InParticles.F(Index) * InParticles.InvM(Index) * Dt;
 	}
 
-	inline void Apply(FDynamicParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TDynamicParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		if (InParticles.InvM(Index) == 0)
 			return;
 		ApplyHelper(InParticles, Dt, Index);
 	}
 
-	inline void Apply(TRigidParticles<FReal, 3>& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TRigidParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		if (InParticles.InvM(Index) == 0 || InParticles.Disabled(Index) || InParticles.Sleeping(Index))
 			return;
@@ -47,7 +48,7 @@ class FPerParticleEulerStepVelocity : public FPerParticleRule
 		InParticles.W(Index) += WorldInvI * InParticles.Torque(Index) * Dt;
 	}
 	
-	inline void Apply(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal Dt) const override //-V762
+	inline void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 	{
 		Particle.V() += Particle.F() * Particle.InvM() * Dt;
 #if CHAOS_PARTICLE_ACTORTRANSFORM
@@ -58,8 +59,4 @@ class FPerParticleEulerStepVelocity : public FPerParticleRule
 		Particle.W() += WorldInvI * Particle.Torque() * Dt;
 	}
 };
-
-template<class T, int d>
-using TPerParticleEulerStepVelocity UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticleEulerStepVelocity instead") = FPerParticleEulerStepVelocity;
-
 }

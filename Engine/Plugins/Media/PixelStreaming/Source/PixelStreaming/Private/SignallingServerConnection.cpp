@@ -5,15 +5,12 @@
 
 #include "WebSocketsModule.h"
 #include "IWebSocket.h"
-#include "Dom/JsonObject.h"
-#include "Engine/World.h"
+#include "DOM/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Misc/AssertionMacros.h"
 #include "Logging/LogMacros.h"
-#include "PixelStreamingSettings.h"
 #include "TimerManager.h"
-#include "PixelStreamerDelegates.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogPixelStreamingSS, Log, VeryVerbose);
 DEFINE_LOG_CATEGORY(LogPixelStreamingSS);
@@ -31,16 +28,16 @@ DEFINE_LOG_CATEGORY(LogPixelStreamingSS);
 #define HANDLE_PLAYER_SS_ERROR(PlayerId, ErrorMsg, ...)\
 	do\
 	{\
-		UE_LOG(LogPixelStreamingSS, Error, TEXT("player %s: ") ErrorMsg, *PlayerId, ##__VA_ARGS__);\
+		UE_LOG(LogPixelStreamingSS, Error, TEXT("player %d: ") ErrorMsg, PlayerId, ##__VA_ARGS__);\
 		SendDisconnectPlayer(PlayerId, FString::Printf(ErrorMsg, ##__VA_ARGS__));\
 		return;\
 	}\
 	while(false);
 
-FSignallingServerConnection::FSignallingServerConnection(const FString& Url, FSignallingServerConnectionObserver& InObserver, const FString& InStreamerId)
-	: Observer(InObserver), StreamerId(InStreamerId)
+FSignallingServerConnection::FSignallingServerConnection(const FString& Url, FSignallingServerConnectionObserver& InObserver)
+	: Observer(InObserver)
 {
-	WS = FWebSocketsModule::Get().CreateWebSocket(Url, TEXT(""));
+	WS = FWebSocketsModule::Get().CreateWebSocket(Url, TEXT("ws"));
 
 	OnConnectedHandle = WS->OnConnected().AddLambda([this]() { OnConnected(); });
 	OnConnectionErrorHandle = WS->OnConnectionError().AddLambda([this](const FString& Error) { OnConnectionError(Error); });
@@ -58,23 +55,17 @@ FSignallingServerConnection::~FSignallingServerConnection()
 		return;
 	}
 
-	if(!IsEngineExitRequested())
-	{
-		GWorld->GetTimerManager().ClearTimer(TimerHandle_KeepAlive);
-	}
-	
 	WS->OnConnected().Remove(OnConnectedHandle);
 	WS->OnConnectionError().Remove(OnConnectionErrorHandle);
 	WS->OnClosed().Remove(OnClosedHandle);
 	WS->OnMessage().Remove(OnMessageHandle);
 
 	WS->Close();
-	WS = nullptr;
 }
 
 void FSignallingServerConnection::SendOffer(const webrtc::SessionDescriptionInterface& SDP)
 {
-	FJsonObjectPtr OfferJson = MakeShared<FJsonObject>();
+	auto OfferJson = MakeShared<FJsonObject>();
 	OfferJson->SetStringField(TEXT("type"), TEXT("offer"));
 
 	std::string SdpAnsi;
@@ -87,47 +78,11 @@ void FSignallingServerConnection::SendOffer(const webrtc::SessionDescriptionInte
 	WS->Send(ToString(OfferJson, false));
 }
 
-void FSignallingServerConnection::SetPlayerIdJson(FJsonObjectPtr& JsonObject, FPlayerId PlayerId)
+void FSignallingServerConnection::SendAnswer(uint32 PlayerId, const webrtc::SessionDescriptionInterface& SDP)
 {
-	bool bSendAsInteger = PixelStreamingSettings::CVarSendPlayerIdAsInteger.GetValueOnAnyThread();
-	if(bSendAsInteger)
-	{
-		int32 PlayerIdAsInt = PlayerIdToInt(PlayerId);
-		JsonObject->SetNumberField(TEXT("playerId"), PlayerIdAsInt);
-	}
-	else
-	{
-		JsonObject->SetStringField(TEXT("playerId"), PlayerId);
-	}
-	
-}
-
-bool FSignallingServerConnection::GetPlayerIdJson(const FJsonObjectPtr& Json, FPlayerId& OutPlayerId)
-{
-	// we support player id being sent as a string or a number
-
-	uint32 PlayerIdInt;
-	if(Json->TryGetNumberField(TEXT("playerId"), PlayerIdInt))
-	{
-		OutPlayerId = ToPlayerId(PlayerIdInt);
-		return true;
-	}
-	else if(Json->TryGetStringField(TEXT("playerId"), OutPlayerId))
-	{
-		return true;
-	}
-	else
-	{
-		UE_LOG(LogPixelStreamingSS, Error, TEXT("Failed to extracted player id offer json: %s"), *ToString(Json));
-		return false;
-	}
-}
-
-void FSignallingServerConnection::SendAnswer(FPlayerId PlayerId, const webrtc::SessionDescriptionInterface& SDP)
-{
-	FJsonObjectPtr AnswerJson = MakeShared<FJsonObject>();
+	auto AnswerJson = MakeShared<FJsonObject>();
 	AnswerJson->SetStringField(TEXT("type"), TEXT("answer"));
-	this->SetPlayerIdJson(AnswerJson, PlayerId);
+	AnswerJson->SetNumberField(TEXT("playerId"), PlayerId);
 
 	std::string SdpAnsi;
 	verifyf(SDP.ToString(&SdpAnsi), TEXT("Failed to serialise local SDP"));
@@ -141,11 +96,11 @@ void FSignallingServerConnection::SendAnswer(FPlayerId PlayerId, const webrtc::S
 
 void FSignallingServerConnection::SendIceCandidate(const webrtc::IceCandidateInterface& IceCandidate)
 {
-	FJsonObjectPtr IceCandidateJson = MakeShared<FJsonObject>();
+	auto IceCandidateJson = MakeShared<FJsonObject>();
 
 	IceCandidateJson->SetStringField(TEXT("type"), TEXT("iceCandidate"));
 
-	FJsonObjectPtr CandidateJson = MakeShared<FJsonObject>();
+	auto CandidateJson = MakeShared<FJsonObject>();
 	CandidateJson->SetStringField(TEXT("sdpMid"), IceCandidate.sdp_mid().c_str());
 	CandidateJson->SetNumberField(TEXT("sdpMLineIndex"), static_cast<double>(IceCandidate.sdp_mline_index()));
 
@@ -161,14 +116,14 @@ void FSignallingServerConnection::SendIceCandidate(const webrtc::IceCandidateInt
 	WS->Send(ToString(IceCandidateJson, false));
 }
 
-void FSignallingServerConnection::SendIceCandidate(FPlayerId PlayerId, const webrtc::IceCandidateInterface& IceCandidate)
+void FSignallingServerConnection::SendIceCandidate(uint32 PlayerId, const webrtc::IceCandidateInterface& IceCandidate)
 {
-	FJsonObjectPtr IceCandidateJson = MakeShared<FJsonObject>();
+	auto IceCandidateJson = MakeShared<FJsonObject>();
 
 	IceCandidateJson->SetStringField(TEXT("type"), TEXT("iceCandidate"));
-	this->SetPlayerIdJson(IceCandidateJson, PlayerId);
+	IceCandidateJson->SetNumberField(TEXT("playerId"), PlayerId);
 
-	FJsonObjectPtr CandidateJson = MakeShared<FJsonObject>();
+	auto CandidateJson = MakeShared<FJsonObject>();
 	CandidateJson->SetStringField(TEXT("sdpMid"), IceCandidate.sdp_mid().c_str());
 	CandidateJson->SetNumberField(TEXT("sdpMLineIndex"), static_cast<double>(IceCandidate.sdp_mline_index()));
 
@@ -184,25 +139,12 @@ void FSignallingServerConnection::SendIceCandidate(FPlayerId PlayerId, const web
 	WS->Send(ToString(IceCandidateJson, false));
 }
 
-void FSignallingServerConnection::KeepAlive()
+void FSignallingServerConnection::SendDisconnectPlayer(uint32 PlayerId, const FString& Reason)
 {
-	FJsonObjectPtr Json = MakeShared<FJsonObject>();
-	double unixTime = FDateTime::UtcNow().ToUnixTimestamp();
-	Json->SetStringField(TEXT("type"), TEXT("ping"));
-	Json->SetNumberField(TEXT("time"), unixTime);
-	FString Msg = ToString(Json, false);
-	if (WS != nullptr && WS.IsValid() && WS->IsConnected())
-	{
-		WS->Send(Msg);
-	}
-}
-
-void FSignallingServerConnection::SendDisconnectPlayer(FPlayerId PlayerId, const FString& Reason)
-{
-	FJsonObjectPtr Json = MakeShared<FJsonObject>();
+	auto Json = MakeShared<FJsonObject>();
 
 	Json->SetStringField(TEXT("type"), TEXT("disconnectPlayer"));
-	this->SetPlayerIdJson(Json, PlayerId);
+	Json->SetNumberField(TEXT("playerId"), PlayerId);
 	Json->SetStringField(TEXT("reason"), Reason);
 
 	FString Msg = ToString(Json, false);
@@ -211,41 +153,40 @@ void FSignallingServerConnection::SendDisconnectPlayer(FPlayerId PlayerId, const
 	WS->Send(Msg);
 }
 
+void FSignallingServerConnection::KeepAlive()
+{
+	auto Json = MakeShared<FJsonObject>();
+	double unixTime = FDateTime::UtcNow().ToUnixTimestamp();
+	Json->SetStringField(TEXT("type"), TEXT("ping"));
+	Json->SetNumberField(TEXT("time"), unixTime);
+
+	FString Msg = ToString(Json, false);
+
+	if (WS.IsValid() && WS->IsConnected())
+	{
+		WS->Send(Msg);
+	}
+}
+
 void FSignallingServerConnection::OnConnected()
 {
 	UE_LOG(LogPixelStreamingSS, Log, TEXT("Connected to SS"));
 
 	//Send message to keep connection alive every 60 seconds
 	GWorld->GetTimerManager().SetTimer(TimerHandle_KeepAlive, std::bind(&FSignallingServerConnection::KeepAlive, this), KEEP_ALIVE_INTERVAL, true);
-
-	if (UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates())
-	{
-		Delegates->OnConnecedToSignallingServer.Broadcast();
-	}
 }
 
 void FSignallingServerConnection::OnConnectionError(const FString& Error)
 {
 	UE_LOG(LogPixelStreamingSS, Error, TEXT("Failed to connect to SS: %s"), *Error);
 	Observer.OnSignallingServerDisconnected();
-	GWorld->GetTimerManager().ClearTimer(TimerHandle_KeepAlive);
-
-	if (UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates())
-	{
-		Delegates->OnDisconnectedFromSignallingServer.Broadcast();
-	}
 }
 
 void FSignallingServerConnection::OnClosed(int32 StatusCode, const FString& Reason, bool bWasClean)
 {
-	UE_LOG(LogPixelStreamingSS, Log, TEXT("Connection to SS closed: \n\tstatus %d\n\treason: %s\n\twas clean: %s"), StatusCode, *Reason, bWasClean ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogPixelStreamingSS, Log, TEXT("Connection to SS closed: \n\tstatus %d\n\treason: %s\n\twas clean: %d"), StatusCode, *Reason, bWasClean);
 	Observer.OnSignallingServerDisconnected();
 	GWorld->GetTimerManager().ClearTimer(TimerHandle_KeepAlive);
-
-	if (UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates())
-	{
-		Delegates->OnDisconnectedFromSignallingServer.Broadcast();
-	}
 }
 
 void FSignallingServerConnection::OnMessage(const FString& Msg)
@@ -265,11 +206,7 @@ void FSignallingServerConnection::OnMessage(const FString& Msg)
 		HANDLE_SS_ERROR(TEXT("Cannot find `type` field in SS message:\n%s"), *Msg);
 	}
 
-	if (MsgType == TEXT("identify"))
-	{
-		OnIdRequested();
-	}
-	else if (MsgType == TEXT("config"))
+	if (MsgType == TEXT("config"))
 	{
 		OnConfig(JsonMsg);
 	}
@@ -305,19 +242,6 @@ void FSignallingServerConnection::OnMessage(const FString& Msg)
 		UE_LOG(LogPixelStreamingSS, Error, TEXT("Unsupported message `%s` received from SS"), *MsgType);
 		WS->Close(4001, TEXT("Unsupported message received: ") + MsgType);
 	}
-}
-
-void FSignallingServerConnection::OnIdRequested()
-{
-	FJsonObjectPtr Json = MakeShared<FJsonObject>();
-
-	Json->SetStringField(TEXT("type"), TEXT("endpointId"));
-	Json->SetStringField(TEXT("id"), StreamerId);
-
-	FString Msg = ToString(Json, false);
-	UE_LOG(LogPixelStreamingSS, Verbose, TEXT("-> SS: endpointId\n%s"), *Msg);
-
-	WS->Send(Msg);
 }
 
 void FSignallingServerConnection::OnConfig(const FJsonObjectPtr& Json)
@@ -356,16 +280,6 @@ void FSignallingServerConnection::OnConfig(const FJsonObjectPtr& Json)
 				for (const FString& Url : Urls)
 				{
 					IceServer.urls.push_back(to_string(Url));
-				}
-			}
-			else
-			{
-				// in the RTC Spec, "urls" can be an array or a single string
-				// https://www.w3.org/TR/webrtc/#dictionary-rtciceserver-members
-				FString UrlsSingle;
-				if ((*IceServerJson)->TryGetStringField(TEXT("urls"), UrlsSingle))
-				{
-					IceServer.urls.push_back(to_string(UrlsSingle));
 				}
 			}
 
@@ -409,11 +323,10 @@ void FSignallingServerConnection::OnSessionDescription(const FJsonObjectPtr& Jso
 
 	if (Type == webrtc::SdpType::kOffer)
 	{
-		FPlayerId PlayerId;
-		bool bGotPlayerId = this->GetPlayerIdJson(Json, PlayerId);
-		if (!bGotPlayerId)
+		uint32 PlayerId;
+		if (!Json->TryGetNumberField(TEXT("playerId"), PlayerId))
 		{
-			HANDLE_SS_ERROR(TEXT("Failed to get `playerId` from `offer` message\n%s"), *ToString(Json));
+			HANDLE_SS_ERROR(TEXT("Failed to get `playerId`from `offer` message\n%s"), *ToString(Json));
 		}
 
 		Observer.OnOffer(PlayerId, TUniquePtr<webrtc::SessionDescriptionInterface>{SessionDesc.release()});
@@ -462,12 +375,7 @@ void FSignallingServerConnection::OnStreamerIceCandidate(const FJsonObjectPtr& J
 
 void FSignallingServerConnection::OnPlayerIceCandidate(const FJsonObjectPtr& Json)
 {
-	FPlayerId PlayerId;
-	bool bGotPlayerId = this->GetPlayerIdJson(Json, PlayerId);
-	if (!bGotPlayerId)
-	{
-		HANDLE_PLAYER_SS_ERROR(PlayerId, TEXT("Failed to get `playerId` from remote `iceCandidate` message\n%s"), *ToString(Json));
-	}
+	uint32 PlayerId = Json->GetNumberField(TEXT("playerId"));
 
 	const FJsonObjectPtr* CandidateJson;
 	if (!Json->TryGetObjectField(TEXT("candidate"), CandidateJson))
@@ -516,11 +424,10 @@ void FSignallingServerConnection::OnPlayerCount(const FJsonObjectPtr& Json)
 
 void FSignallingServerConnection::OnPlayerDisconnected(const FJsonObjectPtr& Json)
 {
-	FPlayerId PlayerId;
-	bool bGotPlayerId = this->GetPlayerIdJson(Json, PlayerId);
-	if (!bGotPlayerId)
+	uint32 PlayerId;
+	if (!Json->TryGetNumberField(TEXT("playerId"), PlayerId))
 	{
-		HANDLE_SS_ERROR(TEXT("Failed to get `playerId` from `playerDisconnected` message\n%s"), *ToString(Json));
+		HANDLE_SS_ERROR(TEXT("Failed to get `playerId`from `playerDisconnected` message\n%s"), *ToString(Json));
 	}
 
 	Observer.OnPlayerDisconnected(PlayerId);

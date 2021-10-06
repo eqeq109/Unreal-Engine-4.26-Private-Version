@@ -160,7 +160,14 @@ public:
 		{
 			if (Section.IsValid())
 			{
-				Section->GetSnapTimes(AllTimes, true);
+				if (Section->HasStartFrame())
+				{
+					AllTimes.Add(Section->GetInclusiveStartFrame());
+				}
+				if (Section->HasEndFrame())
+				{
+					AllTimes.Add(Section->GetExclusiveEndFrame()-1);
+				}
 			}
 		}
 
@@ -211,7 +218,14 @@ public:
 		{
 			if (Section.IsValid())
 			{
-				Section->GetSnapTimes(AllTimes, true);
+				if (Section->HasStartFrame())
+				{
+					AllTimes.Add(Section->GetInclusiveStartFrame());
+				}
+				if (Section->HasEndFrame())
+				{
+					AllTimes.Add(Section->GetExclusiveEndFrame()-1);
+				}
 			}
 		}
 

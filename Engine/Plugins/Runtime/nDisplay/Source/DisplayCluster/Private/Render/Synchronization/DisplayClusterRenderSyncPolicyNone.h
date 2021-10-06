@@ -12,17 +12,12 @@ class FDisplayClusterRenderSyncPolicyNone
 	: public FDisplayClusterRenderSyncPolicyBase
 {
 public:
-	FDisplayClusterRenderSyncPolicyNone(const TMap<FString, FString>& Parameters)
-		: FDisplayClusterRenderSyncPolicyBase(Parameters)
-	{ }
-
-	virtual ~FDisplayClusterRenderSyncPolicyNone()
-	{ }
+	FDisplayClusterRenderSyncPolicyNone(const TMap<FString, FString>& Parameters);
+	virtual ~FDisplayClusterRenderSyncPolicyNone();
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterRenderSyncPolicy
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual bool SynchronizeClusterRendering(int32& InOutSyncInterval) override;
-	virtual FName GetName() const override;
+	bool SynchronizeClusterRendering(int32& InOutSyncInterval) override;
 };

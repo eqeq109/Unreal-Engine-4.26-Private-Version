@@ -2,12 +2,11 @@
 
 #pragma once
 
-#include "WebRTCIncludes.h"
+#include "PixelStreamingPrivate.h"
+
 #include "AudioMixerDevice.h"
 #include "HAL/CriticalSection.h"
 
-// This class is only used if -PixelStreamingWebRTCUseLegacyAudioDevice or related CVar are used.
-// This class will likely be removed in the future once the new ADM is confirmed stable.
 class FAudioCapturer
 	: public webrtc::AudioDeviceModule
 	, public ISubmixBufferListener
@@ -189,7 +188,5 @@ private:
 	static constexpr int NumChannels = 2;
 
 	bool bFormatChecked = false;
-
-	std::unique_ptr<webrtc::TaskQueueFactory> m_taskQueueFactory;
 
 };

@@ -14,7 +14,7 @@ void UNDisplaySlaveVirtualSubject::Update()
 
 void UNDisplaySlaveVirtualSubject::UpdateFrameData(FLiveLinkFrameDataStruct&& NewFrameData)
 {
-	UpdateFrameDataSnapshot(MoveTemp(NewFrameData));
+	FrameSnapshot.FrameData = MoveTemp(NewFrameData);
 }
 
 void UNDisplaySlaveVirtualSubject::SetTrackedSubjectInfo(const FLiveLinkSubjectKey& InSubjectKey, TSubclassOf<ULiveLinkRole> InRole)

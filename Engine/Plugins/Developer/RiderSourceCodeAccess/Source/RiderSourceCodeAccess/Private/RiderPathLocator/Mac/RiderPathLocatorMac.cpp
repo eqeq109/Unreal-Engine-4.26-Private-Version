@@ -11,7 +11,7 @@
 
 #if PLATFORM_MAC
 
-TOptional<FInstallInfo> FRiderPathLocator::GetInstallInfoFromRiderPath(const FString& PathToRiderApp, FInstallInfo::EInstallType InstallType)
+TOptional<FInstallInfo> FRiderPathLocator::GetInstallInfoFromRiderPath(const FString& PathToRiderApp, bool bIsToolbox)
 {
 	if(!FPaths::DirectoryExists(PathToRiderApp)) return {};
 
@@ -20,7 +20,7 @@ TOptional<FInstallInfo> FRiderPathLocator::GetInstallInfoFromRiderPath(const FSt
 	
 	FInstallInfo Info;
 	Info.Path = FPaths::Combine(PathToRiderApp, TEXT("Contents"), TEXT("MacOS"), TEXT("rider"));
-	Info.InstallType = InstallType;
+	Info.IsToolbox = bIsToolbox;
 	const FString ProductInfoJsonPath = FPaths::Combine(PathToRiderApp, TEXT("Contents"), TEXT("Resources"), TEXT("product-info.json"));
 	if (FPaths::FileExists(ProductInfoJsonPath))
 	{
@@ -37,7 +37,7 @@ static TArray<FInstallInfo> GetManuallyInstalledRiders()
 	for(const FString& RiderPath: RiderPaths)
 	{
 		FString FullPath = TEXT("/Applications/") + RiderPath;
-		TOptional<FInstallInfo> InstallInfo = FRiderPathLocator::GetInstallInfoFromRiderPath(FullPath, FInstallInfo::EInstallType::Installed);
+		TOptional<FInstallInfo> InstallInfo = FRiderPathLocator::GetInstallInfoFromRiderPath(FullPath, false);
 		if(InstallInfo.IsSet())
 			Result.Add(InstallInfo.GetValue());
 	}
@@ -78,7 +78,7 @@ static TArray<FInstallInfo> GetInstalledRidersWithMdfind()
     TArray<FInstallInfo> Result;
     for(const FString& RiderPath: RiderPaths)
     {
-        TOptional<FInstallInfo> InstallInfo = FRiderPathLocator::GetInstallInfoFromRiderPath(RiderPath, FInstallInfo::EInstallType::Installed);
+        TOptional<FInstallInfo> InstallInfo = FRiderPathLocator::GetInstallInfoFromRiderPath(RiderPath, false);
         if(InstallInfo.IsSet())
             Result.Add(InstallInfo.GetValue());
     }
@@ -91,7 +91,6 @@ TSet<FInstallInfo> FRiderPathLocator::CollectAllPaths()
 	InstallInfos.Append(GetInstalledRidersWithMdfind());
 	InstallInfos.Append(GetManuallyInstalledRiders());
 	InstallInfos.Append(GetInstallInfosFromToolbox(GetToolboxPath(), "Rider*.app"));
-	InstallInfos.Append(GetInstallInfosFromResourceFile());
 	return InstallInfos;
 }
 #endif

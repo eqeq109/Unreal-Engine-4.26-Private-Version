@@ -8,7 +8,7 @@
 FLocalTitleFile::FLocalTitleFile(const FString& InRootDirectory)
 : RootDirectory(InRootDirectory)
 {
-	RootDirectory.ReplaceInline(TEXT("\\"), TEXT("/"));
+	RootDirectory.Replace(TEXT("\\"), TEXT("/"));
 	if (!RootDirectory.EndsWith(TEXT("/")))
 	{
 		RootDirectory.Append(TEXT("/"));

@@ -63,14 +63,14 @@ public:
 
 	FMediaTimeStamp GetTime() const override
 	{
-		return Timestamp;
+		return FMediaTimeStamp(Timestamp);
 	}
 
 private:
 	uint32 NumChannels;
 	uint32 SampleRate;
 	uint32 NumFrames;
-	FMediaTimeStamp Timestamp;
+	FTimespan Timestamp;
 	TArray<uint8> Buffer;
 };
 

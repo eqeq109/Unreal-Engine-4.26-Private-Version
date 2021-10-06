@@ -111,7 +111,7 @@ public:
 
 			UWorld* ActorWorld = ViewportClient->GetWorld();
 			ALandscapeBlueprintBrushBase* Brush = (BrushActorFactory != nullptr)
-				? CastChecked<ALandscapeBlueprintBrushBase>(BrushActorFactory->CreateActor(ActorWorld, SpawnInfo.OverrideLevel, FTransform(SpawnLocation), SpawnInfo))
+				? CastChecked<ALandscapeBlueprintBrushBase>(BrushActorFactory->CreateActor(ActorWorld, SpawnInfo.OverrideLevel, FTransform(SpawnLocation), RF_Transactional, BrushActorName))
 				: ActorWorld->SpawnActor<ALandscapeBlueprintBrushBase>(BrushClassPtr, SpawnLocation, FRotator(0.0f), SpawnInfo);
 			EdMode->UISettings->BlueprintBrush = nullptr;
 

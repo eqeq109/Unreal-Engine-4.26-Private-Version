@@ -5,18 +5,19 @@
 #include "Components/ActorComponent.h"
 #include "VirtualCameraConcertCameraComponent.generated.h"
 
+
 class UCineCameraComponent;
 
 /**
  * A class to transfer Camera data in MU session
  */
-UCLASS(deprecated, Blueprintable, ClassGroup = Camera, meta = (BlueprintSpawnableComponent))
-class VIRTUALCAMERA_API UDEPRECATED_VirtualCameraConcertCameraComponent : public UActorComponent
+UCLASS(Blueprintable, ClassGroup = Camera, meta = (BlueprintSpawnableComponent))
+class VIRTUALCAMERA_API UVirtualCameraConcertCameraComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
-	UDEPRECATED_VirtualCameraConcertCameraComponent(const FObjectInitializer& ObjectInitializer);
+	UVirtualCameraConcertCameraComponent(const FObjectInitializer& ObjectInitializer);
 
 	/**
 	 * The tracked name used by the multi user system to send the data.

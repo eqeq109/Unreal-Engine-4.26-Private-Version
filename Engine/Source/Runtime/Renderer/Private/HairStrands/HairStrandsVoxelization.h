@@ -100,7 +100,7 @@ bool IsHairStrandsForVoxelTransmittanceAndShadowEnable();
 void VoxelizeHairStrands(
 	FRDGBuilder& GraphBuilder,
 	const class FScene* Scene,
-	TArray<FViewInfo>& Views,
+	const TArray<FViewInfo>& Views,
 	struct FHairStrandsMacroGroupViews& MacroGroupViews);
 
 

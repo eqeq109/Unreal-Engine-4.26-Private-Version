@@ -160,7 +160,7 @@ void FTexture2DResource::CalcRequestedMipsSize()
 		}
 		else
 		{
-			const FIntPoint MipExtents = CalcMipMapExtent(SizeX, SizeY, PixelFormat, State.RequestedFirstLODIdx());
+			const FIntPoint MipExtents = CalcMipMapExtent(SizeX, SizeY, PixelFormat, 0);
 			TextureSize = RHICalcTexture2DPlatformSize(MipExtents.X, MipExtents.Y, PixelFormat, State.NumRequestedLODs, 1, CreationFlags, FRHIResourceCreateInfo(PlatformData->GetExtData()), TextureAlign);
 		}
 	}

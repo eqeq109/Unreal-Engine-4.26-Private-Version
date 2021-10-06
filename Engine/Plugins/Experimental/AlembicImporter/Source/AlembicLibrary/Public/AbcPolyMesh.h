@@ -71,7 +71,7 @@ struct FAbcMeshSample
 	float SampleTime;
 };
 
-class ALEMBICLIBRARY_API FAbcPolyMesh : public IAbcObject
+class FAbcPolyMesh : public IAbcObject
 {
 public:
 	FAbcPolyMesh(const Alembic::AbcGeom::IPolyMesh& InPolyMesh, const FAbcFile* InFile, IAbcObject* InParent = nullptr);

@@ -18,7 +18,6 @@
 #include "DisplayNodes/SequencerSectionCategoryNode.h"
 #include "DisplayNodes/SequencerSectionKeyAreaNode.h"
 #include "IKeyArea.h"
-#include "DisplayNodes/SequencerFolderNode.h"
 #include "DisplayNodes/SequencerTrackNode.h"
 #include "Sequencer.h"
 #include "SAnimationOutlinerTreeNode.h"
@@ -27,7 +26,6 @@
 #include "CommonMovieSceneTools.h"
 #include "Framework/Commands/GenericCommands.h"
 #include "CurveEditor.h"
-#include "Tree/SCurveEditorTreeSelect.h"
 #include "Tree/SCurveEditorTreePin.h"
 #include "Tree/CurveEditorTreeFilter.h"
 #include "ScopedTransaction.h"
@@ -605,22 +603,6 @@ TSharedPtr<FSequencerTrackNode> FSequencerDisplayNode::FindParentTrackNode() con
 }
 
 
-TSharedPtr<FSequencerFolderNode> FSequencerDisplayNode::FindFolderNode() const
-{
-	TSharedPtr<FSequencerDisplayNode> CurrentParentNode = GetParent();
-	while (CurrentParentNode.IsValid())
-	{
-		if (CurrentParentNode->GetType() == ESequencerNode::Folder)
-		{
-			return StaticCastSharedPtr<FSequencerFolderNode>(CurrentParentNode);
-		}
-		CurrentParentNode = CurrentParentNode->GetParent();
-	}
-
-	return nullptr;
-}
-
-
 FGuid FSequencerDisplayNode::GetObjectGuid() const
 {
 	TSharedPtr<FSequencerObjectBindingNode> ObjectBindingNode = FindParentObjectBindingNode();
@@ -791,22 +773,10 @@ bool FSequencerDisplayNode::IsDimmed() const
 		// If the node is a track node, we can use the cached value in UMovieSceneTrack
 		if (GetType() == ESequencerNode::Track)
 		{
-			const FSequencerTrackNode* TrackNode = static_cast<const FSequencerTrackNode*>(this);
-			UMovieSceneTrack* Track = TrackNode->GetTrack();
-
-			if (Track)
+			UMovieSceneTrack* Track = static_cast<const FSequencerTrackNode*>(this)->GetTrack();
+			if (Track && Track->IsEvalDisabled())
 			{
-				if (TrackNode->GetSubTrackMode() == FSequencerTrackNode::ESubTrackMode::SubTrack)
-				{
-					if (Track->IsRowEvalDisabled(TrackNode->GetRowIndex()))
-					{
-						bDimLabel = true;
-					}
-				}
-				else if (Track->IsEvalDisabled())
-				{
-					bDimLabel = true;
-				}
+				bDimLabel = true;
 			}
 		}
 		else
@@ -1273,20 +1243,13 @@ void FSequencerDisplayNode::BuildOrganizeContextMenu(FMenuBuilder& MenuBuilder)
 
 	}
 
-	if (DraggableNodes.Num() && !bIsReadOnly)
+	if (DraggableNodes.Num())
 	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("MoveToFolder", "Move to Folder"),
-			LOCTEXT("MoveToFolderTooltip", "Move the selected nodes to a folder"),
-			FNewMenuDelegate::CreateSP(&GetSequencer(), &FSequencer::BuildAddSelectedToFolderMenu));
-
 		MenuBuilder.AddMenuEntry(
-			LOCTEXT("RemoveFromFolder", "Remove from Folder"),
-			LOCTEXT("RemoveFromFolderTooltip", "Remove selected nodes from their folders"),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(&GetSequencer(), &FSequencer::RemoveSelectedNodesFromFolders),
-				FCanExecuteAction::CreateLambda( [this] { return GetSequencer().GetSelectedNodesInFolders().Num() > 0; } )));
+			LOCTEXT("MoveTracksToNewFolder", "Move to New Folder"),
+			LOCTEXT("MoveTracksToNewFolderTooltip", "Move the selected tracks to a new folder."),
+			FSlateIcon(FEditorStyle::GetStyleSetName(), "ContentBrowser.AssetTreeFolderOpen"),
+			FUIAction(FExecuteAction::CreateSP(&GetSequencer(), &FSequencer::MoveSelectedNodesToNewFolder)));
 	}
 }
 
@@ -1448,10 +1411,6 @@ TSharedPtr<SWidget> FSequencerDisplayNode::GenerateCurveEditorTreeWidget(const F
 				.HighlightText_Static(SequencerNodeConstants::GetCurveEditorHighlightText, InCurveEditor)
 				.ToolTipText(this, &FSequencerDisplayNode::GetDisplayNameToolTipText)
 			];
-	}
-	else if (InColumnName == ColumnNames.SelectHeader)
-	{
-		return SNew(SCurveEditorTreeSelect, InCurveEditor, InTreeItemID, TableRow);
 	}
 	else if (InColumnName == ColumnNames.PinHeader)
 	{

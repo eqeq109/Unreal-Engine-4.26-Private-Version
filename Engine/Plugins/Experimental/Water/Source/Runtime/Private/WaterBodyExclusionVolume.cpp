@@ -8,16 +8,13 @@
 #if WITH_EDITOR
 #include "Components/BillboardComponent.h"
 #include "WaterIconHelper.h"
-#include "WaterSubsystem.h"
-#include "Modules/ModuleManager.h"
-#include "WaterModule.h"
 #endif
 
 AWaterBodyExclusionVolume::AWaterBodyExclusionVolume(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-#if WITH_EDITOR
-	ActorIcon = FWaterIconHelper::EnsureSpriteComponentCreated(this, TEXT("/Water/Icons/WaterBodyExclusionVolumeSprite"));
+#if WITH_EDITORONLY_DATA
+	ActorIcon = FWaterIconHelper::EnsureSpriteComponentCreated(this, TEXT("/Water/Icons/WaterBodyExclusionVolumeSprite"), NSLOCTEXT("Water", "WaterBodExclusionVolumeSpriteName", "Water Body Exclusion Volume"));
 #endif
 }
 
@@ -70,13 +67,7 @@ void AWaterBodyExclusionVolume::UpdateOverlappingWaterBodies()
 #if WITH_EDITOR
 void AWaterBodyExclusionVolume::UpdateActorIcon()
 {
-	UTexture2D* IconTexture = ActorIcon->Sprite;
-	IWaterModuleInterface& WaterModule = FModuleManager::GetModuleChecked<IWaterModuleInterface>("Water");
-	if (const IWaterEditorServices* WaterEditorServices = WaterModule.GetWaterEditorServices())
-	{
-		IconTexture = WaterEditorServices->GetWaterActorSprite(GetClass());
-	}
-	FWaterIconHelper::UpdateSpriteComponent(this, IconTexture);
+	FWaterIconHelper::UpdateSpriteComponent(this, ActorIcon->Sprite);
 }
 #endif // WITH_EDITOR
 

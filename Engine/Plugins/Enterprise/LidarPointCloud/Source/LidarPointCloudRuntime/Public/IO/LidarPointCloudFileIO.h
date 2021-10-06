@@ -78,7 +78,7 @@ public:
 };
 
 /** Stores the results of the import process */
-struct LIDARPOINTCLOUDRUNTIME_API FLidarPointCloudImportResults
+struct FLidarPointCloudImportResults
 {
 public:
 	TArray64<FLidarPointCloudPoint> Points;
@@ -116,8 +116,6 @@ public:
 
 	void AddPoint(const float& X, const float& Y, const float& Z, const float& R, const float& G, const float& B, const float& A = 1.0f);
 
-	void AddPoint(const float& X, const float& Y, const float& Z, const float& R, const float& G, const float& B, const float& A, const float& NX, const float& NY, const float& NZ);
-
 	void AddPointsBulk(TArray64<FLidarPointCloudPoint>& InPoints);
 
 	void CenterPoints();
@@ -133,7 +131,7 @@ public:
 };
 
 /** Base type implemented by all file handlers. */
-class LIDARPOINTCLOUDRUNTIME_API FLidarPointCloudFileIOHandler
+class FLidarPointCloudFileIOHandler
 {
 protected:
 	/** Used for precision loss check and correction. */

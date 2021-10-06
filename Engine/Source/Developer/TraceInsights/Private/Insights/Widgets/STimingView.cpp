@@ -3648,29 +3648,24 @@ void STimingView::SetEventFilter(const TSharedPtr<ITimingEventFilter> InEventFil
 
 void STimingView::ToggleEventFilterByEventType(const uint64 EventType)
 {
-	if(IsFilterByEventType(EventType))
-	{
-		SetEventFilter(nullptr); // reset filter
-	}
-	else
-	{
-		TSharedRef<FTimingEventFilterByEventType> NewEventFilter = MakeShared<FTimingEventFilterByEventType>(EventType);
-		SetEventFilter(NewEventFilter); // set new filter
-	}
-}
+	bool bSameFilter = false;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::IsFilterByEventType(const uint64 EventType) const
-{
 	if (TimingEventFilter.IsValid() &&
 		TimingEventFilter->Is<FTimingEventFilterByEventType>())
 	{
 		const FTimingEventFilterByEventType& EventFilterByEventType = TimingEventFilter->As<FTimingEventFilterByEventType>();
-		return EventFilterByEventType.GetEventType() == EventType;
+		if (EventFilterByEventType.GetEventType() == EventType)
+		{
+			bSameFilter = true;
+			SetEventFilter(nullptr); // reset filter
+		}
 	}
 
-	return false;
+	if (!bSameFilter)
+	{
+		TSharedRef<FTimingEventFilterByEventType> NewEventFilter = MakeShared<FTimingEventFilterByEventType>(EventType);
+		SetEventFilter(NewEventFilter); // set new filter
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

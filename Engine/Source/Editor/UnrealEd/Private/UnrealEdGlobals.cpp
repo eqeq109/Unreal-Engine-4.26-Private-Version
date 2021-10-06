@@ -133,8 +133,6 @@ int32 EditorInit( IEngineLoop& EngineLoop )
 
 	// Do final set up on the editor frame and show it
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(EditorInit::MainFrame);
-
 		// Tear down rendering thread once instead of doing it for every window being resized.
 		SCOPED_SUSPEND_RENDERING_THREAD(true);
 

@@ -8,7 +8,6 @@
 #include "Widgets/Input/SButton.h"
 #include "EditorStyleSet.h"
 #include "UnrealEdMisc.h"
-#include "Internationalization/Culture.h"
 
 void SLevelViewportControlsPopup::Construct(const FArguments& InArgs)
 {
@@ -54,8 +53,6 @@ FReply SLevelViewportControlsPopup::OnClicked() const
 	FString URL;
 	if (FUnrealEdMisc::Get().GetURL(TEXT("ViewportControlsURL"), URL))
 	{
-		// documentation URLS are now stored with placeholders for internationalization and version
-		FUnrealEdMisc::Get().ReplaceDocumentationURLWildcards(URL, FInternationalization::Get().GetCurrentCulture());
 		FPlatformProcess::LaunchURL(*URL, NULL, NULL);
 	}
 

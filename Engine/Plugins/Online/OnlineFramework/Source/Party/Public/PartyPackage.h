@@ -2,9 +2,8 @@
 
 // [[ IncludeTool: Inline ]] // Markup to tell IncludeTool that this file is state changing and cannot be optimized out.
 
-#undef PACKAGE_SCOPE
 #ifdef PARTY_PACKAGE
-#define PACKAGE_SCOPE public
+#define PARTY_SCOPE public
 #else
-#define PACKAGE_SCOPE protected
+#define PARTY_SCOPE protected
 #endif

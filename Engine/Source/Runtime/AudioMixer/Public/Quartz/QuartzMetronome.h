@@ -36,10 +36,6 @@ namespace Audio
 
 		FQuartzTimeSignature GetTimeSignature() const { return CurrentTimeSignature; }
 
-		FQuartzTransportTimeStamp GetTimeStamp() const { return CurrentTimeStamp; }
-
-		float GetTimeSinceStart() const { return TimeSinceStart; }
-
 		void SubscribeToTimeDivision(MetronomeCommandQueuePtr InListenerQueue, EQuartzCommandQuantization InQuantizationBoundary);
 
 		void SubscribeToAllTimeDivisions(MetronomeCommandQueuePtr InListenerQueue);
@@ -114,9 +110,6 @@ namespace Audio
 		int32 PulseDurationIndex{ -1 };
 
 		int32 LastFramesOfLatency{ 0 };
-
-		//Keeps track of time in seconds since the Clock was last reset
-		double TimeSinceStart;
 
 	}; // class QuartzMetronome
 } // namespace Audio

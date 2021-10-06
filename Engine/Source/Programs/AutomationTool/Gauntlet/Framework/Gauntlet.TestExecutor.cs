@@ -490,15 +490,15 @@ namespace Gauntlet
 				{
 					TestInfo.PostStartTime = DateTime.Now;
 					Log.Info("Launched test {0} at {1}", Name, TestInfo.PostStartTime.ToString("h:mm:ss"));
-					return true;
 				}
 			}
 			catch (Exception Ex)
 			{
 				Log.Error("Test {0} threw an exception during launch. Skipping test. Ex: {1}\n{2}", Name, Ex.Message, Ex.StackTrace);
+				return false;
 			}			
 
-			return false;			
+			return true;			
 		}
 
 		/// <summary>
@@ -528,11 +528,14 @@ namespace Gauntlet
 			// display the final result
 			if (TestInfo.FinalResult != TestResult.Passed)
 			{
-				Log.Info("{0} result={1}", TestInfo, TestInfo.FinalResult);
+				string Cause = TestInfo.FinalResult.ToString();
+
 				if (string.IsNullOrEmpty(TestInfo.CancellationReason) == false)
 				{
-					Log.Info("\tReason: {0}", TestInfo.CancellationReason);
-				}				
+					Cause = TestInfo.CancellationReason;
+				}
+
+				Log.Info("{0} result={1}", TestInfo, Cause);
 			}
 			else
 			{
@@ -647,7 +650,7 @@ namespace Gauntlet
 				{
 					TestInfo.CancellationReason = string.Format("Terminating Test {0} due to maximum duration of {1} seconds. ", TestInfo.TestNode, TestInfo.TestNode.MaxDuration);
 					TestInfo.FinalResult = TestResult.TimedOut;
-					Log.Error("{0}", TestInfo.CancellationReason);
+					Log.Info("{0}", TestInfo.CancellationReason);
 				}
 				else if (TestInfo.TestNode.MaxDurationReachedResult == EMaxDurationReachedResult.Success)
 				{

@@ -4,7 +4,6 @@
 #include "OnlineSubsystemSteam.h"
 #include "OnlineSubsystemSteamTypes.h"
 #include "OnlineError.h"
-#include "OnlineEncryptedAppTicketInterfaceSteam.h"
 
 FOnlineIdentitySteam::FOnlineIdentitySteam(FOnlineSubsystemSteam* InSubsystem) :
 	SteamUserPtr(NULL),
@@ -39,7 +38,7 @@ bool FOnlineIdentitySteam::Login(int32 LocalUserNum, const FOnlineAccountCredent
 			// Login changed delegate
 			TriggerOnLoginChangedDelegates(LocalUserNum);
 			// Login completion delegate
-			TriggerOnLoginCompleteDelegates(LocalUserNum, true, *FUniqueNetIdSteam::Create(SteamUserPtr->GetSteamID()), TEXT(""));
+			TriggerOnLoginCompleteDelegates(LocalUserNum, true, FUniqueNetIdSteam(SteamUserPtr->GetSteamID()), TEXT(""));
 			return true;
 		}
 		else
@@ -57,7 +56,7 @@ bool FOnlineIdentitySteam::Login(int32 LocalUserNum, const FOnlineAccountCredent
 	if (!ErrorStr.IsEmpty())
 	{
 		UE_LOG_ONLINE_IDENTITY(Warning, TEXT("Failed Steam login. %s"), *ErrorStr);
-		TriggerOnLoginCompleteDelegates(LocalUserNum, false, *FUniqueNetIdSteam::EmptyId(), ErrorStr);
+		TriggerOnLoginCompleteDelegates(LocalUserNum, false, FUniqueNetIdSteam(0), ErrorStr);
 	}
 
 	return false;
@@ -82,10 +81,10 @@ bool FOnlineIdentitySteam::AutoLogin(int32 LocalUserNum)
 			TriggerOnLoginChangedDelegates(LocalUserNum);
 			// Login completion delegate
 			FString AuthToken = GetAuthToken(LocalUserNum);
-			TriggerOnLoginCompleteDelegates(LocalUserNum, true, *FUniqueNetIdSteam::Create(SteamUserPtr->GetSteamID()), TEXT(""));
+			TriggerOnLoginCompleteDelegates(LocalUserNum, true, FUniqueNetIdSteam(SteamUserPtr->GetSteamID()), TEXT(""));
 			return true;
 		}
-		TriggerOnLoginCompleteDelegates(0, false, *FUniqueNetIdSteam::EmptyId(), TEXT("AutoLogin failed. Not logged in or no connection."));
+		TriggerOnLoginCompleteDelegates(0, false, FUniqueNetIdSteam(0), TEXT("AutoLogin failed. Not logged in or no connection."));
 		return false;
 	}	
 	else
@@ -110,17 +109,17 @@ ELoginStatus::Type FOnlineIdentitySteam::GetLoginStatus(const FUniqueNetId& User
 	return GetLoginStatus(0);
 }
 
-FUniqueNetIdPtr FOnlineIdentitySteam::GetUniquePlayerId(int32 LocalUserNum) const
+TSharedPtr<const FUniqueNetId> FOnlineIdentitySteam::GetUniquePlayerId(int32 LocalUserNum) const
 {
 	if (LocalUserNum < MAX_LOCAL_PLAYERS &&
 		SteamUserPtr != NULL)
 	{
-		return FUniqueNetIdSteam::Create(SteamUserPtr->GetSteamID());
+		return MakeShareable(new FUniqueNetIdSteam(SteamUserPtr->GetSteamID()));
 	}
 	return NULL;
 }
 
-FUniqueNetIdPtr FOnlineIdentitySteam::CreateUniquePlayerId(uint8* Bytes, int32 Size)
+TSharedPtr<const FUniqueNetId> FOnlineIdentitySteam::CreateUniquePlayerId(uint8* Bytes, int32 Size)
 {
 	if (Bytes && Size == sizeof(uint64))
 	{
@@ -128,16 +127,16 @@ FUniqueNetIdPtr FOnlineIdentitySteam::CreateUniquePlayerId(uint8* Bytes, int32 S
 		CSteamID SteamId(*RawUniqueId);
 		if (SteamId.IsValid())
 		{
-			return FUniqueNetIdSteam::Create(SteamId);
+			return MakeShareable(new FUniqueNetIdSteam(SteamId));
 		}
 	}
 
 	return NULL;
 }
 
-FUniqueNetIdPtr FOnlineIdentitySteam::CreateUniquePlayerId(const FString& Str)
+TSharedPtr<const FUniqueNetId> FOnlineIdentitySteam::CreateUniquePlayerId(const FString& Str)
 {
-	return FUniqueNetIdSteam::Create(Str);
+	return MakeShareable(new FUniqueNetIdSteam(Str));
 }
 
 /**
@@ -208,7 +207,7 @@ FString FOnlineIdentitySteam::GetAuthToken(int32 LocalUserNum) const
 void FOnlineIdentitySteam::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_IDENTITY(Display, TEXT("FOnlineIdentitySteam::RevokeAuthToken not implemented"));
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	SteamSubsystem->ExecuteNextTick([UserIdRef, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, FOnlineError(FString(TEXT("RevokeAuthToken not implemented"))));
@@ -237,19 +236,4 @@ FPlatformUserId FOnlineIdentitySteam::GetPlatformUserIdFromUniqueNetId(const FUn
 FString FOnlineIdentitySteam::GetAuthType() const
 {
 	return TEXT("");
-}
-
-void FOnlineIdentitySteam::GetLinkedAccountAuthToken(int32 LocalUserNum, const FOnGetLinkedAccountAuthTokenCompleteDelegate& Delegate) const
-{
-	SteamSubsystem->GetEncryptedAppTicketInterface()->OnEncryptedAppTicketResultDelegate.AddLambda([this, LocalUserNum, OnComplete = FOnGetLinkedAccountAuthTokenCompleteDelegate(Delegate)](bool bEncryptedDataAvailable, int32 ResultCode)
-	{
-		FExternalAuthToken ExternalToken;
-		if (bEncryptedDataAvailable)
-		{
-			SteamSubsystem->GetEncryptedAppTicketInterface()->GetEncryptedAppTicket(ExternalToken.TokenData);
-		}
-		// Pass the info back to the original caller
-		OnComplete.ExecuteIfBound(LocalUserNum, ExternalToken.HasTokenData(), ExternalToken);
-	});
-	SteamSubsystem->GetEncryptedAppTicketInterface()->RequestEncryptedAppTicket(nullptr, 0);
 }

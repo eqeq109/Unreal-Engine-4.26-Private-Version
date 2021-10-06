@@ -18,11 +18,9 @@
 #include "PyWrapperTypeRegistry.h"
 
 #include "Misc/Paths.h"
-#include "Misc/PathViews.h"
 #include "Misc/ScopeExit.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/DefaultValueHelper.h"
-#include "HAL/FileManager.h"
 #include "UObject/UnrealType.h"
 #include "UObject/EnumProperty.h"
 #include "UObject/TextProperty.h"
@@ -900,103 +898,35 @@ bool IsMappingType(PyTypeObject* InType)
 	return InType->tp_dict && PyDict_GetItemString(InType->tp_dict, "keys");
 }
 
-void FOnDiskModules::AddModules(const TCHAR* InPath)
-{
-	IFileManager& FileManager = IFileManager::Get();
-	FileManager.IterateDirectory(InPath, [this, &FileManager](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
-	{
-		FString FullPath = FPaths::ConvertRelativePathToFull(FilenameOrDirectory);
-
-		bool bPassedWildcard = true;
-		if (!ModuleNameWildcard.IsEmpty())
-		{
-			// TODO: Would be nice to use FPathsView and FStringView here, but FStringView doesn't implement MatchesWildcard (though the implementation could easily be ported)
-			const FString CleanName = FPaths::GetCleanFilename(FullPath);
-			bPassedWildcard = CleanName.MatchesWildcard(ModuleNameWildcard, ESearchCase::CaseSensitive);
-		}
-
-		if (bPassedWildcard)
-		{
-			if (bIsDirectory)
-			{
-				FullPath /= TEXT("__init__.py");
-				if (FileManager.FileExists(*FullPath))
-				{
-					CachedModules.Add(MoveTemp(FullPath));
-				}
-			}
-			else if (FPathViews::GetExtension(FullPath) == TEXT("py"))
-			{
-				CachedModules.Add(MoveTemp(FullPath));
-			}
-		}
-
-		return true;
-	});
-}
-
-void FOnDiskModules::RemoveModules(const TCHAR* InPath)
-{
-	for (auto It = CachedModules.CreateIterator(); It; ++It)
-	{
-		if (It->StartsWith(InPath))
-		{
-			It.RemoveCurrent();
-		}
-	}
-}
-
-bool FOnDiskModules::HasModule(const TCHAR* InModuleName, FString* OutResolvedFile) const
-{
-	const FString ModuleSingleFile = FString::Printf(TEXT("/%s.py"), InModuleName);
-	const FString ModuleFolderName = FString::Printf(TEXT("/%s/__init__.py"), InModuleName);
-
-	for (const FString& CachedModule : CachedModules)
-	{
-		if (CachedModule.EndsWith(ModuleSingleFile, ESearchCase::CaseSensitive) || CachedModule.EndsWith(ModuleFolderName, ESearchCase::CaseSensitive))
-		{
-			if (OutResolvedFile)
-			{
-				*OutResolvedFile = CachedModule;
-			}
-
-			return true;
-		}
-	}
-
-	return false;
-}
-
-FOnDiskModules& GetOnDiskUnrealModulesCache()
-{
-	static FOnDiskModules OnDiskUnrealModules(TEXT("unreal_*"));
-	return OnDiskUnrealModules;
-}
-
-bool IsModuleAvailableForImport(const TCHAR* InModuleName, const FOnDiskModules* InOnDiskModules, FString* OutResolvedFile)
+bool IsModuleAvailableForImport(const TCHAR* InModuleName, FString* OutResolvedFile)
 {
 	// Check the sys.modules table first since it avoids hitting the filesystem
 	if (PyObject* PyModulesDict = PySys_GetObject(PyCStrCast("modules")))
 	{
-		if (PyObject* PyModuleValue = PyDict_GetItemString(PyModulesDict, TCHAR_TO_UTF8(InModuleName)))
+		PyObject* PyModuleKey = nullptr;
+		PyObject* PyModuleValue = nullptr;
+		Py_ssize_t ModuleDictIndex = 0;
+		while (PyDict_Next(PyModulesDict, &ModuleDictIndex, &PyModuleKey, &PyModuleValue))
 		{
-			if (OutResolvedFile)
+			if (PyModuleKey)
 			{
-				PyObject* PyModuleDict = PyModule_GetDict(PyModuleValue);
-				if (PyObject* PyModuleFile = PyDict_GetItemString(PyModuleDict, "__file__"))
+				const FString CurModuleName = PyObjectToUEString(PyModuleKey);
+				if (FCString::Strcmp(InModuleName, *CurModuleName) == 0)
 				{
-					*OutResolvedFile = PyObjectToUEString(PyModuleFile);
+					if (OutResolvedFile && PyModuleValue)
+					{
+						PyObject* PyModuleDict = PyModule_GetDict(PyModuleValue);
+						PyObject* PyModuleFile = PyDict_GetItemString(PyModuleDict, "__file__");
+						if (PyModuleFile)
+						{
+							*OutResolvedFile = PyObjectToUEString(PyModuleFile);
+						}
+					}
+
+					return true;
 				}
 			}
-
-			return true;
 		}
-	}
-
-	// Use the on-disk modules cache, if available, to avoid hitting the filesystem
-	if (InOnDiskModules)
-	{
-		return InOnDiskModules->HasModule(InModuleName, OutResolvedFile);
 	}
 
 	// Check the sys.path list looking for bla.py or bla/__init__.py
@@ -1043,14 +973,23 @@ bool IsModuleImported(const TCHAR* InModuleName, PyObject** OutPyModule)
 {
 	if (PyObject* PyModulesDict = PySys_GetObject(PyCStrCast("modules")))
 	{
-		if (PyObject* PyModuleValue = PyDict_GetItemString(PyModulesDict, TCHAR_TO_UTF8(InModuleName)))
+		PyObject* PyModuleKey = nullptr;
+		PyObject* PyModuleValue = nullptr;
+		Py_ssize_t ModuleDictIndex = 0;
+		while (PyDict_Next(PyModulesDict, &ModuleDictIndex, &PyModuleKey, &PyModuleValue))
 		{
-			if (OutPyModule)
+			if (PyModuleKey)
 			{
-				*OutPyModule = PyModuleValue;
+				const FString CurModuleName = PyObjectToUEString(PyModuleKey);
+				if (FCString::Strcmp(InModuleName, *CurModuleName) == 0)
+				{
+					if (OutPyModule)
+					{
+						*OutPyModule = PyModuleValue;
+					}
+					return true;
+				}
 			}
-
-			return true;
 		}
 	}
 
@@ -1345,9 +1284,9 @@ bool EnableDeveloperWarnings()
 	return false;
 }
 
-bool FetchPythonError(FString& OutError)
+FString BuildPythonError()
 {
-	OutError.Reset();
+	FString PythonErrorString;
 
 	// This doesn't just call PyErr_Print as it also needs to work before stderr redirection has been set-up in Python
 	FPyObjectPtr PyExceptionType;
@@ -1356,41 +1295,7 @@ bool FetchPythonError(FString& OutError)
 	PyErr_Fetch(&PyExceptionType.Get(), &PyExceptionValue.Get(), &PyExceptionTraceback.Get());
 	PyErr_NormalizeException(&PyExceptionType.Get(), &PyExceptionValue.Get(), &PyExceptionTraceback.Get());
 
-	if (!PyExceptionType)
-	{
-		// No exception is pending, so nothing more to do!
-		return false;
-	}
-
-	if (PyExceptionType == PyExc_SystemExit && PyExceptionValue)
-	{
-		auto IsZeroExitCode = [](PyObject* PyCodeObj)
-		{
-			if (!PyCodeObj || PyCodeObj == Py_None)
-			{
-				// None implies a zero error code
-				return true;
-			}
-
-			int32 ExitCode = 0;
-			if (PyConversion::Nativize(PyCodeObj, ExitCode, PyConversion::ESetErrorState::No))
-			{
-				return ExitCode == 0;
-			}
-
-			return false;
-		};
-
-		PySystemExitObject* PySysExit = (PySystemExitObject*)PyExceptionValue.Get();
-		if (IsZeroExitCode(PySysExit->code))
-		{
-			// Trap and discard SystemExit with an exit code of zero, as it is designed to make the interpreter process exit (which doesn't make sense for an embedded interpreter)
-			// If someone wants to actually exit the editor itself, then there is another Unreal API function to let them do that
-			PyErr_Clear();
-			return false;
-		}
-	}
-
+	bool bBuiltTraceback = false;
 	if (PyExceptionTraceback)
 	{
 		FPyObjectPtr PyTracebackModule = FPyObjectPtr::StealReference(PyImport_ImportModule("traceback"));
@@ -1403,6 +1308,8 @@ bool FetchPythonError(FString& OutError)
 				FPyObjectPtr PyFormatExceptionResult = FPyObjectPtr::StealReference(PyObject_CallFunctionObjArgs(PyFormatExceptionFunc, PyExceptionType.Get(), PyExceptionValue.Get(), PyExceptionTraceback.Get(), nullptr));
 				if (PyFormatExceptionResult)
 				{
+					bBuiltTraceback = true;
+
 					if (PyList_Check(PyFormatExceptionResult))
 					{
 						const Py_ssize_t FormatExceptionResultSize = PyList_Size(PyFormatExceptionResult);
@@ -1413,42 +1320,32 @@ bool FetchPythonError(FString& OutError)
 							{
 								if (FormatExceptionResultIndex > 0)
 								{
-									OutError += '\n';
+									PythonErrorString += '\n';
 								}
-								OutError += PyObjectToUEString(PyFormatExceptionResultItem);
+								PythonErrorString += PyObjectToUEString(PyFormatExceptionResultItem);
 							}
 						}
 					}
 					else
 					{
-						OutError += PyObjectToUEString(PyFormatExceptionResult);
+						PythonErrorString += PyObjectToUEString(PyFormatExceptionResult);
 					}
 				}
 			}
 		}
 	}
 
-	if (OutError.IsEmpty() && PyExceptionValue)
+	if (!bBuiltTraceback && PyExceptionValue)
 	{
 		if (PyExceptionType && PyType_Check(PyExceptionType))
 		{
 			FPyObjectPtr PyExceptionTypeName = FPyObjectPtr::StealReference(PyObject_GetAttrString(PyExceptionType, "__name__"));
-			OutError = FString::Printf(TEXT("%s: %s"), PyExceptionTypeName ? *PyObjectToUEString(PyExceptionTypeName) : *PyObjectToUEString(PyExceptionType), *PyObjectToUEString(PyExceptionValue));
+			PythonErrorString += FString::Printf(TEXT("%s: %s"), PyExceptionTypeName ? *PyObjectToUEString(PyExceptionTypeName) : *PyObjectToUEString(PyExceptionType), *PyObjectToUEString(PyExceptionValue));
 		}
 		else
 		{
-			OutError = PyObjectToUEString(PyExceptionValue);
+			PythonErrorString += PyObjectToUEString(PyExceptionValue);
 		}
-	}
-
-	if (OutError.IsEmpty())
-	{
-		OutError = PyObjectToUEString(PyExceptionType);
-	}
-
-	if (OutError.IsEmpty())
-	{
-		OutError = TEXT("<unknown exception>");
 	}
 
 	PyErr_Clear();
@@ -1463,17 +1360,14 @@ bool FetchPythonError(FString& OutError)
 		}
 	}
 
-	check(!OutError.IsEmpty());
-	return true;
+	return PythonErrorString;
 }
 
-bool LogPythonError(FString* OutError, const bool bInteractive)
+FString LogPythonError(const bool bInteractive)
 {
-	FString LocalErrorStr;
-	FString& ErrorStr = OutError ? *OutError : LocalErrorStr;
-	const bool bFetchedError = FetchPythonError(ErrorStr);
+	const FString ErrorStr = BuildPythonError();
 
-	if (bFetchedError)
+	if (!ErrorStr.IsEmpty())
 	{
 		// Log the error
 		{
@@ -1494,21 +1388,19 @@ bool LogPythonError(FString* OutError, const bool bInteractive)
 		}
 	}
 
-	return bFetchedError;
+	return ErrorStr;
 }
 
-bool ReThrowPythonError(FString* OutError)
+FString ReThrowPythonError()
 {
-	FString LocalErrorStr;
-	FString& ErrorStr = OutError ? *OutError : LocalErrorStr;
-	const bool bFetchedError = FetchPythonError(ErrorStr);
+	const FString ErrorStr = BuildPythonError();
 
-	if (bFetchedError)
+	if (!ErrorStr.IsEmpty())
 	{
 		FFrame::KismetExecutionMessage(*ErrorStr, ELogVerbosity::Error);
 	}
 
-	return bFetchedError;
+	return ErrorStr;
 }
 
 }

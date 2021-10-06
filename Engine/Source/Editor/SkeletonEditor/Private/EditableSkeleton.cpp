@@ -71,7 +71,7 @@ private:
 		if (USkeletalMesh* SocketMesh = Cast<USkeletalMesh>(NewSocket->GetOuter()))
 		{
 			SocketMesh->GetMeshOnlySocketList().Add(NewSocket);
-			RefSkel = &SocketMesh->GetRefSkeleton();
+			RefSkel = &SocketMesh->RefSkeleton;
 		}
 		else if (USkeleton* SocketSkeleton = Cast<USkeleton>(NewSocket->GetOuter()))
 		{
@@ -600,11 +600,10 @@ void FEditableSkeleton::RenameSocket(const FName OldSocketName, const FName NewS
 
 		if (InSkeletalMesh != nullptr)
 		{
-			FPreviewAssetAttachContainer& PreviewAttachedAssetContainer = InSkeletalMesh->GetPreviewAttachedAssetContainer();
 			bool bMeshModified = false;
-			for (int AttachedObjectIndex = 0; AttachedObjectIndex < PreviewAttachedAssetContainer.Num(); ++AttachedObjectIndex)
+			for (int AttachedObjectIndex = 0; AttachedObjectIndex < InSkeletalMesh->PreviewAttachedAssetContainer.Num(); ++AttachedObjectIndex)
 			{
-				FPreviewAttachedObjectPair& Pair = PreviewAttachedAssetContainer[AttachedObjectIndex];
+				FPreviewAttachedObjectPair& Pair = InSkeletalMesh->PreviewAttachedAssetContainer[AttachedObjectIndex];
 				if (Pair.AttachedTo == OldSocketName)
 				{
 					// Only modify the mesh if we actually intend to change something. Avoids dirtying
@@ -768,7 +767,7 @@ void FEditableSkeleton::HandleRemoveAllAssets(TSharedPtr<IPersonaPreviewScene> I
 	if (SkeletalMesh)
 	{
 		SkeletalMesh->Modify();
-		DeleteAttachedObjects(SkeletalMesh->GetPreviewAttachedAssetContainer(), InPreviewScene);
+		DeleteAttachedObjects(SkeletalMesh->PreviewAttachedAssetContainer, InPreviewScene);
 	}
 }
 
@@ -887,7 +886,7 @@ void FEditableSkeleton::HandleAttachAssets(const TArray<UObject*>& InObjects, co
 				{
 					InPreviewScene->AttachObjectToPreviewComponent(Object, InAttachToName);
 				}
-				SkeletalMesh->GetPreviewAttachedAssetContainer().AddAttachedObject(Object, InAttachToName);
+				SkeletalMesh->PreviewAttachedAssetContainer.AddAttachedObject(Object, InAttachToName);
 			}
 		}
 		else
@@ -937,7 +936,7 @@ void FEditableSkeleton::HandleDeleteAttachedAssets(const TArray<FPreviewAttached
 
 			if (SkeletalMesh != nullptr)
 			{
-				SkeletalMesh->GetPreviewAttachedAssetContainer().RemoveAttachedObject(AttachedObject.GetAttachedObject(), AttachedObject.AttachedTo);
+				SkeletalMesh->PreviewAttachedAssetContainer.RemoveAttachedObject(AttachedObject.GetAttachedObject(), AttachedObject.AttachedTo);
 
 				if (InPreviewScene.IsValid())
 				{
@@ -964,11 +963,11 @@ void FEditableSkeleton::HandleDeleteSockets(const TArray<FSelectedSocketInfo>& I
 			USkeletalMesh* SkeletalMesh = InPreviewScene->GetPreviewMeshComponent()->SkeletalMesh;
 			if (SkeletalMesh != nullptr)
 			{
-				UObject* Object = SkeletalMesh->GetPreviewAttachedAssetContainer().GetAttachedObjectByAttachName(SocketName);
+				UObject* Object = SkeletalMesh->PreviewAttachedAssetContainer.GetAttachedObjectByAttachName(SocketName);
 				if (Object)
 				{
 					SkeletalMesh->Modify();
-					SkeletalMesh->GetPreviewAttachedAssetContainer().RemoveAttachedObject(Object, SocketName);
+					SkeletalMesh->PreviewAttachedAssetContainer.RemoveAttachedObject(Object, SocketName);
 					if (InPreviewScene.IsValid())
 					{
 						InPreviewScene->RemoveAttachedObjectFromPreviewComponent(Object, SocketName);
@@ -1503,7 +1502,7 @@ void FEditableSkeleton::RemoveUnusedBones()
 	Filter.ClassNames.Add(USkeletalMesh::StaticClass()->GetFName());
 
 	FString SkeletonString = FAssetData(Skeleton).GetExportTextName();
-	Filter.TagsAndValues.Add(USkeletalMesh::GetSkeletonMemberName(), SkeletonString);
+	Filter.TagsAndValues.Add(GET_MEMBER_NAME_CHECKED(USkeletalMesh, Skeleton), SkeletonString);
 
 	TArray<FAssetData> SkeletalMeshes;
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
@@ -1535,7 +1534,7 @@ void FEditableSkeleton::RemoveUnusedBones()
 				GWarn->StatusUpdate(MeshIdx, SkeletalMeshes.Num(), StatusUpdate);
 
 				USkeletalMesh* Mesh = Cast<USkeletalMesh>(SkeletalMeshes[MeshIdx].GetAsset());
-				const FReferenceSkeleton& MeshRefSkeleton = Mesh->GetRefSkeleton();
+				const FReferenceSkeleton& MeshRefSkeleton = Mesh->RefSkeleton;
 
 				for (int32 BoneIndex = 0; BoneIndex < MeshRefSkeleton.GetRawBoneNum(); ++BoneIndex)
 				{

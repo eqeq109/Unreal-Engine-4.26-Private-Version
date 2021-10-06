@@ -2,11 +2,12 @@
 
 #include "Systems/MovieScenePropertyInstantiator.h"
 #include "EntitySystem/MovieSceneEntityBuilder.h"
-#include "EntitySystem/MovieScenePropertyBinding.h"
 #include "EntitySystem/MovieSceneEntitySystemLinker.h"
 #include "EntitySystem/MovieSceneBlenderSystem.h"
 #include "EntitySystem/MovieScenePropertyRegistry.h"
+#include "EntitySystem/MovieScenePreAnimatedStateSystem.h"
 #include "Systems/MovieScenePiecewiseFloatBlenderSystem.h"
+
 
 #include "Algo/IndexOf.h"
 
@@ -80,9 +81,16 @@ void UMovieScenePropertyInstantiatorSystem::OnRun(FSystemTaskPrerequisites& InPr
 		ProcessInvalidatedProperties(InvalidatedProperties);
 	}
 
-	if (InitializePropertyMetaDataTasks.Find(true) != INDEX_NONE)
+	// Kick off initial value gather task immediately
+	if (InitialValueStateTasks.Find(true) != INDEX_NONE)
 	{
-		InitializePropertyMetaData(InPrerequisites, Subsequents);
+		AssignInitialValues(InPrerequisites, Subsequents);
+	}
+
+	if (CachePreAnimatedStateTasks.Find(true) != INDEX_NONE)
+	{
+		UMovieSceneCachePreAnimatedStateSystem* PreAnimatedState = Linker->LinkSystem<UMovieSceneCachePreAnimatedStateSystem>();
+		Linker->SystemGraph.AddReference(this, PreAnimatedState);
 	}
 
 	ObjectPropertyToResolvedIndex.Compact();
@@ -99,7 +107,7 @@ void UMovieScenePropertyInstantiatorSystem::DiscoverInvalidatedProperties(TBitAr
 
 	PropertyStats.SetNum(Properties.Num());
 
-	auto VisitNewProperties = [this, Properties, &OutInvalidatedProperties](const FEntityAllocation* Allocation, const FMovieSceneEntityID* EntityIDs, UObject* const * ObjectPtrs, const FMovieScenePropertyBinding* PropertyPtrs)
+	auto VisitNewProperties = [this, Properties, &OutInvalidatedProperties](const FEntityAllocation* Allocation, FReadEntityIDs EntityIDsAccessor, TRead<UObject*> ObjectComponents, TRead<FMovieScenePropertyBinding> PropertyBindingComponents)
 	{
 		const int32 PropertyDefinitionIndex = Algo::IndexOfByPredicate(Properties, [=](const FPropertyDefinition& InDefinition){ return Allocation->HasComponent(InDefinition.PropertyType); });
 		if (PropertyDefinitionIndex == INDEX_NONE)
@@ -110,6 +118,10 @@ void UMovieScenePropertyInstantiatorSystem::DiscoverInvalidatedProperties(TBitAr
 		const FPropertyDefinition& PropertyDefinition = Properties[PropertyDefinitionIndex];
 
 		FCustomAccessorView CustomAccessors = PropertyDefinition.CustomPropertyRegistration ? PropertyDefinition.CustomPropertyRegistration->GetAccessors() : FCustomAccessorView();
+
+		UObject* const * ObjectPtrs = ObjectComponents.Resolve(Allocation);
+		const FMovieSceneEntityID* EntityIDs = EntityIDsAccessor.Resolve(Allocation);
+		const FMovieScenePropertyBinding* PropertyPtrs = PropertyBindingComponents.Resolve(Allocation);
 
 		for (int32 Index = 0; Index < Allocation->Num(); ++Index)
 		{
@@ -127,6 +139,12 @@ void UMovieScenePropertyInstantiatorSystem::DiscoverInvalidatedProperties(TBitAr
 
 				OutInvalidatedProperties.PadToNum(PropertyIndex + 1, false);
 				OutInvalidatedProperties[PropertyIndex] = true;
+
+				if (PropertyDefinition.PreAnimatedValue)
+				{
+					SaveGlobalStateTasks.PadToNum(PropertyDefinitionIndex + 1, false);
+					SaveGlobalStateTasks[PropertyDefinitionIndex] = true;
+				}
 			}
 		}
 	};
@@ -135,7 +153,6 @@ void UMovieScenePropertyInstantiatorSystem::DiscoverInvalidatedProperties(TBitAr
 	.ReadEntityIDs()
 	.Read(BuiltInComponents->BoundObject)
 	.Read(BuiltInComponents->PropertyBinding)
-	.FilterNone({ BuiltInComponents->BlendChannelOutput })
 	.FilterAll({ BuiltInComponents->Tags.NeedsLink })
 	.Iterate_PerAllocation(&Linker->EntityManager, VisitNewProperties);
 
@@ -161,7 +178,6 @@ void UMovieScenePropertyInstantiatorSystem::DiscoverInvalidatedProperties(TBitAr
 
 	FEntityTaskBuilder()
 	.ReadEntityIDs()
-	.FilterNone({ BuiltInComponents->BlendChannelOutput })
 	.FilterAll({ BuiltInComponents->BoundObject, BuiltInComponents->PropertyBinding, BuiltInComponents->Tags.NeedsUnlink })
 	.Iterate_PerEntity(&Linker->EntityManager, VisitExpiredEntities);
 }
@@ -208,6 +224,22 @@ void UMovieScenePropertyInstantiatorSystem::ProcessInvalidatedProperties(const T
 		{
 			InitializeBlendPath(Params);
 		}
+
+
+		const int32 PropertyDefinitionIndex = Params.PropertyInfo->PropertyDefinitionIndex;
+
+		const bool bHasPreAnimatedValue = Params.PropertyDefinition->PreAnimatedValue && Linker->EntityManager.HasComponent(Params.PropertyInfo->PropertyEntityID, Params.PropertyDefinition->PreAnimatedValue);
+		if (Params.PropertyDefinition->PreAnimatedValue && Params.PropertyInfo->bWantsRestoreState && !bHasPreAnimatedValue)
+		{
+			Linker->EntityManager.AddComponents(Params.PropertyInfo->PropertyEntityID, { BuiltInComponents->Tags.RestoreState, BuiltInComponents->Tags.CachePreAnimatedValue, Params.PropertyDefinition->PreAnimatedValue });
+
+			CachePreAnimatedStateTasks.PadToNum(PropertyDefinitionIndex+1, false);
+			CachePreAnimatedStateTasks[PropertyDefinitionIndex] = true;
+		}
+		else if (!Params.PropertyInfo->bWantsRestoreState && bHasPreAnimatedValue)
+		{
+			Linker->EntityManager.RemoveComponents(Params.PropertyInfo->PropertyEntityID, { Params.PropertyDefinition->PreAnimatedValue, BuiltInComponents->Tags.RestoreState });
+		}
 	}
 
 	// Restore and destroy stale properties
@@ -218,19 +250,21 @@ void UMovieScenePropertyInstantiatorSystem::ProcessInvalidatedProperties(const T
 			const int32 PropertyIndex = It.GetIndex();
 			FObjectPropertyInfo* PropertyInfo = &ResolvedProperties[PropertyIndex];
 
+			RestorePreAnimatedStateTasks.PadToNum(PropertyInfo->PropertyDefinitionIndex+1, false);
+			RestorePreAnimatedStateTasks[PropertyInfo->PropertyDefinitionIndex] = true;
+
 			if (PropertyInfo->BlendChannel != INVALID_BLEND_CHANNEL)
 			{
 				if (UMovieSceneBlenderSystem* Blender = PropertyInfo->Blender.Get())
 				{
-					const FMovieSceneBlendChannelID BlendChannelID(Blender->GetBlenderSystemID(), PropertyInfo->BlendChannel);
-					Blender->ReleaseBlendChannel(BlendChannelID);
+					Blender->ReleaseBlendChannel(PropertyInfo->BlendChannel);
 				}
 				Linker->EntityManager.AddComponents(PropertyInfo->PropertyEntityID, BuiltInComponents->FinishedMask);
-			}
 
-			if (PropertyInfo->EmptyChannels.Find(true) != INDEX_NONE)
-			{
-				--PropertyStats[PropertyInfo->PropertyDefinitionIndex].NumPartialProperties;
+				if (PropertyInfo->EmptyChannels.Find(true) != INDEX_NONE)
+				{
+					--PropertyStats[PropertyInfo->PropertyDefinitionIndex].NumPartialProperties;
+				}
 			}
 
 			--PropertyStats[PropertyInfo->PropertyDefinitionIndex].NumProperties;
@@ -239,7 +273,7 @@ void UMovieScenePropertyInstantiatorSystem::ProcessInvalidatedProperties(const T
 			// PropertyInfo is now garbage
 		}
 
-		// @todo: If perf is a real issue with this look, we could call ObjectPropertyToResolvedIndex.Remove(MakeTuple(PropertyInfo->BoundObject, PropertyInfo->PropertyBinding.PropertyPath));
+		// @todo: If perf is a real issue with this look, we could call ObjectPropertyToResolvedIndex.Remove(MakeTuple(PropertyInfo->BoundObject, PropertyInfo->PropertyPath));
 		// In the loop above, but it is possible that BoundObject no longer relates to a valid object at that point
 		for (auto It = ObjectPropertyToResolvedIndex.CreateIterator(); It; ++It)
 		{
@@ -353,30 +387,17 @@ void UMovieScenePropertyInstantiatorSystem::InitializeFastPath(const FPropertyPa
 	Params.PropertyInfo->PropertyEntityID = SoleContributor;
 
 	check(Params.PropertyInfo->BlendChannel == INVALID_BLEND_CHANNEL);
-	switch (Params.PropertyInfo->Property.GetIndex())
+	switch (Params.PropertyInfo->Property->GetIndex())
 	{
 	case 0:
-		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->FastPropertyOffset,  Params.PropertyInfo->Property.template Get<uint16>());
+		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->FastPropertyOffset,  Params.PropertyInfo->Property->template Get<uint16>());
 		break;
 	case 1:
-		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->CustomPropertyIndex, Params.PropertyInfo->Property.template Get<FCustomPropertyIndex>());
+		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->CustomPropertyIndex, Params.PropertyInfo->Property->template Get<FCustomPropertyIndex>());
 		break;
 	case 2:
-		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->SlowProperty,        Params.PropertyInfo->Property.template Get<FSlowPropertyPtr>());
+		Linker->EntityManager.AddComponent(SoleContributor, BuiltInComponents->SlowProperty,        Params.PropertyInfo->Property->template Get<FSlowPropertyPtr>());
 		break;
-	}
-
-	if (Params.PropertyDefinition->MetaDataTypes.Num() > 0)
-	{
-		InitializePropertyMetaDataTasks.PadToNum(Params.PropertyInfo->PropertyDefinitionIndex+1, false);
-		InitializePropertyMetaDataTasks[Params.PropertyInfo->PropertyDefinitionIndex] = true;
-
-		FComponentMask NewMask;
-		for (FComponentTypeID Component : Params.PropertyDefinition->MetaDataTypes)
-		{
-			NewMask.Set(Component);
-		}
-		Linker->EntityManager.AddComponents(SoleContributor, NewMask);
 	}
 }
 
@@ -392,8 +413,8 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 	for (auto ContributorIt = Contributors.CreateConstKeyIterator(Params.PropertyInfoIndex); ContributorIt; ++ContributorIt)
 	{
 		FMovieSceneEntityID Contributor = ContributorIt.Value();
-
-		TOptionalComponentReader<TSubclassOf<UMovieSceneBlenderSystem>> BlenderTypeComponent = Linker->EntityManager.ReadComponent(Contributor, BuiltInComponents->BlenderType);
+		
+		TComponentPtr<const TSubclassOf<UMovieSceneBlenderSystem>> BlenderTypeComponent = Linker->EntityManager.ReadComponent(Contributor, BuiltInComponents->BlenderType);
 		if (BlenderTypeComponent)
 		{
 			BlenderClass = BlenderTypeComponent->Get();
@@ -406,38 +427,26 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 	UMovieSceneBlenderSystem* ExistingBlender = Params.PropertyInfo->Blender.Get();
 	if (ExistingBlender && BlenderClass != ExistingBlender->GetClass())
 	{
-		const FMovieSceneBlendChannelID ExistingBlendChannel(ExistingBlender->GetBlenderSystemID(), Params.PropertyInfo->BlendChannel);
-		ExistingBlender->ReleaseBlendChannel(ExistingBlendChannel);
+		ExistingBlender->ReleaseBlendChannel(Params.PropertyInfo->BlendChannel);
 		Params.PropertyInfo->BlendChannel = INVALID_BLEND_CHANNEL;
 	}
 
-	UMovieSceneBlenderSystem* const Blender = CastChecked<UMovieSceneBlenderSystem>(Linker->LinkSystem(BlenderClass));
-	Params.PropertyInfo->Blender = Blender;
+	Params.PropertyInfo->Blender = CastChecked<UMovieSceneBlenderSystem>(Linker->LinkSystem(BlenderClass));
 
 	const bool bWasAlreadyBlended = Params.PropertyInfo->BlendChannel != INVALID_BLEND_CHANNEL;
 	if (!bWasAlreadyBlended)
 	{
-		const FMovieSceneBlendChannelID NewBlendChannel = Blender->AllocateBlendChannel();
-		Params.PropertyInfo->BlendChannel = NewBlendChannel.ChannelID;
+		Params.PropertyInfo->BlendChannel = Params.PropertyInfo->Blender->AllocateBlendChannel();
 	}
 
-	const FMovieSceneBlendChannelID BlendChannel(Blender->GetBlenderSystemID(), Params.PropertyInfo->BlendChannel);
+	FComponentMask NewMask;
+	FComponentMask OldMask;
 
 	if (!bWasAlreadyBlended)
 	{
-		FComponentMask NewMask;
 		NewMask.Set(Params.PropertyDefinition->InitialValueType);
-
-		if (Params.PropertyDefinition->MetaDataTypes.Num() > 0)
-		{
-			InitializePropertyMetaDataTasks.PadToNum(Params.PropertyInfo->PropertyDefinitionIndex+1, false);
-			InitializePropertyMetaDataTasks[Params.PropertyInfo->PropertyDefinitionIndex] = true;
-
-			for (FComponentTypeID Component : Params.PropertyDefinition->MetaDataTypes)
-			{
-				NewMask.Set(Component);
-			}
-		}
+		InitialValueStateTasks.PadToNum(Params.PropertyInfo->PropertyDefinitionIndex+1, false);
+		InitialValueStateTasks[Params.PropertyInfo->PropertyDefinitionIndex] = true;
 
 		for (int32 Index = 0; Index < Composites.Num(); ++Index)
 		{
@@ -449,15 +458,14 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 		NewMask.Set(Params.PropertyDefinition->PropertyType);
 
 		FMovieSceneEntityID NewEntityID;
-		switch (Params.PropertyInfo->Property.GetIndex())
+		switch (Params.PropertyInfo->Property->GetIndex())
 		{
 		// Never seen this property before
 		case 0:
 			NewEntityID = FEntityBuilder()
-			.Add(BuiltInComponents->FastPropertyOffset,      Params.PropertyInfo->Property.template Get<uint16>())
-			.Add(BuiltInComponents->PropertyBinding,         Params.PropertyInfo->PropertyBinding)
+			.Add(BuiltInComponents->FastPropertyOffset,      Params.PropertyInfo->Property->template Get<uint16>())
 			.Add(BuiltInComponents->BoundObject,             Params.PropertyInfo->BoundObject)
-			.Add(BuiltInComponents->BlendChannelOutput,      BlendChannel)
+			.Add(BuiltInComponents->BlendChannelOutput,      Params.PropertyInfo->BlendChannel)
 			.AddTagConditional(BuiltInComponents->Tags.MigratedFromFastPath, Params.PropertyInfo->PropertyEntityID.IsValid())
 			.AddTagConditional(BuiltInComponents->Tags.RestoreState, Params.PropertyInfo->bWantsRestoreState)
 			.AddTag(BuiltInComponents->Tags.NeedsLink)
@@ -467,10 +475,9 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 
 		case 1:
 			NewEntityID = FEntityBuilder()
-			.Add(BuiltInComponents->CustomPropertyIndex, Params.PropertyInfo->Property.template Get<FCustomPropertyIndex>())
-			.Add(BuiltInComponents->PropertyBinding,     Params.PropertyInfo->PropertyBinding)
+			.Add(BuiltInComponents->CustomPropertyIndex, Params.PropertyInfo->Property->template Get<FCustomPropertyIndex>())
 			.Add(BuiltInComponents->BoundObject,         Params.PropertyInfo->BoundObject)
-			.Add(BuiltInComponents->BlendChannelOutput,  BlendChannel)
+			.Add(BuiltInComponents->BlendChannelOutput,  Params.PropertyInfo->BlendChannel)
 			.AddTagConditional(BuiltInComponents->Tags.MigratedFromFastPath, Params.PropertyInfo->PropertyEntityID.IsValid())
 			.AddTagConditional(BuiltInComponents->Tags.RestoreState, Params.PropertyInfo->bWantsRestoreState)
 			.AddTag(BuiltInComponents->Tags.NeedsLink)
@@ -480,10 +487,9 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 
 		case 2:
 			NewEntityID = FEntityBuilder()
-			.Add(BuiltInComponents->SlowProperty,            Params.PropertyInfo->Property.template Get<FSlowPropertyPtr>())
-			.Add(BuiltInComponents->PropertyBinding,         Params.PropertyInfo->PropertyBinding)
+			.Add(BuiltInComponents->SlowProperty,            Params.PropertyInfo->Property->template Get<FSlowPropertyPtr>())
 			.Add(BuiltInComponents->BoundObject,             Params.PropertyInfo->BoundObject)
-			.Add(BuiltInComponents->BlendChannelOutput,      BlendChannel)
+			.Add(BuiltInComponents->BlendChannelOutput,      Params.PropertyInfo->BlendChannel)
 			.AddTagConditional(BuiltInComponents->Tags.MigratedFromFastPath, Params.PropertyInfo->PropertyEntityID.IsValid())
 			.AddTagConditional(BuiltInComponents->Tags.RestoreState, Params.PropertyInfo->bWantsRestoreState)
 			.AddTag(BuiltInComponents->Tags.NeedsLink)
@@ -494,11 +500,11 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 
 		if (Params.PropertyInfo->PropertyEntityID)
 		{
-			// Move any copiable/migratable components over from the existing fast-path entity
-			Linker->EntityManager.CopyComponents(Params.PropertyInfo->PropertyEntityID, NewEntityID, Linker->EntityManager.GetComponents()->GetCopyAndMigrationMask());
+			// Move any migratable components over from the existing fast-path entity
+			Linker->EntityManager.CopyComponents(Params.PropertyInfo->PropertyEntityID, NewEntityID, Linker->EntityManager.GetComponents()->GetMigrationMask());
 
 			// Add blend inputs on the first contributor, which was using the fast-path
-			Linker->EntityManager.AddComponent(Params.PropertyInfo->PropertyEntityID, BuiltInComponents->BlendChannelInput, BlendChannel);
+			Linker->EntityManager.AddComponent(Params.PropertyInfo->PropertyEntityID, BuiltInComponents->BlendChannelInput, Params.PropertyInfo->BlendChannel);
 			Linker->EntityManager.RemoveComponents(Params.PropertyInfo->PropertyEntityID, CleanFastPathMask);
 		}
 
@@ -515,7 +521,6 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 			NewEntityType[Composite] = (Params.PropertyInfo->EmptyChannels[Index] != true);
 		}
 		NewEntityType.Set(Params.PropertyDefinition->PropertyType);
-
 		if (Params.PropertyInfo->bWantsRestoreState)
 		{
 			NewEntityType.Set(BuiltInComponents->Tags.RestoreState);
@@ -531,10 +536,54 @@ void UMovieScenePropertyInstantiatorSystem::InitializeBlendPath(const FPropertyP
 	// Ensure contributors all have the necessary blend inputs and tags
 	for (auto ContributorIt = NewContributors.CreateConstKeyIterator(Params.PropertyInfoIndex); ContributorIt; ++ContributorIt)
 	{
-		const FMovieSceneEntityID Contributor = ContributorIt.Value();
-		Linker->EntityManager.AddComponent(Contributor, BuiltInComponents->BlendChannelInput, BlendChannel);
+		FMovieSceneEntityID Contributor = ContributorIt.Value();
+		Linker->EntityManager.AddComponent(Contributor, BuiltInComponents->BlendChannelInput, Params.PropertyInfo->BlendChannel);
 		Linker->EntityManager.RemoveComponents(Contributor, CleanFastPathMask);
 	}
+}
+
+int32 UMovieScenePropertyInstantiatorSystem::FindCustomAccessorIndex(UE::MovieScene::FCustomAccessorView Accessors, UClass* ClassType, FName PropertyPath)
+{
+	using namespace UE::MovieScene;
+
+	UClass* StopIterationAt = UObject::StaticClass();
+
+	while (ClassType != StopIterationAt)
+	{
+		for (int32 Index = 0; Index < Accessors.Num(); ++Index)
+		{
+			const FCustomPropertyAccessor& Accessor = Accessors[Index];
+			if (Accessor.Class == ClassType && Accessor.PropertyPath == PropertyPath)
+			{
+				return Index;
+			}
+		}
+		ClassType = ClassType->GetSuperClass();
+	}
+
+	return INDEX_NONE;
+}
+
+TOptional<uint16> UMovieScenePropertyInstantiatorSystem::ComputeFastPropertyPtrOffset(UClass* ObjectClass, const FMovieScenePropertyBinding& PropertyBinding)
+{
+	using namespace UE::MovieScene;
+
+	FProperty* Property = ObjectClass->FindPropertyByName(PropertyBinding.PropertyName);
+	// @todo: Constructing FNames from strings is _very_ costly and we really shouldn't be doing this at runtime.
+	UFunction* Setter   = ObjectClass->FindFunctionByName(*(FString("Set") + PropertyBinding.PropertyName.ToString()));
+	if (Property && !Setter)
+	{
+		UObject* DefaultObject   = ObjectClass->GetDefaultObject();
+		uint8*   PropertyAddress = Property->ContainerPtrToValuePtr<uint8>(DefaultObject);
+		int32    PropertyOffset  = PropertyAddress - reinterpret_cast<uint8*>(DefaultObject);
+
+		if (ensureMsgf(PropertyOffset >= 0 && PropertyOffset < int32(uint16(0xFFFF)), TEXT("Property offset of more than 65535 bytes - this is most likely an error and is not supported by fast property accessors.")))
+		{
+			return uint16(PropertyOffset);
+		}
+	}
+
+	return TOptional<uint16>();
 }
 
 int32 UMovieScenePropertyInstantiatorSystem::ResolveProperty(UE::MovieScene::FCustomAccessorView CustomAccessors, UObject* Object, const FMovieScenePropertyBinding& PropertyBinding, int32 PropertyDefinitionIndex)
@@ -547,18 +596,50 @@ int32 UMovieScenePropertyInstantiatorSystem::ResolveProperty(UE::MovieScene::FCu
 		return *ExistingPropertyIndex;
 	}
 
-	TOptional<FResolvedProperty> ResolvedProperty = FPropertyRegistry::ResolveProperty(Object, PropertyBinding, CustomAccessors);
-	if (!ResolvedProperty.IsSet())
+
+	FObjectPropertyInfo NewInfo;
+
+	NewInfo.BoundObject  = Object;
+	NewInfo.PropertyPath = PropertyBinding.PropertyPath;
+	NewInfo.PropertyDefinitionIndex = PropertyDefinitionIndex;
+
+	UClass* Class = Object->GetClass();
+
+	if (CustomAccessors.Num() != 0)
 	{
-		UE_LOG(LogMovieScene, Warning, TEXT("Unable to resolve property '%s' from '%s' instance '%s'"), *PropertyBinding.PropertyPath.ToString(), *Object->GetClass()->GetName(), *Object->GetName());
-		return INDEX_NONE;
+		const int32 CustomPropertyIndex = FindCustomAccessorIndex(CustomAccessors, Class, PropertyBinding.PropertyPath);
+		if (CustomPropertyIndex != INDEX_NONE)
+		{
+			check(CustomPropertyIndex < MAX_uint16);
+
+			// This property has a custom property accessor that can apply properties through a static function ptr.
+			// Just add the function ptrs to the property entity so they can be called directly
+			NewInfo.Property.Emplace(TInPlaceType<FCustomPropertyIndex>(), FCustomPropertyIndex{ static_cast<uint16>(CustomPropertyIndex) });
+		}
 	}
 
-	FObjectPropertyInfo NewInfo(MoveTemp(ResolvedProperty.GetValue()));
+	if (PropertyBinding.CanUseClassLookup())
+	{
+		TOptional<uint16> FastPtrOffset = ComputeFastPropertyPtrOffset(Class, PropertyBinding);
+		if (FastPtrOffset.IsSet())
+		{
+			// This property/object combination has no custom setter function and a constant property offset from the base ptr for all instances of the object.
+			NewInfo.Property.Emplace(TInPlaceType<uint16>(), FastPtrOffset.GetValue());
+		}
+	}
 
-	NewInfo.BoundObject = Object;
-	NewInfo.PropertyBinding = PropertyBinding;
-	NewInfo.PropertyDefinitionIndex = PropertyDefinitionIndex;
+	// None of the above optimized paths can apply to this property (probably because it has a setter function or because it is within a compound property), so we must use the slow property bindings
+	if (!NewInfo.Property.IsSet())
+	{
+		TSharedPtr<FTrackInstancePropertyBindings> SlowBindings = MakeShared<FTrackInstancePropertyBindings>(PropertyBinding.PropertyName, PropertyBinding.PropertyPath.ToString());
+		if (SlowBindings->GetProperty(*Object) == nullptr)
+		{
+			UE_LOG(LogMovieScene, Warning, TEXT("Unable to resolve property '%s' from '%s' instance '%s'"), *PropertyBinding.PropertyPath.ToString(), *Object->GetClass()->GetName(), *Object->GetName());
+			return INDEX_NONE;
+		}
+
+		NewInfo.Property.Emplace(TInPlaceType<FSlowPropertyPtr>(), SlowBindings);
+	}
 
 	const int32 NewPropertyIndex = ResolvedProperties.Add(NewInfo);
 
@@ -573,7 +654,7 @@ UE::MovieScene::FPropertyRecomposerPropertyInfo UMovieScenePropertyInstantiatorS
 {
 	using namespace UE::MovieScene;
 
-	TOptionalComponentReader<FMovieScenePropertyBinding> PropertyBinding = Linker->EntityManager.ReadComponent(EntityID, BuiltInComponents->PropertyBinding);
+	TComponentPtr<const FMovieScenePropertyBinding> PropertyBinding = Linker->EntityManager.ReadComponent(EntityID, BuiltInComponents->PropertyBinding);
 	if (!PropertyBinding)
 	{
 		return FPropertyRecomposerPropertyInfo::Invalid();
@@ -589,17 +670,80 @@ UE::MovieScene::FPropertyRecomposerPropertyInfo UMovieScenePropertyInstantiatorS
 	return FPropertyRecomposerPropertyInfo::Invalid();
 }
 
-void UMovieScenePropertyInstantiatorSystem::InitializePropertyMetaData(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
+void UMovieScenePropertyInstantiatorSystem::AssignInitialValues(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
 {
 	using namespace UE::MovieScene;
 
-	for (TConstSetBitIterator<> TypesToCache(InitializePropertyMetaDataTasks); TypesToCache; ++TypesToCache)
+	for (TConstSetBitIterator<> TypesToCache(InitialValueStateTasks); TypesToCache; ++TypesToCache)
 	{
 		FCompositePropertyTypeID PropertyID = FCompositePropertyTypeID::FromIndex(TypesToCache.GetIndex());
 
 		const FPropertyDefinition& Definition = BuiltInComponents->PropertyRegistry.GetDefinition(PropertyID);
-		Definition.Handler->DispatchInitializePropertyMetaDataTasks(Definition, InPrerequisites, Subsequents, Linker);
+		Definition.Handler->DispatchCacheInitialValueTasks(Definition, InPrerequisites, Subsequents, Linker);
 	}
 
-	InitializePropertyMetaDataTasks.Empty();
+	InitialValueStateTasks.Empty();
 }
+
+void UMovieScenePropertyInstantiatorSystem::SavePreAnimatedState(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
+{
+	using namespace UE::MovieScene;
+
+	for (TConstSetBitIterator<> TypesToCache(CachePreAnimatedStateTasks); TypesToCache; ++TypesToCache)
+	{
+		FCompositePropertyTypeID PropertyID = FCompositePropertyTypeID::FromIndex(TypesToCache.GetIndex());
+
+		const FPropertyDefinition& Definition = BuiltInComponents->PropertyRegistry.GetDefinition(PropertyID);
+		Definition.Handler->DispatchCachePreAnimatedTasks(Definition, InPrerequisites, Subsequents, Linker);
+	}
+
+	CachePreAnimatedStateTasks.Empty();
+}
+
+void UMovieScenePropertyInstantiatorSystem::SaveGlobalPreAnimatedState(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
+{
+	using namespace UE::MovieScene;
+
+	for (TConstSetBitIterator<> TypesToCache(SaveGlobalStateTasks); TypesToCache; ++TypesToCache)
+	{
+		FCompositePropertyTypeID PropertyID = FCompositePropertyTypeID::FromIndex(TypesToCache.GetIndex());
+
+		const FPropertyDefinition& Definition = BuiltInComponents->PropertyRegistry.GetDefinition(PropertyID);
+		Definition.Handler->SaveGlobalPreAnimatedState(Definition, Linker);
+	}
+
+	SaveGlobalStateTasks.Empty();
+}
+
+void UMovieScenePropertyInstantiatorSystem::RestorePreAnimatedState(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
+{
+	using namespace UE::MovieScene;
+
+	for (TConstSetBitIterator<> TypesToRestore(RestorePreAnimatedStateTasks); TypesToRestore; ++TypesToRestore)
+	{
+		FCompositePropertyTypeID PropertyID = FCompositePropertyTypeID::FromIndex(TypesToRestore.GetIndex());
+
+		const FPropertyDefinition& Definition = BuiltInComponents->PropertyRegistry.GetDefinition(PropertyID);
+		if (Definition.PreAnimatedValue)
+		{
+			Definition.Handler->DispatchRestorePreAnimatedStateTasks(Definition, InPrerequisites, Subsequents, Linker);
+		}
+	}
+
+	RestorePreAnimatedStateTasks.Empty();
+}
+
+void UMovieScenePropertyInstantiatorSystem::DiscardPreAnimatedStateForObject(UObject& Object)
+{
+	using namespace UE::MovieScene;
+
+	for (FObjectPropertyInfo& PropertyInfo : ResolvedProperties)
+	{
+		if (PropertyInfo.BoundObject == &Object && PropertyInfo.bWantsRestoreState)
+		{
+			Linker->EntityManager.RemoveComponent(PropertyInfo.PropertyEntityID, BuiltInComponents->Tags.RestoreState);
+			PropertyInfo.bWantsRestoreState = false;
+		}
+	}
+}
+

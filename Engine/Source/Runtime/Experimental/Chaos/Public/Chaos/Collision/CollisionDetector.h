@@ -37,6 +37,7 @@ namespace Chaos
 	protected:
 		FNarrowPhase& NarrowPhase;
 		FPBDCollisionConstraints& CollisionContainer;
+		FCollisionContext Context;
 	};
 
 }

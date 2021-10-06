@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/node';
 import { ContextualLogger } from '../common/logger';
 import { Mailer } from '../common/mailer';
 import * as p4util from '../common/p4util';
-import { PerforceContext, Workspace, StreamSpecs } from '../common/perforce';
+import { PerforceContext, Workspace } from '../common/perforce';
 import { AutoBranchUpdater } from './autobranchupdater';
 import { bindBadgeHandler } from './badges';
 import { Bot } from './bot-interfaces';
@@ -20,9 +20,7 @@ import { roboAnalytics } from './roboanalytics';
 import { BlockageNodeOpUrls, OperationUrlHelper } from './roboserver';
 import { Settings } from './settings';
 import { Status } from './status';
-import { GraphBotState } from "./status-types"
 import { TickJournal } from './tick-journal';
-import { GraphAPI } from '../new/graph';
 
 // probably get the gist after 2000 characters
 const MAX_ERROR_LENGTH_TO_REPORT = 2000
@@ -35,14 +33,14 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 	reloadAsyncListeners = new Set<ReloadListeners>()
 	autoUpdater: AutoBranchUpdater | null
 
-	private botLogger: ContextualLogger;
+	private botLogger : ContextualLogger
 
 	// separate off into class that only exists while bots are running?
-	private eventTriggers?: BotEventTriggers;
+	private eventTriggers?: BotEventTriggers
 
-	private p4: PerforceContext;
+	private p4: PerforceContext
 
-	constructor(botname: string, private mailer: Mailer, private externalUrl: string, allStreamSpecs: StreamSpecs) {
+	constructor(botname: string, private mailer: Mailer, private externalUrl: string) {
 		if (!GraphBot.dataDirectory) {
 			throw new Error('Data directory must be set before creating a BranchGraph')
 		}
@@ -59,7 +57,7 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 		const fileText = require('fs').readFileSync(branchSettingsPath, 'utf8')
 
 		const validationErrors: string[] = []
-		const result = BranchDefs.parseAndValidate(validationErrors, fileText, allStreamSpecs)
+		const result = BranchDefs.parseAndValidate(validationErrors, fileText)
 		if (!result.branchGraphDef) {
 			throw new Error(validationErrors.length === 0 ? 'Failed to parse' : validationErrors.join('\n'))
 		}
@@ -97,7 +95,7 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 		return branch && branch.bot ? branch.bot as NodeBot : undefined
 	}
 
-	initBots(ubergraph: GraphAPI) {
+	initBots() {
 		this.eventTriggers = new BotEventTriggers(this.branchGraph.botname, this.branchGraph.config)
 		this.eventTriggers.registerHandler(this)
 		const blockageUrlGenerator: NodeOpUrlGenerator = (blockage : Blockage | null) => { 
@@ -129,7 +127,7 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 		for (const branch of this.branchGraph.branches) {
 			if (branch.enabled) {
 				const persistence = this.settings.getContext(branch.upperName)
-				branch.bot = new NodeBot(branch, this.mailer, this.externalUrl, this.eventTriggers, persistence, ubergraph)
+				branch.bot = new NodeBot(branch, this.mailer, this.externalUrl, this.eventTriggers, persistence)
 
 				if (branch.bot.getNumConflicts() > 0) {
 					hasConflicts = true
@@ -171,18 +169,7 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 		this.botLogger.info(msg)
 		postToRobomergeAlerts(msg)
 
-		if (this.branchGraph.branches.length !== 0) {
-			const workspaceNames = this.branchGraph.branches.map(branch => (branch.workspace as Workspace).name || (branch.workspace as string))
-			const mirrorWorkspace = AutoBranchUpdater.getMirrorWorkspace(this)
-			if (mirrorWorkspace) {
-				workspaceNames.push(mirrorWorkspace.name)
-			}
-
-			this.botLogger.info('Cleaning all workspaces')
-			await p4util.cleanWorkspaces(this.p4, workspaceNames)
-		}
-
-		await this.startBotsAsync()
+		this.startBotsAsync()
 	}
 
 	// Don't call this unless you want to bring down the entire GraphBot in a crash!
@@ -196,6 +183,16 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 	private async startBotsAsync() {
 		if (!this.waitTime) {
 			throw new Error('runbots must be called before startBots')
+		}
+
+		if (this.branchGraph.branches.length !== 0) {
+			const workspaceNames = this.branchGraph.branches.map(branch => (branch.workspace as Workspace).name || (branch.workspace as string))
+			const mirrorWorkspace = AutoBranchUpdater.getMirrorWorkspace(this)
+			if (mirrorWorkspace) {
+				workspaceNames.push(mirrorWorkspace.name)
+			}
+
+			await p4util.cleanWorkspaces(this.p4, workspaceNames)
 		}
 
 		this._runningBots = true
@@ -229,9 +226,6 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 					let errStr = err.toString()
 					if (errStr.length > MAX_ERROR_LENGTH_TO_REPORT) {
 						errStr = errStr.substr(0, MAX_ERROR_LENGTH_TO_REPORT) + ` ... (error length ${errStr.length})`
-					}
-					else {
-						errStr += err.stack
 					}
 					this.lastError = {
 						nodeBot: bot.fullName,
@@ -409,4 +403,10 @@ export class GraphBot implements GraphInterface, BotEventHandler {
 	private _shutdownCb: Function | null = null
 
 	private crashRequested: string | null = null
+}
+
+export interface GraphBotState {
+	isRunningBots: boolean
+	lastBranchspecCl?: number
+	lastError?: Object
 }

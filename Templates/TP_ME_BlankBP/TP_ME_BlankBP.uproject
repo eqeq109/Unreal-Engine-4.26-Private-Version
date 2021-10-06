@@ -17,7 +17,8 @@
 			"Enabled": true,
 			"SupportedTargetPlatforms": [
 				"Win32",
-				"Win64"
+				"Win64",
+				"Android"
 			]
 		},
 		{
@@ -25,7 +26,9 @@
 			"Enabled": true,
 			"SupportedTargetPlatforms": [
 				"Win32",
-				"Win64"
+				"Win64",
+				"Linux",
+				"Mac"
 			]
 		},
 		{

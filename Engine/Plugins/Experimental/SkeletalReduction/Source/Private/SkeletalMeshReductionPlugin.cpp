@@ -25,12 +25,7 @@
 #include "ClothingAsset.h"
 #include "Factories/FbxSkeletalMeshImportData.h"
 #include "LODUtilities.h"
-#include "Interfaces/ITargetPlatform.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
-#include "Misc/CoreMisc.h"
 
-#include "Animation/AnimSequence.h"
-#include "BonePose.h"
 
 #define LOCTEXT_NAMESPACE "SkeletalMeshReduction"
 
@@ -118,8 +113,7 @@ public:
 	* @returns true if reduction was successful.
 	*/
 	virtual bool ReduceSkeletalMesh( class USkeletalMesh* SkeletalMesh,
-		                             int32 LODIndex,
-									 const ITargetPlatform* TargetPlatform
+		                             int32 LODIndex		                             
 	                                ) override ;
 
 
@@ -167,7 +161,7 @@ private:
 	*  @param SkeletalMeshModel - the Model that belongs to the skeletal mesh, i.e. SkeletalMesh->GetImportedModel();
 	*  @param LODIndex          - target index for the LOD   
 	*/
-	void ReduceSkeletalMesh( USkeletalMesh& SkeletalMesh, FSkeletalMeshModel& SkeletalMeshModel, int32 LODIndex, const ITargetPlatform* TargetPlatform) const ;
+	void ReduceSkeletalMesh( USkeletalMesh& SkeletalMesh, FSkeletalMeshModel& SkeletalMeshModel, int32 LODIndex ) const ;
 
 
 	/**
@@ -191,8 +185,7 @@ private:
 								 const FImportantBones& ImportantBones,
 		                         const TArray<FMatrix>& BoneMatrices,
 		                         const int32 LODIndex,
-								 const bool bReducingSourceModel,
-								 const ITargetPlatform* TargetPlatform) const;
+								 const bool bReducingSourceModel) const;
 
 	/**
 	* Remove the specified section from the mesh.
@@ -229,8 +222,7 @@ private:
 		                                 const SkeletalSimplifier::FSkinnedSkeletalMesh& SkinnedMesh,
 		                                 const FReferenceSkeleton& RefSkeleton,
 		                                 FSkeletalMeshLODModel& NewModel,
-										 const bool bReducingSourceModel,
-										 const ITargetPlatform* TargetPlatform) const;
+										 const bool bReducingSourceModel) const;
 
 	/**
 	* Add the SourceModelInflunces to the LODModel in the case that alternate weights exists.
@@ -392,7 +384,7 @@ void FSkeletalMeshReduction::ShutdownModule()
 
 }
 
-bool FQuadricSkeletalMeshReduction::ReduceSkeletalMesh( USkeletalMesh* SkeletalMesh, int32 LODIndex, const ITargetPlatform* TargetPlatform)
+bool FQuadricSkeletalMeshReduction::ReduceSkeletalMesh( USkeletalMesh* SkeletalMesh, int32 LODIndex )
 {
 	check(SkeletalMesh);
 	check(LODIndex >= 0);
@@ -403,7 +395,7 @@ bool FQuadricSkeletalMeshReduction::ReduceSkeletalMesh( USkeletalMesh* SkeletalM
 	check(LODIndex <= SkeletalMeshResource->LODModels.Num());
 
 	FScopedSkeletalMeshPostEditChange ScopedPostEditChange(SkeletalMesh);
-	ReduceSkeletalMesh(*SkeletalMesh, *SkeletalMeshResource, LODIndex, TargetPlatform);
+	ReduceSkeletalMesh(*SkeletalMesh, *SkeletalMeshResource, LODIndex);
 
 	return true;
 }
@@ -1591,8 +1583,7 @@ void FQuadricSkeletalMeshReduction::ConvertToFSkeletalMeshLODModel( const FStrin
 	                                                                const SkeletalSimplifier::FSkinnedSkeletalMesh& SkinnedMesh,
 	                                                                const FReferenceSkeleton& RefSkeleton,
 	                                                                FSkeletalMeshLODModel& NewModel,
-																	const bool bReducingSourceModel,
-																    const ITargetPlatform* TargetPlatform) const
+																	const bool bReducingSourceModel) const
 {
 	// We might be re-using this model - so clear it.
 
@@ -1632,7 +1623,6 @@ void FQuadricSkeletalMeshReduction::ConvertToFSkeletalMeshLODModel( const FStrin
 	Options.bComputeWeightedNormals = false;
 	//Leave the default threshold
 	Options.bRemoveDegenerateTriangles = false;
-	Options.TargetPlatform = TargetPlatform;
 	IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
 	
 	// Create skinning streams for NewModel.
@@ -1673,8 +1663,7 @@ bool FQuadricSkeletalMeshReduction::ReduceSkeletalLODModel( const FSkeletalMeshL
 															const FImportantBones& ImportantBones,
 	                                                        const TArray<FMatrix>& BoneMatrices,
 	                                                        const int32 LODIndex,
-															const bool bReducingSourceModel,
-														    const ITargetPlatform* TargetPlatform
+															const bool bReducingSourceModel
                                                            ) const
 {
 
@@ -1753,7 +1742,7 @@ bool FQuadricSkeletalMeshReduction::ReduceSkeletalLODModel( const FSkeletalMeshL
 
 		// Convert to SkeletalMeshLODModel. 
 
-		ConvertToFSkeletalMeshLODModel(SkeletalMeshName, Settings.MaxBonesPerVertex, SrcModel, SkinnedSkeletalMesh, RefSkeleton, OutSkeletalMeshLODModel, bReducingSourceModel, TargetPlatform);
+		ConvertToFSkeletalMeshLODModel(SkeletalMeshName, Settings.MaxBonesPerVertex, SrcModel, SkinnedSkeletalMesh, RefSkeleton, OutSkeletalMeshLODModel, bReducingSourceModel);
 
 		// We may need to do additional simplification if the user specified a hard number limit for verts and
 		// the internal chunking during conversion split some verts.
@@ -1800,7 +1789,7 @@ bool FQuadricSkeletalMeshReduction::ReduceSkeletalLODModel( const FSkeletalMeshL
 }
 
 
-void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMesh, FSkeletalMeshModel& SkeletalMeshResource, int32 LODIndex, const ITargetPlatform* TargetPlatform) const
+void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMesh, FSkeletalMeshModel& SkeletalMeshResource, int32 LODIndex) const
 {
 	check(LODIndex <= SkeletalMeshResource.LODModels.Num());
 
@@ -1854,7 +1843,7 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 		ImportantBones.Weight = BonePrioritizationWeight;
 		for (const FBoneReference& BoneReference : BonesToPrioritize)
 		{
-			int32 BoneId = SkeletalMesh.GetRefSkeleton().FindRawBoneIndex(BoneReference.BoneName);
+			int32 BoneId = SkeletalMesh.RefSkeleton.FindRawBoneIndex(BoneReference.BoneName);
 
 			// Q: should we exclude BoneId = 0?
 			ImportantBones.Ids.AddUnique(BoneId);
@@ -1963,99 +1952,66 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 	IMeshBoneReduction* MeshBoneReductionInterface = FModuleManager::Get().LoadModuleChecked<IMeshBoneReductionModule>("MeshBoneReduction").GetMeshBoneReductionInterface();
 
 	TArray<FName> BoneNames;
-	const int32 NumBones = SkeletalMesh.GetRefSkeleton().GetNum();
+	const int32 NumBones = SkeletalMesh.RefSkeleton.GetNum();
 	for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 	{
-		BoneNames.Add(SkeletalMesh.GetRefSkeleton().GetBoneName(BoneIndex));
+		BoneNames.Add(SkeletalMesh.RefSkeleton.GetBoneName(BoneIndex));
 	}
 
 	// get the relative to ref pose matrices
 	TArray<FMatrix> RelativeToRefPoseMatrices;
-	RelativeToRefPoseMatrices.AddDefaulted(NumBones);
-
-	// Set initial matrices to identity
-	for (int32 Index = 0; Index < NumBones; ++Index)
-	{
-		RelativeToRefPoseMatrices[Index] = FMatrix::Identity;
-	}
-
+	RelativeToRefPoseMatrices.AddUninitialized(NumBones);
 	// if it has bake pose, gets ref to local matrices using bake pose
 	if (const UAnimSequence* BakePoseAnim = SkeletalMesh.GetLODInfo(LODIndex)->BakePose)
-	{	
-		const FReferenceSkeleton& RefSkeleton = SkeletalMesh.GetRefSkeleton();
+	{
+		TArray<FTransform> BonePoses;
+		UAnimationBlueprintLibrary::GetBonePosesForFrame(BakePoseAnim, BoneNames, 0, true, BonePoses, &SkeletalMesh);
+
+		const FReferenceSkeleton& RefSkeleton = SkeletalMesh.RefSkeleton;
 		const TArray<FTransform>& RefPoseInLocal = RefSkeleton.GetRefBonePose();
 
-		// Get component space retarget base pose, will be equivalent of ref-pose if not edited
-		TArray<FTransform> ComponentSpaceRefPose;
-		FAnimationRuntime::FillUpComponentSpaceTransformsRetargetBasePose(&SkeletalMesh, ComponentSpaceRefPose); 
-		
-		// Retrieve bone indices which will be removed
-		if (MeshBoneReductionInterface != nullptr)
+		// get component ref pose
+		TArray<FTransform> RefPoseInCS;
+		FAnimationRuntime::FillUpComponentSpaceTransforms(RefSkeleton, RefPoseInLocal, RefPoseInCS);
+
+		// calculate component space bake pose
+		TArray<FMatrix> ComponentSpacePose, ComponentSpaceRefPose, AnimPoseMatrices;
+		ComponentSpacePose.AddUninitialized(NumBones);
+		ComponentSpaceRefPose.AddUninitialized(NumBones);
+		AnimPoseMatrices.AddUninitialized(NumBones);
+
+		// to avoid scale issue, we use matrices here
+		for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 		{
-			MeshBoneReductionInterface->GetBoneReductionData(&SkeletalMesh, LODIndex, BonesToRemove);
+			ComponentSpaceRefPose[BoneIndex] = RefPoseInCS[BoneIndex].ToMatrixWithScale();
+			AnimPoseMatrices[BoneIndex] = BonePoses[BoneIndex].ToMatrixWithScale();
 		}
-
-		// Setup BoneContainer and CompactPose
-		TArray<FBoneIndexType> RequiredBoneIndexArray;
-		RequiredBoneIndexArray.AddUninitialized(RefSkeleton.GetNum());
-		for (int32 BoneIndex = 0; BoneIndex < RequiredBoneIndexArray.Num(); ++BoneIndex)
-		{
-			RequiredBoneIndexArray[BoneIndex] = BoneIndex;
-		}
-
-		FBoneContainer RequiredBones(RequiredBoneIndexArray, false, *(&SkeletalMesh));
-		RequiredBones.SetUseRAWData(true);
-
-		FCompactPose Pose;
-		Pose.SetBoneContainer(&RequiredBones);
-
-		// Retrieve animated pose from anim sequence (including retargeting)
-		BuildPoseFromRawData(BakePoseAnim->GetRawAnimationData(), BakePoseAnim->GetRawTrackToSkeletonMapTable(), Pose, 0.f, EAnimInterpolationType::Step, BakePoseAnim->GetNumberOfFrames(), BakePoseAnim->SequenceLength, SkeletalMesh.GetSkeleton()->GetRetargetSourceForMesh(&SkeletalMesh));
-		
-		// Calculate component space animated pose matrices
-		TArray<FMatrix> ComponentSpaceAnimatedPose;
-		ComponentSpaceAnimatedPose.AddDefaulted(NumBones);
 
 		for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 		{
-			const FCompactPoseBoneIndex PoseBoneIndex(BoneIndex);
 			const int32 ParentIndex = RefSkeleton.GetParentIndex(BoneIndex);
 			if (ParentIndex != INDEX_NONE)
 			{
-				// If the bone will be removed, get the local-space retarget-ed animation bone transform
-				if (BonesToRemove.Contains(BoneIndex))
-				{
-					ComponentSpaceAnimatedPose[BoneIndex] = Pose[PoseBoneIndex].ToMatrixWithScale() * ComponentSpaceAnimatedPose[ParentIndex];
-				}
-				// Otherwise use the component-space retarget base pose transform
-				else
-				{
-					ComponentSpaceAnimatedPose[BoneIndex] = ComponentSpaceRefPose[BoneIndex].ToMatrixWithScale();
-				}
+				ComponentSpacePose[BoneIndex] = AnimPoseMatrices[BoneIndex] * ComponentSpacePose[ParentIndex];
 			}
 			else
 			{
-				// If the bone will be removed, get the retarget-ed animation bone transform
-				if (BonesToRemove.Contains(BoneIndex))
-				{
-					ComponentSpaceAnimatedPose[BoneIndex] = Pose[PoseBoneIndex].ToMatrixWithScale();
-				}
-				// Otherwise use the retarget base pose transform
-				else
-				{
-					ComponentSpaceAnimatedPose[BoneIndex] = ComponentSpaceRefPose[BoneIndex].ToMatrixWithScale();
-				}
+				ComponentSpacePose[BoneIndex] = AnimPoseMatrices[BoneIndex];
 			}
 		}
 
-		// Calculate relative to retarget base (ref) pose matrix
+		// calculate relative to ref pose transform and convert to matrices
 		for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 		{
-			RelativeToRefPoseMatrices[BoneIndex] = ComponentSpaceRefPose[BoneIndex].ToMatrixWithScale().Inverse() * ComponentSpaceAnimatedPose[BoneIndex];
+			RelativeToRefPoseMatrices[BoneIndex] = ComponentSpaceRefPose[BoneIndex].Inverse() * ComponentSpacePose[BoneIndex];
 		}
-
-		// Reset map for later usage
-		BonesToRemove.Empty();
+	}
+	else
+	{
+		for (int32 Index = 0; Index < NumBones; ++Index)
+		{
+			RelativeToRefPoseMatrices[Index] = FMatrix::Identity;
+		}
 	}
 
 	FSkeletalMeshLODModel* NewModel = new FSkeletalMeshLODModel();
@@ -2102,7 +2058,7 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 	}
 
 	// Reduce LOD model with SrcMesh if src mesh has more then 1 triangle
-	if (SrcModel->NumVertices > 3 && ReduceSkeletalLODModel(*SrcModel, *NewModel, SkeletalMesh.GetPathName(), SkeletalMesh.GetImportedBounds(), SkeletalMesh.GetRefSkeleton(), Settings, ImportantBones, RelativeToRefPoseMatrices, LODIndex, bReducingSourceModel, TargetPlatform))
+	if (SrcModel->NumVertices > 3 && ReduceSkeletalLODModel(*SrcModel, *NewModel, SkeletalMesh.GetPathName(), SkeletalMesh.GetImportedBounds(), SkeletalMesh.RefSkeleton, Settings, ImportantBones, RelativeToRefPoseMatrices, LODIndex, bReducingSourceModel))
 	{
 		FSkeletalMeshLODInfo* ReducedLODInfoPtr = SkeletalMesh.GetLODInfo(LODIndex);
 		check(ReducedLODInfoPtr);
@@ -2123,7 +2079,7 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 		}
 		// Flag this LOD as having been simplified.
 		ReducedLODInfoPtr->bHasBeenSimplified = true;
-		SkeletalMesh.SetHasBeenSimplified(true);
+		SkeletalMesh.bHasBeenSimplified = true;
 
 		//Restore the user sections data to what it was. It must be done if we want to avoid changing the DDC key. I.E. UserSectionData is part of the key
 		//DDC key cannot be change during the build
@@ -2199,7 +2155,7 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 
 		NewModel->RequiredBones.Empty();
 		SkeletalMesh.GetLODInfo(LODIndex)->bHasBeenSimplified = true;
-		SkeletalMesh.SetHasBeenSimplified(true);
+		SkeletalMesh.bHasBeenSimplified = true;
 	}
 	
 	if (!bLODModelAdded)
@@ -2219,7 +2175,7 @@ void FQuadricSkeletalMeshReduction::ReduceSkeletalMesh(USkeletalMesh& SkeletalMe
 		SkeletalMesh.SetLODImportedDataVersions(LODIndex, GeoImportVersion, SkinningImportVersion);
 	}
 
-	SkeletalMesh.CalculateRequiredBones(SkeletalMeshResource.LODModels[LODIndex], SkeletalMesh.GetRefSkeleton(), &BonesToRemove);
+	SkeletalMesh.CalculateRequiredBones(SkeletalMeshResource.LODModels[LODIndex], SkeletalMesh.RefSkeleton, &BonesToRemove);
 }
 
 #undef LOCTEXT_NAMESPACE

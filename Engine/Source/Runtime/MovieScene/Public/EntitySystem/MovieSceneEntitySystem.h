@@ -131,17 +131,6 @@ public:
 
 	void CleanTaggedGarbage();
 
-	/**
-	 * Enable this system if it is not already.
-	 */
-	void Enable();
-
-	/**
-	 * Disable this system if it is not already.
-	 * Disabled systems will remain in the system graph, and will stay alive as long as they are relevant, but will not be Run.
-	 */
-	void Disable();
-
 protected:
 
 	virtual bool IsReadyForFinishDestroy() override;
@@ -180,10 +169,7 @@ protected:
 
 	UE::MovieScene::EEntitySystemContext SystemExclusionContext;
 
-	/** When false, this system will not call its OnRun function, but will still be kept alive as long as IsRelevant is true */
-	bool bSystemIsEnabled;
-
-#if STATS || ENABLE_STATNAMEDEVENTS
+#if STATS
 	TStatId StatID;
 #endif
 };

@@ -219,14 +219,8 @@ public:
 	 */
 	MOVIESCENE_API virtual void SetRange(const TRange<FFrameNumber>& NewRange)
 	{
-		
-		// Skip TryModify for objects that still need initialization (i.e. we're in the object's constructor), because modifying objects in their constructor can lead to non-deterministic cook issues.
-		bool bCanSetRange = true;
-		if (!HasAnyFlags(RF_NeedInitialization))
-		{
-			bCanSetRange = TryModify();
-		}
-
+		// Do not modify for objects that still need initialization (i.e. we're in the object's constructor)
+		bool bCanSetRange = HasAnyFlags(RF_NeedInitialization) || TryModify();
 		if (bCanSetRange)
 		{
 			check(NewRange.GetLowerBound().IsOpen() || NewRange.GetUpperBound().IsOpen() || NewRange.GetLowerBoundValue() <= NewRange.GetUpperBoundValue());
@@ -310,7 +304,7 @@ public:
 	/**
 	 * Gets this section's completion mode
 	 */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	EMovieSceneCompletionMode GetCompletionMode() const
 	{
 		return EvalOptions.CompletionMode;
@@ -319,7 +313,7 @@ public:
 	/*
 	 * Sets this section's completion mode
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetCompletionMode(EMovieSceneCompletionMode InCompletionMode)
 	{
 		EvalOptions.CompletionMode = InCompletionMode;
@@ -328,7 +322,7 @@ public:
 	/**
 	 * Gets this section's blend type
 	 */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	FOptionalMovieSceneBlendType GetBlendType() const
 	{
 		return BlendType;
@@ -337,7 +331,7 @@ public:
 	/**
 	 * Sets this section's blend type
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	MOVIESCENE_API virtual void SetBlendType(EMovieSceneBlendType InBlendType)
 	{
 		if (GetSupportedBlendTypes().Contains(InBlendType))
@@ -420,22 +414,22 @@ public:
 	}
 
 	/** Sets this section's new row index */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetRowIndex(int32 NewRowIndex) {RowIndex = NewRowIndex;}
 
 	/** Gets the row index for this section */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	int32 GetRowIndex() const { return RowIndex; }
 	
 	/** Sets this section's priority over overlapping sections (higher wins) */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetOverlapPriority(int32 NewPriority)
 	{
 		OverlapPriority = NewPriority;
 	}
 
 	/** Gets this section's priority over overlapping sections (higher wins) */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	int32 GetOverlapPriority() const
 	{
 		return OverlapPriority;
@@ -473,27 +467,27 @@ public:
 	virtual MOVIESCENE_API void InitialPlacementOnRow(const TArray<UMovieSceneSection*>& Sections, FFrameNumber InStartTime, int32 InDuration, int32 InRowIndex);
 
 	/** Whether or not this section is active. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
-	void SetIsActive(bool bInIsActive) { if (TryModify()) { bIsActive = bInIsActive; } }
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
+	void SetIsActive(bool bInIsActive) { bIsActive = bInIsActive; }
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	bool IsActive() const { return bIsActive; }
 
 	/** Whether or not this section is locked. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
-	void SetIsLocked(bool bInIsLocked) { Modify(); bIsLocked = bInIsLocked; }
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
+	void SetIsLocked(bool bInIsLocked) { bIsLocked = bInIsLocked; }
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	bool IsLocked() const { return bIsLocked; }
 
 	/** Gets the number of frames to prepare this section for evaluation before it actually starts. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetPreRollFrames(int32 InPreRollFrames) { if (TryModify()) { PreRollFrames = InPreRollFrames; } }
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	int32 GetPreRollFrames() const { return PreRollFrames.Value; }
 
 	/** Gets/sets the number of frames to continue 'postrolling' this section for after evaluation has ended. */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetPostRollFrames(int32 InPostRollFrames) { if (TryModify()) { PostRollFrames = InPostRollFrames; } }
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	int32 GetPostRollFrames() const { return PostRollFrames.Value; }
 
 	/** The optional offset time of this section */

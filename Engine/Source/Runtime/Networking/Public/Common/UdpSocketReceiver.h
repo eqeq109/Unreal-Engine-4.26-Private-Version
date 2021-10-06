@@ -135,7 +135,6 @@ protected:
 			return;
 		}
 
-		TRACE_CPUPROFILER_EVENT_SCOPE(FUdpSocketReceiver_Update);
 		TSharedRef<FInternetAddr> Sender = SocketSubsystem->CreateInternetAddr();
 		uint32 Size;
 
@@ -148,7 +147,7 @@ protected:
 
 			if (Socket->RecvFrom(Reader->GetData(), Reader->Num(), Read, *Sender))
 			{
-				ensure((uint32)Read <= MaxReadBufferSize);
+				ensure((uint32)Read < MaxReadBufferSize);
 				Reader->RemoveAt(Read, Reader->Num() - Read, false);
 				DataReceivedDelegate.ExecuteIfBound(Reader, FIPv4Endpoint(Sender));
 			}

@@ -53,7 +53,6 @@ FAnimationEditorPreviewScene::FAnimationEditorPreviewScene(const ConstructionVal
 	, bSelecting(false)
 	, bAllowAdditionalMeshes(true)
 	, bAdditionalMeshesSelectable(true)
-	, bUsePhysicsBodiesForBoneSelection(true)
 {
 	if (GEditor)
 	{
@@ -406,10 +405,9 @@ void FAnimationEditorPreviewScene::AddPreviewAttachedObjects()
 
 	if ( Mesh )
 	{
-		FPreviewAssetAttachContainer& PreviewAssetAttachContainer = Mesh->GetPreviewAttachedAssetContainer();
-		for(int32 Index = 0; Index < PreviewAssetAttachContainer.Num(); Index++)
+		for(int32 i = 0; i < Mesh->PreviewAttachedAssetContainer.Num(); i++)
 		{
-			FPreviewAttachedObjectPair& PreviewAttachedObject = PreviewAssetAttachContainer[Index];
+			FPreviewAttachedObjectPair& PreviewAttachedObject = Mesh->PreviewAttachedAssetContainer[i];
 
 			AttachObjectToPreviewComponent(PreviewAttachedObject.GetAttachedObject(), PreviewAttachedObject.AttachedTo);
 		}
@@ -523,7 +521,7 @@ void FAnimationEditorPreviewScene::RemoveAttachedComponent( bool bRemovePreviewA
 
 		if ( USkeletalMesh* PreviewMesh = PersonaToolkit.Pin()->GetMesh() )
 		{
-			for(auto Iter = PreviewMesh->GetPreviewAttachedAssetContainer().CreateConstIterator(); Iter; ++Iter)
+			for(auto Iter = PreviewMesh->PreviewAttachedAssetContainer.CreateConstIterator(); Iter; ++Iter)
 			{
 				PreviewAttachedObjects.FindOrAdd(Iter->GetAttachedObject()).Add(Iter->AttachedTo);
 			}
@@ -657,10 +655,10 @@ void FAnimationEditorPreviewScene::ShowReferencePose(bool bShowRefPose, bool bRe
 			bool bModified = false;
 			FScopedTransaction Transaction(LOCTEXT("ResetBoneTransforms", "Reset Bone Transforms"));
 
-			int32 NumBones = SkeletalMeshComponent->SkeletalMesh->GetRefSkeleton().GetNum();
+			int32 NumBones = SkeletalMeshComponent->SkeletalMesh->RefSkeleton.GetNum();
 			for (int32 BoneIndex = 0; BoneIndex < NumBones; ++BoneIndex)
 			{
-				FName BoneName = SkeletalMeshComponent->SkeletalMesh->GetRefSkeleton().GetBoneName(BoneIndex);
+				FName BoneName = SkeletalMeshComponent->SkeletalMesh->RefSkeleton.GetBoneName(BoneIndex);
 				const FAnimNode_ModifyBone* ModifiedBone = SkeletalMeshComponent->PreviewInstance->FindModifiedBone(BoneName);
 				if (ModifiedBone != nullptr)
 				{
@@ -1102,16 +1100,6 @@ bool FAnimationEditorPreviewScene::AllowMeshHitProxies() const
 	return bEnableMeshHitProxies;
 }
 
-bool FAnimationEditorPreviewScene::UsePhysicsBodiesForBoneSelection() const
-{
-	return bUsePhysicsBodiesForBoneSelection;
-}
-
-void FAnimationEditorPreviewScene::SetUsePhysicsBodiesForBoneSelection(bool bUsePhysicsBodies)
-{
-	bUsePhysicsBodiesForBoneSelection = bUsePhysicsBodies;
-}
-
 void FAnimationEditorPreviewScene::SetAllowMeshHitProxies(bool bState)
 {
 	bEnableMeshHitProxies = bState;
@@ -1166,10 +1154,10 @@ void FAnimationEditorPreviewScene::Tick(float InDeltaTime)
 	const FBoxSphereBounds& Bounds = GetFloorBounds();
 	SkeletalMeshComponent->ConsumeRootMotion(Bounds.GetBox().Min, Bounds.GetBox().Max);
 
-	if (LastCachedLODForPreviewComponent != SkeletalMeshComponent->GetPredictedLODLevel())
+	if (LastCachedLODForPreviewComponent != SkeletalMeshComponent->PredictedLODLevel)
 	{
 		OnLODChanged.Broadcast();
-		LastCachedLODForPreviewComponent = SkeletalMeshComponent->GetPredictedLODLevel();
+		LastCachedLODForPreviewComponent = SkeletalMeshComponent->PredictedLODLevel;
 	}
 
 	OnPostTickDelegate.Broadcast();

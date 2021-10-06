@@ -19,7 +19,6 @@
 #include "VIGizmoHandleMeshComponent.h"
 #include "Math/UnitConversion.h"
 #include "ViewportInteractionDragOperations.h"
-#include "UObject/StrongObjectPtr.h"
 
 namespace VREd //@todo VREditor: Duplicates of TransformGizmo
 {
@@ -46,9 +45,9 @@ APivotTransformGizmo::APivotTransformGizmo() :
 	}
 	bIsEditorOnlyActor = true;
 
-	TStrongObjectPtr<const UViewportInteractionAssetContainer> AssetContainer(UViewportWorldInteraction::LoadAssetContainer()); 
-	UMaterialInterface* GizmoMaterial = AssetContainer->TransformGizmoMaterial;
-	UMaterialInterface* TranslucentGizmoMaterial = AssetContainer->TranslucentTransformGizmoMaterial;
+	const UViewportInteractionAssetContainer& AssetContainer = UViewportWorldInteraction::LoadAssetContainer(); 
+	UMaterialInterface* GizmoMaterial = AssetContainer.TransformGizmoMaterial;
+	UMaterialInterface* TranslucentGizmoMaterial = AssetContainer.TranslucentTransformGizmoMaterial;
 
 	UniformScaleGizmoHandleGroup = CreateDefaultSubobject<UUniformScaleGizmoHandleGroup>( TEXT( "UniformScaleHandles" ), true );
 	UniformScaleGizmoHandleGroup->SetOwningTransformGizmo(this);
@@ -194,8 +193,8 @@ UPivotTranslationGizmoHandleGroup::UPivotTranslationGizmoHandleGroup() :
 		return;
 	}
 
-	TStrongObjectPtr<const UViewportInteractionAssetContainer> AssetContainer(UViewportWorldInteraction::LoadAssetContainer());
-	CreateHandles( AssetContainer->TranslationHandleMesh, FString( "PivotTranslationHandle" ) );
+	const UViewportInteractionAssetContainer& AssetContainer = UViewportWorldInteraction::LoadAssetContainer();
+	CreateHandles( AssetContainer.TranslationHandleMesh, FString( "PivotTranslationHandle" ) );
 
 	DragOperationComponent->SetDragOperationClass(UTranslationDragOperation::StaticClass());
 }
@@ -230,8 +229,8 @@ UPivotScaleGizmoHandleGroup::UPivotScaleGizmoHandleGroup() :
 		return;
 	}
 
-	TStrongObjectPtr<const UViewportInteractionAssetContainer> AssetContainer(UViewportWorldInteraction::LoadAssetContainer());
-	CreateHandles( AssetContainer->UniformScaleHandleMesh, FString( "PivotScaleHandle" ) );	
+	const UViewportInteractionAssetContainer& AssetContainer = UViewportWorldInteraction::LoadAssetContainer();
+	CreateHandles( AssetContainer.UniformScaleHandleMesh, FString( "PivotScaleHandle" ) );	
 
 	DragOperationComponent->SetDragOperationClass(UScaleDragOperation::StaticClass());
 }
@@ -267,8 +266,8 @@ UPivotPlaneTranslationGizmoHandleGroup::UPivotPlaneTranslationGizmoHandleGroup()
 		return;
 	}
 
-	TStrongObjectPtr<const UViewportInteractionAssetContainer> AssetContainer(UViewportWorldInteraction::LoadAssetContainer());
-	CreateHandles( AssetContainer->PlaneTranslationHandleMesh, FString( "PlaneTranslationHandle" ) );
+	const UViewportInteractionAssetContainer& AssetContainer = UViewportWorldInteraction::LoadAssetContainer();
+	CreateHandles( AssetContainer.PlaneTranslationHandleMesh, FString( "PlaneTranslationHandle" ) );
 
 	DragOperationComponent->SetDragOperationClass(UPlaneTranslationDragOperation::StaticClass());
 }
@@ -300,9 +299,9 @@ UPivotRotationGizmoHandleGroup::UPivotRotationGizmoHandleGroup() :
 		return;
 	}
 
-	TStrongObjectPtr<const UViewportInteractionAssetContainer> AssetContainer(UViewportWorldInteraction::LoadAssetContainer());
+	const UViewportInteractionAssetContainer& AssetContainer = UViewportWorldInteraction::LoadAssetContainer();
 
-	UStaticMesh* QuarterRotationHandleMesh = AssetContainer->RotationHandleMesh;
+	UStaticMesh* QuarterRotationHandleMesh = AssetContainer.RotationHandleMesh;
 	CreateHandles(QuarterRotationHandleMesh, FString("RotationHandle"));
 
 	{
@@ -310,7 +309,7 @@ UPivotRotationGizmoHandleGroup::UPivotRotationGizmoHandleGroup() :
 		RootFullRotationHandleComponent->SetMobility(EComponentMobility::Movable);
 		RootFullRotationHandleComponent->SetupAttachment(this);
 	
-		UStaticMesh* FullRotationHandleMesh = AssetContainer->RotationHandleSelectedMesh;
+		UStaticMesh* FullRotationHandleMesh = AssetContainer.RotationHandleSelectedMesh;
 		check(FullRotationHandleMesh != nullptr);
 
 		FullRotationHandleMeshComponent = CreateMeshHandle(FullRotationHandleMesh, FString("FullRotationHandle"));
@@ -320,7 +319,7 @@ UPivotRotationGizmoHandleGroup::UPivotRotationGizmoHandleGroup() :
 	}
 
 	{
-		UStaticMesh* RotationHandleIndicatorMesh = AssetContainer->StartRotationIndicatorMesh;
+		UStaticMesh* RotationHandleIndicatorMesh = AssetContainer.StartRotationIndicatorMesh;
 		check(RotationHandleIndicatorMesh != nullptr);
 
 		//Start rotation indicator
@@ -330,7 +329,7 @@ UPivotRotationGizmoHandleGroup::UPivotRotationGizmoHandleGroup() :
 	}
 
 	{
-		UStaticMesh* RotationHandleIndicatorMesh = AssetContainer->CurrentRotationIndicatorMesh;
+		UStaticMesh* RotationHandleIndicatorMesh = AssetContainer.CurrentRotationIndicatorMesh;
 		check(RotationHandleIndicatorMesh != nullptr);
 
 		//Delta rotation indicator
@@ -340,14 +339,14 @@ UPivotRotationGizmoHandleGroup::UPivotRotationGizmoHandleGroup() :
 	}
 
 	{
-		UMaterialInstanceDynamic* DynamicMaterialInst = UMaterialInstanceDynamic::Create(AssetContainer->TransformGizmoMaterial, GetTransientPackage());
+		UMaterialInstanceDynamic* DynamicMaterialInst = UMaterialInstanceDynamic::Create(AssetContainer.TransformGizmoMaterial, GetTransientPackage());
 		check(DynamicMaterialInst != nullptr);
 
 		DeltaRotationIndicatorMeshComponent->SetMaterial(0, DynamicMaterialInst);
 		StartRotationIndicatorMeshComponent->SetMaterial(0, DynamicMaterialInst);
 		FullRotationHandleMeshComponent->SetMaterial(0, DynamicMaterialInst);
 
-		UMaterialInstanceDynamic* TranslucentDynamicMaterialInst = UMaterialInstanceDynamic::Create(AssetContainer->TranslucentTransformGizmoMaterial, GetTransientPackage());
+		UMaterialInstanceDynamic* TranslucentDynamicMaterialInst = UMaterialInstanceDynamic::Create(AssetContainer.TranslucentTransformGizmoMaterial, GetTransientPackage());
 		check(TranslucentDynamicMaterialInst != nullptr);
 
 		DeltaRotationIndicatorMeshComponent->SetMaterial(1, TranslucentDynamicMaterialInst);

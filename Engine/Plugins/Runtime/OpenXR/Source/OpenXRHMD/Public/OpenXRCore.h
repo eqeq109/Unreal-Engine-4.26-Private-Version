@@ -12,18 +12,8 @@ constexpr const TCHAR* OpenXRResultToString(XrResult e)
 {
 	switch (e)
 	{
-		XR_LIST_ENUM_XrResult(XR_ENUM_CASE_STR);
+		XR_LIST_ENUM_XrResult(XR_ENUM_CASE_STR)
 		default: return TEXT("Unknown");
-	}
-}
-
-#define XR_SESSION_STATE_STR(name, val) case name: return TEXT(#name);
-constexpr const TCHAR* OpenXRSessionStateToString(XrSessionState e)
-{
-	switch (e)
-	{
-		XR_LIST_ENUM_XrSessionState(XR_SESSION_STATE_STR);
-	default: return TEXT("Unknown");
 	}
 }
 
@@ -79,29 +69,6 @@ FORCEINLINE FTimespan ToFTimespan(XrTime Time)
 FORCEINLINE XrTime ToXrTime(FTimespan Time)
 {
 	return Time.GetTicks() * 100;
-}
-
-FORCEINLINE FIntRect ToFIntRect(XrRect2Di Rect)
-{
-	return FIntRect(Rect.offset.x, Rect.offset.y, Rect.offset.x + Rect.extent.width, Rect.offset.y + Rect.extent.height);
-}
-
-FORCEINLINE XrRect2Di ToXrRect(FIntRect Rect)
-{
-	return XrRect2Di{ { Rect.Min.X, Rect.Min.Y }, { Rect.Width(), Rect.Height() } };
-}
-
-FORCEINLINE FVector2D ToFVector2D(XrExtent2Df Extent, float Scale = 1.0f)
-{
-	return FVector2D(Extent.width * Scale, Extent.height * Scale);
-}
-
-FORCEINLINE XrExtent2Df ToXrExtent2D(FVector2D Vector, float Scale = 1.0f)
-{
-	if (Vector.IsZero())
-		return XrExtent2Df{ 0.0f, 0.0f };
-
-	return XrExtent2Df{ Vector.X / Scale, Vector.Y / Scale };
 }
 
 /** List all OpenXR global entry points used by Unreal. */
@@ -164,15 +131,12 @@ FORCEINLINE XrExtent2Df ToXrExtent2D(FVector2D Vector, float Scale = 1.0f)
 	EnumMacro(PFN_xrApplyHapticFeedback,xrApplyHapticFeedback) \
 	EnumMacro(PFN_xrStopHapticFeedback,xrStopHapticFeedback)
 
-/** Declare all XR functions in a namespace to avoid conflicts with the loader exported symbols. */
+/** Declare all XR functions. */
 #define DECLARE_XR_ENTRYPOINTS(Type,Func) extern Type OPENXRHMD_API Func;
-namespace OpenXRDynamicAPI
-{
-	ENUM_XR_ENTRYPOINTS_GLOBAL(DECLARE_XR_ENTRYPOINTS);
-	ENUM_XR_ENTRYPOINTS(DECLARE_XR_ENTRYPOINTS);
-	DECLARE_XR_ENTRYPOINTS(PFN_xrGetInstanceProcAddr, xrGetInstanceProcAddr)
-}
-using namespace OpenXRDynamicAPI;
+ENUM_XR_ENTRYPOINTS_GLOBAL(DECLARE_XR_ENTRYPOINTS);
+ENUM_XR_ENTRYPOINTS(DECLARE_XR_ENTRYPOINTS);
+DECLARE_XR_ENTRYPOINTS(PFN_xrGetInstanceProcAddr,xrGetInstanceProcAddr)
+#undef DECLARE_XR_ENTRYPOINTS
 
 /**
  * Initialize essential OpenXR functions.

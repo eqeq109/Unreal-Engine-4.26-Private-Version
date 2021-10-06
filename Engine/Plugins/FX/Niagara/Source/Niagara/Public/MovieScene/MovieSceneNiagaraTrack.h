@@ -5,7 +5,7 @@
 #include "MovieSceneNameableTrack.h"
 #include "MovieSceneNiagaraTrack.generated.h"
 
-UCLASS(abstract, MinimalAPI)
+UCLASS(MinimalAPI)
 class UMovieSceneNiagaraTrack : public UMovieSceneNameableTrack
 {
 	GENERATED_BODY()

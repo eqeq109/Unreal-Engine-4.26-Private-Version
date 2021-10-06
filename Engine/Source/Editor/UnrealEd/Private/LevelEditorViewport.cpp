@@ -90,8 +90,6 @@ DEFINE_LOG_CATEGORY(LogEditorViewport);
 
 static const float MIN_ACTOR_BOUNDS_EXTENT	= 1.0f;
 
-const FLevelViewportActorLock FLevelViewportActorLock::None(nullptr);
-
 TArray< TWeakObjectPtr< AActor > > FLevelEditorViewportClient::DropPreviewActors;
 TMap< TObjectKey< AActor >, TWeakObjectPtr< UActorComponent > > FLevelEditorViewportClient::ViewComponentForActorCache;
 
@@ -748,7 +746,7 @@ static bool AttemptApplyObjToComponent(UObject* ObjToUse, USceneComponent* Compo
 						SkeletalMeshComponent->Modify();
 
 						// If the component doesn't have a mesh or the anim blueprint's skeleton isn't compatible with the existing mesh's skeleton, the mesh should change
-						const bool bShouldChangeMesh = !SkeletalMeshComponent->SkeletalMesh || !AnimBPSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->GetSkeleton());
+						const bool bShouldChangeMesh = !SkeletalMeshComponent->SkeletalMesh || !AnimBPSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->Skeleton);
 
 						if (bShouldChangeMesh)
 						{
@@ -756,7 +754,7 @@ static bool AttemptApplyObjToComponent(UObject* ObjToUse, USceneComponent* Compo
 						}
 
 						// Verify that the skeletons are compatible before changing the anim BP
-						if (SkeletalMeshComponent->SkeletalMesh && AnimBPSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->GetSkeleton()))
+						if (SkeletalMeshComponent->SkeletalMesh && AnimBPSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->Skeleton))
 						{
 							SkeletalMeshComponent->SetAnimInstanceClass(DroppedObjAsAnimBlueprint->GeneratedClass);
 							bResult = true;
@@ -783,7 +781,7 @@ static bool AttemptApplyObjToComponent(UObject* ObjToUse, USceneComponent* Compo
 						SkeletalMeshComponent->Modify();
 
 						// If the component doesn't have a mesh or the anim blueprint's skeleton isn't compatible with the existing mesh's skeleton, the mesh should change
-						const bool bShouldChangeMesh = !SkeletalMeshComponent->SkeletalMesh || !AnimSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->GetSkeleton());
+						const bool bShouldChangeMesh = !SkeletalMeshComponent->SkeletalMesh || !AnimSkeleton->IsCompatible(SkeletalMeshComponent->SkeletalMesh->Skeleton);
 
 						if (bShouldChangeMesh)
 						{
@@ -881,7 +879,7 @@ bool FLevelEditorViewportClient::AttemptApplyObjAsMaterialToSurface( UObject* Ob
 		UModel* Model = ModelHitProxy->GetModel();
 		
 		// If our model doesn't exist or is part of a level that is being destroyed
-		if( !Model || !Model->GetOuter() || Model->GetOuter()->IsPendingKillOrUnreachable() )
+		if( !Model || (Model && Model->GetOuter()->IsPendingKillOrUnreachable()))
 		{
 			return false;
 		}
@@ -1795,6 +1793,8 @@ FLevelEditorViewportClient::FLevelEditorViewportClient(const TSharedPtr<SLevelVi
 	, DropPreviewMouseX(0)
 	, DropPreviewMouseY(0)
 	, bWasControlledByOtherViewport(false)
+	, ActorLockedByMatinee(nullptr)
+	, ActorLockedToCamera(nullptr)
 	, bEditorCameraCut(false)
 	, bWasEditorCameraCut(false)
 	, bApplyCameraSpeedScaleByDistance(true)
@@ -1935,7 +1935,7 @@ FSceneView* FLevelEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFami
 
 	FSceneView* View = FEditorViewportClient::CalcSceneView(ViewFamily, StereoPass);
 
-	View->ViewActor = ActorLocks.GetLock().GetLockedActor();
+	View->ViewActor = ActorLockedByMatinee.IsValid() ? ActorLockedByMatinee.Get() : ActorLockedToCamera.Get();
 	View->SpriteCategoryVisibility = SpriteCategoryVisibility;
 	View->bCameraCut = bEditorCameraCut;
 	View->bHasSelectedComponents = GEditor->GetSelectedComponentCount() > 0;
@@ -2361,19 +2361,17 @@ void FLevelEditorViewportClient::Tick(float DeltaTime)
 void FLevelEditorViewportClient::UpdateViewForLockedActor(float DeltaTime)
 {
 	// We can't be locked to a matinee actor if this viewport doesn't allow matinee control
-	if (!bAllowCinematicControl && ActorLocks.CinematicActorLock.HasValidLockedActor())
+	if ( !bAllowCinematicControl && ActorLockedByMatinee.IsValid() )
 	{
-		ActorLocks.CinematicActorLock = FLevelViewportActorLock::None;
+		ActorLockedByMatinee = nullptr;
 	}
 
 	bUseControllingActorViewInfo = false;
 	ControllingActorViewInfo = FMinimalViewInfo();
-	ControllingActorAspectRatioAxisConstraint.Reset();
 	ControllingActorExtraPostProcessBlends.Empty();
 	ControllingActorExtraPostProcessBlendWeights.Empty();
 
-	const FLevelViewportActorLock& ActiveLock = ActorLocks.GetLock();
-	AActor* Actor = ActiveLock.GetLockedActor();
+	AActor* Actor = ActorLockedByMatinee.IsValid() ? ActorLockedByMatinee.Get() : ActorLockedToCamera.Get();
 	if( Actor != NULL )
 	{
 		// Check if the viewport is transitioning
@@ -2408,9 +2406,6 @@ void FLevelEditorViewportClient::UpdateViewForLockedActor(float DeltaTime)
 						{
 							CameraComponent->GetExtraPostProcessBlends(ControllingActorExtraPostProcessBlends, ControllingActorExtraPostProcessBlendWeights);
 						}
-
-						// Axis constraint for aspect ratio
-						ControllingActorAspectRatioAxisConstraint = ActiveLock.AspectRatioAxisConstraint;
 						
 						// Post processing is handled by OverridePostProcessingSettings
 						ViewFOV = ControllingActorViewInfo.FOV;
@@ -3301,26 +3296,6 @@ void FLevelEditorViewportClient::GetSelectedActorsAndComponentsForMove(TArray<AA
 			continue;
 		}
 
-		// Ensure that only parent-most actor(s) are moved
-		// If both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
-		bool bParentAlsoSelected = false;
-		AActor* Parent = Actor->GetAttachParentActor();
-		while (Parent != nullptr)
-		{
-			if (Parent->IsSelected())
-			{
-				bParentAlsoSelected = true;
-				break;
-			}
-
-			Parent = Parent->GetAttachParentActor();
-		}
-
-		if (bParentAlsoSelected)
-		{
-			continue;
-		}
-
 		if (!CanMoveActorInViewport(Actor))
 		{
 			continue;
@@ -3845,19 +3820,10 @@ void FLevelEditorViewportClient::MoveLockedActorToCamera()
 			// If we're locked to a camera then we're reflecting the camera view and not the actor position. We need to reflect that delta when we reposition the piloted actor
 			if (bUseControllingActorViewInfo)
 			{
-				const UActorComponent* ViewComponent = FindViewComponentForActor(ActiveActorLock);
-				if (const UCameraComponent* CameraViewComponent = Cast<UCameraComponent>(ViewComponent))
+				const USceneComponent* ViewComponent = Cast<USceneComponent>(FindViewComponentForActor(ActiveActorLock));
+				if (ViewComponent != nullptr)
 				{
-					FTransform AdditiveOffset;
-					float AdditiveFOV;
-					CameraViewComponent->GetAdditiveOffset(AdditiveOffset, AdditiveFOV);
-					const FTransform RelativeTransform = (AdditiveOffset * CameraViewComponent->GetComponentTransform()).Inverse();
-					const FTransform DesiredTransform = FTransform(GCurrentLevelEditingViewportClient->GetViewRotation(), GCurrentLevelEditingViewportClient->GetViewLocation());
-					ActiveActorLock->SetActorTransform(ActiveActorLock->GetActorTransform() * RelativeTransform * DesiredTransform);
-				}
-				else if (const USceneComponent* SceneViewComponent = Cast<USceneComponent>(ViewComponent))
-				{
-					const FTransform RelativeTransform = SceneViewComponent->GetComponentTransform().Inverse();
+					const FTransform RelativeTransform = ViewComponent->GetComponentTransform().Inverse();
 					const FTransform DesiredTransform = FTransform(GCurrentLevelEditingViewportClient->GetViewRotation(), GCurrentLevelEditingViewportClient->GetViewLocation());
 					ActiveActorLock->SetActorTransform(ActiveActorLock->GetActorTransform() * RelativeTransform * DesiredTransform);
 				}
@@ -3989,38 +3955,20 @@ UActorComponent* FLevelEditorViewportClient::FindViewComponentForActor(AActor co
 
 void FLevelEditorViewportClient::SetActorLock(AActor* Actor)
 {
-	SetActorLock(FLevelViewportActorLock(Actor));
-}
-
-void FLevelEditorViewportClient::SetActorLock(const FLevelViewportActorLock& InActorLock)
-{
-	if (ActorLocks.ActorLock.LockedActor != InActorLock.LockedActor)
+	if (ActorLockedToCamera != Actor)
 	{
 		SetIsCameraCut();
 	}
-	if (ActorLocks.ActorLock.LockedActor.IsValid())
-	{
-		PreviousActorLocks.ActorLock = ActorLocks.ActorLock;
-	}
-	ActorLocks.ActorLock = InActorLock;
+	ActorLockedToCamera = Actor;
 }
 
-void FLevelEditorViewportClient::SetCinematicActorLock(AActor* Actor)
+void FLevelEditorViewportClient::SetMatineeActorLock(AActor* Actor)
 {
-	SetCinematicActorLock(FLevelViewportActorLock(Actor));
-}
-
-void FLevelEditorViewportClient::SetCinematicActorLock(const FLevelViewportActorLock& InActorLock)
-{
-	if (ActorLocks.CinematicActorLock.LockedActor != InActorLock.LockedActor)
+	if (ActorLockedByMatinee != Actor)
 	{
 		SetIsCameraCut();
 	}
-	if (ActorLocks.CinematicActorLock.LockedActor.IsValid())
-	{
-		PreviousActorLocks.CinematicActorLock = ActorLocks.CinematicActorLock;
-	}
-	ActorLocks.CinematicActorLock = InActorLock;
+	ActorLockedByMatinee = Actor;
 }
 
 bool FLevelEditorViewportClient::IsActorLocked(const TWeakObjectPtr<const AActor> InActor) const
@@ -5141,7 +5089,7 @@ void FLevelEditorViewportClient::CopyLayoutFromViewport( const FLevelEditorViewp
 	ViewFOV = InViewport.ViewFOV;
 	ViewportType = InViewport.ViewportType;
 	SetOrthoZoom( InViewport.GetOrthoZoom() );
-	ActorLocks = InViewport.ActorLocks;
+	ActorLockedToCamera = InViewport.ActorLockedToCamera;
 	bAllowCinematicControl = InViewport.bAllowCinematicControl;
 }
 

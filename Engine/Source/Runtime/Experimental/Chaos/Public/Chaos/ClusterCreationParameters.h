@@ -8,8 +8,10 @@
 
 namespace Chaos
 {
-	class FBVHParticles;
+	template<class T, int d>
+	class TBVHParticles;
 
+	template <typename T>
 	struct CHAOS_API FClusterCreationParameters
 	{
 		enum EConnectionMethod
@@ -23,13 +25,13 @@ namespace Chaos
 
 
 		FClusterCreationParameters(
-			FReal CoillisionThicknessPercentIn = (FReal)0.3
+			T CoillisionThicknessPercentIn = 0.3
 			, int32 MaxNumConnectionsIn = 100
 			, bool bCleanCollisionParticlesIn = true
 			, bool bCopyCollisionParticlesIn = true
 			, bool bGenerateConnectionGraphIn = true, EConnectionMethod ConnectionMethodIn = EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation
-			, FBVHParticles* CollisionParticlesIn = nullptr
-			, Chaos::TPBDRigidClusteredParticleHandle<Chaos::FReal,3>* ClusterParticleHandleIn = nullptr
+			, TBVHParticles<float, 3>* CollisionParticlesIn = nullptr
+			, Chaos::TPBDRigidClusteredParticleHandle<float,3>* ClusterParticleHandleIn = nullptr
 		)
 			: CoillisionThicknessPercent(CoillisionThicknessPercentIn)
 			, MaxNumConnections(MaxNumConnectionsIn)
@@ -41,13 +43,13 @@ namespace Chaos
 			, ClusterParticleHandle(ClusterParticleHandleIn)
 		{}
 
-		FReal CoillisionThicknessPercent;
+		T CoillisionThicknessPercent;
 		int32 MaxNumConnections;
 		bool bCleanCollisionParticles;
 		bool bCopyCollisionParticles;
 		bool bGenerateConnectionGraph;
 		EConnectionMethod ConnectionMethod;
-		FBVHParticles* CollisionParticles;
-		Chaos::FPBDRigidClusteredParticleHandle* ClusterParticleHandle;
+		TBVHParticles<T, 3>* CollisionParticles;
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* ClusterParticleHandle;
 	};
 }

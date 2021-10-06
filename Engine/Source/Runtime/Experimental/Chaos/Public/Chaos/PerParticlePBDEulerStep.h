@@ -10,24 +10,25 @@ namespace Chaos
 /**
  * Update position and rotation based on velocity and angular velocity.
  */
-class FPerParticlePBDEulerStep : public FPerParticleRule
+template<class T, int d>
+class TPerParticlePBDEulerStep : public TPerParticleRule<T, d>
 {
   public:
-	  FPerParticlePBDEulerStep() {}
-	virtual ~FPerParticlePBDEulerStep() {}
+	TPerParticlePBDEulerStep() {}
+	virtual ~TPerParticlePBDEulerStep() {}
 
 	template<class T_PARTICLES>
-	inline void ApplyHelper(T_PARTICLES& InParticles, const FReal Dt, const int32 Index) const
+	inline void ApplyHelper(T_PARTICLES& InParticles, const T Dt, const int32 Index) const
 	{
 		InParticles.P(Index) = InParticles.X(Index) + InParticles.V(Index) * Dt;
 	}
 
-	inline void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		ApplyHelper(InParticles, Dt, Index);
 	}
 
-	inline void Apply(TPBDRigidParticles<FReal, 3>& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TPBDRigidParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		FVec3 PCoM = FParticleUtilitiesXR::GetCoMWorldPosition(InParticles, Index);
 		FRotation3 QCoM = FParticleUtilitiesXR::GetCoMWorldRotation(InParticles, Index);
@@ -38,7 +39,7 @@ class FPerParticlePBDEulerStep : public FPerParticleRule
 		FParticleUtilitiesPQ::SetCoMWorldTransform(InParticles, Index, PCoM, QCoM);
 	}
 
-	inline void Apply(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal Dt) const override
+	inline void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override
 	{
 		FVec3 PCoM = FParticleUtilitiesXR::GetCoMWorldPosition(&Particle);
 		FRotation3 QCoM = FParticleUtilitiesXR::GetCoMWorldRotation(&Particle);
@@ -49,7 +50,4 @@ class FPerParticlePBDEulerStep : public FPerParticleRule
 		FParticleUtilitiesPQ::SetCoMWorldTransform(&Particle, PCoM, QCoM);
 	}
 };
-
-template<class T, int d>
-using TPerParticlePBDEulerStep UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticlePBDEulerStep instead") = FPerParticlePBDEulerStep;
 }

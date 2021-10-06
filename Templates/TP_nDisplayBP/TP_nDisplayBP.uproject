@@ -8,27 +8,27 @@
 			"Name": "nDisplay",
 			"Enabled": true,
 			"SupportedTargetPlatforms": [
-				"Win64",
-				"Linux"
-			]
+				"Win64"
+			]			
 		},
 		{
 			"Name": "OculusVR",
 			"Enabled": false,
 			"SupportedTargetPlatforms": [
-				"Win64"
+				"Win32",
+				"Win64",
+				"Android"
 			]
 		},
 		{
 			"Name": "SteamVR",
 			"Enabled": false,
 			"SupportedTargetPlatforms": [
-				"Win64"
+				"Win32",
+				"Win64",
+				"Linux",
+				"Mac"
 			]
-		},
-		{
-			"Name": "Switchboard",
-			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [

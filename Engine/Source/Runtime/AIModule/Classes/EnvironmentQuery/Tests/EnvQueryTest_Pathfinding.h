@@ -28,7 +28,7 @@ namespace EEnvTestPathfinding
 }
 
 UCLASS()
-class AIMODULE_API UEnvQueryTest_Pathfinding : public UEnvQueryTest
+class UEnvQueryTest_Pathfinding : public UEnvQueryTest
 {
 	GENERATED_UCLASS_BODY()
 

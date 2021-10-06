@@ -71,9 +71,6 @@ protected:
 	/** if we should auto checkout packages that need to be saved**/
 	bool bAutoCheckOut;
 
-	/** when auto checking out packages, bulk checkout packages that will be saved to minimize source control requests **/
-	bool bBulkCheckOut;
-
 	/** if we should simply skip checked out files rather than error-ing out */
 	bool bSkipCheckedOutFiles;
 
@@ -118,7 +115,6 @@ protected:
 	bool bForceProxyGeneration;
 	bool bForceEnableHLODForLevel;
 	bool bForceSingleClusterForLevel;
-	bool bSkipSubLevels;
 	bool bHLODMapCleanup;
 	FString ForceHLODSetupAsset;
 	FString HLODSkipToMap;

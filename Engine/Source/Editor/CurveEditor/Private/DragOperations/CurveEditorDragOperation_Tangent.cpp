@@ -19,9 +19,14 @@ void FCurveEditorDragOperation_Tangent::OnInitialize(FCurveEditor* InCurveEditor
 
 void FCurveEditorDragOperation_Tangent::OnBeginDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)
 {
+	PointType = CurveEditor->GetSelection().GetSelectionType();
+
 	int32 NumKeys = CurveEditor->GetSelection().Count();
 
-	FText Description = FText::Format(NSLOCTEXT("CurveEditor", "DragTangentsFormat", "Drag {0}|plural(one=Tangent, other=Tangents)"), NumKeys);
+	FText Description = PointType == ECurvePointType::ArriveTangent
+		? FText::Format(NSLOCTEXT("CurveEditor", "DragEntryTangentsFormat", "Drag Entry {0}|plural(one=Tangent, other=Tangents)"), NumKeys)
+		: FText::Format(NSLOCTEXT("CurveEditor", "DragExitTangentsFormat", "Drag Exit {0}|plural(one=Tangent, other=Tangents)"), NumKeys);
+
 	Transaction = MakeUnique<FScopedTransaction>(Description);
 	CurveEditor->SuppressBoundTransformUpdates(true);
 
@@ -39,11 +44,6 @@ void FCurveEditorDragOperation_Tangent::OnBeginDrag(FVector2D InitialPosition, F
 
 			FKeyData& KeyData = KeysByCurve.Emplace_GetRef(CurveID);
 			KeyData.Handles = TArray<FKeyHandle>(Handles.GetData(), Handles.Num());
-
-			for (FKeyHandle Handle : Handles)
-			{
-				KeyData.PointTypes.Add(Pair.Value.PointType(Handle));
-			}
 
 			KeyData.Attributes.SetNum(KeyData.Handles.Num());
 			Curve->GetKeyAttributes(KeyData.Handles, KeyData.Attributes);
@@ -80,100 +80,122 @@ void FCurveEditorDragOperation_Tangent::OnDrag(FVector2D InitialPosition, FVecto
 		KeyPositions.SetNumUninitialized(KeyData.Attributes.Num());
 		Curve->GetKeyPositions(KeyData.Handles, KeyPositions);
 
-		for (int32 i = 0; i < KeyData.Handles.Num(); ++i)
+		if (PointType == ECurvePointType::ArriveTangent)
 		{
-			const FKeyAttributes Attributes = KeyData.Attributes[i];
-
-			FKeyAttributes NewAttributes;
-
-			if (Attributes.HasArriveTangent() && EnumHasAnyFlags(KeyData.PointTypes[i], ECurvePointType::ArriveTangent))
+			for (int32 i = 0; i < KeyData.Handles.Num(); ++i)
 			{
-				const float ArriveTangent = Attributes.GetArriveTangent();
-				if (Attributes.HasTangentWeightMode() && Attributes.HasArriveTangentWeight() &&
-					(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedArrive))
+				const FKeyAttributes Attributes = KeyData.Attributes[i];
+				if (Attributes.HasArriveTangent())
 				{
-					FVector2D TangentOffset = CurveEditor::ComputeScreenSpaceTangentOffset(CurveSpace, ArriveTangent, -Attributes.GetArriveTangentWeight());
-					TangentOffset += PixelDelta;
+					const float ArriveTangent = Attributes.GetArriveTangent();
 
-					if (MouseEvent.IsShiftDown())
+					if (Attributes.HasTangentWeightMode() && Attributes.HasArriveTangentWeight() &&
+						(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedArrive))
 					{
-						TangentOffset = RoundTrajectory(TangentOffset);
+						FVector2D TangentOffset = CurveEditor::ComputeScreenSpaceTangentOffset(CurveSpace, ArriveTangent, -Attributes.GetArriveTangentWeight());
+						TangentOffset += PixelDelta;
+
+						if (MouseEvent.IsShiftDown())
+						{
+							TangentOffset = RoundTrajectory(TangentOffset);
+						}
+
+						// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
+						TangentOffset.X = FMath::Min(TangentOffset.X, -CurveEditorDragOperation::TangentCrossoverThresholdPx);
+
+						float Tangent, Weight;
+						CurveEditor::TangentAndWeightFromOffset(CurveSpace, TangentOffset, Tangent, Weight);
+
+						FKeyAttributes NewAttributes;
+
+						NewAttributes.SetArriveTangent(Tangent);
+						NewAttributes.SetArriveTangentWeight(Weight);
+						NewKeyAttributesScratch.Add(NewAttributes);
 					}
+					else
+					{
+						const float PixelLength = 60.0f;
+						FVector2D TangentOffset = CurveEditor::GetVectorFromSlopeAndLength(ArriveTangent * -DisplayRatio, -PixelLength);
+						TangentOffset += PixelDelta;
 
-					// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
-					TangentOffset.X = FMath::Min(TangentOffset.X, -CurveEditorDragOperation::TangentCrossoverThresholdPx);
+						if (MouseEvent.IsShiftDown())
+						{
+							TangentOffset = RoundTrajectory(TangentOffset);
+						}
 
-					float Tangent, Weight;
-					CurveEditor::TangentAndWeightFromOffset(CurveSpace, TangentOffset, Tangent, Weight);
+						// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
+						TangentOffset.X = FMath::Min(TangentOffset.X, -CurveEditorDragOperation::TangentCrossoverThresholdPx);
 
-					NewAttributes.SetArriveTangent(Tangent);
-					NewAttributes.SetArriveTangentWeight(Weight);
+						const float Tangent = (-TangentOffset.Y / TangentOffset.X) / DisplayRatio;
+
+						FKeyAttributes NewAttributes;
+						NewAttributes.SetArriveTangent(Tangent);
+						NewKeyAttributesScratch.Add(NewAttributes);
+					}
 				}
-				else
+				else //still need to add since expect attributes to equal num of selected
 				{
-					const float PixelLength = 60.0f;
-					FVector2D TangentOffset = CurveEditor::GetVectorFromSlopeAndLength(ArriveTangent * -DisplayRatio, -PixelLength);
-					TangentOffset += PixelDelta;
-
-					if (MouseEvent.IsShiftDown())
-					{
-						TangentOffset = RoundTrajectory(TangentOffset);
-					}
-
-					// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
-					TangentOffset.X = FMath::Min(TangentOffset.X, -CurveEditorDragOperation::TangentCrossoverThresholdPx);
-
-					const float Tangent = (-TangentOffset.Y / TangentOffset.X) / DisplayRatio;
-
-					NewAttributes.SetArriveTangent(Tangent);
+					NewKeyAttributesScratch.Add(FKeyAttributes());
 				}
 			}
-
-			if (Attributes.HasLeaveTangent() && EnumHasAnyFlags(KeyData.PointTypes[i], ECurvePointType::LeaveTangent))
+		}
+		else
+		{
+			for (int32 i = 0; i < KeyData.Handles.Num(); ++i)
 			{
-				const float LeaveTangent = Attributes.GetLeaveTangent();
-
-				if (Attributes.HasTangentWeightMode() && Attributes.HasLeaveTangentWeight() &&
-					(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedLeave))
+				const FKeyAttributes Attributes = KeyData.Attributes[i];
+				if (Attributes.HasLeaveTangent())
 				{
-					FVector2D TangentOffset = CurveEditor::ComputeScreenSpaceTangentOffset(CurveSpace, LeaveTangent, Attributes.GetLeaveTangentWeight());
-					TangentOffset += PixelDelta;
+					const float LeaveTangent = Attributes.GetLeaveTangent();
 
-					if (MouseEvent.IsShiftDown())
+					if (Attributes.HasTangentWeightMode() && Attributes.HasLeaveTangentWeight() &&
+						(Attributes.GetTangentWeightMode() == RCTWM_WeightedBoth || Attributes.GetTangentWeightMode() == RCTWM_WeightedLeave))
 					{
-						TangentOffset = RoundTrajectory(TangentOffset);
+						FVector2D TangentOffset = CurveEditor::ComputeScreenSpaceTangentOffset(CurveSpace, LeaveTangent, Attributes.GetLeaveTangentWeight());
+						TangentOffset += PixelDelta;
+
+						if (MouseEvent.IsShiftDown())
+						{
+							TangentOffset = RoundTrajectory(TangentOffset);
+						}
+
+						// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
+						TangentOffset.X = FMath::Max(TangentOffset.X, CurveEditorDragOperation::TangentCrossoverThresholdPx);
+
+						float Tangent, Weight;
+						CurveEditor::TangentAndWeightFromOffset(CurveSpace, TangentOffset, Tangent, Weight);
+
+						FKeyAttributes NewAttributes;
+						NewAttributes.SetLeaveTangent(Tangent);
+						NewAttributes.SetLeaveTangentWeight(Weight);
+						NewKeyAttributesScratch.Add(NewAttributes);
 					}
+					else
+					{
+						const float PixelLength = 60.0f;
+						FVector2D TangentOffset = CurveEditor::GetVectorFromSlopeAndLength(LeaveTangent * -DisplayRatio, PixelLength);
+						TangentOffset += PixelDelta;
 
-					// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
-					TangentOffset.X = FMath::Max(TangentOffset.X, CurveEditorDragOperation::TangentCrossoverThresholdPx);
+						if (MouseEvent.IsShiftDown())
+						{
+							TangentOffset = RoundTrajectory(TangentOffset);
+						}
 
-					float Tangent, Weight;
-					CurveEditor::TangentAndWeightFromOffset(CurveSpace, TangentOffset, Tangent, Weight);
+						// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
+						TangentOffset.X = FMath::Max(TangentOffset.X, CurveEditorDragOperation::TangentCrossoverThresholdPx);
 
-					NewAttributes.SetLeaveTangent(Tangent);
-					NewAttributes.SetLeaveTangentWeight(Weight);
+						const float Tangent = (-TangentOffset.Y / TangentOffset.X) / DisplayRatio;
+
+						FKeyAttributes NewAttributes;
+						NewAttributes.SetLeaveTangent(Tangent);
+						NewKeyAttributesScratch.Add(NewAttributes);
+					}
 				}
-				else
+				else //still need to add since expect attributes to equal num of selected
 				{
-					const float PixelLength = 60.0f;
-					FVector2D TangentOffset = CurveEditor::GetVectorFromSlopeAndLength(LeaveTangent * -DisplayRatio, PixelLength);
-					TangentOffset += PixelDelta;
-
-					if (MouseEvent.IsShiftDown())
-					{
-						TangentOffset = RoundTrajectory(TangentOffset);
-					}
-
-					// We prevent the handle from crossing over the 0 point... the code handles it but it creates an ugly pop in your curve and it lets your Arrive tangents become Leave tangents which defeats the point.
-					TangentOffset.X = FMath::Max(TangentOffset.X, CurveEditorDragOperation::TangentCrossoverThresholdPx);
-
-					const float Tangent = (-TangentOffset.Y / TangentOffset.X) / DisplayRatio;
-
-					NewAttributes.SetLeaveTangent(Tangent);
+					NewKeyAttributesScratch.Add(FKeyAttributes());
 				}
 			}
-				
-			NewKeyAttributesScratch.Add(NewAttributes);
 		}
 		Curve->SetKeyAttributes(KeyData.Handles, NewKeyAttributesScratch);
 	}

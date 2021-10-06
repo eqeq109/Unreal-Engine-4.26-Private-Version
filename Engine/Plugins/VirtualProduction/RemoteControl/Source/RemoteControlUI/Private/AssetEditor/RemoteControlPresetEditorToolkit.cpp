@@ -1,23 +1,19 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RemoteControlPresetEditorToolkit.h"
-
-#include "Framework/Docking/TabManager.h"
 #include "RemoteControlPreset.h"
 #include "RemoteControlUIModule.h"
-#include "Subsystems/AssetEditorSubsystem.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SWidget.h"
-#include "UI/SRCPanelExposedEntitiesList.h"
-#include "UI/SRCPanelTreeNode.h"
+#include "Framework/Docking/TabManager.h"
 #include "UI/SRemoteControlPanel.h"
 
 #define LOCTEXT_NAMESPACE "RemoteControlPresetEditorToolkit"
 
-const FName FRemoteControlPresetEditorToolkit::PanelTabId(TEXT("RemoteControl_RemoteControlPanel"));
+const FName FRemoteControlPresetEditorToolkit::RemoteControlPanelTabId(TEXT("RemoteControl_RemoteControlPanel"));
 const FName FRemoteControlPresetEditorToolkit::RemoteControlPanelAppIdentifier(TEXT("RemoteControlPanel"));
 
-TSharedRef<FRemoteControlPresetEditorToolkit> FRemoteControlPresetEditorToolkit::CreateEditor(const EToolkitMode::Type Mode, const TSharedPtr<class IToolkitHost>& InitToolkitHost, URemoteControlPreset* InPreset)
+TSharedRef<FRemoteControlPresetEditorToolkit> FRemoteControlPresetEditorToolkit::CreateEditor(const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, URemoteControlPreset* InPreset)
 {
 	TSharedRef<FRemoteControlPresetEditorToolkit> NewEditor = MakeShared<FRemoteControlPresetEditorToolkit>();
 
@@ -26,11 +22,20 @@ TSharedRef<FRemoteControlPresetEditorToolkit> FRemoteControlPresetEditorToolkit:
 	return NewEditor;
 }
 
-void FRemoteControlPresetEditorToolkit::InitRemoteControlPresetEditor(const EToolkitMode::Type Mode, const TSharedPtr<class IToolkitHost> & InitToolkitHost, URemoteControlPreset* InPreset)
+void FRemoteControlPresetEditorToolkit::InitRemoteControlPresetEditor(const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, URemoteControlPreset* InPreset)
 {
-	Preset = InPreset;
+	struct Local
+	{
+		static void OnRemoteControlPresetClosed(TSharedRef<SDockTab> DockTab, TWeakPtr<IAssetEditorInstance> InRemoteControlPreset)
+		{
+			TSharedPtr<IAssetEditorInstance> AssetEditorInstance = InRemoteControlPreset.Pin();
 
-	PanelTab = FRemoteControlUIModule::Get().CreateRemoteControlPanel(InPreset);
+			if (AssetEditorInstance.IsValid())
+			{
+				InRemoteControlPreset.Pin()->CloseWindow();
+			}
+		}
+	};
 
 	const TSharedRef<FTabManager::FLayout> StandaloneDefaultLayout = FTabManager::NewLayout("Standalone_RemoteControlPresetEditor")
 		->AddArea
@@ -39,68 +44,52 @@ void FRemoteControlPresetEditorToolkit::InitRemoteControlPresetEditor(const EToo
 			->Split
 			(
 				FTabManager::NewStack()
-				->AddTab(PanelTabId, ETabState::OpenedTab)
+				->AddTab(RemoteControlPanelTabId, ETabState::OpenedTab)
 			)
 		);
 
-	constexpr bool bCreateDefaultStandaloneMenu = true;
-	constexpr bool bCreateDefaultToolbar = true;
+	// Create a new DockTab and add the RemoteControlPreset widget to it.
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+	TSharedPtr<FTabManager> EditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
 
 	// Required, will cause the previous toolkit to close bringing down the RemoteControlPreset and unsubscribing the
 	// tab spawner. Without this, the InitAssetEditor call below will trigger an ensure as the RemoteControlPreset
 	// tab ID will already be registered within EditorTabManager
-	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-	TSharedPtr<FTabManager> EditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
-	if (EditorTabManager->FindExistingLiveTab(PanelTabId).IsValid())
+	if (EditorTabManager->FindExistingLiveTab(RemoteControlPanelTabId).IsValid())
 	{
-		EditorTabManager->TryInvokeTab(PanelTabId)->RequestCloseTab();
+		EditorTabManager->TryInvokeTab(RemoteControlPanelTabId)->RequestCloseTab();
 	}
-	
-	FAssetEditorToolkit::InitAssetEditor(Mode, InitToolkitHost, RemoteControlPanelAppIdentifier, StandaloneDefaultLayout, bCreateDefaultStandaloneMenu, bCreateDefaultStandaloneMenu, InPreset);
 
-	InvokePanelTab();
-}
+	PanelWidget = FRemoteControlUIModule::Get().CreateRemoteControlPanel(InPreset);
 
-FRemoteControlPresetEditorToolkit::~FRemoteControlPresetEditorToolkit()
-{
-	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+	FAssetEditorToolkit::InitAssetEditor(Mode, InitToolkitHost, RemoteControlPanelAppIdentifier, StandaloneDefaultLayout, /*Standalone=*/false, /*CreateDefaultToolbar=*/false, InPreset);
+
+	if (TSharedPtr<SDockTab> Tab = EditorTabManager->TryInvokeTab(RemoteControlPanelTabId))
 	{
-		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-		if (TSharedPtr<FTabManager> EditorTabManager = LevelEditorModule.GetLevelEditorTabManager())
-		{
-			UnregisterTabSpawners(EditorTabManager.ToSharedRef());
-			if (TSharedPtr<SDockTab> Tab = EditorTabManager->FindExistingLiveTab(PanelTabId))
-			{
-				Tab->RequestCloseTab();
-			}
-		}
+		Tab->SetLabel(FText::FromName(InPreset->GetFName()));
+		Tab->SetContent(PanelWidget.ToSharedRef());
+		Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateStatic(&Local::OnRemoteControlPresetClosed, TWeakPtr<IAssetEditorInstance>(SharedThis(this))));
 	}
 }
 
-void FRemoteControlPresetEditorToolkit::RegisterTabSpawners(const TSharedRef<FTabManager>& InTabManager)
+void FRemoteControlPresetEditorToolkit::RegisterTabSpawners(const TSharedRef<class FTabManager>& InTabManager)
 {
 	WorkspaceMenuCategory = InTabManager->AddLocalWorkspaceMenuCategory(LOCTEXT("WorkspaceMenu_RemoteControlPanel", "Remote Control Panel"));
 
-	InTabManager->RegisterTabSpawner(PanelTabId, FOnSpawnTab::CreateSP(this, &FRemoteControlPresetEditorToolkit::HandleTabManagerSpawnPanelTab))
+	InTabManager->RegisterTabSpawner(RemoteControlPanelTabId, FOnSpawnTab::CreateSP(this, &FRemoteControlPresetEditorToolkit::HandleTabManagerSpawnTab))
 		.SetDisplayName(LOCTEXT("RemoteControlPanelMainTab", "Remote Control Panel"))
 		.SetGroup(WorkspaceMenuCategory.ToSharedRef())
 		.SetIcon(FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.GameSettings.Small"));
 }
 
-void FRemoteControlPresetEditorToolkit::UnregisterTabSpawners(const TSharedRef<FTabManager>& InTabManager)
+void FRemoteControlPresetEditorToolkit::UnregisterTabSpawners(const TSharedRef<class FTabManager>& InTabManager)
 {
-	InTabManager->UnregisterTabSpawner(PanelTabId);
+	InTabManager->UnregisterTabSpawner(RemoteControlPanelTabId);
 }
 
 bool FRemoteControlPresetEditorToolkit::OnRequestClose()
 {
 	return true;
-}
-
-void FRemoteControlPresetEditorToolkit::FocusWindow(UObject* ObjectToFocusOn)
-{
-	InvokePanelTab();
-	BringToolkitToFront();
 }
 
 FText FRemoteControlPresetEditorToolkit::GetBaseToolkitName() const
@@ -124,42 +113,22 @@ FString FRemoteControlPresetEditorToolkit::GetWorldCentricTabPrefix() const
 	return LOCTEXT("RemoteControlTabPrefix", "RemoteControl ").ToString();
 }
 
-TSharedRef<SDockTab> FRemoteControlPresetEditorToolkit::HandleTabManagerSpawnPanelTab(const FSpawnTabArgs& Args)
+TSharedRef<SDockTab> FRemoteControlPresetEditorToolkit::HandleTabManagerSpawnTab(const FSpawnTabArgs& Args)
 {
-	check(Args.GetTabId() == PanelTabId);
+	TSharedPtr<SWidget> TabWidget = SNullWidget::NullWidget;
+
+	if (Args.GetTabId() == RemoteControlPanelTabId)
+	{
+		TabWidget = PanelWidget;
+	}
 
 	return SNew(SDockTab)
-		.Label(LOCTEXT("ControlPanelLabel", "Control Panel"))
-		.TabColorScale(GetTabColorScale())	
+		.Label(LOCTEXT("RemoteControlPanelMainTitle", "Remote Control Panel"))
+		.TabColorScale(GetTabColorScale())
+		.TabRole(ETabRole::NomadTab)
 		[
-			PanelTab.ToSharedRef()
+			TabWidget.ToSharedRef()
 		];
-}
-
-void FRemoteControlPresetEditorToolkit::InvokePanelTab()
-{
-	struct Local
-	{
-		static void OnRemoteControlPresetClosed(TSharedRef<SDockTab> DockTab, TWeakPtr<IAssetEditorInstance> InRemoteControlPreset)
-		{
-			TSharedPtr<IAssetEditorInstance> AssetEditorInstance = InRemoteControlPreset.Pin();
-
-			if (AssetEditorInstance.IsValid())
-			{
-				InRemoteControlPreset.Pin()->CloseWindow();
-			}
-		}
-	};
-
-	// Create a new DockTab and add the RemoteControlPreset widget to it.
-	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-	TSharedPtr<FTabManager> EditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
-
-	if (TSharedPtr<SDockTab> Tab = EditorTabManager->TryInvokeTab(PanelTabId))
-	{
-		Tab->SetContent(PanelTab.ToSharedRef());
-		Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateStatic(&Local::OnRemoteControlPresetClosed, TWeakPtr<IAssetEditorInstance>(SharedThis(this))));
-	}
 }
 
 #undef LOCTEXT_NAMESPACE /*RemoteControlPresetEditorToolkit*/

@@ -1,5 +1,4 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UITests.h"
 
 #include "Insights/Common/Stopwatch.h"
@@ -42,4 +41,4 @@ bool FHideAndShowAllTimingViewTabs::RunTest(const FString& Parameters)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#endif // !WITH_EDITOR
+#endif

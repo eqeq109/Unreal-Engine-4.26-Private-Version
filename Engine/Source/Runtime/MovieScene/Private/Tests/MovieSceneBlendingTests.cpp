@@ -8,19 +8,8 @@
 
 #define LOCTEXT_NAMESPACE "MovieSceneBlendingTests"
 
-namespace UE
-{
-namespace MovieScene
-{
-namespace Test
-{
-
-static const int32 GBlendingStartingValue = 0xefefefef;
-static int32 GBlendingTestValue = GBlendingStartingValue;
-
-} // namespace Test
-} // namespace MovieScene
-} // namespace UE
+static const int32 StartingValue = 0xefefefef;
+static int32 TestValue = StartingValue;
 
 struct FInt32Actuator : TMovieSceneBlendingActuator<int32>
 {
@@ -34,17 +23,13 @@ struct FInt32Actuator : TMovieSceneBlendingActuator<int32>
 
 	virtual void Actuate(UObject* InObject, TCallTraits<int32>::ParamType InValue, const TBlendableTokenStack<int32>& OriginalStack, const FMovieSceneContext& Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player)
 	{
-		using namespace UE::MovieScene::Test;
-		
 		ensure(!InObject);
-		GBlendingTestValue = InValue;
+		TestValue = InValue;
 	}
 
 	virtual int32 RetrieveCurrentValue(UObject* InObject, IMovieScenePlayer* Player) const
 	{
-		using namespace UE::MovieScene::Test;
-
-		return GBlendingTestValue;
+		return TestValue;
 	}
 };
 
@@ -66,8 +51,6 @@ struct FNullPlayer : IMovieScenePlayer
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieSceneBlendingTest, "System.Engine.Sequencer.Blending.Basic", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FMovieSceneBlendingTest::RunTest(const FString& Parameters)
 {
-	using namespace UE::MovieScene::Test;
-
 	const FMovieSceneBlendingActuatorID ID = FInt32Actuator::GetID();
 	const FMovieSceneEvaluationScope Scope(FMovieSceneEvaluationKey(), EMovieSceneCompletionMode::KeepState);
 	const FMovieSceneContext Context(FMovieSceneEvaluationRange(0, FFrameRate()));
@@ -87,29 +70,29 @@ bool FMovieSceneBlendingTest::RunTest(const FString& Parameters)
 		Accumulator.Apply(Context, PersistentDataProxy, Player);
 
 		int32 Expected = 7;
-		if (GBlendingTestValue != Expected)
+		if (TestValue != Expected)
 		{
-			AddError(FString::Printf(TEXT("Expected result 1 to be %d, actual %d."), GBlendingTestValue, Expected));
+			AddError(FString::Printf(TEXT("Expected result 1 to be %d, actual %d."), TestValue, Expected));
 		}
 	}
 
-	GBlendingTestValue = GBlendingStartingValue;
+	TestValue = StartingValue;
 
 	{
-		// Result should be GBlendingStartingValue + 500 + 10
+		// Result should be StartingValue + 500 + 10
 		Accumulator.BlendToken<int32>(ID, Scope, Context, 10, EMovieSceneBlendType::Additive, 1.f);
 		Accumulator.BlendToken<int32>(ID, Scope, Context, 500, EMovieSceneBlendType::Relative, 1.f);
 
 		Accumulator.Apply(Context, PersistentDataProxy, Player);
 
-		int32 Expected = GBlendingStartingValue + 510;
-		if (GBlendingTestValue != Expected) //-V547
+		int32 Expected = StartingValue + 510;
+		if (TestValue != Expected)
 		{
-			AddError(FString::Printf(TEXT("Expected result 2 to be %d, actual %d."), GBlendingTestValue, Expected));
+			AddError(FString::Printf(TEXT("Expected result 2 to be %d, actual %d."), TestValue, Expected));
 		}
 	}
 
-	GBlendingTestValue = GBlendingStartingValue;
+	TestValue = StartingValue;
 
 	{
 		// Result should be 85
@@ -121,13 +104,13 @@ bool FMovieSceneBlendingTest::RunTest(const FString& Parameters)
 		Accumulator.Apply(Context, PersistentDataProxy, Player);
 
 		int32 Expected = 85 / 4;
-		if (GBlendingTestValue != Expected) //-V547
+		if (TestValue != Expected)
 		{
-			AddError(FString::Printf(TEXT("Expected result 3 to be %d, actual %d."), GBlendingTestValue, Expected));
+			AddError(FString::Printf(TEXT("Expected result 3 to be %d, actual %d."), TestValue, Expected));
 		}
 	}
 
-	GBlendingTestValue = GBlendingStartingValue;
+	TestValue = StartingValue;
 
 	
 	{
@@ -139,9 +122,9 @@ bool FMovieSceneBlendingTest::RunTest(const FString& Parameters)
 		Accumulator.Apply(Context, PersistentDataProxy, Player);
 
 		int32 Expected = 10770075;
-		if (GBlendingTestValue != Expected) //-V547
+		if (TestValue != Expected)
 		{
-			AddError(FString::Printf(TEXT("Expected result 4 to be %d, actual %d."), GBlendingTestValue, Expected));
+			AddError(FString::Printf(TEXT("Expected result 4 to be %d, actual %d."), TestValue, Expected));
 		}
 	}
 

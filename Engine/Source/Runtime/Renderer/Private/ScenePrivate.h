@@ -91,7 +91,7 @@ public:
 	FPrimitiveComponentId PrimitiveId;
 
 	/** The occlusion query which contains the primitive's pending occlusion results. */
-	FRHIRenderQuery* PendingOcclusionQuery[FOcclusionQueryHelpers::MaxBufferedOcclusionFrames];
+	FRefCountedRHIPooledRenderQuery PendingOcclusionQuery[FOcclusionQueryHelpers::MaxBufferedOcclusionFrames];
 	uint32 PendingOcclusionQueryFrames[FOcclusionQueryHelpers::MaxBufferedOcclusionFrames]; 
 
 	uint32 LastTestFrameNumber;
@@ -146,8 +146,7 @@ private:
 		{
 			const uint32 ThisFrameNumber = PendingOcclusionQueryFrames[Index];
 			const int32 LaggedFrames = FrameNumber - ThisFrameNumber;
-			// Queries older than LagTolerance are invalid. They may have already been reused and will give incorrect results if read
-			if (PendingOcclusionQuery[Index] && LaggedFrames <= LagTolerance && ThisFrameNumber < OldestFrame)
+			if (PendingOcclusionQuery[Index].IsValid() && LaggedFrames <= LagTolerance && ThisFrameNumber < OldestFrame)
 			{
 				OldestFrame = ThisFrameNumber;
 				OldestQueryIndex = Index;
@@ -174,7 +173,6 @@ public:
 	{
 		for (int32 Index = 0; Index < FOcclusionQueryHelpers::MaxBufferedOcclusionFrames; Index++)
 		{
-			PendingOcclusionQuery[Index] = nullptr;
 			PendingOcclusionQueryFrames[Index] = 0;
 			bGroupedQuery[Index] = false;
 		}
@@ -195,7 +193,6 @@ public:
 	{
 		for (int32 Index = 0; Index < FOcclusionQueryHelpers::MaxBufferedOcclusionFrames; Index++)
 		{
-			PendingOcclusionQuery[Index] = nullptr;
 			PendingOcclusionQueryFrames[Index] = 0;
 			bGroupedQuery[Index] = false;
 		}
@@ -203,17 +200,33 @@ public:
 
 	inline void ReleaseStaleQueries(uint32 FrameNumber, int32 NumBufferedFrames)
 	{
-		// No need to release. FFrameBasedOcclusionQueryPool automatically reuses stale queries
+		for (uint32 DeltaFrame = NumBufferedFrames; DeltaFrame > 0; DeltaFrame--)
+		{
+			if (FrameNumber >= (DeltaFrame - 1))
+			{
+				uint32 TestFrame = FrameNumber - (DeltaFrame - 1);
+				const uint32 QueryIndex = FOcclusionQueryHelpers::GetQueryLookupIndex(TestFrame, NumBufferedFrames);
+				if (PendingOcclusionQueryFrames[QueryIndex] != TestFrame)
+				{
+					PendingOcclusionQuery[QueryIndex].ReleaseQuery();
+				}
+			}
+		}
 	}
 
 	inline void ReleaseQuery(uint32 FrameNumber, int32 NumBufferedFrames)
 	{
-		// No need to release. FFrameBasedOcclusionQueryPool automatically reuses stale queries
+		const uint32 QueryIndex = FOcclusionQueryHelpers::GetQueryLookupIndex(FrameNumber, NumBufferedFrames);
+		PendingOcclusionQuery[QueryIndex].ReleaseQuery();
 	}
 
 	inline FRHIRenderQuery* GetQueryForEviction(uint32 FrameNumber, int32 NumBufferedFrames) const
 	{
-		// No need to release. FFrameBasedOcclusionQueryPool automatically reuses stale queries
+		const uint32 QueryIndex = FOcclusionQueryHelpers::GetQueryLookupIndex(FrameNumber, NumBufferedFrames);
+		if (PendingOcclusionQuery[QueryIndex].IsValid())
+		{
+			return PendingOcclusionQuery[QueryIndex].GetQuery();
+		}
 		return nullptr;
 	}
 
@@ -223,21 +236,20 @@ public:
 		const int32 OldestQueryIndex = bNeedsScanOnRead ? ScanOldestNonStaleQueryIndex(FrameNumber, NumBufferedFrames, LagTolerance)
 														: FOcclusionQueryHelpers::GetQueryLookupIndex(FrameNumber, NumBufferedFrames);
 		const int32 LaggedFrames = FrameNumber - PendingOcclusionQueryFrames[OldestQueryIndex];
-		// Nenever read from queries are older than LagTolerance. They may have already been reused and will give incorrect results
-		if (OldestQueryIndex == -1 || !PendingOcclusionQuery[OldestQueryIndex] || LaggedFrames > LagTolerance)
+		if (OldestQueryIndex == -1 || !PendingOcclusionQuery[OldestQueryIndex].IsValid() || LaggedFrames > LagTolerance)
 		{
 			bOutGrouped = false;
 			return nullptr;
 		}
 		bOutGrouped = bGroupedQuery[OldestQueryIndex];
-		return PendingOcclusionQuery[OldestQueryIndex];
+		return PendingOcclusionQuery[OldestQueryIndex].GetQuery();
 	}
 
-	inline void SetCurrentQuery(uint32 FrameNumber, FRHIRenderQuery* NewQuery, int32 NumBufferedFrames, bool bGrouped, bool bNeedsScan)
+	inline void SetCurrentQuery(uint32 FrameNumber, FRefCountedRHIPooledRenderQuery&& NewQuery, int32 NumBufferedFrames, bool bGrouped, bool bNeedsScan)
 	{
 		// Get the current occlusion query
 		const uint32 QueryIndex = FOcclusionQueryHelpers::GetQueryIssueIndex(FrameNumber, NumBufferedFrames);
-		PendingOcclusionQuery[QueryIndex] = NewQuery;
+		PendingOcclusionQuery[QueryIndex] = MoveTemp(NewQuery);
 		PendingOcclusionQueryFrames[QueryIndex] = FrameNumber;
 		bGroupedQuery[QueryIndex] = bGrouped;
 
@@ -691,7 +703,6 @@ public:
 
 	/** The view's occlusion query pool. */
 	FRenderQueryPoolRHIRef OcclusionQueryPool;
-	FFrameBasedOcclusionQueryPool PrimitiveOcclusionQueryPool;
 
 	FHZBOcclusionTester HZBOcclusionTests;
 
@@ -828,6 +839,7 @@ private:
 		}
 
 		void SwapBuffers(bool bUpdateLastExposure);
+
 	private:
 		const TRefCountPtr<IPooledRenderTarget>& GetTexture(uint32 TextureIndex) const;
 		const TRefCountPtr<IPooledRenderTarget>& GetOrCreateTexture(FRHICommandList& RHICmdList, uint32 TextureIndex);
@@ -943,25 +955,20 @@ public:
 	FSamplerStateRHIRef MaterialTextureBilinearClampedSamplerCache;
 
 #if RHI_RAYTRACING
-	// Invalidates cached results related to the path tracer so accumulated rendering can start over
-	void PathTracingInvalidate();
-
 	// Reference path tracing cached results
-	TRefCountPtr<IPooledRenderTarget> PathTracingRadianceRT;
-	TRefCountPtr<IPooledRenderTarget> PathTracingAlbedoRT;
-	TRefCountPtr<IPooledRenderTarget> PathTracingNormalRT;
-	TRefCountPtr<IPooledRenderTarget> PathTracingRadianceDenoisedRT;
-	// Keep track of the rectangle of pixels the Radiance texture is valid for so that path tracing can restart if this changes
+	TRefCountPtr<IPooledRenderTarget> PathTracingIrradianceRT;
+	TRefCountPtr<IPooledRenderTarget> PathTracingSampleCountRT;
 	FIntRect PathTracingRect;
-	// Target sampling count for the path tracer - to allow different views to target different quality levels
-	uint32   PathTracingTargetSPP;
+	FRWBuffer* VarianceMipTree;
+	FIntVector VarianceMipTreeDimensions;
 
-	// Current sample index to be rendered by the path tracer - this gets incremented each time the path tracer accumulates a frame of samples
-	uint32 PathTracingSampleIndex;
+	// Path tracer ray counter
+	uint32 TotalRayCount;
+	FRWBuffer* TotalRayCountBuffer;
 
-	// Path tracer frame index, not reset on invalidation unlike PathTracingSampleIndex to avoid
-	// the "screen door" effect and reduce temporal aliasing
-	uint32_t PathTracingFrameIndex;
+	// Ray Count readback:
+	FRHIGPUBufferReadback* RayCountGPUReadback;
+	bool bReadbackInitialized = false;
 
 	// IES light profiles
 	FIESLightProfileResource IESLightProfileResources;
@@ -1047,9 +1054,6 @@ public:
 	FVector VolumetricCloudShadowmapPreviousAnchorPoint[NUM_ATMOSPHERE_LIGHTS];
 	FVector VolumetricCloudShadowmapPreviousAtmosphericLightDir[NUM_ATMOSPHERE_LIGHTS];
 
-	// View state
-	FHairStrandsViewData HairStrandsViewData;
-
 	// call after OnFrameRenderingSetup()
 	virtual uint32 GetCurrentTemporalAASampleIndex() const
 	{
@@ -1064,7 +1068,7 @@ public:
 	inline uint32 GetFrameIndex(uint32 Pow2Modulus) const
 	{
 		check(FMath::IsPowerOfTwo(Pow2Modulus));
-		return FrameIndex & (Pow2Modulus - 1);
+		return FrameIndex % (Pow2Modulus - 1);
 	}
 
 	// Returns 32bits frame index.
@@ -1607,7 +1611,7 @@ public:
 
 	/** The rendering thread's list of visible reflection captures in the scene. */
 	TArray<FReflectionCaptureProxy*> RegisteredReflectionCaptures;
-	TArray<FSphere> RegisteredReflectionCapturePositionAndRadius;
+	TArray<FVector> RegisteredReflectionCapturePositions;
 
 	/** 
 	 * Cubemap array resource which contains the captured scene for each reflection capture.
@@ -2215,7 +2219,7 @@ public:
 	 */
 	void UpdateTransform(FPrimitiveSceneInfo* PrimitiveSceneInfo, const FMatrix& LocalToWorld, const FMatrix& PreviousLocalToWorld)
 	{
-		check(PrimitiveSceneInfo->Proxy->IsMovable() || PrimitiveSceneInfo->Proxy->IsUsingWPOMaterial());
+		check(PrimitiveSceneInfo->Proxy->IsMovable());
 
 		FComponentVelocityData& VelocityData = ComponentData.FindOrAdd(PrimitiveSceneInfo->PrimitiveComponentId);
 		VelocityData.LocalToWorld = LocalToWorld;
@@ -2395,9 +2399,9 @@ public:
 	const FViewInfo& GetInstancedView(const FViewInfo& View)
 	{
 		// When drawing the left eye in a stereo scene, copy the right eye view values into the instanced view uniform buffer.
-		const EStereoscopicPass StereoPassIndex = IStereoRendering::IsStereoEyeView(View) ? eSSP_RIGHT_EYE : eSSP_FULL;
+		const int32 StereoPassIndex = IStereoRendering::IsStereoEyeView(View) ? View.StereoPass + 1 : eSSP_FULL;
 
-		return static_cast<const FViewInfo&>(View.Family->GetStereoEyeView(StereoPassIndex));
+		return static_cast<const FViewInfo&>(View.Family->GetStereoEyeView((EStereoscopicPass)StereoPassIndex));
 	}
 
 	TUniformBufferRef<FViewUniformShaderParameters> ViewUniformBuffer;
@@ -2564,17 +2568,6 @@ public:
 	/** The current progress of the real time reflection capture when time sliced. */
 	int32 RealTimeSlicedReflectionCaptureState;
 
-	/** Cache of Frame Number, used to detect first viewfamily */
-	uint64 RealTimeSlicedReflectionCaptureFrameNumber;
-
-	/**
-	 * The path tracer uses its own representation of the skylight. These textures
-	 * are updated lazily by the path tracer when missing. Any code that modifies
-	 * the skylight appearance should simplify reset these pointers.
-	 */
-	TRefCountPtr<IPooledRenderTarget> PathTracingSkylightTexture;
-	TRefCountPtr<IPooledRenderTarget> PathTracingSkylightPdf;
-
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FSkyLightSceneProxy*> SkyLightStack;
 
@@ -2646,9 +2639,6 @@ public:
 
 	/** Used to track the order that skylights were enabled in. */
 	TArray<FVolumetricCloudSceneProxy*> VolumetricCloudStack;
-
-	/** Global Field Manager */
-	class FPhysicsFieldSceneProxy* PhysicsField = nullptr;
 
 	/** The wind sources in the scene. */
 	TArray<class FWindSourceSceneProxy*> WindSources;
@@ -2795,10 +2785,6 @@ public:
 	virtual FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() override { return SkyAtmosphere; }
 	virtual const FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() const override { return SkyAtmosphere; }
 
-	virtual void SetPhysicsField(class FPhysicsFieldSceneProxy* PhysicsFieldSceneProxy) override;
-	virtual void ResetPhysicsField() override;
-	virtual void UpdatePhysicsField(FRHICommandListImmediate& RHICmdList, FViewInfo& View) override;
-
 	virtual void AddVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
 	virtual void RemoveVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override;
 	virtual FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() override { return VolumetricCloud; }
@@ -2806,7 +2792,6 @@ public:
 
 	virtual void AddWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual void RemoveWindSource(UWindDirectionalSourceComponent* WindComponent) override;
-	virtual void UpdateWindSource(UWindDirectionalSourceComponent* WindComponent) override;
 	virtual const TArray<FWindSourceSceneProxy*>& GetWindSources_RenderThread() const override;
 	virtual void GetWindParameters(const FVector& Position, FVector& OutDirection, float& OutSpeed, float& OutMinGustAmt, float& OutMaxGustAmt) const override;
 	virtual void GetWindParameters_GameThread(const FVector& Position, FVector& OutDirection, float& OutSpeed, float& OutMinGustAmt, float& OutMaxGustAmt) const override;
@@ -3093,10 +3078,10 @@ private:
 	* Updates the contents of the given reflection capture by rendering the scene. 
 	* This must be called on the game thread.
 	*/
-	void CaptureOrUploadReflectionCapture(UReflectionCaptureComponent* CaptureComponent, int32 ReflectionCaptureSize, bool bVerifyOnlyCapturing, bool bCapturingForMobile);
+	void CaptureOrUploadReflectionCapture(UReflectionCaptureComponent* CaptureComponent, bool bVerifyOnlyCapturing, bool bCapturingForMobile);
 
 	/** Updates the contents of all reflection captures in the scene.  Must be called from the game thread. */
-	void UpdateAllReflectionCaptures(const TCHAR* CaptureReason, int32 ReflectionCaptureSize, bool bVerifyOnlyCapturing, bool bCapturingForMobile);
+	void UpdateAllReflectionCaptures(const TCHAR* CaptureReason, bool bVerifyOnlyCapturing, bool bCapturingForMobile);
 
 	/** Updates all static draw lists. */
 	void UpdateStaticDrawLists_RenderThread(FRHICommandListImmediate& RHICmdList);

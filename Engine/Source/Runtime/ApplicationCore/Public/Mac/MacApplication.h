@@ -349,8 +349,8 @@ private:
 		FSavedWindowOrderInfo(int32 InWindowNumber, int32 InLevel) : WindowNumber(InWindowNumber), Level(InLevel) {}
 	};
 	TArray<FSavedWindowOrderInfo> SavedWindowsOrder;
-	
-	TSharedRef<class FMacControllerInterface> HIDInput;
+
+	TSharedRef<class HIDInputInterface> HIDInput;
 
 	/** List of input devices implemented in external modules. */
 	TArray<TSharedPtr<class IInputDevice>> ExternalInputDevices;

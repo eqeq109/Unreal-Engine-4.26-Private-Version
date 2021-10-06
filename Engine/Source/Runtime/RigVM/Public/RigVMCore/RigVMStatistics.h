@@ -13,13 +13,13 @@ struct FRigVMMemoryStatistics
 public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 RegisterCount = 0;
+	uint32 RegisterCount;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 DataBytes = 0;
+	uint32 DataBytes;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 TotalBytes = 0;
+	uint32 TotalBytes;
 };
 
 USTRUCT()
@@ -30,10 +30,10 @@ struct FRigVMByteCodeStatistics
 public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 InstructionCount = 0;
+	uint32 InstructionCount;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 DataBytes = 0;
+	uint32 DataBytes;
 };
 
 USTRUCT()
@@ -44,10 +44,10 @@ struct FRigVMStatistics
 public:
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 BytesForCDO = 0;
+	uint32 BytesForCDO;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 BytesPerInstance = 0;
+	uint32 BytesPerInstance;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
 	FRigVMMemoryStatistics LiteralMemory;
@@ -56,7 +56,7 @@ public:
 	FRigVMMemoryStatistics WorkMemory;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
-	uint32 BytesForCaching = 0;
+	uint32 BytesForCaching;
 
 	UPROPERTY(VisibleAnywhere, Category = "Statistics")
 	FRigVMByteCodeStatistics ByteCode;

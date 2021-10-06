@@ -47,11 +47,6 @@ bool FContentBrowserItemData::IsTemporary() const
 	return EnumHasAnyFlags(ItemFlags, EContentBrowserItemFlags::Temporary_MASK);
 }
 
-bool FContentBrowserItemData::IsDisplayOnlyFolder() const
-{
-	return GetItemCategory() == EContentBrowserItemFlags::None;
-}
-
 UContentBrowserDataSource* FContentBrowserItemData::GetOwnerDataSource() const
 {
 	return OwnerDataSource.Get();

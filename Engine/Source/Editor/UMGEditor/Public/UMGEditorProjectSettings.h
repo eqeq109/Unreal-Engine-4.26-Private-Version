@@ -21,16 +21,16 @@ struct FDebugResolution
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = Resolution)
-	int32 Width = 0;
+	int32 Width;
 
 	UPROPERTY(EditAnywhere, Category = Resolution)
-	int32 Height = 0;
+	int32 Height;
 
 	UPROPERTY(EditAnywhere, Category=Resolution)
 	FString Description;
 
 	UPROPERTY(EditAnywhere, Category = Resolution)
-	FLinearColor Color = FLinearColor::Black;
+	FLinearColor Color;
 };
 
 /** Controls the level of support you want to have for widget property binding. */

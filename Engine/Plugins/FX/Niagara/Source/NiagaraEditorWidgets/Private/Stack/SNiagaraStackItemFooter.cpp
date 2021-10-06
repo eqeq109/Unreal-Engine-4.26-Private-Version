@@ -3,7 +3,6 @@
 #include "Stack/SNiagaraStackItemFooter.h"
 #include "ViewModels/Stack/NiagaraStackItemFooter.h"
 #include "EditorStyleSet.h"
-#include "NiagaraEditorStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
 
@@ -27,24 +26,8 @@ void SNiagaraStackItemFooter::Construct(const FArguments& InArgs, UNiagaraStackI
 		.IsFocusable(false)
 		.Content()
 		[
-			SNew(SHorizontalBox)
-			+SHorizontalBox::Slot()
-			[
-				// add the dropdown button for advanced properties 
-				SNew(SImage)
-				.Image(this, &SNiagaraStackItemFooter::GetButtonBrush)
-			]
-			+SHorizontalBox::Slot()
-			[
-				// add a little star next to the button if any advanced properties were changed
-				SNew(STextBlock)
-				.LineHeightPercentage(0.5f)
-				.RenderTransform(FSlateRenderTransform(FVector2D(3, -8)))
-				.Text(FText::FromString("*"))
-				.TextStyle(FNiagaraEditorStyle::Get(), "NiagaraEditor.HeadingTextBlock")
-				.ColorAndOpacity(FSlateColor(FLinearColor(0.855, 0.855, 0.855)))
-	            .Visibility(this, &SNiagaraStackItemFooter::GetOverrideIconVisibility)
-			]
+			SNew(SImage)
+			.Image(this, &SNiagaraStackItemFooter::GetButtonBrush)
 		]
 	];
 }
@@ -52,11 +35,6 @@ void SNiagaraStackItemFooter::Construct(const FArguments& InArgs, UNiagaraStackI
 EVisibility SNiagaraStackItemFooter::GetExpandButtonVisibility() const
 {
 	return ItemFooter->GetHasAdvancedContent() ? EVisibility::Visible : EVisibility::Hidden;
-}
-
-EVisibility SNiagaraStackItemFooter::GetOverrideIconVisibility() const
-{
-	return ItemFooter->GetHasAdvancedContent() && ItemFooter->HasChangedAdvancedContent() ? EVisibility::HitTestInvisible : EVisibility::Hidden;
 }
 
 const FSlateBrush* SNiagaraStackItemFooter::GetButtonBrush() const

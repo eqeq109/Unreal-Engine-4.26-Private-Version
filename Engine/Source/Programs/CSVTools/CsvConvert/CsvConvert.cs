@@ -6,14 +6,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
-using System.IO.Compression;
 using CSVStats;
 
 namespace CSVInfo
 {
     class Version
     {
-        private static string VersionString = "1.01";
+        private static string VersionString = "1.00";
 
         public static string Get() { return VersionString; }
     };
@@ -59,12 +58,10 @@ namespace CSVInfo
 				"  <filename>\n" +
 				"OR \n" +
 				"  -in <filename>\n" +
-				"  -outFormat=<csv|bin|csvNoMetadata>\n" +
-				"  [-binCompress=<0|1|2>] (0=none)\n" +
+				"  -outFormat=<csv|bin>\n" +
 				"  [-o outFilename]\n" +
 				"  [-force]\n"+
-				"  [-verify]\n"+
-				"  [-dontFixMissingID] - doesn't generate a CsvID if it's not found in the metadata\n";
+				"  [-verify]\n";
 
 
 			// Read the command line
@@ -106,12 +103,12 @@ namespace CSVInfo
 				{
 					return;
 				}
-				outFilename = GetArg("o", GetArg("out", null));
+				outFilename = GetArg("o", null);
+
 			}
 
-			outFormat = outFormat.ToLower();
+
 			bool bBinOut=false;
-			bool bWriteMetadata = true;
 			if (outFormat == "bin")
 			{
 				bBinOut = true;
@@ -119,11 +116,6 @@ namespace CSVInfo
 			else if (outFormat=="csv")
 			{
 				bBinOut = false;
-			}
-			else if (outFormat == "csvnometadata")
-			{
-				bBinOut = false;
-				bWriteMetadata = false;
 			}
 			else
 			{
@@ -161,75 +153,28 @@ namespace CSVInfo
 
 			Console.WriteLine("Converting "+inFilename+" to "+outFormat+" format. Output filename: "+outFilename);
 			Console.WriteLine("Reading input file...");
+			CsvStats csvStats = CsvStats.ReadCSVFile(inFilename, null);
 
-			bool bFixMissingCsvId = !GetBoolArg("dontFixMissingID");
-			CsvStats csvStats = CsvStats.ReadCSVFile(inFilename, null, 0, bFixMissingCsvId);
 			Console.WriteLine("Writing output file...");
 			if (bBinOut)
-			{
-				int binCompression = GetIntArg("binCompress", 0);
-				CompressionLevel[] compressionLevels = { CompressionLevel.NoCompression, CompressionLevel.Fastest, CompressionLevel.Optimal };
-				if (binCompression < 0 || binCompression > 2)
-				{
-					throw new Exception("Bad compression level specified! Must be 0, 1 or 2");
-				}
-				csvStats.WriteBinFile(outFilename, (CSVStats.CsvBinCompressionLevel)binCompression);
+			{ 
+				csvStats.WriteBinFile(outFilename);
 			}
 			else
 			{
-				csvStats.WriteToCSV(outFilename, bWriteMetadata);
+				csvStats.WriteToCSV(outFilename);
 			}
 
 			if (GetBoolArg("verify"))
 			{
 				// TODO: if verify is specified, use a temp intermediate file?
+				// TODO: Check metadata, stat counts, stat names
 				Console.WriteLine("Verifying output...");
-				CsvStats csvStats2 = CsvStats.ReadCSVFile(outFilename,null);
+				CsvStats csvStats2 = CsvStats.ReadCSVFile(outFilename, null);
 				if (csvStats.SampleCount != csvStats2.SampleCount)
 				{
-					throw new Exception("Verify failed! Sample counts don't match");
+					throw new Exception("Verify failed!");
 				}
-				double sum1 = 0.0;
-				double sum2 = 0.0;
-				foreach (StatSamples stat in csvStats.Stats.Values)
-				{
-					StatSamples stat2 = csvStats2.GetStat(stat.Name);
-
-					if (stat2==null)
-					{
-						throw new Exception("Verify failed: missing stat: "+stat.Name);
-					}
-					for ( int i=0; i<csvStats.SampleCount; i++ )
-					{
-						sum1 += stat.samples[i];
-						sum2 += stat2.samples[i];
-					}
-				}
-				if (sum1 != sum2)
-				{
-					if (bBinOut == false)
-					{
-						// conversion to CSV is lossy. Just check the sums are within 0.25%
-						double errorMargin = Math.Abs(sum1) * 0.0025;
-						if (Math.Abs(sum1-sum2)> errorMargin)
-						{
-							throw new Exception("Verify failed: stat sums didn't match!");
-						}
-					}
-					else
-					{
-						throw new Exception("Verify failed: stat sums didn't match!");
-					}
-				}
-				// conversion to CSV is lossy. Hashes won't match because stat totals will be slightly different, so skip this check
-				if (bBinOut)
-				{
-					if (csvStats.MakeCsvIdHash() != csvStats2.MakeCsvIdHash())
-					{
-						throw new Exception("Verify failed: hashes didn't match");
-					}
-				}
-				Console.WriteLine("Verify success: Input and output files matched");
 			}
 		}
 	}

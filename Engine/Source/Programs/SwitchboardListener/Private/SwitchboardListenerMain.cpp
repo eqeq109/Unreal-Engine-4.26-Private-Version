@@ -281,10 +281,7 @@ INT32_MAIN_INT32_ARGC_TCHAR_ARGV()
 	}
 
 #if PLATFORM_WINDOWS
-	if (Options.MinimizeOnLaunch)
-	{
-		ShowWindow(GetConsoleWindow(), SW_MINIMIZE);
-	}
+	ShowWindow(GetConsoleWindow(), SW_MINIMIZE);
 #endif
 
 	const bool bListenerResult = RunSwitchboardListener(Options);

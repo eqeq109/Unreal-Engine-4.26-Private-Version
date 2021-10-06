@@ -23,7 +23,6 @@
 
 class FMenuBuilder;
 class FTimingGraphTrack;
-class FUICommandList;
 
 namespace Trace
 {
@@ -83,14 +82,12 @@ public:
 	void ResetStats();
 	void UpdateStats(double StartTime, double EndTime);
 
+	void ToggleGraphSeries(TSharedRef<FTimingGraphTrack> GraphTrack, FTimerNodeRef NodePtr);
+
 	FTimerNodePtr GetTimerNode(uint32 TimerId) const;
 	void SelectTimerNode(uint32 TimerId);
 
-	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
-
 private:
-
-	void InitCommandList();
 	void UpdateTree();
 
 	void FinishAggregation();
@@ -114,9 +111,6 @@ private:
 	TSharedPtr<SWidget> TreeView_GetMenuContent();
 	void TreeView_BuildSortByMenu(FMenuBuilder& MenuBuilder);
 	void TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder);
-
-	bool ContextMenu_CopySelectedToClipboard_CanExecute() const;
-	void ContextMenu_CopySelectedToClipboard_Execute();
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Tree View - Columns' Header
@@ -253,15 +247,6 @@ private:
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	void ToggleTimingViewEventFilter(FTimerNodePtr TimerNode) const;
-
-	TSharedPtr<FTimingGraphTrack> GetTimingViewMainGraphTrack() const;
-	void ToggleGraphSeries(TSharedRef<FTimingGraphTrack> GraphTrack, FTimerNodeRef NodePtr) const;
-	bool IsSeriesInTimingViewMainGraph(FTimerNodePtr TimerNode) const;
-	void ToggleTimingViewMainGraphEventSeries(FTimerNodePtr TimerNode) const;
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
 	/**
 	 * Ticks this widget.  Override in derived classes, but always call the parent implementation.
 	 *
@@ -277,8 +262,6 @@ private:
 
 	/** A weak pointer to the profiler session used to populate this widget. */
 	TSharedPtr<const Trace::IAnalysisSession>/*Weak*/ Session;
-
-	TSharedPtr<FUICommandList> CommandList;
 
 	//////////////////////////////////////////////////
 	// Tree View, Columns

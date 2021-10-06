@@ -109,14 +109,6 @@ class UChaosWheeledVehicleMovementComponent;
 		UPROPERTY(EditAnywhere, Category = Wheel, meta = (ClampMin = "0.0", UIMin = "0.0", ClampMax = "1.0", UIMax = "1.0"))
 		float SideSlipModifier;
 
-		/** Wheel Longitudinal Slip Threshold */
-		UPROPERTY(EditAnywhere, Category = Wheel, meta = (ClampMin = "0.0", UIMin = "0.0"))
-		float SlipThreshold;
-
-		/** Wheel Lateral Skid Threshold */
-		UPROPERTY(EditAnywhere, Category = Wheel, meta = (ClampMin = "0.0", UIMin = "0.0"))
-		float SkidThreshold;
-
 		///** Damping rate for this wheel (Kgm^2/s) */
 		//UPROPERTY(EditAnywhere, Category = Wheel, meta = (ClampMin = "0.01", UIMin = "0.01"))
 		//float DampingRate;
@@ -357,8 +349,6 @@ class UChaosWheeledVehicleMovementComponent;
 			PWheelConfig.LongitudinalFrictionMultiplier = this->LongitudinalFrictionForceMultiplier;
 			PWheelConfig.LateralFrictionMultiplier = this->LateralFrictionForceMultiplier;
 			PWheelConfig.SideSlipModifier = this->SideSlipModifier;
-			PWheelConfig.SlipThreshold = this->SlipThreshold;
-			PWheelConfig.SkidThreshold = this->SkidThreshold;
 		}
 
 		void FillSuspensionSetup()

@@ -12,8 +12,6 @@ class FVideoDecoderOutput;
 using FVideoDecoderOutputPtr = TSharedPtr<FVideoDecoderOutput, ESPMode::ThreadSafe>;
 class IAudioDecoderOutput;
 using IAudioDecoderOutputPtr = TSharedPtr<IAudioDecoderOutput, ESPMode::ThreadSafe>;
-class IMetaDataDecoderOutput;
-using IMetaDataDecoderOutputPtr = TSharedPtr<IMetaDataDecoderOutput, ESPMode::ThreadSafe>;
 
 // ---------------------------------------------------------------------------------------------
 
@@ -68,7 +66,6 @@ public:
 	virtual void OnAudioFlush() = 0;
 	virtual void PresentVideoFrame(const FVideoDecoderOutputPtr& InVideoFrame) = 0;
 	virtual void PresentAudioFrame(const IAudioDecoderOutputPtr& InAudioFrame) = 0;
-	virtual void PresentMetadataSample(const IMetaDataDecoderOutputPtr& InMetadataSample) = 0;
 	virtual bool CanReceiveVideoSamples(int32 NumFrames) = 0;
 	virtual bool CanReceiveAudioSamples(int32 NumFrames) = 0;
 	virtual void PrepareForDecoderShutdown() = 0;
@@ -97,26 +94,12 @@ public:
 
 	// -------- PlayerAdapter (Plugin/Native) API
 
-	struct FStreamSelectionAttributes
-	{
-		TOptional<FString> Kind;
-		TOptional<FString> Language_ISO639;
-		TOptional<int32> TrackIndexOverride;
-		void Reset()
-		{
-			Kind.Reset();
-			Language_ISO639.Reset();
-			TrackIndexOverride.Reset();
-		}
-	};
-
 	struct FPlaystartOptions
 	{
 		TOptional<FTimespan>		TimeOffset;
-		FStreamSelectionAttributes	InitialAudioTrackAttributes;
+		TOptional<int32>			AudioTrackIndex;
 		TOptional<int32>			MaxVerticalStreamResolution;
 		TOptional<int32>			MaxBandwidthForStreaming;
-		bool						bDoNotPreload = false;
 	};
 
 	virtual bool OpenInternal(const FString& Url, const Electra::FParamDict& PlayerOptions, const FPlaystartOptions& InPlaystartOptions) = 0;

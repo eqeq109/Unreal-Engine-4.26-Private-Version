@@ -71,6 +71,10 @@ FTrackEditorThumbnail::FTrackEditorThumbnail(const FOnThumbnailDraw& InOnDraw, c
 
 FTrackEditorThumbnail::~FTrackEditorThumbnail()
 {
+	if (ThumbnailRenderTarget && !bHasFinishedDrawing)
+	{
+		FlushRenderingCommands();
+	}
 	DestroyTexture();
 }
 
@@ -99,38 +103,36 @@ void FTrackEditorThumbnail::AssignFrom(TSharedRef<FSlateTextureData, ESPMode::Th
 	);
 }
 
+
 void FTrackEditorThumbnail::DestroyTexture()
 {
 	if (ThumbnailRenderTarget || ThumbnailTexture)
 	{
-		// UE-114425: Defer the destroy until the next tick to work around the RHI getting destroyed before the render command completes.
 		FSlateTexture2DRHIRef*               InThumbnailTexture      = ThumbnailTexture;
 		FSlateTextureRenderTarget2DResource* InThumbnailRenderTarget = ThumbnailRenderTarget;
 
 		ThumbnailTexture      = nullptr;
 		ThumbnailRenderTarget = nullptr;
 
-		GEditor->GetTimerManager()->SetTimerForNextTick([this, InThumbnailRenderTarget, InThumbnailTexture]()
-		{
-			ENQUEUE_RENDER_COMMAND(DestroyTexture)(
-				[InThumbnailRenderTarget, InThumbnailTexture](FRHICommandList& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(DestroyTexture)(
+			[InThumbnailRenderTarget, InThumbnailTexture](FRHICommandList& RHICmdList)
+			{
+				if (InThumbnailTexture)
 				{
-					if (InThumbnailTexture)
-					{
-						InThumbnailTexture->ReleaseResource();
-						delete InThumbnailTexture;
-					}
-
-					if (InThumbnailRenderTarget)
-					{
-						InThumbnailRenderTarget->ReleaseResource();
-						delete InThumbnailRenderTarget;
-					}
+					InThumbnailTexture->ReleaseResource();
+					delete InThumbnailTexture;
 				}
-			);
-		});
+
+				if (InThumbnailRenderTarget)
+				{
+					InThumbnailRenderTarget->ReleaseResource();
+					delete InThumbnailRenderTarget;
+				}
+			}
+		);
 	}
 }
+
 
 void FTrackEditorThumbnail::ResizeRenderTarget(const FIntPoint& InSize)
 {

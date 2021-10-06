@@ -7,8 +7,6 @@
 #include "Styling/WidgetStyle.h"
 #include "Misc/MemStack.h"
 #include "FastUpdate/SlateInvalidationRootHandle.h"
-#include "FastUpdate/SlateInvalidationWidgetIndex.h"
-#include "FastUpdate/SlateInvalidationWidgetSortOrder.h"
 #include "FastUpdate/WidgetUpdateFlags.h"
 #include "Layout/Clipping.h"
 #include "Layout/FlowDirection.h"
@@ -17,70 +15,35 @@
 class SWidget;
 class FPaintArgs;
 struct FFastPathPerFrameData;
-class FSlateInvalidationWidgetHeap;
-class FSlateInvalidationWidgetList;
 struct FSlateWidgetPersistentState;
+struct FWidgetUpdateList;
 class FSlateInvalidationRoot;
 
 enum class EInvalidateWidgetReason : uint8;
 
-#define UE_SLATE_WITH_WIDGETPROXY_WEAKPTR 0
-#define UE_SLATE_VERIFY_WIDGETPROXY_WEAKPTR_STALE 0
-#define UE_SLATE_WITH_WIDGETPROXY_WIDGETTYPE 0
-
 class FWidgetProxy
 {
 public:
-	FWidgetProxy(TSharedRef<SWidget>& InWidget);
+	FWidgetProxy(SWidget& InWidget);
 
-	int32 Update(const FPaintArgs& PaintArgs, FSlateWindowElementList& OutDrawElements);
+	int32 Update(
+		const FPaintArgs& PaintArgs,
+		int32 MyIndex,
+		FSlateWindowElementList& OutDrawElements);
 
-	bool ProcessInvalidation(FSlateInvalidationWidgetHeap& UpdateList, FSlateInvalidationWidgetList& FastPathWidgetList, FSlateInvalidationRoot& Root);
+	bool ProcessInvalidation(FWidgetUpdateList& UpdateList, TArray<FWidgetProxy>& FastPathWidgetList, FSlateInvalidationRoot& Root);
 
-	void MarkProxyUpdatedThisFrame(FSlateInvalidationWidgetHeap& UpdateList);
-
-#if UE_SLATE_WITH_WIDGETPROXY_WEAKPTR
-	SWidget* GetWidget() const
-	{
-#if UE_SLATE_VERIFY_WIDGETPROXY_WEAKPTR_STALE
-		ensureAlways(!Widget.IsStale()); // Widget.Object != nullptr && !Widget.WeakRerenceCount.IsValid()
-#endif
-		return Widget.Pin().Get();
-	}
-	TSharedPtr<SWidget> GetWidgetAsShared() const;
-	void ResetWidget() { Widget.Reset(); }
-	bool IsSameWidget(const SWidget* InWidget) const
-	{
-#if UE_SLATE_VERIFY_WIDGETPROXY_WEAKPTR_STALE
-		return (InWidget == Widget.Pin().Get()) || (Widget.IsStale() && GetTypeHash(Widget) == GetTypeHash(InWidget));
-#else
-		return InWidget == Widget.Pin().Get();
-#endif
-	}
-#else
-	SWidget* GetWidget() const { return Widget; }
-	TSharedPtr<SWidget> GetWidgetAsShared() const;
-	void ResetWidget() { Widget = nullptr; }
-	bool IsSameWidget(const SWidget* InWidget) const { return InWidget == Widget; }
-#endif
+	void MarkProxyUpdatedThisFrame(FWidgetUpdateList& UpdateList);
 
 private:
-	int32 Repaint(const FPaintArgs& PaintArgs, FSlateWindowElementList& OutDrawElements) const;
-
-private:
-#if UE_SLATE_WITH_WIDGETPROXY_WEAKPTR
-	TWeakPtr<SWidget> Widget;
-#else
-	SWidget* Widget;
-#endif
-#if UE_SLATE_WITH_WIDGETPROXY_WIDGETTYPE
-	FName WidgetType;
-#endif
+	int32 Repaint(const FPaintArgs& PaintArgs, int32 MyIndex, FSlateWindowElementList& OutDrawElements) const;
 
 public:
-	FSlateInvalidationWidgetIndex Index;
-	FSlateInvalidationWidgetIndex ParentIndex;
-	FSlateInvalidationWidgetIndex LeafMostChildIndex;
+	SWidget* Widget;
+	int32 Index;
+	int32 ParentIndex;
+	int32 NumChildren;
+	int32 LeafMostChildIndex;
 	EWidgetUpdateFlags UpdateFlags;
 	EInvalidateWidgetReason CurrentInvalidateReason;
 	/** The widgets own visibility */
@@ -88,20 +51,64 @@ public:
 	/** Used to make sure we don't double process a widget that is invalidated.  (a widget can invalidate itself but an ancestor can end up painting that widget first thus rendering the child's own invalidate unnecessary */
 	uint8 bUpdatedSinceLastInvalidate : 1;
 	/** Is the widget already in a pending update list.  If it already is in an update list we don't bother adding it again */
-	uint8 bContainedByWidgetHeap : 1;
-	/** Use with "Slate.InvalidationRoot.VerifyWidgetVisibility". Cached the last FastPathVisible value to find widgets that do not call Invalidate properly. */
-	uint8 bDebug_LastFrameVisible : 1;
-	uint8 bDebug_LastFrameVisibleSet : 1;
+	uint8 bInUpdateList : 1;
+	uint8 bInvisibleDueToParentOrSelfVisibility : 1;
+	uint8 bChildOrderInvalid : 1;
 };
 
-#if !UE_SLATE_WITH_WIDGETPROXY_WIDGETTYPE
 static_assert(sizeof(FWidgetProxy) <= 32, "FWidgetProxy should be 32 bytes");
-#endif
 
-#if !UE_SLATE_WITH_WIDGETPROXY_WEAKPTR
 static_assert(TIsTriviallyDestructible<FWidgetProxy>::Value == true, "FWidgetProxy must be trivially destructible");
+
 template <> struct TIsPODType<FWidgetProxy> { enum { Value = true }; };
-#endif
+
+struct FWidgetUpdateList
+{
+public:
+	inline void Push(FWidgetProxy& Proxy)
+	{
+		if (!Heap.Contains(Proxy.Index))
+		{
+			Proxy.bInUpdateList = true;
+			Heap.HeapPush(Proxy.Index, TGreater<>());
+		}
+	}
+
+	inline int32 Pop()
+	{
+		int32 Index;
+		Heap.HeapPop(Index, TGreater<>(), false);
+		return Index;
+	}
+
+	inline void Empty()
+	{
+		Heap.Empty();
+	}
+
+	inline void Reset()
+	{
+		Heap.Reset();
+	}
+
+	inline int32 Num() const
+	{
+		return Heap.Num();
+	}
+
+	bool Contains(FWidgetProxy& Proxy) const
+	{
+		return Heap.Contains(Proxy.Index);
+	}
+
+	const TArray<int32, TInlineAllocator<100>>& GetRawData() const
+	{
+		return Heap;
+	}
+private:
+	TArray<int32, TInlineAllocator<100>> Heap;
+};
+
 
 /**
  * Represents the state of a widget from when it last had SWidget::Paint called on it. 
@@ -137,36 +144,51 @@ struct FSlateWidgetPersistentState
 	static const FSlateWidgetPersistentState NoState;
 };
 
+struct FWidgetStackData
+{
+	FWidgetStackData()
+		: ClipStackIndex(INDEX_NONE)
+		, IncomingLayerId(0)
+		, CurrentMaxLayerId(0)
+	{}
+
+	/** Index into the current stack where the widgets clip state is stored */
+	int32 ClipStackIndex;
+
+	/** The incoming layer id for children and draw elements*/
+	int32 IncomingLayerId;
+
+	/**
+	* Current Max layer id being computed.
+	* This is the layer id that would be returned from the widget during a traditional recurive
+	* OnPaint call
+	*/
+	int32 CurrentMaxLayerId;
+};
+
+template <> struct TIsPODType<FWidgetStackData> { enum { Value = true }; };
+
 class FWidgetProxyHandle
 {
 	friend class SWidget;
+	friend class FSlateDebugging;
 	friend class FSlateInvalidationRoot;
-	friend class FSlateInvalidationWidgetList;
-
 public:
 	FWidgetProxyHandle()
-		: WidgetIndex(FSlateInvalidationWidgetIndex::Invalid)
+		: MyIndex(INDEX_NONE)
 		, GenerationNumber(INDEX_NONE)
+
 	{}
 
-	/** @returns true if it has a valid InvalidationRoot and Index. */
-	SLATECORE_API bool IsValid(const SWidget* Widget) const;
-	/**
-	 * @returns true if it has a valid InvalidationRoot owner
-	 * but it could be consider invalid because the InvalidationRoot needs to be rebuilt. */
-	SLATECORE_API bool HasValidInvalidationRootOwnership(const SWidget* Widget) const;
+	SLATECORE_API bool IsValid() const;
 
 	FSlateInvalidationRootHandle GetInvalidationRootHandle() const { return InvalidationRootHandle; }
-
-	FSlateInvalidationWidgetIndex GetWidgetIndex() const { return WidgetIndex; }
-	FSlateInvalidationWidgetSortOrder GetWidgetSortOrder() const { return WidgetSortOrder; }
+	FSlateInvalidationRoot* GetInvalidationRoot() const { return InvalidationRootHandle.Advanced_GetInvalidationRootNoCheck(); }
 
 	FWidgetProxy& GetProxy();
 	const FWidgetProxy& GetProxy() const;
 
-private:
-	bool HasValidIndexAndInvalidationRootHandle() const;
-	FSlateInvalidationRoot* GetInvalidationRoot() const { return InvalidationRootHandle.Advanced_GetInvalidationRootNoCheck(); }
+	int32 GetIndex(bool bEvenIfInvalid = false) const { return bEvenIfInvalid || IsValid() ? MyIndex : INDEX_NONE; }
 
 	/**
 	 * Marks the widget as updated this frame
@@ -176,19 +198,16 @@ private:
 	void MarkWidgetUpdatedThisFrame();
 	
 	void MarkWidgetDirty(EInvalidateWidgetReason InvalidateReason);
-	SLATECORE_API void UpdateWidgetFlags(const SWidget* Widget, EWidgetUpdateFlags NewFlags);
+	SLATECORE_API void UpdateWidgetFlags(EWidgetUpdateFlags NewFlags);
 
 private:
-	FWidgetProxyHandle(const FSlateInvalidationRootHandle& InInvalidationRoot, FSlateInvalidationWidgetIndex InIndex, FSlateInvalidationWidgetSortOrder InSortIndex, int32 InGenerationNumber);
-	FWidgetProxyHandle(FSlateInvalidationWidgetIndex InIndex);
+	FWidgetProxyHandle(FSlateInvalidationRoot& InInvalidationRoot, int32 InIndex);
 
 private:
-	/** The root of invalidation tree this proxy belongs to. */
+	/** The root of invalidation tree this proxy belongs to */
 	FSlateInvalidationRootHandle InvalidationRootHandle;
-	/** Index to myself in the fast path list. */
-	FSlateInvalidationWidgetIndex WidgetIndex;
-	/** Order of the widget in the fast path list. */
-	FSlateInvalidationWidgetSortOrder WidgetSortOrder;
-	/** This serves as an efficient way to test for validity which does not require invalidating all handles directly. */
+	/** Index to myself in the fast path list */
+	int32 MyIndex;
+	/** This serves as an efficient way to test for validity which does not require invalidating all handles directly*/
 	int32 GenerationNumber;
 };

@@ -268,7 +268,7 @@ bool FAndroidMediaPlayer::Open(const FString& Url, const IMediaOptions* /*Option
 			// possible it is in a PAK file
 			FPakPlatformFile* PakPlatformFile = (FPakPlatformFile*)(FPlatformFileManager::Get().FindPlatformFile(FPakPlatformFile::GetTypeName()));
 
-			TRefCountPtr<FPakFile> PakFile;
+			FPakFile* PakFile = NULL;
 			FPakEntry FileEntry;
 			if (PakPlatformFile == nullptr || !PakPlatformFile->FindFileInPakFiles(*FilePath, &PakFile, &FileEntry))
 			{

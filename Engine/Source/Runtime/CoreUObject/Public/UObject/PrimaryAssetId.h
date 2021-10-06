@@ -31,17 +31,17 @@ struct FPrimaryAssetType
 
 	bool operator==(const FPrimaryAssetType& Other) const
 	{
-		return Name == Other.Name;
+		return Name == Other;
 	}
 
 	bool operator!=(const FPrimaryAssetType& Other) const
 	{
-		return Name != Other.Name;
+		return Name != Other;
 	}
 
 	FPrimaryAssetType& operator=(const FPrimaryAssetType& Other)
 	{
-		Name = Other.Name;
+		Name = Other;
 		return *this;
 	}
 

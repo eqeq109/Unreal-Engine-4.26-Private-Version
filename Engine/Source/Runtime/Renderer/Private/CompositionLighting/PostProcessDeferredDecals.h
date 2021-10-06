@@ -21,14 +21,9 @@ inline bool IsWritingToDepth(FDecalRenderingCommon::ERenderTargetMode RenderTarg
 		|| RenderTargetMode == FDecalRenderingCommon::RTM_SceneColorAndGBufferDepthWriteNoNormal;
 }
 
-BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FDecalPassUniformParameters,)
-	SHADER_PARAMETER_STRUCT(FSceneTextureUniformParameters, SceneTextures)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
-END_GLOBAL_SHADER_PARAMETER_STRUCT()
-
 struct FDeferredDecalPassTextures
 {
-	TRDGUniformBufferRef<FDecalPassUniformParameters> DecalPassUniformBuffer = nullptr;
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer = nullptr;
 
 	// Potential render targets for the decal pass.
 	FRDGTextureMSAA Depth;
@@ -50,7 +45,8 @@ struct FDeferredDecalPassTextures
 
 FDeferredDecalPassTextures GetDeferredDecalPassTextures(
 	FRDGBuilder& GraphBuilder,
-	const FViewInfo& View);
+	const FViewInfo& View,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
 
 void AddDeferredDecalPass(
 	FRDGBuilder& GraphBuilder,
@@ -59,7 +55,7 @@ void AddDeferredDecalPass(
 	EDecalRenderStage RenderStage);
 
 BEGIN_SHADER_PARAMETER_STRUCT(FDeferredDecalPassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FDecalPassUniformParameters, DecalPass)
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 

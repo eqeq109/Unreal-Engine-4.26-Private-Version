@@ -35,8 +35,6 @@
 
 //DEFINE_LOG_CATEGORY_STATIC(USkeletalMeshSimulationComponentLogging, NoLogging, All);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 USkeletalMeshSimulationComponent::USkeletalMeshSimulationComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 
@@ -151,7 +149,7 @@ void USkeletalMeshSimulationComponent::OnCreatePhysicsState()
 			USkeletalMesh* SkeletalMesh = SkelMeshComponent->SkeletalMesh;
 			if (SkeletalMesh)
 			{
-				UPhysicsAsset* PhysicsAsset = OverridePhysicsAsset ? OverridePhysicsAsset : SkelMeshComponent->SkeletalMesh->GetPhysicsAsset();
+				UPhysicsAsset* PhysicsAsset = OverridePhysicsAsset ? OverridePhysicsAsset : SkelMeshComponent->SkeletalMesh->PhysicsAsset;
 				FPhysicsAssetSimulationUtil::BuildParams(this, OwningActor, SkelMeshComponent, PhysicsAsset, OutPhysicsParams);
 			}
 
@@ -272,4 +270,3 @@ void USkeletalMeshSimulationComponent::TickComponent(float DeltaTime, enum ELeve
 	};
 }
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

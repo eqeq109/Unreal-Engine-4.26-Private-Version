@@ -334,11 +334,7 @@ struct FDMXImportGDTFModel
 USTRUCT(BlueprintType)
 struct FDMXImportGDTFGeometryBase
 {
-	GENERATED_BODY()
-
-	FDMXImportGDTFGeometryBase()
-		: Position(FMatrix::Identity)
-	{}
+    GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DMX")
     FName Name;

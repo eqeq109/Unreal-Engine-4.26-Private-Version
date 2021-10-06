@@ -85,13 +85,13 @@ struct FARFaceUpdatePayload
 	FARSessionPayload SessionPayload;
 	
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
-	FVector LeftEyePosition = FVector(0.0f);
+	FVector LeftEyePosition;
 	
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
-	FVector RightEyePosition = FVector(0.0f);
+	FVector RightEyePosition;
 
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
-	FVector LookAtTarget = FVector(0.0f);
+	FVector LookAtTarget;
 };
 
 
@@ -125,7 +125,7 @@ struct FARQRCodeUpdatePayload
 	FTransform WorldTransform = FTransform::Identity;
 	
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
-	FVector Extents = FVector(0.0f);
+	FVector Extents;
 
 	UPROPERTY(BlueprintReadWrite, Category = "AR")
 	FString QRCode;

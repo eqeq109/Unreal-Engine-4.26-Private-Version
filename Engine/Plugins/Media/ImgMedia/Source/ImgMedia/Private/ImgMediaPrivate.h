@@ -42,7 +42,4 @@ namespace ImgMedia
 
 	/** Name of the ProxyOverride media option. */
 	static const FName ProxyOverrideOption("ProxyOverride");
-
-	/** Name of the MipMapInfo media option. */
-	static const FName MipMapInfoOption("ImgMipMapInfo");
 }

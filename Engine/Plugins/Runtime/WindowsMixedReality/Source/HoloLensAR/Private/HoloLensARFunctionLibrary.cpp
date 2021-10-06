@@ -114,48 +114,48 @@ FVector UHoloLensARFunctionLibrary::GetWorldSpaceRayFromCameraPoint(FVector2D pi
 	return ARSystem->GetWorldSpaceRayFromCameraPoint(pixelCoordinate);
 }
 
-bool UHoloLensARFunctionLibrary::StartCameraCapture()
+void UHoloLensARFunctionLibrary::StartCameraCapture()
 {
 	TSharedPtr<FHoloLensARSystem, ESPMode::ThreadSafe> ARSystem = FHoloLensModuleAR::GetHoloLensARSystem();
 	if (!ARSystem.IsValid())
 	{
-		return false;
+		return;
 	}
 
-	return ARSystem->StartCameraCapture();
+	ARSystem->StartCameraCapture();
 }
 
-bool UHoloLensARFunctionLibrary::StopCameraCapture()
+void UHoloLensARFunctionLibrary::StopCameraCapture()
 {
 	TSharedPtr<FHoloLensARSystem, ESPMode::ThreadSafe> ARSystem = FHoloLensModuleAR::GetHoloLensARSystem();
 	if (!ARSystem.IsValid())
 	{
-		return false;
+		return;
 	}
 
-	return ARSystem->StopCameraCapture();
+	ARSystem->StopCameraCapture();
 }
 
-bool UHoloLensARFunctionLibrary::StartQRCodeCapture()
+void UHoloLensARFunctionLibrary::StartQRCodeCapture()
 {
 	TSharedPtr<FHoloLensARSystem, ESPMode::ThreadSafe> ARSystem = FHoloLensModuleAR::GetHoloLensARSystem();
 	if (!ARSystem.IsValid())
 	{
-		return false;
+		return;
 	}
 
-	return ARSystem->SetupQRCodeTracking();
+	ARSystem->SetupQRCodeTracking();
 }
 
-bool UHoloLensARFunctionLibrary::StopQRCodeCapture()
+void UHoloLensARFunctionLibrary::StopQRCodeCapture()
 {
 	TSharedPtr<FHoloLensARSystem, ESPMode::ThreadSafe> ARSystem = FHoloLensModuleAR::GetHoloLensARSystem();
 	if (!ARSystem.IsValid())
 	{
-		return false;
+		return;
 	}
 
-	return ARSystem->StopQRCodeTracking();
+	ARSystem->StopQRCodeTracking();
 }
 
 bool UHoloLensARFunctionLibrary::ShowKeyboard()
@@ -177,15 +177,3 @@ UWMRARPin* UHoloLensARFunctionLibrary::CreateNamedARPinAroundAnchor(FName Name, 
 	}
 	return ARSystem->WMRCreateNamedARPinAroundAnchor(Name, AnchorId);
 }
-
-void UHoloLensARFunctionLibrary::SetUseLegacyHandMeshVisualization(bool bUseLegacyHandMeshVisualization)
-{
-	TSharedPtr<FHoloLensARSystem, ESPMode::ThreadSafe> ARSystem = FHoloLensModuleAR::GetHoloLensARSystem();
-	if (!ARSystem.IsValid())
-	{
-		return;
-	}
-
-	return ARSystem->SetUseLegacyHandMeshVisualization(bUseLegacyHandMeshVisualization);
-}
-

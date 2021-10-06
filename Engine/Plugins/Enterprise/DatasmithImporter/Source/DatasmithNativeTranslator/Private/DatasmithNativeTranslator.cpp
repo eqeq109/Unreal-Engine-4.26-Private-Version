@@ -15,7 +15,6 @@
 #include "StaticMeshOperations.h"
 #include "Templates/SharedPointer.h"
 #include "Templates/UniquePtr.h"
-#include "Misc/Paths.h"
 #include "UObject/StrongObjectPtr.h"
 
 
@@ -121,11 +120,6 @@ bool FDatasmithNativeTranslator::LoadStaticMesh(const TSharedRef<IDatasmithMeshE
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithNativeTranslator::LoadStaticMesh);
 
 	using namespace DatasmithNativeTranslatorImpl;
-
-	if (MeshElement->GetFile() == nullptr || !FPaths::FileExists( MeshElement->GetFile() ))
-	{
-		return false;
-	}
 
 	int32 ExtractionFailure = 0;
 	for (UDatasmithMesh* DatasmithMesh : GetDatasmithMeshFromMeshElement( MeshElement ))

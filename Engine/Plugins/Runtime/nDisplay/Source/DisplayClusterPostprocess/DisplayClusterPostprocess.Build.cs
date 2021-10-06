@@ -10,26 +10,18 @@ public class DisplayClusterPostprocess : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
+				"Engine"
 			});
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
-				"CoreUObject",
 				"DisplayCluster",
-				"DisplayClusterShaders",
-				"Engine",
+				"OutputRemap",
 				"RHI",
+				"TextureShare",
+				"TextureShareCore",
+				"TextureShareD3D12"
 			});
-
-		if (Target.Platform == UnrealTargetPlatform.Win64)
-		{
-			PrivateDependencyModuleNames.AddRange(
-				new string[] {
-					"TextureShare",
-					"TextureShareCore",
-					"TextureShareD3D12"
-				});
-		}
 
 		if (Target.bBuildEditor == true)
 		{

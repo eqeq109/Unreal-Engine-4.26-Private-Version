@@ -108,7 +108,6 @@ class FTonemapperGrainJitterDim    : SHADER_PERMUTATION_BOOL("USE_GRAIN_JITTER")
 class FTonemapperSwitchAxis        : SHADER_PERMUTATION_BOOL("NEEDTOSWITCHVERTICLEAXIS");
 class FTonemapperMsaaDim           : SHADER_PERMUTATION_BOOL("METAL_MSAA_HDR_DECODE");
 class FTonemapperEyeAdaptationDim  : SHADER_PERMUTATION_BOOL("EYEADAPTATION_EXPOSURE_FIX");
-class FTonemapperUseFXAA           : SHADER_PERMUTATION_BOOL("USE_FXAA");
 
 using FCommonDomain = TShaderPermutationDomain<
 	FTonemapperBloomDim,
@@ -118,8 +117,7 @@ using FCommonDomain = TShaderPermutationDomain<
 	FTonemapperSharpenDim,
 	FTonemapperGrainJitterDim,
 	FTonemapperSwitchAxis,
-	FTonemapperMsaaDim,
-	FTonemapperUseFXAA>;
+	FTonemapperMsaaDim>;
 
 bool ShouldCompileCommonPermutation(const FGlobalShaderPermutationParameters& Parameters, const FCommonDomain& PermutationVector)
 {
@@ -131,11 +129,6 @@ bool ShouldCompileCommonPermutation(const FGlobalShaderPermutationParameters& Pa
 
 	// MSAA pre-resolve step only used on iOS atm
 	if (PermutationVector.Get<FTonemapperMsaaDim>() && !IsMetalMobilePlatform(Parameters.Platform))
-	{
-		return false;
-	}
-
-	if (PermutationVector.Get<FTonemapperUseFXAA>() && !IsMobilePlatform(Parameters.Platform))
 	{
 		return false;
 	}
@@ -177,10 +170,7 @@ FCommonDomain BuildCommonPermutationDomain(const FViewInfo& View, bool bGammaOnl
 	PermutationVector.Set<FTonemapperSharpenDim>(CVarTonemapperSharpen.GetValueOnRenderThread() > 0.0f);	
 	PermutationVector.Set<FTonemapperSwitchAxis>(bSwitchVerticalAxis);
 	PermutationVector.Set<FTonemapperMsaaDim>(bMetalMSAAHDRDecode);
-	if (IsMobilePlatform(View.GetShaderPlatform()))
-	{
-		PermutationVector.Set<FTonemapperUseFXAA>(View.AntiAliasingMethod == AAM_FXAA);
-	}
+
 	return PermutationVector;
 }
 
@@ -222,18 +212,18 @@ FDesktopDomain RemapPermutation(FDesktopDomain PermutationVector, ERHIFeatureLev
 	// You most likely need Bloom anyway.
 	CommonPermutationVector.Set<FTonemapperBloomDim>(true);
 
-	// Mobile supports only sRGB and LinearNoToneCurve output
-	if (FeatureLevel <= ERHIFeatureLevel::ES3_1 &&
-		PermutationVector.Get<FTonemapperOutputDeviceDim>() != ETonemapperOutputDevice::LinearNoToneCurve)
-	{
-		PermutationVector.Set<FTonemapperOutputDeviceDim>(ETonemapperOutputDevice::sRGB);
-	}
-
 	// Disable grain quantization for LinearNoToneCurve and LinearWithToneCurve output device
 	if (PermutationVector.Get<FTonemapperOutputDeviceDim>() == ETonemapperOutputDevice::LinearNoToneCurve || PermutationVector.Get<FTonemapperOutputDeviceDim>() == ETonemapperOutputDevice::LinearWithToneCurve)
 		PermutationVector.Set<FTonemapperGrainQuantizationDim>(false);
 	else
 		PermutationVector.Set<FTonemapperGrainQuantizationDim>(true);
+	
+	// Mobile supports only sRGB and LinearNoToneCurve output
+	if (FeatureLevel <= ERHIFeatureLevel::ES3_1 && 
+		PermutationVector.Get<FTonemapperOutputDeviceDim>() != ETonemapperOutputDevice::LinearNoToneCurve)
+	{
+		PermutationVector.Set<FTonemapperOutputDeviceDim>(ETonemapperOutputDevice::sRGB);
+	}
 	
 	PermutationVector.Set<FCommonDomain>(CommonPermutationVector);
 	return PermutationVector;

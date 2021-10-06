@@ -16,7 +16,9 @@
 #include "PipelineStateCache.h"
 
 #if NV_GEFORCENOW
-#include "GeForceNOWWrapper.h"
+THIRD_PARTY_INCLUDES_START
+#include "GfnRuntimeSdk_CAPI.h"
+THIRD_PARTY_INCLUDES_END
 #endif
 
 IMPLEMENT_TYPE_LAYOUT(FRayTracingGeometryInitializer);
@@ -252,7 +254,7 @@ void RHIInit(bool bHasEditorToken)
 				}
 
 				// Update the crash context analytics
-				FGenericCrashContext::SetEngineData(TEXT("RHI.RHIName"), GDynamicRHI ? (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1 ? FString(GDynamicRHI->GetName()) + TEXT("_ES31") : GDynamicRHI->GetName()) : TEXT("Unknown"));
+				FGenericCrashContext::SetEngineData(TEXT("RHI.RHIName"), GDynamicRHI ? GDynamicRHI->GetName() : TEXT("Unknown"));
 				FGenericCrashContext::SetEngineData(TEXT("RHI.AdapterName"), GRHIAdapterName);
 				FGenericCrashContext::SetEngineData(TEXT("RHI.UserDriverVersion"), GRHIAdapterUserDriverVersion);
 				FGenericCrashContext::SetEngineData(TEXT("RHI.InternalDriverVersion"), GRHIAdapterInternalDriverVersion);
@@ -276,8 +278,8 @@ void RHIInit(bool bHasEditorToken)
 	bool bDetectAndWarnBadDrivers = true;
 	if (IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
 	{
-		const GfnRuntimeError GfnResult = GeForceNOWWrapper::Get().Initialize();
-		const bool bGfnRuntimeSDKInitialized = GfnResult == gfnSuccess || GfnResult == gfnInitSuccessClientOnly;
+		const GfnRuntimeSdk::GfnRuntimeError GfnResult = GfnRuntimeSdk::gfnInitializeRuntimeSdk(GfnRuntimeSdk::gfnDefaultLanguage);
+		const bool bGfnRuntimeSDKInitialized = GfnResult == GfnRuntimeSdk::gfnSuccess || GfnResult == GfnRuntimeSdk::gfnInitSuccessClientOnly;
 		if (bGfnRuntimeSDKInitialized)
 		{
 			UE_LOG(LogRHI, Log, TEXT("GeForceNow SDK initialized: %d"), (int32)GfnResult);
@@ -288,7 +290,7 @@ void RHIInit(bool bHasEditorToken)
 		}
 
 		// Don't pop up a driver version warning window when running on a cloud machine
-		bDetectAndWarnBadDrivers = !bGfnRuntimeSDKInitialized || !GeForceNOWWrapper::Get().IsRunningInCloud();
+		bDetectAndWarnBadDrivers = !bGfnRuntimeSDKInitialized || !GfnRuntimeSdk::gfnIsRunningInCloud();
 	}
 
 	if (bDetectAndWarnBadDrivers)
@@ -320,11 +322,13 @@ void RHIExit()
 		delete GDynamicRHI;
 		GDynamicRHI = NULL;
 	}
-	else if (GUsingNullRHI)
+
+#if NV_GEFORCENOW
+	if (GRHIVendorId != 0 && IsRHIDeviceNVIDIA() && !!CVarDisableDriverWarningPopupIfGFN.GetValueOnAnyThread())
 	{
-		// If we are using NullRHI flush the command list here in case somethings has been added to the command list during exit calls
-		FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResourcesFlushDeferredDeletes);
+		GfnRuntimeSdk::gfnShutdownRuntimeSdk();
 	}
+#endif
 }
 
 

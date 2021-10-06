@@ -52,8 +52,7 @@ FTimingProfilerProvider::FTimingProfilerProvider(IAnalysisSession& InSession)
 	: Session(InSession)
 {
 	// Adds the GPU timeline.
-	Timelines.Add(MakeShared<TimelineInternal>(Session.GetLinearAllocator())); // GPU Index 0
-	Timelines.Add(MakeShared<TimelineInternal>(Session.GetLinearAllocator())); // GPU Index 1
+	Timelines.Add(MakeShared<TimelineInternal>(Session.GetLinearAllocator()));
 
 	AggregatedStatsTableLayout.
 		AddColumn<const TCHAR*>([](const FTimingProfilerAggregatedStats& Row)
@@ -159,13 +158,6 @@ FTimingProfilerProvider::TimelineInternal& FTimingProfilerProvider::EditGpuTimel
 	return Timelines[GpuTimelineIndex].Get();
 }
 
-FTimingProfilerProvider::TimelineInternal& FTimingProfilerProvider::EditGpu2Timeline()
-{
-	Session.WriteAccessCheck();
-
-	return Timelines[Gpu2TimelineIndex].Get();
-}
-
 bool FTimingProfilerProvider::GetCpuThreadTimelineIndex(uint32 ThreadId, uint32& OutTimelineIndex) const
 {
 	Session.ReadAccessCheck();
@@ -184,14 +176,6 @@ bool FTimingProfilerProvider::GetGpuTimelineIndex(uint32& OutTimelineIndex) cons
 	Session.ReadAccessCheck();
 
 	OutTimelineIndex = GpuTimelineIndex;
-	return true;
-}
-
-bool FTimingProfilerProvider::GetGpu2TimelineIndex(uint32& OutTimelineIndex) const
-{
-	Session.ReadAccessCheck();
-
-	OutTimelineIndex = Gpu2TimelineIndex;
 	return true;
 }
 
@@ -266,7 +250,6 @@ ITable<FTimingProfilerAggregatedStats>* FTimingProfilerProvider::CreateAggregati
 	if (IncludeGpu)
 	{
 		IncludedTimelines.Add(&Timelines[GpuTimelineIndex].Get());
-		IncludedTimelines.Add(&Timelines[Gpu2TimelineIndex].Get());
 	}
 	for (const auto& KV : CpuThreadTimelineIndexMap)
 	{
@@ -422,7 +405,6 @@ ITimingProfilerButterfly* FTimingProfilerProvider::CreateButterfly(double Interv
 	if (IncludeGpu)
 	{
 		IncludedTimelines.Add(&Timelines[GpuTimelineIndex].Get());
-		IncludedTimelines.Add(&Timelines[Gpu2TimelineIndex].Get());
 	}
 	for (const auto& KV : CpuThreadTimelineIndexMap)
 	{

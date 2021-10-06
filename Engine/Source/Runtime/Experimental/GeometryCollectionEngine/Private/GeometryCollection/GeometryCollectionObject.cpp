@@ -4,6 +4,7 @@
 	GeometryCollection.cpp: UGeometryCollection methods.
 =============================================================================*/
 #include "GeometryCollection/GeometryCollectionObject.h"
+
 #include "GeometryCollection/GeometryCollection.h"
 #include "GeometryCollection/GeometryCollectionCache.h"
 #include "UObject/DestructionObjectVersion.h"
@@ -13,10 +14,8 @@
 #include "Materials/MaterialInstance.h"
 #include "ProfilingDebugging/CookStats.h"
 
-
 #if WITH_EDITOR
 #include "GeometryCollection/DerivedDataGeometryCollectionCooker.h"
-#include "GeometryCollection/GeometryCollectionComponent.h"
 #include "DerivedDataCacheInterface.h"
 #include "Serialization/MemoryReader.h"
 #endif
@@ -40,14 +39,9 @@ namespace GeometryCollectionCookStats
 
 UGeometryCollection::UGeometryCollection(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	#if WITH_EDITOR
+#if WITH_EDITOR
 	, bManualDataCreate(false)
-	#endif
-	, EnableClustering(true)
-	, ClusterGroupIndex(0)
-	, MaxClusterLevel(100)
-	, DamageThreshold({ 250.0 })
-	, ClusterConnectionType(EClusterConnectionTypeEnum::Chaos_PointImplicit)
+#endif
 	, CollisionType(ECollisionTypeEnum::Chaos_Volumetric)
 	, ImplicitType(EImplicitTypeEnum::Chaos_Implicit_Box)
 	, MinLevelSetResolution(10)
@@ -97,6 +91,7 @@ void FillSharedSimulationSizeSpecificData(FSharedSimulationSizeSpecificData& ToD
 	ToData.CollisionParticlesFraction = FromData.CollisionParticlesFraction;
 	ToData.MaximumCollisionParticles = FromData.MaximumCollisionParticles;
 }
+
 
 float KgCm3ToKgM3(float Density)
 {
@@ -208,6 +203,7 @@ int32 UGeometryCollection::NumElements(const FName & Group) const
 	return GeometryCollection->NumElements(Group);
 }
 
+
 /** RemoveElements */
 void UGeometryCollection::RemoveElements(const FName & Group, const TArray<int32>& SortedDeletionList)
 {
@@ -215,6 +211,7 @@ void UGeometryCollection::RemoveElements(const FName & Group, const TArray<int32
 	GeometryCollection->RemoveElements(Group, SortedDeletionList);
 	InvalidateCollection();
 }
+
 
 /** ReindexMaterialSections */
 void UGeometryCollection::ReindexMaterialSections()
@@ -253,13 +250,13 @@ void UGeometryCollection::InitializeMaterials()
 
 	TManagedArray<int32>& MaterialID = GeometryCollection->MaterialID;
 
-	// Reassign material ID for each face given the new consolidated array of materials
-	for (int32 Material = 0; Material < MaterialID.Num(); ++Material)
+	// Reassign materialid for each face given the new consolidated array of materials
+	for (int i = 0; i < MaterialID.Num(); ++i)
 	{
-		if (MaterialID[Material] < Materials.Num())
+		if (MaterialID[i] < Materials.Num())
 		{
-			UMaterialInterface* OldMaterialPtr = Materials[MaterialID[Material]];
-			MaterialID[Material] = *MaterialPtrToArrayIndex.Find(OldMaterialPtr);
+			UMaterialInterface* OldMaterialPtr = Materials[MaterialID[i]];
+			MaterialID[i] = *MaterialPtrToArrayIndex.Find(OldMaterialPtr);
 		}
 	}
 
@@ -267,7 +264,7 @@ void UGeometryCollection::InitializeMaterials()
 	Materials = FinalMaterials;
 
 	// Last Material is the selection one
-	UMaterialInterface* BoneSelectedMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EditorMaterials/GeometryCollection/SelectedGeometryMaterial.SelectedGeometryMaterial"), nullptr, LOAD_None, nullptr);
+	UMaterialInterface* BoneSelectedMaterial = LoadObject<UMaterialInterface>(NULL, TEXT("/Engine/EditorMaterials/GeometryCollection/SelectedGeometryMaterial.SelectedGeometryMaterial"), NULL, LOAD_None, NULL);
 	BoneSelectedMaterialIndex = Materials.Add(BoneSelectedMaterial);
 	
 	GeometryCollection->ReindexMaterials();
@@ -284,7 +281,6 @@ bool UGeometryCollection::HasVisibleGeometry() const
 
 	return false;
 }
-
 
 /** Serialize */
 void UGeometryCollection::Serialize(FArchive& Ar)
@@ -360,14 +356,14 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 		// Fix up the type change for implicits here, previously they were unique ptrs, now they're shared
 		TManagedArray<TUniquePtr<Chaos::FImplicitObject>>* OldAttr = GeometryCollection->FindAttributeTyped<TUniquePtr<Chaos::FImplicitObject>>(FGeometryDynamicCollection::ImplicitsAttribute, FTransformCollection::TransformGroup);
 		TManagedArray<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>* NewAttr = GeometryCollection->FindAttributeTyped<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
-		if (OldAttr)
+		if(OldAttr)
 		{
-			if (!NewAttr)
+			if(!NewAttr)
 			{
 				NewAttr = &GeometryCollection->AddAttribute<TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>>(FGeometryDynamicCollection::SharedImplicitsAttribute, FTransformCollection::TransformGroup);
 
 				const int32 NumElems = GeometryCollection->NumElements(FTransformCollection::TransformGroup);
-				for (int32 Index = 0; Index < NumElems; ++Index)
+				for(int32 Index = 0; Index < NumElems; ++Index)
 				{
 					(*NewAttr)[Index] = TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe>((*OldAttr)[Index].Release());
 				}
@@ -379,7 +375,7 @@ void UGeometryCollection::Serialize(FArchive& Ar)
 
 	if (Ar.CustomVer(FDestructionObjectVersion::GUID) < FDestructionObjectVersion::GroupAndAttributeNameRemapping)
 	{
-		GeometryCollection->UpdateOldAttributeNames();
+		GeometryCollection->UpdateOldAttributeNames( );
 		InvalidateCollection();
 #if WITH_EDITOR
 		CreateSimulationData();
@@ -481,7 +477,7 @@ bool UGeometryCollection::Modify(bool bAlwaysMarkDirty /*= true*/)
 	bool bSuperResult = Super::Modify(bAlwaysMarkDirty);
 
 	UPackage* Package = GetOutermost();
-	if (Package->IsDirty())
+	if(Package->IsDirty())
 	{
 		InvalidateCollection();
 	}

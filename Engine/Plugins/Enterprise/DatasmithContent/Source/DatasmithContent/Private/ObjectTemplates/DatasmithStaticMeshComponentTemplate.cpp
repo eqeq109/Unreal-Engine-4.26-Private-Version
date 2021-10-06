@@ -25,28 +25,18 @@ UObject* UDatasmithStaticMeshComponentTemplate::UpdateObject( UObject* Destinati
 	{
 		StaticMeshComponent->OverrideMaterials.Empty( OverrideMaterials.Num() );
 	}
-
+	
 	for ( int32 MaterialIndex = 0; MaterialIndex < OverrideMaterials.Num(); ++MaterialIndex )
 	{
-		UMaterialInterface* CurrentOverrideOnComponent = nullptr;
-		if ( StaticMeshComponent->OverrideMaterials.IsValidIndex( MaterialIndex ) )
+		// If it's a new material override, assign it
+		if ( !PreviousStaticMeshTemplate || !PreviousStaticMeshTemplate->OverrideMaterials.IsValidIndex( MaterialIndex ) )
 		{
-			CurrentOverrideOnComponent = StaticMeshComponent->OverrideMaterials[ MaterialIndex ];
+			StaticMeshComponent->SetMaterial( MaterialIndex, OverrideMaterials[ MaterialIndex ] );
 		}
-
-		UMaterialInterface* PreviousTemplateOverride = nullptr;
-		if ( PreviousStaticMeshTemplate && PreviousStaticMeshTemplate->OverrideMaterials.IsValidIndex( MaterialIndex ) )
+		else if ( StaticMeshComponent->OverrideMaterials.IsValidIndex( MaterialIndex ) &&
+			PreviousStaticMeshTemplate->OverrideMaterials[ MaterialIndex ] == StaticMeshComponent->OverrideMaterials[ MaterialIndex ] )
 		{
-			PreviousTemplateOverride = PreviousStaticMeshTemplate->OverrideMaterials[ MaterialIndex ];
-		}
-
-		UMaterialInterface* NewTemplateOverride = OverrideMaterials[ MaterialIndex ];
-
-		// There wasn't an override there before and there isn't a manually user-set override still (both nullptr): Set our new override.
-		// Or there was an override there before but it's still there (both non-nullptr): The user hasn't changed anything, so we can set our new override
-		if ( PreviousTemplateOverride == CurrentOverrideOnComponent )
-		{
-			StaticMeshComponent->SetMaterial( MaterialIndex, NewTemplateOverride );
+			StaticMeshComponent->SetMaterial( MaterialIndex, OverrideMaterials[ MaterialIndex ] );
 		}
 	}
 

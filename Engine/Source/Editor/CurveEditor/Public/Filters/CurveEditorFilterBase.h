@@ -5,7 +5,6 @@
 #include "UObject/Object.h"
 #include "CurveEditorSelection.h"
 #include "CurveEditor.h"
-#include "CurveEditorTypes.h"
 #include "CurveEditorFilterBase.generated.h"
 
 class FCurveEditor;
@@ -57,7 +56,7 @@ public:
 		FKeyHandleSet& HandleSet = KeyMap.Add(InCurve);
 		for (FKeyHandle& Handle : InKeyHandles)
 		{
-			HandleSet.Add(Handle, ECurvePointType::Key);
+			HandleSet.Add(Handle);
 		}
 
 		TMap<FCurveModelID, FKeyHandleSet> OutSelectionMap;
@@ -97,7 +96,7 @@ public:
 			
 			for (const FKeyHandle& Handle : Handles)
 			{
-				HandleSet.Add(Handle, ECurvePointType::Key);
+				HandleSet.Add(Handle);
 			}
 		}
 

@@ -16,7 +16,7 @@
 #include "MovieSceneSequence.h"
 #include "MovieScene.h"
 #include "MovieSceneScriptingChannel.generated.h"
-UCLASS(abstract, BlueprintType)
+UCLASS(BlueprintType)
 class UMovieSceneScriptingKey : public UObject
 {
 	GENERATED_BODY()
@@ -35,7 +35,7 @@ public:
 };
 
 
-UCLASS(abstract, BlueprintType)
+UCLASS(BlueprintType)
 class UMovieSceneScriptingChannel : public UObject
 {
 	GENERATED_BODY()

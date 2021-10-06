@@ -19,9 +19,3 @@ void BuildCacheGeometry(
 	FGlobalShaderMap* ShaderMap, 
 	USkeletalMeshComponent* SkeletalMeshComponent, 
 	FCachedGeometry& CachedGeometry);
-
-void BuildCacheGeometry(
-	FRDGBuilder& GraphBuilder,
-	FGlobalShaderMap* ShaderMap, 
-	class UGeometryCacheComponent* GeometryCacheComponent, 
-	FCachedGeometry& CachedGeometry);

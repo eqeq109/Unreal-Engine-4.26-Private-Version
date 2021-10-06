@@ -17,7 +17,6 @@ namespace Electra
 {
 class IInitSegmentCacheHLS;
 class ILicenseKeyCacheHLS;
-class FTimelineMediaAssetHLS;
 
 struct FPlaylistLoadRequestHLS
 {
@@ -288,28 +287,27 @@ struct FManifestHLSInternal
 	// TODO: if provided we can put the EXT-X-START here
 	// TODO: For future DRM support we can put the EXT-X-SESSION-KEY here.
 
-	TArray<TSharedPtrTS<FVariantStream>>					VariantStreams;
-	TArray<TSharedPtrTS<FVariantStream>>					AudioOnlyStreams;				//!< Variants that are audio-only (have only audio codec specified in master playlist)
-	TArray<TSharedPtrTS<FVariantStream>>					IFrameOnlyStreams;
+	TArray<TSharedPtrTS<FVariantStream>>							VariantStreams;
+	TArray<TSharedPtrTS<FVariantStream>>							AudioOnlyStreams;				//!< Variants that are audio-only (have only audio codec specified in master playlist)
+	TArray<TSharedPtrTS<FVariantStream>>							IFrameOnlyStreams;
 
-	TMap<uint32, TWeakPtrTS<FPlaylistBase>>					PlaylistIDMap;
-	TMap<int32, int32>										BandwidthToQualityIndex;
+	TMap<uint32, TWeakPtrTS<FPlaylistBase>>							PlaylistIDMap;
+	TMap<int32, int32>												BandwidthToQualityIndex;
 
-	bool													bHasIndependentSegments;
+	bool															bHasIndependentSegments;
 
-	FMasterPlaylistVars										MasterPlaylistVars;
+	FMasterPlaylistVars												MasterPlaylistVars;
 
 
-	FMediaCriticalSection									VariantPlaylistAccessMutex;			//!< This mutex is used to access any(!) of the variant and rendition playlists. The master playlist is immutable.
-	TSet<uint32>											ActivelyReferencedStreamIDs;		//!< Unique IDs of streams from which segments are being fetched.
-	TSharedPtrTS<IInitSegmentCacheHLS>						InitSegmentCache;
-	TSharedPtrTS<ILicenseKeyCacheHLS>						LicenseKeyCache;
+	FMediaCriticalSection											VariantPlaylistAccessMutex;			//!< This mutex is used to access any(!) of the variant and rendition playlists. The master playlist is immutable.
+	TSet<uint32>													ActivelyReferencedStreamIDs;		//!< Unique IDs of streams from which segments are being fetched.
+	TSharedPtrTS<IInitSegmentCacheHLS>								InitSegmentCache;
+	TSharedPtrTS<ILicenseKeyCacheHLS>								LicenseKeyCache;
 
-	TArray<FTrackMetadata>									TrackMetadataVideo;
-	TArray<FTrackMetadata>									TrackMetadataAudio;
+	TArray<FStreamMetadata>											StreamMetadataVideo;
+	TArray<FStreamMetadata>											StreamMetadataAudio;
 
-	TSharedPtrTS<FTimelineMediaAssetHLS>					CurrentMediaAsset;
-
+	TSharedPtrTS<IPlaybackAssetTimeline>							PlaybackTimeline;
 
 
 	TSharedPtrTS<FPlaylistBase> GetPlaylistForUniqueID(uint32 UniqueID) const
@@ -408,10 +406,12 @@ public:
 	 * @param Playlist
 	 * @param SourceRequest
 	 * @param ConnectionInfo
+	 * @param Preferences
+	 * @param Options
 	 *
 	 * @return
 	 */
-	virtual FErrorDetail BuildFromMasterPlaylist(TSharedPtrTS<FManifestHLSInternal>& OutHLSPlaylist, const HLSPlaylistParser::FPlaylist& Playlist, const FPlaylistLoadRequestHLS& SourceRequest, const HTTP::FConnectionInfo* ConnectionInfo) = 0;
+	virtual FErrorDetail BuildFromMasterPlaylist(TSharedPtrTS<FManifestHLSInternal>& OutHLSPlaylist, const HLSPlaylistParser::FPlaylist& Playlist, const FPlaylistLoadRequestHLS& SourceRequest, const HTTP::FConnectionInfo* ConnectionInfo, const FStreamPreferences& Preferences, const FParamDict& Options) = 0;
 
 
 	/**
@@ -419,10 +419,12 @@ public:
 	 *
 	 * @param OutRequests
 	 * @param Manifest
+	 * @param Preferences
+	 * @param Options
 	 *
 	 * @return
 	 */
-	virtual FErrorDetail GetInitialPlaylistLoadRequests(TArray<FPlaylistLoadRequestHLS>& OutRequests, TSharedPtrTS<FManifestHLSInternal> Manifest) = 0;
+	virtual FErrorDetail GetInitialPlaylistLoadRequests(TArray<FPlaylistLoadRequestHLS>& OutRequests, TSharedPtrTS<FManifestHLSInternal> Manifest, const FStreamPreferences& Preferences, const FParamDict& Options) = 0;
 
 	/**
 	 * Updates an initial playlist load request that failed to load or parse with an
@@ -434,10 +436,12 @@ public:
 	 * @param PreviousAttempts
 	 * @param BlacklistUntilUTC
 	 * @param Manifest
+	 * @param Preferences
+	 * @param Options
 	 *
 	 * @return UEMEDIA_ERROR_OK if an alternative was found or UEMEDIA_ERROR_END_OF_STREAM if no further alternatives exist.
 	 */
-	virtual UEMediaError UpdateFailedInitialPlaylistLoadRequest(FPlaylistLoadRequestHLS& InOutFailedRequest, const HTTP::FConnectionInfo* ConnectionInfo, TSharedPtrTS<HTTP::FRetryInfo> PreviousAttempts, const FTimeValue& BlacklistUntilUTC, TSharedPtrTS<FManifestHLSInternal> Manifest) = 0;
+	virtual UEMediaError UpdateFailedInitialPlaylistLoadRequest(FPlaylistLoadRequestHLS& InOutFailedRequest, const HTTP::FConnectionInfo* ConnectionInfo, TSharedPtrTS<HTTP::FRetryInfo> PreviousAttempts, const FTimeValue& BlacklistUntilUTC, TSharedPtrTS<FManifestHLSInternal> Manifest, const FStreamPreferences& Preferences, const FParamDict& Options) = 0;
 
 
 	/**
@@ -448,10 +452,12 @@ public:
 	 * @param SourceRequest
 	 * @param ConnectionInfo
 	 * @param ResponseCRC
+	 * @param Preferences
+	 * @param Options
 	 *
 	 * @return
 	 */
-	virtual FErrorDetail UpdateFromVariantPlaylist(TSharedPtrTS<FManifestHLSInternal> InOutHLSPlaylist, const HLSPlaylistParser::FPlaylist& VariantPlaylist, const FPlaylistLoadRequestHLS& SourceRequest, const HTTP::FConnectionInfo* ConnectionInfo, uint32 ResponseCRC) = 0;
+	virtual FErrorDetail UpdateFromVariantPlaylist(TSharedPtrTS<FManifestHLSInternal> InOutHLSPlaylist, const HLSPlaylistParser::FPlaylist& VariantPlaylist, const FPlaylistLoadRequestHLS& SourceRequest, const HTTP::FConnectionInfo* ConnectionInfo, uint32 ResponseCRC, const FStreamPreferences& Preferences, const FParamDict& Options) = 0;
 
 
 	/**
@@ -465,212 +471,6 @@ public:
 	 */
 	virtual void SetVariantPlaylistFailure(TSharedPtrTS<FManifestHLSInternal> InHLSPlaylist, const FPlaylistLoadRequestHLS& SourceRequest, const HTTP::FConnectionInfo* ConnectionInfo, TSharedPtrTS<HTTP::FRetryInfo> PreviousAttempts, const FTimeValue& BlacklistUntilUTC) = 0;
 };
-
-
-
-class FPlaybackAssetRepresentationHLS : public IPlaybackAssetRepresentation
-{
-public:
-	FPlaybackAssetRepresentationHLS()
-	{ }
-	virtual ~FPlaybackAssetRepresentationHLS()
-	{ }
-	virtual FString GetUniqueIdentifier() const override
-	{
-		return UniqueIdentifier;
-	}
-	virtual const FStreamCodecInformation& GetCodecInformation() const override
-	{
-		return CodecInformation;
-	}
-	virtual int32 GetBitrate() const override
-	{
-		return Bitrate;
-	}
-	virtual int32 GetQualityIndex() const override
-	{ 
-		return QualityIndex;
-	}
-	virtual bool CanBePlayed() const override
-	{
-		return true;
-	}
-	FStreamCodecInformation	CodecInformation;
-	FString					UniqueIdentifier;
-	int32					Bitrate = 0;
-	int32					QualityIndex = 0;
-};
-
-class FPlaybackAssetAdaptationSetHLS : public IPlaybackAssetAdaptationSet
-{
-public:
-	virtual ~FPlaybackAssetAdaptationSetHLS()
-	{
-	}
-	virtual FString GetUniqueIdentifier() const override
-	{
-		return UniqueIdentifier;
-	}
-	virtual FString GetListOfCodecs() const override
-	{
-		return Codecs;
-	}
-	virtual FString GetLanguage() const override
-	{
-		return Language;
-	}
-	virtual int32 GetNumberOfRepresentations() const override
-	{
-		return Representations.Num();
-	}
-	virtual TSharedPtrTS<IPlaybackAssetRepresentation> GetRepresentationByIndex(int32 RepresentationIndex) const override
-	{
-		check(RepresentationIndex < Representations.Num());
-		if (RepresentationIndex < Representations.Num())
-		{
-			return Representations[RepresentationIndex];
-		}
-		return TSharedPtrTS<IPlaybackAssetRepresentation>();
-	}
-	virtual TSharedPtrTS<IPlaybackAssetRepresentation> GetRepresentationByUniqueIdentifier(const FString& InUniqueIdentifier) const override
-	{
-		for(int32 i=0, iMax=Representations.Num(); i<iMax; ++i)
-		{
-			if (Representations[i]->GetUniqueIdentifier() == InUniqueIdentifier)
-			{
-				return Representations[i];
-			}
-		}
-		return TSharedPtrTS<IPlaybackAssetRepresentation>();
-	}
-
-	TArray<TSharedPtrTS<IPlaybackAssetRepresentation>>		Representations;
-	FString													UniqueIdentifier;
-	FString													Language;
-	FString													Codecs;
-	FTrackMetadata											Metadata;
-};
-
-
-class FTimelineMediaAssetHLS : public ITimelineMediaAsset
-{
-public:
-	virtual ~FTimelineMediaAssetHLS()
-	{
-	}
-	virtual FTimeRange GetTimeRange() const override
-	{
-		return TimeRange;
-	}
-	virtual FTimeValue GetDuration() const override
-	{
-		return Duration;
-	}
-	virtual FString GetAssetIdentifier() const override
-	{
-		return AssetIdentifier;
-	}
-	virtual FString GetUniqueIdentifier() const override
-	{
-		return UniqueIdentifier;
-	}
-	virtual int32 GetNumberOfAdaptationSets(EStreamType OfStreamType) const override
-	{
-		switch(OfStreamType)
-		{
-			case EStreamType::Video:
-				return VideoAdaptationSet.IsValid() ? 1 : 0;
-			case EStreamType::Audio:
-				return (int32) AudioAdaptationSets.Num();
-			default:
-				return 0;
-		}
-	}
-	virtual TSharedPtrTS<IPlaybackAssetAdaptationSet> GetAdaptationSetByTypeAndIndex(EStreamType OfStreamType, int32 AdaptationSetIndex) const override
-	{
-		switch(OfStreamType)
-		{
-			case EStreamType::Video:
-			{
-				check(AdaptationSetIndex == 0);
-				return AdaptationSetIndex == 0 ? VideoAdaptationSet : TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>();
-			}
-			case EStreamType::Audio:
-			{
-				check(AdaptationSetIndex < AudioAdaptationSets.Num());
-				return AdaptationSetIndex < AudioAdaptationSets.Num() ? AudioAdaptationSets[AdaptationSetIndex] : TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>();
-			}
-			default:
-			{
-				return TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>();
-			}
-		}
-	}
-
-	virtual void GetMetaData(TArray<FTrackMetadata>& OutMetadata, EStreamType OfStreamType) const override
-	{
-		switch(OfStreamType)
-		{
-			case EStreamType::Video:
-			{
-				if (VideoAdaptationSet.IsValid())
-				{
-					OutMetadata.Emplace(VideoAdaptationSet->Metadata);
-				}
-				break;
-			}
-			case EStreamType::Audio:
-			{
-				for(int32 i=0, iMax=AudioAdaptationSets.Num(); i<iMax; ++i)
-				{
-					OutMetadata.Emplace(AudioAdaptationSets[i]->Metadata);
-				}
-				break;
-			}
-			default:
-			{
-				break;
-			}
-		}
-	}
-
-	TSharedPtrTS<IPlaybackAssetAdaptationSet> GetAdaptationSetByTypeAndUniqueIdentifier(EStreamType OfStreamType, const FString& InUniqueIdentifier) const
-	{
-		switch(OfStreamType)
-		{
-			case EStreamType::Video:
-			{
-				return VideoAdaptationSet;
-			}
-			case EStreamType::Audio:
-			{
-				for(int32 i=0, iMax=AudioAdaptationSets.Num(); i<iMax; ++i)
-				{
-					if (AudioAdaptationSets[i]->GetUniqueIdentifier() == InUniqueIdentifier)
-					{
-						return AudioAdaptationSets[i];
-					}
-				}
-				return TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>();
-			}
-			default:
-			{
-				return TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>();
-			}
-		}
-	}
-
-	TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>			VideoAdaptationSet;
-	TArray<TSharedPtrTS<FPlaybackAssetAdaptationSetHLS>>	AudioAdaptationSets;
-	FString													UniqueIdentifier;
-	FString													AssetIdentifier;
-	FCriticalSection										UpdateLock;
-	FTimeRange												TimeRange;
-	FTimeValue												Duration;
-	FTimeRange												SeekableTimeRange;
-	TArray<FTimespan>										SeekablePositions;
-};
-
 
 
 } // namespace Electra

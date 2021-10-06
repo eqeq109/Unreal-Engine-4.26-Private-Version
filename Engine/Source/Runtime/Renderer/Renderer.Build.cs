@@ -43,7 +43,5 @@ public class Renderer : ModuleRules
 
         PrivateIncludePathModuleNames.AddRange(new string[] { "HeadMountedDisplay" });
         DynamicallyLoadedModuleNames.AddRange(new string[] { "HeadMountedDisplay" });
-		PrivateIncludePathModuleNames.AddRange(new string[] { "EyeTracker" });
-		DynamicallyLoadedModuleNames.AddRange(new string[] { "EyeTracker" });
 	}
 }

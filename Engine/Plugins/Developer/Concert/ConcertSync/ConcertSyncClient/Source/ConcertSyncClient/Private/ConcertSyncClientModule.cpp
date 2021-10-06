@@ -8,8 +8,6 @@
 #include "ConcertClientPackageBridge.h"
 #include "ConcertClientTransactionBridge.h"
 
-#include "Framework/Notifications/NotificationManager.h"
-
 /**
  * Implements the Concert Sync module for Event synchronization
  */
@@ -71,10 +69,6 @@ public:
 
 			ClientConfig->bIsHeadless |= FParse::Param(CommandLine, TEXT("CONCERTISHEADLESS"));
 			FParse::Bool(CommandLine, TEXT("-CONCERTISHEADLESS="), ClientConfig->bIsHeadless);
-			ClientConfig->bIsHeadless |= !FSlateNotificationManager::Get().AreNotificationsAllowed();
-
-			ClientConfig->EndpointSettings.bEnableLogging |= FParse::Param(CommandLine, TEXT("CONCERTLOGGING"));
-			FParse::Bool(CommandLine, TEXT("-CONCERTLOGGING="), ClientConfig->EndpointSettings.bEnableLogging);
 
 			// CONCERTTAGS
 			{

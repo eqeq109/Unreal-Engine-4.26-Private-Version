@@ -63,7 +63,6 @@ enum EGCReferenceType
 	GCRT_NoopClass,
 	GCRT_ArrayObjectFreezable,
 	GCRT_ArrayStructFreezable,
-	GCRT_Optional,
 	GCRT_WeakObject,
 	GCRT_ArrayWeakObject,
 	GCRT_LazyObject,
@@ -193,7 +192,7 @@ struct FTokenInfo
 /**
  * Reference token stream class. Used for creating and parsing stream of object references.
  */
-struct COREUOBJECT_API FGCReferenceTokenStream
+struct FGCReferenceTokenStream
 {
 	/** Initialization value to ensure that we have the right skip index index */
 	enum EGCArrayInfoPlaceholder { E_GCSkipIndexPlaceholder = 0xDEADBABE }; 

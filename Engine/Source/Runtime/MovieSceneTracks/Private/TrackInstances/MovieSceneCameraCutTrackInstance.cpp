@@ -2,6 +2,7 @@
 
 #include "TrackInstances/MovieSceneCameraCutTrackInstance.h"
 #include "ContentStreaming.h"
+#include "Evaluation/IMovieSceneMotionVectorSimulation.h"
 #include "Evaluation/MovieSceneEvaluation.h"
 #include "GameFramework/Actor.h"
 #include "Generators/MovieSceneEasingCurves.h"
@@ -91,16 +92,10 @@ namespace MovieScene
 			return TMovieSceneAnimTypeID<FCameraCutPreAnimatedToken>();
 		}
 
-		virtual void RestoreState(const UE::MovieScene::FRestoreStateParams& RestoreParams) override
+		virtual void RestoreState(IMovieScenePlayer& Player) override
 		{
-			IMovieScenePlayer* Player = RestoreParams.GetTerminalPlayer();
-			if (!ensure(Player))
-			{
-				return;
-			}
-			
 			EMovieSceneCameraCutParams Params;
-			Player->UpdateCameraCut(nullptr, Params);
+			Player.UpdateCameraCut(nullptr, Params);
 		}
 	};
 
@@ -117,7 +112,10 @@ namespace MovieScene
 	{
 		static UObject* FindBoundObject(FMovieSceneObjectBindingID BindingID, FMovieSceneSequenceID SequenceID, IMovieScenePlayer& Player)
 		{
-			TArrayView<TWeakObjectPtr<>> Objects = BindingID.ResolveBoundObjects(SequenceID, Player);
+			FMovieSceneObjectBindingID ResolvedID = BindingID.ResolveLocalToRoot(SequenceID, Player);
+
+			FMovieSceneEvaluationOperand Operand(ResolvedID.GetSequenceID(), BindingID.GetGuid());
+			TArrayView<TWeakObjectPtr<>> Objects = Player.FindBoundObjects(Operand);
 			if (Objects.Num() > 0)
 			{
 				return Objects[0].Get();
@@ -172,6 +170,8 @@ namespace MovieScene
 				CameraCutParams.UnlockIfCameraObject = CameraCutCache.LastLockedCamera.Get();
 				Player.UpdateCameraCut(CameraActor, CameraCutParams);
 				CameraCutCache.LastLockedCamera = CameraActor;
+				// TODO-ludovic
+				//IMovieSceneMotionVectorSimulation::EnableThisFrame(PersistentData);
 				return true;
 			}
 			else if (CameraActor || CameraCutParams.BlendTime > 0.f)

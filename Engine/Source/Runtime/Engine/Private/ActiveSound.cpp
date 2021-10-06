@@ -67,12 +67,6 @@ FActiveSound::FActiveSound()
 	, bUpdatePlaybackTime(false)
 	, bIsPlayingAudio(false)
 	, bIsStopping(false)
-	, bHasActiveBusSendRoutingOverride(false)
-	, bHasActiveMainSubmixOutputOverride(false)
-	, bHasActiveSubmixSendRoutingOverride(false)
-	, bEnableBusSendRoutingOverride(false)
-	, bEnableMainSubmixOutputOverride(false)
-	, bEnableSubmixSendRoutingOverride(false)
 	, UserIndex(0)
 	, FadeOut(EFadeOut::None)
 	, bIsOccluded(false)
@@ -133,14 +127,6 @@ FActiveSound* FActiveSound::CreateVirtualCopy(const FActiveSound& InActiveSoundT
 	ActiveSound->bShouldStopDueToMaxConcurrency = false;
 	ActiveSound->AudioDevice = &InAudioDevice;
 	ActiveSound->PlaybackTimeNonVirtualized = 0.0f;
-
-	// If we are the restart virtual mode, we need to reset our sound cue parse state and our playback time.
-	USoundBase* Sound = InActiveSoundToCopy.GetSound();
-	check(Sound);
-	if (Sound->VirtualizationMode == EVirtualizationMode::Restart)
-	{
-		ActiveSound->SoundNodeOffsetMap.Reset();
-	}
 
 	// If volume concurrency tracking is enabled, reset the value,
 	// otherwise keep disabled
@@ -489,26 +475,19 @@ void FActiveSound::GetConcurrencyHandles(TArray<FConcurrencyHandle>& OutConcurre
 {
 	OutConcurrencyHandles.Reset();
 
-	const UAudioSettings* AudioSettings = GetDefault<UAudioSettings>();
-	check(AudioSettings);
-
-	if (ConcurrencySet.Num() > 0)
+	if (!ConcurrencySet.Num() && Sound)
+	{
+		Sound->GetConcurrencyHandles(OutConcurrencyHandles);
+	}
+	else
 	{
 		for (const USoundConcurrency* Concurrency : ConcurrencySet)
 		{
 			if (Concurrency)
 			{
-				OutConcurrencyHandles.Emplace(*Concurrency);
+				OutConcurrencyHandles.Emplace(FConcurrencyHandle(*Concurrency));
 			}
 		}
-	}
-	else if (Sound)
-	{
-		Sound->GetConcurrencyHandles(OutConcurrencyHandles);
-	}
-	else if (const USoundConcurrency* DefaultConcurrency = AudioSettings->GetDefaultSoundConcurrency())
-	{
-		OutConcurrencyHandles.Emplace(*DefaultConcurrency);
 	}
 }
 
@@ -605,9 +584,7 @@ void FActiveSound::UpdateWaveInstances(TArray<FWaveInstance*> &InWaveInstances, 
 	ParseParams.SoundSubmix = GetSoundSubmix();
 	GetSoundSubmixSends(ParseParams.SoundSubmixSends);
 
-	ParseParams.bEnableBusSends = Sound->bEnableBusSends;
-	ParseParams.bEnableBaseSubmix = Sound->bEnableBaseSubmix;
-	ParseParams.bEnableSubmixSends = Sound->bEnableSubmixSends;
+	ParseParams.bOutputToBusOnly = Sound->bOutputToBusOnly;
 
 	for (int32 BusSendType = 0; BusSendType < (int32)EBusSendType::Count; ++BusSendType)
 	{

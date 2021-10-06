@@ -340,7 +340,6 @@ void FDatasmithWorkerHandler::ProcessCommand(FCompletedTaskCommand& CompletedTas
 
 	Dispatcher.SetTaskState(CurrentTask->Index, CompletedTaskCommand.ProcessResult);
 	Dispatcher.LinkCTFileToUnrealCacheFile(CurrentTask->FileDescription, CompletedTaskCommand.SceneGraphFileName, CompletedTaskCommand.GeomFileName);
-	Dispatcher.LogWarningMessages(CompletedTaskCommand.WarningMessages);
 	CurrentTask.Reset();
 }
 

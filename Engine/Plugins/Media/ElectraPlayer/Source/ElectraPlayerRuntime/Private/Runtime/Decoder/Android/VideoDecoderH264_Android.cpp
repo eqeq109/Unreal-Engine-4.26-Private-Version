@@ -11,7 +11,6 @@
 #include "DecoderErrors_Android.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "Android/AndroidPlatformMisc.h"
-#include "ElectraPlayerPrivate.h"
 
 #include "VideoDecoderH264_JavaWrapper_Android.h"
 #include "MediaVideoDecoderOutputAndroid.h"
@@ -19,11 +18,6 @@
 
 #include "Android/AndroidPlatform.h"
 #include "Android/AndroidJava.h"
-
-
-DECLARE_CYCLE_STAT(TEXT("FVideoDecoderH264::Decode()"), STAT_ElectraPlayer_VideoH264Decode, STATGROUP_ElectraPlayer);
-DECLARE_CYCLE_STAT(TEXT("FVideoDecoderH264::ConvertOutput()"), STAT_ElectraPlayer_VideoH264ConvertOutput, STATGROUP_ElectraPlayer);
-
 
 namespace Electra
 {
@@ -1159,7 +1153,7 @@ FVideoDecoderH264::EOutputResult FVideoDecoderH264::GetOutput()
 			{
 				LogMessage(Electra::IInfoLog::Warning, "Got CSD buffer back?");
 				result = DecoderInstance->ReleaseOutputBuffer(OutputBufferInfo.BufferIndex, OutputBufferInfo.ValidCount, false, -1);
-				return EOutputResult::Ok;
+				return EOutputResult::EOS;
 			}
 
 			IAndroidJavaH264VideoDecoder::FOutputFormatInfo OutputFormatInfo;
@@ -1455,7 +1449,6 @@ void FVideoDecoderH264::WorkerThread()
 
 	int32 result = 0;
 	bool bDone  = false;
-	bool bGotLastSequenceAU = false;
 
 	bError = false;
 
@@ -1507,8 +1500,6 @@ void FVideoDecoderH264::WorkerThread()
 		// Notify optional buffer listener that we will now be needing an AU for our input buffer.
 		if (!CurrentAccessUnit && !bError && InputBufferListener && AccessUnitBuffer.Num() == 0)
 		{
-			SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-			CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 			FAccessUnitBufferInfo	sin;
 			IAccessUnitBufferListener::FBufferStats	stats;
 			AccessUnitBuffer.GetStats(sin);
@@ -1528,9 +1519,6 @@ void FVideoDecoderH264::WorkerThread()
 		// Try to pull output. Do this first to make room in the decoder for new input data.
 		if (!bError)
 		{
-			SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264ConvertOutput);
-			CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264ConvertOutput);
-
 			ProcessReadyOutputBuffersToSurface();
 
 			// Any new data available?
@@ -1597,8 +1585,6 @@ void FVideoDecoderH264::WorkerThread()
 		{
 			if (AccessUnitBuffer.WaitForData(1000 * 5))
 			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 				// When there is data, even and especially after a previous EOD, we are no longer done and idling.
 				if (bDone)
 				{
@@ -1628,8 +1614,7 @@ void FVideoDecoderH264::WorkerThread()
 						}
 					}
 
-					bool bStreamFormatChanged = CurrentStreamFormatInfo.IsDifferentFrom(CurrentAccessUnit) || bGotLastSequenceAU;
-					bGotLastSequenceAU = CurrentAccessUnit->bIsLastInPeriod;
+					bool bStreamFormatChanged = CurrentStreamFormatInfo.IsDifferentFrom(CurrentAccessUnit);
 
 					// A new AU following dummy data?
 					bool bPrevWasDummy = false;
@@ -1709,8 +1694,6 @@ void FVideoDecoderH264::WorkerThread()
 			{
 				if (DecoderState == EDecoderState::Create)
 				{
-					SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-					CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 					DecoderState = EDecoderState::Ready;
 					if (InternalDecoderCreate())
 					{
@@ -1726,8 +1709,6 @@ void FVideoDecoderH264::WorkerThread()
 				}
 				else if (DecoderState == EDecoderState::Flush)
 				{
-					SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-					CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 					if (DecoderInstance.IsValid())
 					{
 						DecoderInstance->Flush();
@@ -1775,8 +1756,6 @@ void FVideoDecoderH264::WorkerThread()
 					}
 					case EInputState::FeedEOS:
 					{
-						SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-						CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 						bBlockedOnInput = false;
 						DrainDecoder();
 						break;
@@ -1810,8 +1789,6 @@ void FVideoDecoderH264::WorkerThread()
 		// Flush?
 		if (FlushDecoderSignal.IsSignaled())
 		{
-			SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_VideoH264Decode);
-			CSV_SCOPED_TIMING_STAT(ElectraPlayer, VideoH264Decode);
 			// Have to destroy the decoder!
 			InternalDecoderDestroy();
 			AccessUnitBuffer.Flush();

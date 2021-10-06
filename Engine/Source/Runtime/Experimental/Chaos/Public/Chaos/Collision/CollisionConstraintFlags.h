@@ -6,11 +6,6 @@
 #include "Chaos/GeometryParticlesfwd.h"
 #include "Chaos/ParticleHandleFwd.h"
 #include "Chaos/PBDRigidsEvolutionFwd.h"
-#include "Containers/Queue.h"
-
-#ifndef WITH_TODO_COLLISION_DISABLE
-#define WITH_TODO_COLLISION_DISABLE 0
-#endif
 
 namespace Chaos
 {
@@ -24,28 +19,20 @@ namespace Chaos
 	class CHAOS_API FIgnoreCollisionManager
 	{
 	public:
+		using FGeometryParticle = TGeometryParticle<FReal, 3>;
 		using FHandleID = FUniqueIdx;
-		using FDeactivationArray = TArray<FUniqueIdx>;
+		using FParticleArray = TArray<FGeometryParticle*>;
 		using FActiveMap = TMap<FHandleID, TArray<FHandleID> >;
-		using FPendingMap = TMap<FHandleID, TArray<FHandleID> >;
+		using FPendingMap = TMap<FGeometryParticle*, FParticleArray >;
 		struct FStorageData
 		{
 			FPendingMap PendingActivations;
-			FDeactivationArray PendingDeactivations;
-			int32 ExternalTimestamp = INDEX_NONE;
-
-			void Reset()
-			{
-				PendingActivations.Reset();
-				PendingDeactivations.Reset();
-				ExternalTimestamp = INDEX_NONE;
-			}
+			FParticleArray PendingDeactivations;
 		};
 
 		FIgnoreCollisionManager()
-			: StorageDataProducer(nullptr)
 		{
-			StorageDataProducer = GetNewStorageData();
+			BufferedData = FMultiBufferFactory<FStorageData>::CreateBuffer(EMultiBufferMode::Double);
 		}
 
 		bool ContainsHandle(FHandleID Body0);
@@ -58,43 +45,11 @@ namespace Chaos
 
 		void RemoveIgnoreCollisionsFor(FHandleID Body0, FHandleID Body1);
 
-		FPendingMap& GetPendingActivationsForGameThread(int32 ExternalTimestamp) 
-		{
-			if (StorageDataProducer->ExternalTimestamp == INDEX_NONE)
-			{
-				StorageDataProducer->ExternalTimestamp = ExternalTimestamp;
-			}
-			else
-			{
-				ensure(StorageDataProducer->ExternalTimestamp == ExternalTimestamp);
-			}
+		const FPendingMap& GetPendingActivationsForGameThread() const { return BufferedData->AccessProducerBuffer()->PendingActivations; }
+		FPendingMap& GetPendingActivationsForGameThread() { return BufferedData->AccessProducerBuffer()->PendingActivations; }
 
-			return StorageDataProducer->PendingActivations;
-		}
-
-		FDeactivationArray& GetPendingDeactivationsForGameThread(int32 ExternalTimestamp)
-		{
-			if (StorageDataProducer->ExternalTimestamp == INDEX_NONE)
-			{
-				StorageDataProducer->ExternalTimestamp = ExternalTimestamp;
-			}
-			else
-			{
-				ensure(StorageDataProducer->ExternalTimestamp == ExternalTimestamp);
-			}
-
-			return StorageDataProducer->PendingDeactivations;
-		}
-
-		void PushProducerStorageData_External(int32 ExternalTimestamp)
-		{
-			if (StorageDataProducer->ExternalTimestamp != INDEX_NONE)
-			{
-				ensure(ExternalTimestamp == StorageDataProducer->ExternalTimestamp);
-				StorageDataQueue.Enqueue(StorageDataProducer);
-				StorageDataProducer = GetNewStorageData();
-			}
-		}
+		const FParticleArray& GetPendingDeactivationsForGameThread() const { return BufferedData->AccessProducerBuffer()->PendingDeactivations; }
+		FParticleArray& GetPendingDeactivationsForGameThread() { return BufferedData->AccessProducerBuffer()->PendingDeactivations; }
 
 		/*
 		*
@@ -104,39 +59,14 @@ namespace Chaos
 		/*
 		*
 		*/
-		void PopStorageData_Internal(int32 ExternalTimestamp);
+		void FlipBufferPreSolve();
 
 	private:
-
-		FStorageData* GetNewStorageData()
-		{
-			FStorageData* StorageData;
-			if (StorageDataFreePool.Dequeue(StorageData))
-			{
-				return StorageData;
-			}
-
-			StorageDataBackingBuffer.Emplace(MakeUnique<FStorageData>());
-			return StorageDataBackingBuffer.Last().Get();
-		}
-
-		void ReleaseStorageData(FStorageData *InStorageData)
-		{
-			InStorageData->Reset();
-			StorageDataFreePool.Enqueue(InStorageData);
-		}
-
 		FActiveMap IgnoreCollisionsList;
 
 		FPendingMap PendingActivations;
-		FDeactivationArray PendingDeactivations;
-
-		// Producer storage data, pending changes written here until pushed into queue.
-		FStorageData* StorageDataProducer;
-
-		TQueue<FStorageData*, EQueueMode::Spsc> StorageDataQueue; // Queue of storage data being passed to physics thread
-		TQueue<FStorageData*,EQueueMode::Spsc> StorageDataFreePool;	//free pool of storage data
-		TArray<TUniquePtr<FStorageData>> StorageDataBackingBuffer;	// Holds unique ptrs for storage data allocation
+		FParticleArray PendingDeactivations;
+		TUniquePtr<Chaos::IBufferResource<FStorageData>> BufferedData;
 	};
 
 } // Chaos

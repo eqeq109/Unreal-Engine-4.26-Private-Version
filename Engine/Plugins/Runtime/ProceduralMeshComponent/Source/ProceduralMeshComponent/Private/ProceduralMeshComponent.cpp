@@ -295,30 +295,6 @@ public:
 					FMemory::Memcpy(VertexBufferData, VertexBuffer.GetTexCoordData(), VertexBuffer.GetTexCoordSize());
 					RHIUnlockVertexBuffer(VertexBuffer.TexCoordVertexBuffer.VertexBufferRHI);
 				}
-
-#if RHI_RAYTRACING
-				if (IsRayTracingEnabled())
-				{
-					Section->RayTracingGeometry.ReleaseResource();
-
-					FRayTracingGeometryInitializer Initializer;
-					Initializer.IndexBuffer = Section->IndexBuffer.IndexBufferRHI;
-					Initializer.TotalPrimitiveCount = Section->IndexBuffer.Indices.Num() / 3;
-					Initializer.GeometryType = RTGT_Triangles;
-					Initializer.bFastBuild = true;
-					Initializer.bAllowUpdate = false;
-
-					Section->RayTracingGeometry.SetInitializer(Initializer);
-					Section->RayTracingGeometry.InitResource();
-
-					FRayTracingGeometrySegment Segment;
-					Segment.VertexBuffer = Section->VertexBuffers.PositionVertexBuffer.VertexBufferRHI;
-					Segment.NumPrimitives = Section->RayTracingGeometry.Initializer.TotalPrimitiveCount;
-					Section->RayTracingGeometry.Initializer.Segments.Add(Segment);
-
-					Section->RayTracingGeometry.UpdateRHI();
-				}
-#endif
 			}
 
 			// Free data sent from game thread
@@ -481,7 +457,7 @@ public:
 					FMeshBatch MeshBatch;
 
 					MeshBatch.VertexFactory = &Section->VertexFactory;
-					MeshBatch.SegmentIndex = 0;
+					MeshBatch.SegmentIndex = SegmentIndex;
 					MeshBatch.MaterialRenderProxy = Section->Material->GetRenderProxy();
 					MeshBatch.ReverseCulling = IsLocalToWorldDeterminantNegative();
 					MeshBatch.Type = PT_TriangleList;
@@ -598,53 +574,16 @@ void UProceduralMeshComponent::CreateMeshSection(int32 SectionIndex, const TArra
 		NewSection.SectionLocalBox += Vertex.Position;
 	}
 
-	// Get triangle indices, clamping to vertex range
-	const int32 MaxIndex = NumVerts - 1;
-	const auto GetTriIndices = [&Triangles, MaxIndex](int32 Idx)
-	{
-		return TTuple<int32, int32, int32>(FMath::Min(Triangles[Idx    ], MaxIndex),
-										   FMath::Min(Triangles[Idx + 1], MaxIndex),
-			                               FMath::Min(Triangles[Idx + 2], MaxIndex));
-	};
+	// Copy index buffer (clamping to vertex range)
+	int32 NumTriIndices = Triangles.Num();
+	NumTriIndices = (NumTriIndices/3) * 3; // Ensure we have exact number of triangles (array is multiple of 3 long)
 
-	const int32 NumTriIndices = (Triangles.Num() / 3) * 3; // Ensure number of triangle indices is multiple of three
-
-	// Detect degenerate triangles, i.e. non-unique vertex indices within the same triangle
-	int32 NumDegenerateTriangles = 0;
-	for (int32 IndexIdx = 0; IndexIdx < NumTriIndices; IndexIdx += 3)
-	{
-		int32 a, b, c;
-		Tie(a, b, c) = GetTriIndices(IndexIdx);
-		NumDegenerateTriangles += a == b || a == c || b == c;
-	}
-	if (NumDegenerateTriangles > 0)
-	{
-		UE_LOG(LogProceduralComponent, Warning, TEXT("Detected %d degenerate triangle%s with non-unique vertex indices for created mesh section in '%s'; degenerate triangles will be dropped."),
-			   NumDegenerateTriangles, NumDegenerateTriangles > 1 ? "s" : "", *GetFullName());
-	}
-
-	// Copy index buffer for non-degenerate triangles
 	NewSection.ProcIndexBuffer.Reset();
-	NewSection.ProcIndexBuffer.AddUninitialized(NumTriIndices - NumDegenerateTriangles * 3);
-	int32 CopyIndexIdx = 0;
-	for (int32 IndexIdx = 0; IndexIdx < NumTriIndices; IndexIdx += 3)
+	NewSection.ProcIndexBuffer.AddUninitialized(NumTriIndices);
+	for (int32 IndexIdx = 0; IndexIdx < NumTriIndices; IndexIdx++)
 	{
-		int32 a, b, c;
-		Tie(a, b, c) = GetTriIndices(IndexIdx);
-
-		if (a != b && a != c && b != c)
-		{
-			NewSection.ProcIndexBuffer[CopyIndexIdx++] = a;
-			NewSection.ProcIndexBuffer[CopyIndexIdx++] = b;
-			NewSection.ProcIndexBuffer[CopyIndexIdx++] = c;
-		}
-		else
-		{
-			--NumDegenerateTriangles;
-		}
+		NewSection.ProcIndexBuffer[IndexIdx] = FMath::Min(Triangles[IndexIdx], NumVerts - 1);
 	}
-	check(NumDegenerateTriangles == 0);
-	check(CopyIndexIdx == NewSection.ProcIndexBuffer.Num());
 
 	NewSection.bEnableCollision = bCreateCollision;
 

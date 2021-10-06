@@ -10,16 +10,6 @@ namespace UE
 namespace MovieScene
 {
 
-FEntityAllocation* FEntityAllocationIteratorItem::GetAllocation() const
-{
-	return Manager->EntityAllocations[AllocationIndex];
-}
-
-const FComponentMask& FEntityAllocationIteratorItem::GetAllocationType() const
-{
-	return Manager->EntityAllocationMasks[AllocationIndex];
-}
-
 FEntityAllocationIterator::FEntityAllocationIterator(const FEntityManager* InManager)
 	: Filter(nullptr)
 	, Manager(InManager)
@@ -70,35 +60,22 @@ FEntityAllocationIterator& FEntityAllocationIterator::operator++()
 }
 
 
-FEntityAllocationIteratorItem FEntityAllocationIterator::operator*() const
+FEntityAllocation* FEntityAllocationIterator::operator*() const
 {
-	return FEntityAllocationIteratorItem(Manager, AllocationIndex);
+	return Manager->EntityAllocations[AllocationIndex];
 }
 
 
 int32 FEntityAllocationIterator::FindMatchingAllocationStartingAt(int32 Index) const
 {
-	const FEntityComponentFilter& GlobalIterationFilter = Manager->GetGlobalIterationFilter();
-	const bool bHasGlobalFilter = GlobalIterationFilter.IsValid();
-	for ( ; Index < Manager->EntityAllocationMasks.GetMaxIndex(); ++Index)
+	while (Index < Manager->EntityAllocationMasks.GetMaxIndex())
 	{
-		if (!Manager->EntityAllocationMasks.IsAllocated(Index))
-		{
-			continue;
-		}
-
-		if (bHasGlobalFilter == true)
-		{
-			if (!GlobalIterationFilter.Match(Manager->EntityAllocationMasks[Index]))
-			{
-				continue;
-			}
-		}
-
-		if (Filter->Match(Manager->EntityAllocationMasks[Index]) && Manager->EntityAllocations[Index]->Num() > 0)
+		if (Manager->EntityAllocationMasks.IsAllocated(Index) && Filter->Match(Manager->EntityAllocationMasks[Index]) && Manager->EntityAllocations[Index]->Num() > 0)
 		{
 			return Index;
 		}
+
+		++Index;
 	}
 
 	return Index;

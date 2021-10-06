@@ -24,12 +24,12 @@ FOnlineIdentityIOS::FOnlineIdentityIOS(FOnlineSubsystemIOS* InSubsystem)
 {
 }
 
-FUniqueNetIdIOSPtr FOnlineIdentityIOS::GetLocalPlayerUniqueId() const
+TSharedPtr<FUniqueNetIdIOS> FOnlineIdentityIOS::GetLocalPlayerUniqueId() const
 {
 	return UniqueNetId;
 }
 
-void FOnlineIdentityIOS::SetLocalPlayerUniqueId(const FUniqueNetIdIOSPtr& UniqueId)
+void FOnlineIdentityIOS::SetLocalPlayerUniqueId(const TSharedPtr<FUniqueNetIdIOS>& UniqueId)
 {
 	UniqueNetId = UniqueId;
 }
@@ -72,7 +72,7 @@ bool FOnlineIdentityIOS::Login(int32 LocalUserNum, const FOnlineAccountCredentia
 			{
 				const FString PlayerId(FString(FOnlineSubsystemIOS::GetPlayerId(GKLocalUser)));
 
-				UniqueNetId = FUniqueNetIdIOS::Create(PlayerId);
+				UniqueNetId = MakeShareable( new FUniqueNetIdIOS( PlayerId ) );
 				TriggerOnLoginCompleteDelegates(LocalUserNum, true, *UniqueNetId, TEXT(""));
 
 				UE_LOG_ONLINE_IDENTITY(Log, TEXT("The user %s has logged into Game Center"), *PlayerId);
@@ -83,7 +83,8 @@ bool FOnlineIdentityIOS::Login(int32 LocalUserNum, const FOnlineAccountCredentia
 				FString ErrorMessage = TEXT("The user could not be authenticated with a persistent id by Game Center");
 				UE_LOG_ONLINE_IDENTITY(Log, TEXT("%s"), *ErrorMessage);
 
-				TriggerOnLoginCompleteDelegates(LocalUserNum, false, *FUniqueNetIdIOS::EmptyId(), *ErrorMessage);
+				TSharedPtr<FUniqueNetIdIOS> UniqueIdForUser = MakeShareable(new FUniqueNetIdIOS());
+				TriggerOnLoginCompleteDelegates(LocalUserNum, false, *UniqueIdForUser, *ErrorMessage);
 			}
 		}
 		else
@@ -91,7 +92,7 @@ bool FOnlineIdentityIOS::Login(int32 LocalUserNum, const FOnlineAccountCredentia
 		{
 			const FString PlayerId(FString(FOnlineSubsystemIOS::GetPlayerId(GKLocalUser)));
 
-			UniqueNetId = FUniqueNetIdIOS::Create( PlayerId );
+			UniqueNetId = MakeShareable( new FUniqueNetIdIOS( PlayerId ) );
 			TriggerOnLoginCompleteDelegates(LocalUserNum, true, *UniqueNetId, TEXT(""));
 
 			UE_LOG_ONLINE_IDENTITY(Log, TEXT("The user %s has logged into Game Center"), *PlayerId);
@@ -163,14 +164,14 @@ bool FOnlineIdentityIOS::Login(int32 LocalUserNum, const FOnlineAccountCredentia
 					{
 						if (PlayerId.IsSet())
 						{
-							UniqueNetId = FUniqueNetIdIOS::Create(PlayerId.GetValue());
+							UniqueNetId = MakeShareable(new FUniqueNetIdIOS(PlayerId.GetValue()));
 						}
 						else
 						{
 							UniqueNetId.Reset();
 						}
 
-						FUniqueNetIdIOSRef UniqueIdForUser = UniqueNetId.IsValid() ? UniqueNetId.ToSharedRef() : FUniqueNetIdIOS::EmptyId();
+						TSharedPtr<FUniqueNetIdIOS> UniqueIdForUser = UniqueNetId.IsValid() ? UniqueNetId : MakeShareable(new FUniqueNetIdIOS());
 						TriggerOnLoginCompleteDelegates(LocalUserNum, bWasSuccessful, *UniqueIdForUser, *ErrorMessage);
 
 						return true;
@@ -225,12 +226,12 @@ ELoginStatus::Type FOnlineIdentityIOS::GetLoginStatus(const FUniqueNetId& UserId
 	return LoginStatus;
 }
 
-FUniqueNetIdPtr FOnlineIdentityIOS::GetUniquePlayerId(int32 LocalUserNum) const
+TSharedPtr<const FUniqueNetId> FOnlineIdentityIOS::GetUniquePlayerId(int32 LocalUserNum) const
 {
 	return UniqueNetId;
 }
 
-FUniqueNetIdPtr FOnlineIdentityIOS::CreateUniquePlayerId(uint8* Bytes, int32 Size)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityIOS::CreateUniquePlayerId(uint8* Bytes, int32 Size)
 {
 	if( Bytes && Size == sizeof(uint64) )
 	{
@@ -238,16 +239,16 @@ FUniqueNetIdPtr FOnlineIdentityIOS::CreateUniquePlayerId(uint8* Bytes, int32 Siz
 		if (StrLen > 0)
 		{
 			FString StrId((TCHAR*)Bytes);
-			return FUniqueNetIdIOS::Create(StrId);
+			return MakeShareable(new FUniqueNetIdIOS(StrId));
 		}
 	}
 	
 	return NULL;
 }
 
-FUniqueNetIdPtr FOnlineIdentityIOS::CreateUniquePlayerId(const FString& Str)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityIOS::CreateUniquePlayerId(const FString& Str)
 {
-	return FUniqueNetIdIOS::Create(Str);
+	return MakeShareable(new FUniqueNetIdIOS(Str));
 }
 
 FString FOnlineIdentityIOS::GetPlayerNickname(int32 LocalUserNum) const
@@ -289,7 +290,7 @@ FString FOnlineIdentityIOS::GetAuthToken(int32 LocalUserNum) const
 void FOnlineIdentityIOS::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_IDENTITY(Display, TEXT("FOnlineIdentityIOS::RevokeAuthToken not implemented"));
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	Subsystem->ExecuteNextTick([UserIdRef, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, FOnlineError(FString(TEXT("RevokeAuthToken not implemented"))));
@@ -300,7 +301,7 @@ void FOnlineIdentityIOS::GetUserPrivilege(const FUniqueNetId& UserId, EUserPrivi
 {
 	if (Privilege == EUserPrivileges::CanPlayOnline)
 	{
-		FUniqueNetIdRef SharedUserId = UserId.AsShared();
+		TSharedRef<const FUniqueNetId> SharedUserId = UserId.AsShared();
 		FOnQueryAppBundleIdResponse completionDelegate = FOnQueryAppBundleIdResponse::CreateLambda([this, SharedUserId, Privilege, Delegate](NSDictionary* ResponseDict)
 		{
 			UE_LOG_ONLINE_IDENTITY(Log, TEXT("GetUserPrivilege Complete"));

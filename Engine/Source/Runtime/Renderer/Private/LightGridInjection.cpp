@@ -297,7 +297,6 @@ void FSceneRenderer::ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bCullLight
 		FViewInfo& View = Views[ViewIndex];
 		FForwardLightData& ForwardLightData = View.ForwardLightingResources->ForwardLightData;
 		ForwardLightData = FForwardLightData();
-		View.ForwardLightingResources->SelectedForwardDirectionalLightProxy = nullptr;
 
 		TArray<FForwardLocalLightData, SceneRenderingAllocator> ForwardLocalLightData;
 #if ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
@@ -365,8 +364,6 @@ void FSceneRenderer::ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bCullLight
 #endif // ENABLE_LIGHT_CULLING_VIEW_SPACE_BUILD_DATA
 				}
 			}
-
-			float SelectedForwardDirectionalLightIntensitySq = 0.0f;
 			const TArray<FSortedLightSceneInfo, SceneRenderingAllocator>& SortedLights = SortedLightSet.SortedLights;
 			ClusteredSupportedEnd = SimpleLightsEnd;
 			// Next add all the other lights, track the end index for clustered supporting lights
@@ -444,8 +441,7 @@ void FSceneRenderer::ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bCullLight
 
 						float VolumetricScatteringIntensity = LightProxy->GetVolumetricScatteringIntensity();
 
-						if (LightNeedsSeparateInjectionIntoVolumetricFogForOpaqueShadow(LightSceneInfo, VisibleLightInfos[LightSceneInfo->Id]) 
-							|| (LightNeedsSeparateInjectionIntoVolumetricFogForLightFunction(LightSceneInfo) && CheckForLightFunction(LightSceneInfo)))
+						if (LightNeedsSeparateInjectionIntoVolumetricFog(LightSceneInfo, VisibleLightInfos[LightSceneInfo->Id]))
 						{
 							// Disable this lights forward shading volumetric scattering contribution
 							VolumetricScatteringIntensity = 0;
@@ -474,61 +470,51 @@ void FSceneRenderer::ComputeLightGrid(FRDGBuilder& GraphBuilder, bool bCullLight
 					}
 					else if (SortedLightInfo.SortKey.Fields.LightType == LightType_Directional && ViewFamily.EngineShowFlags.DirectionalLights)
 					{
-						// The selected forward directional light is also used for volumetric lighting using ForwardLightData UB.
-						// Also some people noticed that depending on the order a two directional lights are made visible in a level, the selected light for volumetric fog lighting will be different.
-						// So to be clear and avoid such issue, we select the most intense directional light for forward shading and volumetric lighting.
-						const float LightIntensitySq = LightParameters.Color.SizeSquared();
-						if (LightIntensitySq > SelectedForwardDirectionalLightIntensitySq)
+						ForwardLightData.HasDirectionalLight = 1;
+						ForwardLightData.DirectionalLightColor = LightParameters.Color;
+						ForwardLightData.DirectionalLightVolumetricScatteringIntensity = LightProxy->GetVolumetricScatteringIntensity();
+						ForwardLightData.DirectionalLightDirection = LightParameters.Direction;
+						ForwardLightData.DirectionalLightShadowMapChannelMask = LightTypeAndShadowMapChannelMaskPacked;
+
+						const FVector2D FadeParams = LightProxy->GetDirectionalLightDistanceFadeParameters(View.GetFeatureLevel(), LightSceneInfo->IsPrecomputedLightingValid(), View.MaxShadowCascades);
+
+						ForwardLightData.DirectionalLightDistanceFadeMAD = FVector2D(FadeParams.Y, -FadeParams.X * FadeParams.Y);
+
+						if (ViewFamily.EngineShowFlags.DynamicShadows && VisibleLightInfos.IsValidIndex(LightSceneInfo->Id) && VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows.Num() > 0)
 						{
-							SelectedForwardDirectionalLightIntensitySq = LightIntensitySq;
-							View.ForwardLightingResources->SelectedForwardDirectionalLightProxy = LightProxy;
+							const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& DirectionalLightShadowInfos = VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows;
 
-							ForwardLightData.HasDirectionalLight = 1;
-							ForwardLightData.DirectionalLightColor = LightParameters.Color;
-							ForwardLightData.DirectionalLightVolumetricScatteringIntensity = LightProxy->GetVolumetricScatteringIntensity();
-							ForwardLightData.DirectionalLightDirection = LightParameters.Direction;
-							ForwardLightData.DirectionalLightShadowMapChannelMask = LightTypeAndShadowMapChannelMaskPacked;
+							ForwardLightData.NumDirectionalLightCascades = 0;
 
-							const FVector2D FadeParams = LightProxy->GetDirectionalLightDistanceFadeParameters(View.GetFeatureLevel(), LightSceneInfo->IsPrecomputedLightingValid(), View.MaxShadowCascades);
-
-							ForwardLightData.DirectionalLightDistanceFadeMAD = FVector2D(FadeParams.Y, -FadeParams.X * FadeParams.Y);
-
-							if (ViewFamily.EngineShowFlags.DynamicShadows && VisibleLightInfos.IsValidIndex(LightSceneInfo->Id) && VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows.Num() > 0)
+							for (int32 ShadowIndex = 0; ShadowIndex < DirectionalLightShadowInfos.Num(); ShadowIndex++)
 							{
-								const TArray<FProjectedShadowInfo*, SceneRenderingAllocator>& DirectionalLightShadowInfos = VisibleLightInfos[LightSceneInfo->Id].AllProjectedShadows;
+								const FProjectedShadowInfo* ShadowInfo = DirectionalLightShadowInfos[ShadowIndex];
+								const int32 CascadeIndex = ShadowInfo->CascadeSettings.ShadowSplitIndex;
 
-								ForwardLightData.NumDirectionalLightCascades = 0;
-
-								for (int32 ShadowIndex = 0; ShadowIndex < DirectionalLightShadowInfos.Num(); ShadowIndex++)
+								if (ShadowInfo->IsWholeSceneDirectionalShadow() && ShadowInfo->bAllocated && CascadeIndex < GMaxForwardShadowCascades)
 								{
-									const FProjectedShadowInfo* ShadowInfo = DirectionalLightShadowInfos[ShadowIndex];
-									const int32 CascadeIndex = ShadowInfo->CascadeSettings.ShadowSplitIndex;
+									ForwardLightData.NumDirectionalLightCascades++;
+									ForwardLightData.DirectionalLightWorldToShadowMatrix[CascadeIndex] = ShadowInfo->GetWorldToShadowMatrix(ForwardLightData.DirectionalLightShadowmapMinMax[CascadeIndex]);
+									ForwardLightData.CascadeEndDepths[CascadeIndex] = ShadowInfo->CascadeSettings.SplitFar;
 
-									if (ShadowInfo->IsWholeSceneDirectionalShadow() && ShadowInfo->bAllocated && CascadeIndex < GMaxForwardShadowCascades)
+									if (CascadeIndex == 0)
 									{
-										ForwardLightData.NumDirectionalLightCascades++;
-										ForwardLightData.DirectionalLightWorldToShadowMatrix[CascadeIndex] = ShadowInfo->GetWorldToShadowMatrix(ForwardLightData.DirectionalLightShadowmapMinMax[CascadeIndex]);
-										ForwardLightData.CascadeEndDepths[CascadeIndex] = ShadowInfo->CascadeSettings.SplitFar;
-
-										if (CascadeIndex == 0)
-										{
-											ForwardLightData.DirectionalLightShadowmapAtlas = ShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference();
-											ForwardLightData.DirectionalLightDepthBias = ShadowInfo->GetShaderDepthBias();
-											FVector2D AtlasSize = ShadowInfo->RenderTargets.DepthTarget->GetDesc().Extent;
-											ForwardLightData.DirectionalLightShadowmapAtlasBufferSize = FVector4(AtlasSize.X, AtlasSize.Y, 1.0f / AtlasSize.X, 1.0f / AtlasSize.Y);
-										}
+										ForwardLightData.DirectionalLightShadowmapAtlas = ShadowInfo->RenderTargets.DepthTarget->GetRenderTargetItem().ShaderResourceTexture.GetReference();
+										ForwardLightData.DirectionalLightDepthBias = ShadowInfo->GetShaderDepthBias();
+										FVector2D AtlasSize = ShadowInfo->RenderTargets.DepthTarget->GetDesc().Extent;
+										ForwardLightData.DirectionalLightShadowmapAtlasBufferSize = FVector4(AtlasSize.X, AtlasSize.Y, 1.0f / AtlasSize.X, 1.0f / AtlasSize.Y);
 									}
 								}
 							}
-
-							const FStaticShadowDepthMap* StaticShadowDepthMap = LightSceneInfo->Proxy->GetStaticShadowDepthMap();
-							const uint32 bStaticallyShadowedValue = LightSceneInfo->IsPrecomputedLightingValid() && StaticShadowDepthMap && StaticShadowDepthMap->Data && StaticShadowDepthMap->TextureRHI ? 1 : 0;
-
-							ForwardLightData.DirectionalLightUseStaticShadowing = bStaticallyShadowedValue;
-							ForwardLightData.DirectionalLightStaticShadowBufferSize = bStaticallyShadowedValue ? FVector4(StaticShadowDepthMap->Data->ShadowMapSizeX, StaticShadowDepthMap->Data->ShadowMapSizeY, 1.0f / StaticShadowDepthMap->Data->ShadowMapSizeX, 1.0f / StaticShadowDepthMap->Data->ShadowMapSizeY) : FVector4(0, 0, 0, 0);
-							ForwardLightData.DirectionalLightWorldToStaticShadow = bStaticallyShadowedValue ? StaticShadowDepthMap->Data->WorldToLight : FMatrix::Identity;
-							ForwardLightData.DirectionalLightStaticShadowmap = bStaticallyShadowedValue ? StaticShadowDepthMap->TextureRHI : GWhiteTexture->TextureRHI;
 						}
+
+						const FStaticShadowDepthMap* StaticShadowDepthMap = LightSceneInfo->Proxy->GetStaticShadowDepthMap();
+						const uint32 bStaticallyShadowedValue = LightSceneInfo->IsPrecomputedLightingValid() && StaticShadowDepthMap && StaticShadowDepthMap->Data && StaticShadowDepthMap->TextureRHI ? 1 : 0;
+
+						ForwardLightData.DirectionalLightUseStaticShadowing = bStaticallyShadowedValue;
+						ForwardLightData.DirectionalLightStaticShadowBufferSize = bStaticallyShadowedValue ? FVector4(StaticShadowDepthMap->Data->ShadowMapSizeX, StaticShadowDepthMap->Data->ShadowMapSizeY, 1.0f / StaticShadowDepthMap->Data->ShadowMapSizeX, 1.0f / StaticShadowDepthMap->Data->ShadowMapSizeY) : FVector4(0, 0, 0, 0);
+						ForwardLightData.DirectionalLightWorldToStaticShadow = bStaticallyShadowedValue ? StaticShadowDepthMap->Data->WorldToLight : FMatrix::Identity;
+						ForwardLightData.DirectionalLightStaticShadowmap = bStaticallyShadowedValue ? StaticShadowDepthMap->TextureRHI : GWhiteTexture->TextureRHI;
 					}
 				}
 			}

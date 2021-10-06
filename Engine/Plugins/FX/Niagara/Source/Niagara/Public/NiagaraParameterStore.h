@@ -19,9 +19,9 @@ struct FNiagaraBoundParameter
 	UPROPERTY()
 	FNiagaraVariable Parameter;
 	UPROPERTY()
-	int32 SrcOffset = 0;
+	int32 SrcOffset;
 	UPROPERTY()
-	int32 DestOffset = 0;
+	int32 DestOffset;
 
 };
 
@@ -218,10 +218,6 @@ public:
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
 	FString DebugName;
-
-	/** Guid data to remap rapid iteration parameters after a function input was renamed. */
-	UPROPERTY()
-	TMap<FNiagaraVariable, FGuid> ParameterGuidMapping;
 #endif
 
 	void SetOwner(UObject* InOwner);
@@ -424,7 +420,7 @@ public:
 					if (ensureMsgf(DestStore.Owner != nullptr, TEXT("Destination data interface pointer was null and a new one couldn't be created because the destination store's owner pointer was also null.")))
 					{
 						UE_LOG(LogNiagara, Warning, TEXT("While trying to copy parameter data the destination data interface was null, creating a new one.  Parameter: %s Destination Store Owner: %s"), *Parameter.GetName().ToString(), *DestStore.Owner->GetPathName());
-						DestDataInterface = NewObject<UNiagaraDataInterface>(DestStore.Owner, Parameter.GetType().GetClass(), NAME_None, RF_Transactional | RF_Public);
+						DestDataInterface = NewObject<UNiagaraDataInterface>(DestStore.Owner, Parameter.GetType().GetClass());
 						DestStore.DataInterfaces[DestIndex] = DestDataInterface;
 					}
 					else
@@ -1251,7 +1247,7 @@ struct FNiagaraParameterDirectBinding<UObject*>
 		}
 	}
 
-	FORCEINLINE UObject* GetValue() const
+	FORCEINLINE UObject* GetValue()const
 	{
 		if (UObjectOffset != INDEX_NONE)
 		{
@@ -1259,19 +1255,6 @@ struct FNiagaraParameterDirectBinding<UObject*>
 			checkfSlow(LayoutVersion == BoundStore->GetLayoutVersion(), TEXT("This binding is invalid, its bound parameter store's layout was changed since it was created"));
 
 			return BoundStore->GetUObject(UObjectOffset);
-		}
-		return nullptr;
-	}
-
-	template<class TObjectType>
-	FORCEINLINE TObjectType* GetValue() const
-	{
-		if (UObjectOffset != INDEX_NONE)
-		{
-			checkSlow(BoundVariable.GetType().IsUObject());
-			checkfSlow(LayoutVersion == BoundStore->GetLayoutVersion(), TEXT("This binding is invalid, its bound parameter store's layout was changed since it was created"));
-
-			return Cast<TObjectType>(BoundStore->GetUObject(UObjectOffset));
 		}
 		return nullptr;
 	}

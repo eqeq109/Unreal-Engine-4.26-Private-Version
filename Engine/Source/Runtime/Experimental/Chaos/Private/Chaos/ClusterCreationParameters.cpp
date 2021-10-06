@@ -5,5 +5,5 @@
 
 namespace Chaos
 {
-	// todo(chaos) remove this file eventually
+	template struct CHAOS_API FClusterCreationParameters<float>;
 }

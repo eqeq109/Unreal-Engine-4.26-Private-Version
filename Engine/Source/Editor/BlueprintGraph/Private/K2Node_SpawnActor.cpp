@@ -123,13 +123,8 @@ void UK2Node_SpawnActor::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>
 	RestoreSplitPins(OldPins);
 }
 
-bool UK2Node_SpawnActor::IsSpawnVarPin(UEdGraphPin* Pin) const
+bool UK2Node_SpawnActor::IsSpawnVarPin(UEdGraphPin* Pin)
 {
-	if (Pin->ParentPin)
-	{
-		return IsSpawnVarPin(Pin->ParentPin);
-	}
-
 	return(	Pin->PinName != UEdGraphSchema_K2::PN_Execute &&
 			Pin->PinName != UEdGraphSchema_K2::PN_Then &&
 			Pin->PinName != UEdGraphSchema_K2::PN_ReturnValue &&

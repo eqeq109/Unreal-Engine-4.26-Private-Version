@@ -17,10 +17,9 @@ namespace UnrealBuildTool.Rules
 					"CoreUObject",
 					"Json",
 					"Cbor",
-					"Messaging",
-					"Networking",
+                    "Messaging",
+                    "Networking",
 					"Serialization",
-					"TraceLog",
 					"Sockets",
 				});
 

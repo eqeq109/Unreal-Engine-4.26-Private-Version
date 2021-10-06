@@ -60,9 +60,6 @@ public:
 
 	TWeakObjectPtr<USkeletalMeshComponent> BoundComponent;
 	FControlRigEditMode* EditMode = nullptr;
-
-private:
-	FDelegateHandle OnBoneTransformsFinalizedHandle;
 };
 
 class FControlRigEditMode : public IPersonaEditMode
@@ -170,9 +167,6 @@ protected:
 
 	/** Toggles visibility of manipulators in the viewport */
 	void ToggleManipulators();
-
-	/** Clear Selection*/
-	void ClearSelection();
 
 	/** Frame to current Control Selection*/
 	void FrameSelection();

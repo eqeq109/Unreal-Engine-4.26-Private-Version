@@ -58,7 +58,7 @@ private:
 
 	virtual void SetupViewFamily( FSceneViewFamily& InViewFamily ) override;
 	virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override;
-	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
+	virtual bool IsActiveThisFrame(FViewport* InViewport) const override;
 
 	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {}
 	virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override {}
@@ -161,15 +161,9 @@ struct FStopCapturingShotElementPassToken : IMovieScenePreAnimatedToken
 		: PassName(InPassName)
 	{}
 
-	virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params)
+	virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player)
 	{
-		IMovieScenePlayer* Player = Params.GetTerminalPlayer();
-		if (!ensure(Player))
-		{
-			return;
-		}
-
-		FPersistentEvaluationData PersistentData(*Player);
+		FPersistentEvaluationData PersistentData(Player);
 
 		FComposureShotElementCaptureManager* CaptureManager = PersistentData.Find<FComposureShotElementCaptureManager>(ComposureExportSharedKey);
 		if (CaptureManager)
@@ -307,7 +301,7 @@ void FExportIntermediateBuffersViewExtension::SetupView(FSceneViewFamily& InView
 	}
 }
 
-bool FExportIntermediateBuffersViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext&) const
+bool FExportIntermediateBuffersViewExtension::IsActiveThisFrame(FViewport* InViewport) const
 {
 	return NumOutstandingFrames > 0;
 }

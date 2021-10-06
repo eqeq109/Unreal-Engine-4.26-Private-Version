@@ -25,20 +25,17 @@ public:
 	/**
 	 * 
 	 */
-	UE_DEPRECATED(4.27, "InvalidationCache is not used.")
-	UFUNCTION(BlueprintCallable, Category="Invalidation Box", meta=(DeprecatedFunction))
+	UFUNCTION(BlueprintCallable, Category="Invalidation Box")
 	void InvalidateCache();
 
 	/**
-	 * @returns true when the invalidation box cache the widgets.
-	 * The widgets will be updated only if they get invalidated.
+	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category="Invalidation Box")
 	bool GetCanCache() const;
 
 	/**
-	 * Tell the InvalidationBox to use the invalidation process.
-	 * @note the other internal flags can disable the option.
+	 * 
 	 */
 	UFUNCTION(BlueprintCallable, Category="Invalidation Box")
 	void SetCanCache(bool CanCache);
@@ -51,14 +48,14 @@ public:
 
 protected:
 
-	//~ Begin UPanelWidget interface
+	// UPanelWidget
 	virtual void OnSlotAdded(UPanelSlot* Slot) override;
 	virtual void OnSlotRemoved(UPanelSlot* Slot) override;
-	//~ End UPanelWidget interface
+	// End UPanelWidget
 
-	//~ Begin UWidget interface
+	// UWidget interface
 	virtual TSharedRef<SWidget> RebuildWidget() override;
-	//~ End UWidget interface
+	// End of UWidget interface
 
 protected:
 	/**

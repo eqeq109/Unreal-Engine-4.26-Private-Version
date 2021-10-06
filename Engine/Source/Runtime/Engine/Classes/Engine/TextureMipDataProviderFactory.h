@@ -32,5 +32,5 @@ public:
 	* 
 	* @param InAsset - the texture on which the stream in operation will be performed.
 	*/
-	virtual FTextureMipDataProvider* AllocateMipDataProvider(UTexture* Asset) { return nullptr; }
+	FTextureMipDataProvider* AllocateMipDataProvider(UTexture* Asset) { return nullptr; }
 };

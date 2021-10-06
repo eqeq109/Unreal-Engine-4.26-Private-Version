@@ -83,10 +83,12 @@ public:
 			// Volumetric self shadow mesh commands need to be generated every frame, as they depend on single frame uniform buffers with self shadow data.
 			const bool bSupportsCachingMeshDrawCommands = SupportsCachingMeshDrawCommands(*StaticMesh, FeatureLevel) && !PrimitiveSceneProxy->CastsVolumetricTranslucentShadow();
 
-			const FMaterial& Material = Mesh.MaterialRenderProxy->GetIncompleteMaterialWithFallback(FeatureLevel);
-			bool bUseSkyMaterial = Material.IsSky();
-			bool bUseSingleLayerWaterMaterial = Material.GetShadingModels().HasShadingModel(MSM_SingleLayerWater);
-			bool bUseAnisotropy = Material.GetShadingModels().HasAnyShadingModel({MSM_DefaultLit, MSM_ClearCoat}) && Material.MaterialUsesAnisotropy_RenderThread();
+			const FMaterial* Material = Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel);
+
+			bool bUseSkyMaterial = Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->IsSky();
+			bool bUseSingleLayerWaterMaterial = Material->GetShadingModels().HasShadingModel(MSM_SingleLayerWater);
+			bool bUseAnisotropy = Material->GetShadingModels().HasAnyShadingModel({MSM_DefaultLit, MSM_ClearCoat}) && Material->MaterialUsesAnisotropy_RenderThread();
+
 			FStaticMeshBatchRelevance* StaticMeshRelevance = new(PrimitiveSceneInfo->StaticMeshRelevances) FStaticMeshBatchRelevance(
 				*StaticMesh, 
 				ScreenSize, 
@@ -203,16 +205,7 @@ FRHIRayTracingGeometry* FPrimitiveSceneInfo::GetStaticRayTracingGeometryInstance
 {
 	if (RayTracingGeometries.Num() > LodLevel)
 	{
-		// TODO: Select different LOD, when build is still pending for this LOD?
-		if (RayTracingGeometries[LodLevel]->HasPendingBuildRequest())
-		{
-			RayTracingGeometries[LodLevel]->BoostBuildPriority();
-			return nullptr;
-		}
-		else
-		{
-			return RayTracingGeometries[LodLevel]->RayTracingGeometryRHI;
-		}
+		return RayTracingGeometries[LodLevel]->RayTracingGeometryRHI;
 	}
 	else
 	{
@@ -330,11 +323,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 									for (int32 i = 0; i < ShaderFrequencies.Num(); i++)
 									{
 										FMeshDrawSingleShaderBindings SingleShaderBindings = const_cast<FMeshDrawCommand*>(MeshDrawCommand)->ShaderBindings.GetSingleShaderBindings(ShaderFrequencies[i], DataOffset);
-										static int32 LogCount = 0;
-										if (SingleShaderBindings.GetParameterMapInfo().LooseParameterBuffers.Num() != 0 && ((LogCount++ % 1000) == 0))
-										{
-											UE_LOG(LogRenderer, Warning, TEXT("Cached Mesh Draw command uses loose parameters.  This causes overhead and will break dynamic instancing, potentially reducing performance further.  Use Uniform Buffers instead."));
-										}
+										ensureMsgf(SingleShaderBindings.GetParameterMapInfo().LooseParameterBuffers.Num() == 0, TEXT("Cached Mesh Draw command uses loose parameters.  This will break dynamic instancing in performance critical pass.  Use Uniform Buffers instead."));
 										ensureMsgf(SingleShaderBindings.GetParameterMapInfo().SRVs.Num() == 0, TEXT("Cached Mesh Draw command uses individual SRVs.  This will break dynamic instancing in performance critical pass.  Use Uniform Buffers instead."));
 										ensureMsgf(SingleShaderBindings.GetParameterMapInfo().TextureSamplers.Num() == 0, TEXT("Cached Mesh Draw command uses individual Texture Samplers.  This will break dynamic instancing in performance critical pass.  Use Uniform Buffers instead."));
 									}
@@ -405,7 +394,7 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 		}
 	}
 
-	if (!FParallelMeshDrawCommandPass::IsOnDemandShaderCreationEnabled())
+	if (!RHISupportsMultithreadedShaderCreation(GMaxRHIShaderPlatform))
 	{
 		FGraphicsMinimalPipelineStateId::InitializePersistentIds();
 	}
@@ -433,9 +422,6 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 				SceneInfo->CachedRayTracingMeshCommandIndicesPerLOD.Empty(MaxLOD + 1);
 				SceneInfo->CachedRayTracingMeshCommandIndicesPerLOD.AddDefaulted(MaxLOD + 1);
 
-				SceneInfo->CachedRayTracingMeshCommandsHashPerLOD.Empty(MaxLOD + 1);
-				SceneInfo->CachedRayTracingMeshCommandsHashPerLOD.AddZeroed(MaxLOD + 1);
-
 				for (int32 MeshIndex = 0; MeshIndex < SceneInfo->StaticMeshes.Num(); MeshIndex++)
 				{
 					FStaticMeshBatch& Mesh = SceneInfo->StaticMeshes[MeshIndex];
@@ -444,10 +430,6 @@ void FPrimitiveSceneInfo::CacheMeshDrawCommands(FRHICommandListImmediate& RHICmd
 
 					if (CommandContext.CommandIndex >= 0)
 					{
-						uint64& Hash = SceneInfo->CachedRayTracingMeshCommandsHashPerLOD[Mesh.LODIndex];
-						Hash <<= 1;
-						Hash ^= Scene->CachedRayTracingMeshCommands.RayTracingMeshCommands[CommandContext.CommandIndex].ShaderBindings.GetDynamicInstancingHash();
-
 						SceneInfo->CachedRayTracingMeshCommandIndicesPerLOD[Mesh.LODIndex].Add(CommandContext.CommandIndex);
 						CommandContext.CommandIndex = -1;
 					}
@@ -521,8 +503,6 @@ void FPrimitiveSceneInfo::RemoveCachedMeshDrawCommands()
 		}
 
 		CachedRayTracingMeshCommandIndicesPerLOD.Empty();
-
-		CachedRayTracingMeshCommandsHashPerLOD.Empty();
 	}
 #endif
 }
@@ -1101,7 +1081,7 @@ void FPrimitiveSceneInfo::UnlinkAttachmentGroup()
 			if (AttachmentGroup->Primitives.Num() == 0)
 			{
 				// If this was the owner and the group is empty, remove it (otherwise the above will remove when the last attached goes).
-				Scene->AttachmentGroups.Remove(PrimitiveComponentId);
+				Scene->AttachmentGroups.Remove(LightingAttachmentRoot);
 			}
 		}
 	}
@@ -1243,7 +1223,8 @@ void FPrimitiveSceneInfo::UpdateIndirectLightingCacheBuffer(
 
 void FPrimitiveSceneInfo::UpdateIndirectLightingCacheBuffer()
 {
-	if (bIndirectLightingCacheBufferDirty)
+	// The update is invalid if the lighting cache allocation was not in a functional state.
+	if (bIndirectLightingCacheBufferDirty && (!IndirectLightingCacheAllocation || (Scene->IndirectLightingCache.IsInitialized() && IndirectLightingCacheAllocation->bHasEverUpdatedSingleSample)))
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UpdateIndirectLightingCacheBuffer);
 
@@ -1259,8 +1240,7 @@ void FPrimitiveSceneInfo::UpdateIndirectLightingCacheBuffer()
 				Scene->GetFrameNumber(),
 				&Scene->VolumetricLightmapSceneData);
 		}
-		// The update is invalid if the lighting cache allocation was not in a functional state.
-		else if (IndirectLightingCacheAllocation && (Scene->IndirectLightingCache.IsInitialized() && IndirectLightingCacheAllocation->bHasEverUpdatedSingleSample))
+		else if (IndirectLightingCacheAllocation)
 		{
 			UpdateIndirectLightingCacheBuffer(
 				&Scene->IndirectLightingCache,

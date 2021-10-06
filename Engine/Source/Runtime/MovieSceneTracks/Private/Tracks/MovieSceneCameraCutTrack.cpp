@@ -117,48 +117,14 @@ EMovieSceneTrackEasingSupportFlags UMovieSceneCameraCutTrack::SupportsEasing(FMo
 		}
 		else if (NumSections > 1)
 		{
-			// Find the section with the earliest start time, and the section with the latest end time.
-			int32 EdgeSections[2] = { 0, NumSections - 1 };
-			TRange<FFrameNumber> EdgeRanges[2] = { Sections[0]->GetTrueRange(), Sections[NumSections - 1]->GetTrueRange() };
-			const TRange<FFrameNumber> ForSectionRange = Params.ForSection->GetTrueRange();
-			for (int32 Index = 0; Index < NumSections; ++Index)
+			if (Params.ForSection == Sections[0])
 			{
-				const UMovieSceneSection* Section(Sections[Index]);
-				const TRange<FFrameNumber> SectionRange(Section->GetTrueRange());
-				if (Section != Params.ForSection && SectionRange.Contains(ForSectionRange))
-				{
-					return EMovieSceneTrackEasingSupportFlags::None;
-				}
-
-				if (EdgeRanges[0].HasLowerBound())
-				{
-					if (!SectionRange.HasLowerBound() || SectionRange.GetLowerBoundValue() < EdgeRanges[0].GetLowerBoundValue())
-					{
-						EdgeSections[0] = Index;
-						EdgeRanges[0] = SectionRange;
-					}
-				}
-				if (EdgeRanges[1].HasUpperBound())
-				{
-					if (!SectionRange.HasUpperBound() || SectionRange.GetUpperBoundValue() > EdgeRanges[1].GetUpperBoundValue())
-					{
-						EdgeSections[1] = Index;
-						EdgeRanges[1] = SectionRange;
-					}
-				}
+				return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseIn;
 			}
-			
-			// Allow easing for these sections.
-			EMovieSceneTrackEasingSupportFlags Flags = EMovieSceneTrackEasingSupportFlags::AutomaticEasing;
-			if (Params.ForSection == Sections[EdgeSections[0]])
+			if (Params.ForSection == Sections.Last())
 			{
-				Flags |= EMovieSceneTrackEasingSupportFlags::ManualEaseIn;
+				return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseOut;
 			}
-			if (Params.ForSection == Sections[EdgeSections[1]])
-			{
-				Flags |= EMovieSceneTrackEasingSupportFlags::ManualEaseOut;
-			}
-			return Flags;
 		}
 	}
 	return EMovieSceneTrackEasingSupportFlags::AutomaticEasing;
@@ -169,28 +135,17 @@ const TArray<UMovieSceneSection*>& UMovieSceneCameraCutTrack::GetAllSections() c
 	return Sections;
 }
 
-bool UMovieSceneCameraCutTrack::HasSection(const UMovieSceneSection& Section) const
-{
-	return Sections.Contains(&Section);
-}
-
-
-bool UMovieSceneCameraCutTrack::IsEmpty() const
-{
-	return Sections.Num() == 0;
-}
-
 void UMovieSceneCameraCutTrack::RemoveSection(UMovieSceneSection& Section)
 {
 	Sections.Remove(&Section);
 
 	if (bCanBlend)
 	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, true);
+		MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, true);
 	}
 	else
 	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, true);
+		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, true);
 	}
 
 	// @todo Sequencer: The movie scene owned by the section is now abandoned.  Should we offer to delete it?  
@@ -201,11 +156,11 @@ void UMovieSceneCameraCutTrack::RemoveSectionAt(int32 SectionIndex)
 	UMovieSceneSection* SectionToDelete = Sections[SectionIndex];
 	if (bCanBlend)
 	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, *SectionToDelete, true);
+		MovieSceneHelpers::FixupConsecutiveSections(Sections, *SectionToDelete, true);
 	}
 	else
 	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, *SectionToDelete, true);
+		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, *SectionToDelete, true);
 	}
 
 	Sections.RemoveAt(SectionIndex);
@@ -226,20 +181,16 @@ FText UMovieSceneCameraCutTrack::GetDefaultDisplayName() const
 
 
 #if WITH_EDITOR
-EMovieSceneSectionMovedResult UMovieSceneCameraCutTrack::OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params)
+void UMovieSceneCameraCutTrack::OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params)
 {
-	const bool bCleanUp = (Params.MoveType == EPropertyChangeType::ValueSet);
-	bool bCleanUpDone = false;
 	if (bCanBlend)
 	{
-		bCleanUpDone = MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, false, bCleanUp);
+		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, false);
 	}
 	else
 	{
-		bCleanUpDone = MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, false, bCleanUp);
+		MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, false);
 	}
-
-	return bCleanUpDone ? EMovieSceneSectionMovedResult::SectionsChanged : EMovieSceneSectionMovedResult::None;
 }
 #endif
 
@@ -269,7 +220,7 @@ FFrameNumber UMovieSceneCameraCutTrack::FindEndTimeForCameraCut( FFrameNumber St
 	return ExclusiveEndTime;
 }
 
-void UMovieSceneCameraCutTrack::PreCompileImpl(FMovieSceneTrackPreCompileResult& OutPreCompileResult)
+void UMovieSceneCameraCutTrack::PreCompileImpl()
 {
 	for (UMovieSceneSection* Section : Sections)
 	{

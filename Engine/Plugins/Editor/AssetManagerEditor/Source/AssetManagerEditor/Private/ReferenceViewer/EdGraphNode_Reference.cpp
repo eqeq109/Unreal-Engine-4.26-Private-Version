@@ -20,10 +20,9 @@ UEdGraphNode_Reference::UEdGraphNode_Reference(const FObjectInitializer& ObjectI
 	bIsPackage = false;
 	bIsPrimaryAsset = false;
 	bUsesThumbnail = false;
-	bAllowThumbnail = true;
 }
 
-void UEdGraphNode_Reference::SetupReferenceNode(const FIntPoint& NodeLoc, const TArray<FAssetIdentifier>& NewIdentifiers, const FAssetData& InAssetData, bool bInAllowThumbnail)
+void UEdGraphNode_Reference::SetupReferenceNode(const FIntPoint& NodeLoc, const TArray<FAssetIdentifier>& NewIdentifiers, const FAssetData& InAssetData)
 {
 	check(NewIdentifiers.Num() > 0);
 
@@ -36,7 +35,6 @@ void UEdGraphNode_Reference::SetupReferenceNode(const FIntPoint& NodeLoc, const 
 
 	bIsCollapsed = false;
 	bIsPackage = true;
-	bAllowThumbnail = bInAllowThumbnail;
 	
 	FPrimaryAssetId PrimaryAssetID = NewIdentifiers[0].GetPrimaryAssetId();
 	if (PrimaryAssetID.IsValid())
@@ -241,11 +239,6 @@ void UEdGraphNode_Reference::CacheAssetData(const FAssetData& AssetData)
 FAssetData UEdGraphNode_Reference::GetAssetData() const
 {
 	return CachedAssetData;
-}
-
-bool UEdGraphNode_Reference::AllowsThumbnail() const
-{
-	return bAllowThumbnail;
 }
 
 bool UEdGraphNode_Reference::UsesThumbnail() const

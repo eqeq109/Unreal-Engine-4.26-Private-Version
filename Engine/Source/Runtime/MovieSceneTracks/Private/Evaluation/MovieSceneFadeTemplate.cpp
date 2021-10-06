@@ -60,15 +60,9 @@ struct FFadePreAnimatedGlobalToken : FFadeTrackToken, IMovieScenePreAnimatedGlob
 		: FFadeTrackToken(InFadeValue, InFadeColor, bInFadeAudio)
 	{}
 
-	virtual void RestoreState(const UE::MovieScene::FRestoreStateParams& Params) override
+	virtual void RestoreState(IMovieScenePlayer& Player) override
 	{
-		IMovieScenePlayer* Player = Params.GetTerminalPlayer();
-		if (!ensure(Player))
-		{
-			return;
-		}
-		
-		Apply(*Player, true);
+		Apply(Player, true);
 	}
 };
 

@@ -18,8 +18,7 @@ public class PackagesDialog : ModuleRules
 				"SlateCore",
                 "EditorStyle",
 				"UnrealEd",
-				"SourceControl",
-				"AssetRegistry"
+				"SourceControl"
 			}
 		);
 

@@ -45,7 +45,7 @@ void UOculusNetConnection::InitLocalConnection(UNetDriver* InDriver, class FSock
 		InMaxPacket == 0 ? MAX_PACKET_SIZE : InMaxPacket,
 		0);
 
-	FInternetAddrOculus OculusAddr = FInternetAddrOculus::FromUrl(InURL);
+	auto OculusAddr = FInternetAddrOculus(InURL);
 	PeerID = OculusAddr.GetID();
 }
 

@@ -266,7 +266,6 @@ bool UNiagaraNodeCustomHlsl::CommitEditablePinName(const FText& InName, UEdGraph
 
 		FString OldPinName = InGraphPinObj->PinName.ToString();
 		InGraphPinObj->PinName = *InName.ToString();
-		InGraphPinObj->PinFriendlyName = InName;
 		if (bSuppressEvents == false)
 			OnPinRenamed(InGraphPinObj, OldPinName);
 
@@ -286,7 +285,7 @@ bool UNiagaraNodeCustomHlsl::CancelEditablePinName(const FText& InName, UEdGraph
 
 
 /** Called when a new typed pin is added by the user. */
-void UNiagaraNodeCustomHlsl::OnNewTypedPinAdded(UEdGraphPin*& NewPin)
+void UNiagaraNodeCustomHlsl::OnNewTypedPinAdded(UEdGraphPin* NewPin)
 {
 	TSet<FName> Names;
 	for (int32 i = 0; i < Pins.Num(); i++)
@@ -441,7 +440,7 @@ uint32 UNiagaraNodeCustomHlsl::ReplaceExactMatchTokens(TArray<FString>& Tokens, 
 }
 
 
-bool UNiagaraNodeCustomHlsl::AllowNiagaraTypeForAddPin(const FNiagaraTypeDefinition& InType) const
+bool UNiagaraNodeCustomHlsl::AllowNiagaraTypeForAddPin(const FNiagaraTypeDefinition& InType)
 {
 	if (Super::AllowNiagaraTypeForAddPin(InType) || InType.IsDataInterface())
 		return true;

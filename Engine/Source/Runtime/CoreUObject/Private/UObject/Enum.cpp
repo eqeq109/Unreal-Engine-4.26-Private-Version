@@ -513,8 +513,11 @@ int32 UEnum::GetIndexByNameString(const FString& InSearchString, EGetByNameFlags
 	}
 
 	// Search for names both with and without namespace
-	FName SearchName = FName(*SearchEnumEntryString, FNAME_Find);
-	FName ModifiedName = FName(*ModifiedEnumEntryString, FNAME_Find);
+	FName SearchName = FName(*SearchEnumEntryString);
+	FName ModifiedName = FName(*ModifiedEnumEntryString);
+
+	// Check authored name, but only if this is a subclass of Enum that might have implemented it
+	const bool bCheckAuthoredName = !!(Flags & EGetByNameFlags::CheckAuthoredName) && (GetClass() != UEnum::StaticClass());
 
 	const int32 Count = Names.Num();
 	for (int32 Counter = 0; Counter < Count; ++Counter)
@@ -523,15 +526,8 @@ int32 UEnum::GetIndexByNameString(const FString& InSearchString, EGetByNameFlags
 		{
 			return Counter;
 		}
-	}
 
-	// Check authored name, but only if this is a subclass of Enum that might have implemented it 
-	// and we've ascertained that there are no entries that match on the cheaper FName checks
-	const bool bCheckAuthoredName = !!(Flags & EGetByNameFlags::CheckAuthoredName) && (GetClass() != UEnum::StaticClass());
-
-	if (bCheckAuthoredName)
-	{
-		for (int32 Counter = 0; Counter < Count; ++Counter)
+		if (bCheckAuthoredName)
 		{
 			FString AuthoredName = GetAuthoredNameStringByIndex(Counter);
 

@@ -93,13 +93,6 @@ public:
 			break;
 		}
 	}
-
-	bool operator==(const FTextureShareSyncPolicy& InSyncPolicy) const
-	{
-		return ConnectionSync == InSyncPolicy.ConnectionSync
-			&& FrameSync == InSyncPolicy.FrameSync
-			&& TextureSync == InSyncPolicy.TextureSync;
-	}
 };
 
 struct FTextureShareTimeOut

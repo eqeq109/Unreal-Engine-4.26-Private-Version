@@ -26,10 +26,9 @@ void ULiveLinkRemapAsset::BeginDestroy()
 #if WITH_EDITOR
 	if (OnBlueprintCompiledDelegate.IsValid())
 	{
-		if (UBlueprint* Blueprint = Cast<UBlueprint>(GetClass()->ClassGeneratedBy))
-		{
-			Blueprint->OnCompiled().Remove(OnBlueprintCompiledDelegate);
-		}
+		UBlueprint* Blueprint = Cast<UBlueprint>(GetClass()->ClassGeneratedBy);
+		check(Blueprint);
+		Blueprint->OnCompiled().Remove(OnBlueprintCompiledDelegate);
 		OnBlueprintCompiledDelegate.Reset();
 	}
 #endif

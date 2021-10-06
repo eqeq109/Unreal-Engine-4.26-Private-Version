@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Subsystems/WorldSubsystem.h"
+#include "Tickable.h"
 #include "Stats/Stats.h"
 #include "Engine/EngineTypes.h"
 
@@ -17,7 +18,7 @@ struct FLatentActionManager;
 * get properly destroyed, as well as decouple this behavior from AActor::Tick
 */
 UCLASS()
-class UAutoDestroySubsystem : public UTickableWorldSubsystem
+class UAutoDestroySubsystem : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 

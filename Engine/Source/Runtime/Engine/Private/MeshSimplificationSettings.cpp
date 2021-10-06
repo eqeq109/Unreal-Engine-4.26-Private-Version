@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/MeshSimplificationSettings.h"
-#include "Modules/ModuleManager.h"
 #include "UObject/UnrealType.h"
 
 UMeshSimplificationSettings::UMeshSimplificationSettings(const FObjectInitializer& ObjectInitializer)
@@ -29,7 +28,6 @@ void UMeshSimplificationSettings::PostInitProperties()
 #if WITH_EDITOR
 	if(IsTemplate())
 	{
-		FModuleManager::Get().LoadModule("MeshReductionInterface");
 		ImportConsoleVariableValues();
 	}
 #endif

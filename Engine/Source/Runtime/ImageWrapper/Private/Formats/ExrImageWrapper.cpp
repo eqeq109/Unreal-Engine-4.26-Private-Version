@@ -3,9 +3,9 @@
 #include "ExrImageWrapper.h"
 #include "ImageWrapperPrivate.h"
 
-#include "Containers/StringConv.h"
 #include "HAL/PlatformTime.h"
 #include "Math/Float16.h"
+
 
 #if WITH_UNREALEXR
 
@@ -407,17 +407,7 @@ void FExrImageWrapper::Uncompress( const ERGBFormat InFormat, const int32 InBitD
 	int dy = win.min.y;
 
 	ImfFile.setFrameBuffer((Imf::Rgba*)&RawData[0] - int64(dx) - int64(dy) * int64(Width), 1, Width);
-
-	try
-	{
-		ImfFile.readPixels(win.min.y, win.max.y);
-	}
-	catch (const std::exception& Exception)
-	{
-		TStringConversion<TStringConvert<char, TCHAR>> Convertor(Exception.what());
-		UE_LOG(LogImageWrapper, Error, TEXT("Cannot read EXR file: %s"), Convertor.Get());
-		SetError(Convertor.Get());
-	}
+	ImfFile.readPixels(win.min.y, win.max.y);
 }
 
 // from http://www.openexr.com/ReadingAndWritingImageFiles.pdf

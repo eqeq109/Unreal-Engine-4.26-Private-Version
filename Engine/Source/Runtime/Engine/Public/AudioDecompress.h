@@ -124,11 +124,6 @@ public:
 		return StreamCompressedInfoInternal(Wave, QualityInfo);
 	}
 
-	/**
-	*  Returns true if a non-recoverable error has occurred.
-	*/
-	virtual bool HasError() const { return false; }
-
 protected:
 	/** Internal override implemented by subclasses. */
 	virtual bool StreamCompressedInfoInternal(USoundWave* Wave, struct FSoundQualityInfo* QualityInfo) = 0;

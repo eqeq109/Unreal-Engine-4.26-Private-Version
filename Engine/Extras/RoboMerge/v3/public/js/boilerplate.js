@@ -10,9 +10,6 @@
 // Global user information map
 let robomergeUser
 
-window.showNodeLastChanges = false
-window.allowNodeReconsiders = false
-
 // Common mutex variable around displaying error messages
 let clearer = null
 function clearErrorText() {
@@ -94,6 +91,7 @@ function updateBranchList(graphBotName=null) {
 	if (updateBranchesPending)
 		return;
 	updateBranchesPending = true;
+	log(`Updating Branch List...`)
 	let expandedDivIds = []
 	$('#branchList .elist-row>.collapse.show').each( (_index, div) => {
 		expandedDivIds.push(div.id)
@@ -150,6 +148,12 @@ function updateBranchList(graphBotName=null) {
 				.click(function() {
 					window.location.href = "/api/last_crash";
 				})
+				.appendTo(bl)
+
+			$('<button>')
+				.addClass('btn btn-xs btn-danger robomerge-crash-buttons')
+				.text("Restart Robomerge")
+				.click(startBot)
 				.appendTo(bl)
 		}
 
@@ -393,14 +397,8 @@ function generateRobomergeHeader(createSignedInUserDiv = true) {
 		topright.append('<div id="uptime"></div>')
 		topright.append('<div id="version"></div>')
 	}
-
-	const bigHelpButton = $('<button>')
-		.addClass('btn btn-outline-dark big-help')
-		.click(function() { window.location.href='/help' })
-		.html('<strong>Help Page</strong>')
-	topright.append(bigHelpButton)
-
-	// Show Robomerge logo
+    
+    // Show Robomerge logo
 	let logo = $('<img id="logoimg" src="/img/logo.png">')
 		.click(function() {
 			// Provide some secret functionality to the homepage
@@ -471,12 +469,6 @@ function generateRobomergeFooter() {
 	p4TasksButton.click(function() { window.open('/api/p4tasks', '_blank') })
 	p4TasksButton.text("P4 Tasks")
 	fteButtonDiv.append(p4TasksButton)
-
-	let p4AllBotsButton = $('<button id="p4AllBotsButton">')
-	p4AllBotsButton.addClass("btn btn-sm btn-outline-dark")
-	p4AllBotsButton.click(function() { window.open('/allbots', '_blank') })
-	p4AllBotsButton.text("All bots graph")
-	fteButtonDiv.append(p4AllBotsButton)
 
 	let branchesButton = $('<button id="branchesButton">')
 	branchesButton.addClass("btn btn-sm btn-outline-dark")
@@ -820,7 +812,7 @@ function createNodeRow(nodeData, includeActions, includeCollapseControls=true) {
 	let columnArray = []
 	let conflict = null
 	if (nodeData.is_blocked) {
-		conflict = getConflict(nodeData.conflicts, nodeData.blockage.targetBranchName, nodeData.blockage.change)
+		conflict = getConflict(nodeData.conflicts, nodeData.blockage.targetBranchName, nodeData.blockage.cl)
 	}
 
 	// Branch Name Column 
@@ -839,15 +831,9 @@ function createNodeRow(nodeData, includeActions, includeCollapseControls=true) {
 	}
 
 	// Last Change Column 
-	if (window.showNodeLastChanges) {
-		columnArray.push(renderLastChangeCell_Common(nodeData.bot, nodeData.def.name, nodeData.last_cl, nodeAPIOp, operationArgs))
-	}
-	else {
-		columnArray.push($('<div>').addClass('lastchangecell'))
-	}
+	columnArray.push(renderLastChangeCell_Common(nodeData.bot, nodeData.def.name, '', nodeAPIOp, operationArgs))
 
 	return columnArray
-
 }
 
 // Helper function to create consistent columns between edges
@@ -884,12 +870,7 @@ function createEdgeRow(nodeData, edgeData, includeActions) {
 	}
 
 	// Last Change Column 
-	let catchupText = null
-	if (edgeData.num_changes_remaining > 1) {
-		catchupText = `pending: ${edgeData.num_changes_remaining}`
-	}
-	columnArray.push(renderLastChangeCell_Common(nodeData.bot, nodeData.def.name, edgeData.last_cl, edgeAPIOp,
-														operationArgs, catchupText, edgeData.display_name))
+	columnArray.push(renderLastChangeCell_Common(nodeData.bot, nodeData.def.name, edgeData.last_cl, edgeAPIOp, operationArgs, edgeData.display_name))
 	postRenderLastChangeCell_Edge(columnArray[columnArray.length - 1], edgeData)
 
 	return columnArray
@@ -953,14 +934,8 @@ function renderNameCell_Common(data, botname) {
 		if (data.is_paused || data.is_blocked) {
 			msg += `Will unpause and retry on: ${unpauseTime}.<br />`;
 		}
-		else if (data.gateClosedMessage) {
-			msg = data.gateClosedMessage
-			if (data.nextWindowOpenTime) {
-				const timestamp = Date.parse(data.nextWindowOpenTime)
-				if (!isNaN(timestamp)) {
-					msg += ` (opens: ${(new Date(timestamp)).toLocaleString()})`
-				}
-			}
+		else if (data.lastGoodCL && data.headCL && data.lastGoodCL === data.last_cl && data.last_cl < data.headCL) {
+			msg = 'Waiting on CIS gate'
 		}
 
 		if (msg) {
@@ -1261,20 +1236,32 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 	}
 	const botname = operationArgs[0]
 	const branchNameForAPI = operationArgs[1]
-	const optEdgeName = operationArgs[2]
 	const dataDisplayName = getDisplayName(data)
 	const dataFullName = `${botname}:${dataDisplayName}`
 
 	// Start collecting available actions in our button group
-
+	let buttonGroup = $('<div class="btn-group">').appendTo(actionCell)
+	// Ensure we don't do a refresh of the branch list while displaying a dropdown
+	buttonGroup.on('show.bs.dropdown', function() {
+		// Check to see if we have our mutex function
+		if (typeof pauseAutoRefresh === 'function') {
+			pauseAutoRefresh()
+		}
+	})
+	buttonGroup.on('hidden.bs.dropdown', function() {
+		// Check to see if we have our mutex function
+		if (typeof resumeAutoRefresh === 'function') {
+			resumeAutoRefresh()
+		}
+	})
 
 
 	// Keep track if we have an individual action button forming our default option for a given NodeBot ---
 	// this controls how we render the dropdown menu
-	let specificActionButton = null
+	let actionButton = null
 	// If manually paused, the default option should be to unpause it
 	if (data.is_paused) {
-		specificActionButton = createActionButton(
+		actionButton = createActionButton(
 			`Unpause`,
 			function() {
 				operationFunction(...operationArgs, '/unpause', function(success) {
@@ -1325,7 +1312,7 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 
 		// Acknowledge
 		if (!data.blockage.acknowledger) {
-			specificActionButton = createActionButton(
+			actionButton = createActionButton(
 				[$('<i class="fas fa-exclamation-triangle" style="color:yellow">'), '&nbsp;', "Acknowledge"],
 				ackFunc,
 				'Take ownership of this blockage'
@@ -1333,7 +1320,7 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 		} 
 		// Unackowledge
 		else if (robomergeUser && data.blockage.acknowledger === robomergeUser.userName) {
-			specificActionButton = createActionButton(
+			actionButton = createActionButton(
 				[$('<i class="fas fa-eject" style="color:red">'), '&nbsp;', "Unacknowledge"],
 				unackFunc,
 				'Relinguish control over this conflict'
@@ -1341,16 +1328,35 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 		}
 		// Take ownership
 		else {
-			specificActionButton = createActionButton(
+			actionButton = createActionButton(
 				[$('<i class="fas fa-hands-helping" style="color:white">'), '&nbsp;', "Take Ownership"],
 				ackFunc,
 				`Take ownership of this blockage over ${data.blockage.acknowledger}`
 			)
 		}
 	}
+	// If the node isn't Paused or Blocked, our action button needn't have an actual function, just provide the dropdown
+	
+	// Create dropdown menu button
+	let actionsDropdownButton = $('<button class="btn dropdown-toggle" data-toggle="dropdown">')
+	// If there is already a button, we will append this no-text button to the end of it
+	if (actionButton) {
+		buttonGroup.append(actionButton)
+		actionsDropdownButton.addClass('btn-primary-alt') // This is our own take on the primary button
+		actionsDropdownButton.addClass('dropdown-toggle-split')
+	}
+	// If we have no conflicts, simply label our non-emergency actions
+	else {
+		// If we have no conflicts, simply label our non-emergency actions
+		actionsDropdownButton.text("Actions\n")
+		actionsDropdownButton.addClass('btn btn-secondary-alt') // This is our own take on the secondary  button
+	}
+	actionsDropdownButton.appendTo(buttonGroup)
 
-	// collect actions that should be added to a drop-down, if any
-	const dropdownEntries = []
+	// Start collecting dropdown options
+	let optionsList = $('<div class="dropdown-menu">').appendTo(buttonGroup)
+
+	
 	if (data.is_blocked) {
 		// If this object has a conflict, report it
 		if (conflict) {
@@ -1366,7 +1372,6 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 			if (conflict.targetStream) {
 				shelfRequest += '&' + toQuery({ targetStream: conflict.targetStream })
 			}
-			shelfRequest += location.hash
 
 			const toTargetText = conflict.target ? ' -> ' + conflict.target : '';
 			const shelfOption = createActionOption('Create Shelf for ' + conflict.cl + toTargetText, function() {
@@ -1391,8 +1396,8 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 				stompOption.attr('data-original-title', `Stomp not available for ${conflict.kind.toLowerCase()}.`)
 			}
 
-			dropdownEntries.push(shelfOption)
-			dropdownEntries.push(stompOption)
+			optionsList.append(shelfOption)
+			optionsList.append(stompOption)
 		}
 
 		// Exposing this section in the case of a blockage but no conflict
@@ -1408,9 +1413,9 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 				updateBranchList(botname)
 			})
 		},  `Resume Robomerge monitoring of ${dataDisplayName} and retry ${data.blockage.change}`)
-		dropdownEntries.push(retryOption)
+		optionsList.append(retryOption)
 		
-		dropdownEntries.push('<div class="dropdown-divider">')
+		optionsList.append('<div class="dropdown-divider">')
 	}
 
 	if (!data.is_paused) {
@@ -1438,83 +1443,35 @@ function renderActionsCell_Common(actionCell, data, operationFunction, operation
 				})
 			}
 		},  `Pause Robomerge monitoring of ${dataDisplayName}`)	
-		dropdownEntries.push(pauseOption)
+		optionsList.append(pauseOption)
 	}
 
-	if (optEdgeName || window.allowNodeReconsiders) {
-		// Add Reconsider action
-		const reconsiderOption = createActionOption(`Reconsider...`, function() {
-			let data = promptFor({
-				cl: `Enter the CL to reconsider (should be a CL from ${dataDisplayName}):`
-			});
-			if (data) {
-				// Ensure they entered a CL
-				if (isNaN(parseInt(data.cl))) {
-					displayErrorMessage("Please provide a valid changelist number to reconsider.")
-					return
-				}
-
-				operationFunction(...operationArgs, "/reconsider?" + toQuery(data), function(success) {
-					if (success) {
-						displaySuccessfulMessage(`Reconsidering ${data.cl} in ${dataFullName}...`)
-					} else {
-						displayErrorMessage(`Error reconsidering ${data.cl}, please check logs.`)
-						$('#helpButton').trigger('click')
-					}
-					updateBranchList(botname)
-				});
+	// Add Reconsider action
+	const reconsiderOption = createActionOption(`Reconsider...`, function() {
+		let data = promptFor({
+			cl: `Enter the CL to reconsider (should be a CL from ${dataDisplayName}):`
+		});
+		if (data) {
+			// Ensure they entered a CL
+			if (isNaN(parseInt(data.cl))) {
+				displayErrorMessage("Please provide a valid changelist number to reconsider.")
+				return
 			}
-		}, `Manually submit a CL to Robomerge to process (should be a CL from ${dataDisplayName})`)
-		dropdownEntries.push(reconsiderOption)
-	}
 
-	// if no available actions, we're done
-	if (!specificActionButton && dropdownEntries.length === 0) {
-		return
-	}
-
-	const buttonGroup = $('<div class="btn-group">').appendTo(actionCell)
-	// Ensure we don't do a refresh of the branch list while displaying a dropdown
-	buttonGroup.on('show.bs.dropdown', function() {
-		// Check to see if we have our mutex function
-		if (typeof pauseAutoRefresh === 'function') {
-			pauseAutoRefresh()
+			operationFunction(...operationArgs, "/reconsider?" + toQuery(data), function(success) {
+				if (success) {
+					displaySuccessfulMessage(`Reconsidering ${data.cl} in ${dataFullName}...`)
+				} else {
+					displayErrorMessage(`Error reconsidering ${data.cl}, please check logs.`)
+					$('#helpButton').trigger('click')
+				}
+				updateBranchList(botname)
+			});
 		}
-	})
-	buttonGroup.on('hidden.bs.dropdown', function() {
-		// Check to see if we have our mutex function
-		if (typeof resumeAutoRefresh === 'function') {
-			resumeAutoRefresh()
-		}
-	})
+	}, `Manually submit a CL to Robomerge to process (should be a CL from ${dataDisplayName})`)
+	optionsList.append(reconsiderOption)
 
-	if (specificActionButton) {
-		buttonGroup.append(specificActionButton)
-	}
-
-	if (dropdownEntries.length > 0) {
-		// Create dropdown menu button
-		const actionsDropdownButton = $('<button class="btn dropdown-toggle" data-toggle="dropdown">')
-		// If there is already a button, we will append this no-text button to the end of it
-
-		if (specificActionButton) {
-			actionsDropdownButton.addClass('btn-primary-alt') // This is our own take on the primary button
-			actionsDropdownButton.addClass('dropdown-toggle-split')
-		}
-		else {
-			// If we have no conflicts, simply label our non-emergency actions
-			actionsDropdownButton.text('Actions\n')
-			actionsDropdownButton.addClass('btn btn-secondary-alt') // This is our own take on the secondary  button
-		}
-		actionsDropdownButton.appendTo(buttonGroup)
-
-		const optionsList = $('<div class="dropdown-menu">').appendTo(buttonGroup)
-		for (const entry of dropdownEntries) {
-			optionsList.append(entry)
-		}
-	}
-
-	return
+	return actionCell
 }
 
 function renderActionsCell_Edge(actionCell, nodeData, edgeData, conflict=null) {
@@ -1551,7 +1508,7 @@ function renderActionsCell_Edge(actionCell, nodeData, edgeData, conflict=null) {
 				branch: getAPIName(nodeData),
 				cl: edgeData.blockage.change,
 				edge: edgeData.blockage.targetBranchName
-			}) + location.hash
+			})
 
 			let tooltip = `Skip past the blockage caused by changelist ${edgeData.blockage.change}. `
 			tooltip += 
@@ -1572,14 +1529,10 @@ function renderActionsCell_Edge(actionCell, nodeData, edgeData, conflict=null) {
 }
 
 // Helper function to create last change cell
-function renderLastChangeCell_Common(botname, nodename, lastCl, operationFunction, operationArgs, catchupText=null, edgename=null) {
-	const lastChangeCell = $('<div>').addClass('lastchangecell')
+function renderLastChangeCell_Common(botname, nodename, lastCl, operationFunction, operationArgs, edgename=null) {
+	let lastChangeCell = $('<div class="lastchangecell">')
 
-	const swarmLink = $(makeClLink(lastCl)).appendTo(lastChangeCell)
-	if (catchupText) {
-		lastChangeCell.append($('<div>').addClass('catchup').text(catchupText))
-	}
-
+	let swarmLink = $(makeClLink(lastCl)).appendTo(lastChangeCell)
 	// On shift+click, we can set the CL instead
 	swarmLink.click(function(evt) {
 		if (evt.shiftKey)

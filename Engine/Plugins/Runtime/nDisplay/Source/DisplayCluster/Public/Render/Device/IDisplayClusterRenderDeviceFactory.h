@@ -13,7 +13,8 @@ class IDisplayClusterRenderDevice;
 class IDisplayClusterRenderDeviceFactory
 {
 public:
-	virtual ~IDisplayClusterRenderDeviceFactory() = default;
+	virtual ~IDisplayClusterRenderDeviceFactory() = 0
+	{ }
 
 public:
 	/**

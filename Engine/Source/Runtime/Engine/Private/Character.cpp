@@ -19,6 +19,7 @@
 #include "Animation/AnimInstance.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogCharacter, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogAvatar, Log, All);
 
 DECLARE_CYCLE_STAT(TEXT("Char OnNetUpdateSimulatedPosition"), STAT_CharacterOnNetUpdateSimulatedPosition, STATGROUP_Character);
 
@@ -1081,7 +1082,7 @@ void ACharacter::PostNetReceive()
 {
 	if (GetLocalRole() == ROLE_SimulatedProxy)
 	{
-		CharacterMovement->bNetworkMovementModeChanged |= ((SavedMovementMode != ReplicatedMovementMode) || (CharacterMovement->PackNetworkMovementMode() != ReplicatedMovementMode));
+		CharacterMovement->bNetworkMovementModeChanged |= (SavedMovementMode != ReplicatedMovementMode);
 		CharacterMovement->bNetworkUpdateReceived |= CharacterMovement->bNetworkMovementModeChanged || CharacterMovement->bJustTeleported;
 	}
 

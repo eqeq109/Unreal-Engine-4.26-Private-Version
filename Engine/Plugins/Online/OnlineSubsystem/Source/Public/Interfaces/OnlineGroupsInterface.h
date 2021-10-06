@@ -49,7 +49,7 @@ class IGroupInfo
 
 public:
 	/** Get the group */
-	virtual FUniqueNetIdRef GetGroupId() const = 0;
+	virtual TSharedRef<const FUniqueNetId> GetGroupId() const = 0;
 
 	/** Arbitrary namespace string used to filter group groups in some queries or client side. Usually this would be the game codename */
 	virtual const FString& GetNamespace() const = 0;
@@ -58,7 +58,7 @@ public:
 	virtual const FGroupDisplayInfo& GetDisplayInfo() const = 0;
 
 	/** GUID of the user account that holds the owner role for this group (will only be one) */
-	virtual FUniqueNetIdRef GetOwner() const = 0;
+	virtual TSharedRef<const FUniqueNetId> GetOwner() const = 0;
 
 	/** The current size of the group */
 	virtual uint32 GetSize() const = 0;
@@ -75,9 +75,9 @@ public:
  */
 struct FGroupMember
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 	bool bAdmin;
 	bool bIsOwner;
 	FDateTime JoinedAt;
@@ -88,10 +88,10 @@ struct FGroupMember
  */
 struct FGroupMemberInvite
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
-	FUniqueNetIdPtr AccountId;
-	FUniqueNetIdPtr GroupHostId;
+	TSharedPtr<const FUniqueNetId> AccountId;
+	TSharedPtr<const FUniqueNetId> GroupHostId;
 	FDateTime SentAt;
 };
 
@@ -100,9 +100,9 @@ struct FGroupMemberInvite
  */
 struct FGroupMemberRequest
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 	FDateTime SentAt;
 };
 
@@ -111,9 +111,9 @@ struct FGroupMemberRequest
  */
 struct FGroupBlacklistEntry
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 	bool bIsApplicant;
 };
 
@@ -122,10 +122,10 @@ struct FGroupBlacklistEntry
  */
 struct FUserMembershipEntry
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
 	/** AccountId of the member */
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 
 	/** Does the user have admin rights for this group. */
 	bool bAdmin;
@@ -140,13 +140,13 @@ struct FUserMembershipEntry
 	FString Namespace;
 
 	/** GroupId */
-	FUniqueNetIdPtr GroupId;
+	TSharedPtr<const FUniqueNetId> GroupId;
 
 	/** The display name of the group */
 	FText Name;
 
 	/** AccountId of the group owner */
-	FUniqueNetIdPtr Owner;
+	TSharedPtr<const FUniqueNetId> Owner;
 };
 
 /**
@@ -154,16 +154,16 @@ struct FUserMembershipEntry
  */
 struct FApplicationEntry
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
 	/** AccountId of the user who applied for group membership. */
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 
 	/** Timestamp of when the application was sent. */
 	FDateTime SentAt;
 
 	/** GroupId of the group for which membership was applied. */
-	FUniqueNetIdPtr GroupId;
+	TSharedPtr<const FUniqueNetId> GroupId;
 
 	/** Namespace in which the application exists. */
 	FString Namespace;
@@ -177,19 +177,19 @@ struct FApplicationEntry
 */
 struct FInvitationEntry
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
 	/** AccountId of the user invited to group membership. */
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 
 	/** AccountId of the group user that did the inviting. */
-	FUniqueNetIdPtr GroupHostId;
+	TSharedPtr<const FUniqueNetId> GroupHostId;
 
 	/** Timestamp of when the application was sent. */
 	FDateTime SentAt;
 
 	/** The GroupId for the group. */
-	FUniqueNetIdPtr GroupId;
+	TSharedPtr<const FUniqueNetId> GroupId;
 
 	/** The Namespace for the invitation. */
 	FString Namespace;
@@ -201,10 +201,10 @@ struct FInvitationEntry
 template <typename EntryType>
 struct TGroupConfigEntry
 {
-	FUniqueNetIdPtr GetId() const { return AccountId; }
+	TSharedPtr<const FUniqueNetId> GetId() const { return AccountId; }
 
 	/** Context AccountId. */
-	FUniqueNetIdPtr AccountId;
+	TSharedPtr<const FUniqueNetId> AccountId;
 
 	/** The max number of members in any group. */
 	FString Key;
@@ -221,7 +221,7 @@ struct IGroupUserCollection
 {
 	virtual const EntryType* GetEntry(const FUniqueNetId& EntryId) const =0;
 	virtual EntryType* GetEntry(const FUniqueNetId& EntryId) =0;
-	virtual FUniqueNetIdRef GetCollectionId() const =0;
+	virtual TSharedRef<const FUniqueNetId> GetCollectionId() const =0;
 	virtual void CopyEntries(TArray<EntryType>& Out) const =0;
 };
 
@@ -305,19 +305,19 @@ enum class EGroupSortOrder
 struct FGroupsResult
 {
 	int32 HttpStatus;
-	FUniqueNetIdPtr PrimaryId;
+	TSharedPtr<const FUniqueNetId> PrimaryId;
 	FString ErrorContent;
 
 	inline bool DidSucceed() const { return (HttpStatus / 100) == 2; }
 
-	FGroupsResult(int32 InHttpStatus = 0, FUniqueNetIdPtr InPrimaryId = nullptr)
+	FGroupsResult(int32 InHttpStatus = 0, TSharedPtr<const FUniqueNetId> InPrimaryId = nullptr)
 		: HttpStatus(InHttpStatus)
 		, PrimaryId(InPrimaryId)
 		, ErrorContent()
 	{
 	}
 
-	FGroupsResult(int32 InHttpStatus, const FString& Error, FUniqueNetIdPtr InPrimaryId = nullptr)
+	FGroupsResult(int32 InHttpStatus, const FString& Error, TSharedPtr<const FUniqueNetId> InPrimaryId = nullptr)
 		: HttpStatus(InHttpStatus)
 		, PrimaryId(InPrimaryId)
 		, ErrorContent(Error)

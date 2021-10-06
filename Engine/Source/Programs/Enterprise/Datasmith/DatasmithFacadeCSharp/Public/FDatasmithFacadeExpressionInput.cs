@@ -45,13 +45,9 @@ public class FDatasmithFacadeExpressionInput : global::System.IDisposable {
     }
   }
 
-  public string GetName() {
-    string ret = global::System.Runtime.InteropServices.Marshal.PtrToStringUni(DatasmithFacadeCSharpPINVOKE.FDatasmithFacadeExpressionInput_GetName(swigCPtr));
+  public string GetInputName() {
+    string ret = global::System.Runtime.InteropServices.Marshal.PtrToStringUni(DatasmithFacadeCSharpPINVOKE.FDatasmithFacadeExpressionInput_GetInputName(swigCPtr));
     return ret;
-  }
-
-  public void SetName(string InName) {
-    DatasmithFacadeCSharpPINVOKE.FDatasmithFacadeExpressionInput_SetName(swigCPtr, InName);
   }
 
   public FDatasmithFacadeMaterialExpression GetExpression() {

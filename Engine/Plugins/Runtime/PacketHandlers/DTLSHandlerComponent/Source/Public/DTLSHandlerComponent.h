@@ -17,7 +17,6 @@ class DTLSHANDLERCOMPONENT_API FDTLSHandlerComponent : public FEncryptionCompone
 {
 public:
 	FDTLSHandlerComponent();
-	virtual ~FDTLSHandlerComponent();
 
 	virtual void SetEncryptionData(const FEncryptionData& EncryptionData) override;
 
@@ -55,10 +54,7 @@ public:
 
 private:
 	// Process DTLS handshake
-	void TickHandshake();
-	void DoHandshake();
-
-	void LogError(const TCHAR* Context, int32 Result);
+	void UpdateHandshake();
 
 private:
 	EDTLSHandlerState InternalState;
@@ -70,8 +66,6 @@ private:
 	FString CertId;
 
 	uint8 TempBuffer[MAX_PACKET_SIZE];
-
-	bool bPendingHandshakeData;
 };
 
 /**

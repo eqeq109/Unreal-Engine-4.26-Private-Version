@@ -17,7 +17,7 @@ class AUsdStageActor;
 class FLevelCollectionModel;
 class FMenuBuilder;
 enum class EMapChangeType : uint8;
-enum class EUsdInitialLoadSet : uint8;
+enum class EUsdInitialLoadSet;
 struct FSlateBrush;
 
 #if USE_USD_SDK
@@ -41,8 +41,6 @@ protected:
 	void FillOptionsMenu( FMenuBuilder& MenuBuilder );
 	void FillPayloadsSubMenu( FMenuBuilder& MenuBuilder );
 	void FillPurposesToLoadSubMenu( FMenuBuilder& MenuBuilder );
-	void FillRenderContextSubMenu( FMenuBuilder& MenuBuilder );
-	void FillSelectionSubMenu( FMenuBuilder& MenuBuilder );
 
 	void OnNew();
 	void OnOpen();
@@ -52,7 +50,7 @@ protected:
 
 	void OnImport();
 
-	void OnPrimSelectionChanged( const TArray<FString>& PrimPath );
+	void OnPrimSelected( FString PrimPath );
 
 	void OpenStage( const TCHAR* FilePath );
 
@@ -62,8 +60,6 @@ protected:
 	void OnStageActorPropertyChanged( UObject* ObjectBeingModified, FPropertyChangedEvent& PropertyChangedEvent );
 
 	void OnMapChanged( UWorld* World, EMapChangeType ChangeType );
-
-	void OnViewportSelectionChanged( UObject* NewSelection );
 
 protected:
 	TSharedPtr< class SUsdStageInfo > UsdStageInfoWidget;
@@ -79,14 +75,9 @@ protected:
 	FDelegateHandle OnStageEditTargetChangedHandle;
 	FDelegateHandle OnPrimChangedHandle;
 
-	FDelegateHandle OnViewportSelectionChangedHandle;
-
 	FString SelectedPrimPath;
 
 	FUsdStageViewModel ViewModel;
-
-	// True while we're in the middle of setting the viewport selection from the prim selection
-	bool bUpdatingViewportSelection;
 };
 
 #endif // #if USE_USD_SDK

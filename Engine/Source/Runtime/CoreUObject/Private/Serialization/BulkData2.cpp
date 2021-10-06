@@ -372,7 +372,17 @@ protected:
 	{
 		bCanceled = true;
 
-		IoRequest.Cancel();
+		{
+			FScopeLock Lock(&FReadChunkIdRequestEvent);
+			bRequestOutstanding = false;
+
+			if (DoneEvent != nullptr)
+			{
+				DoneEvent->Trigger();
+			}
+
+			SetComplete();
+		}
 	}
 
 	/** The ChunkId that is being read. */
@@ -413,6 +423,9 @@ static FCriticalSection FBulkDataIoDispatcherRequestEvent;
 class FBulkDataIoDispatcherRequest : public IBulkDataIORequest
 {
 public:
+	using ChunkIdArray = TArray<FIoChunkId, TInlineAllocator<8>>;
+
+public:
 	FBulkDataIoDispatcherRequest(const FIoChunkId& InChunkID, int64 InOffsetInBulkData, int64 InBytesToRead, FBulkDataIORequestCallBack* InCompleteCallback, uint8* InUserSuppliedMemory)
 		: UserSuppliedMemory(InUserSuppliedMemory)
 	{
@@ -424,11 +437,14 @@ public:
 		}
 	}
 
-	FBulkDataIoDispatcherRequest(const FIoChunkId& InChunkID, FBulkDataIORequestCallBack* InCompleteCallback)
+	FBulkDataIoDispatcherRequest(const ChunkIdArray& ChunkIDs, FBulkDataIORequestCallBack* InCompleteCallback)
 		: UserSuppliedMemory(nullptr)
 	{
-		const uint64 Size = FBulkDataBase::GetIoDispatcher()->GetSizeForChunk(InChunkID).ConsumeValueOrDie();
-		RequestArray.Push({ InChunkID, 0, Size });
+		for (const FIoChunkId& ChunkId : ChunkIDs)
+		{
+			const uint64 Size = FBulkDataBase::GetIoDispatcher()->GetSizeForChunk(ChunkId).ConsumeValueOrDie();
+			RequestArray.Push({ChunkId, 0, Size });
+		}
 
 		if (InCompleteCallback != nullptr)
 		{
@@ -595,10 +611,7 @@ public:
 		{
 			bIsCanceled = true;
 			FPlatformMisc::MemoryBarrier();
-			for (Request& Request : RequestArray)
-			{
-				Request.IoRequest.Cancel();
-			}
+			// TODO: Send to IoDispatcher
 		}
 	}
 
@@ -629,29 +642,6 @@ private:
 
 	FIoBuffer IoBuffer;
 };
-
-TUniquePtr<IBulkDataIORequest> CreateBulkDataIoDispatcherRequest(
-	const FIoChunkId& InChunkID,
-	int64 InOffsetInBulkData,
-	int64 InBytesToRead,
-	FBulkDataIORequestCallBack* InCompleteCallback,
-	uint8* InUserSuppliedMemory)
-{
-	TUniquePtr<FBulkDataIoDispatcherRequest> Request;
-
-	if (InBytesToRead > 0)
-	{
-		Request.Reset(new FBulkDataIoDispatcherRequest(InChunkID, InOffsetInBulkData, InBytesToRead, InCompleteCallback, InUserSuppliedMemory));
-	}
-	else
-	{
-		Request.Reset(new FBulkDataIoDispatcherRequest(InChunkID, InCompleteCallback));
-	}
-
-	Request->StartAsyncWork();
-
-	return Request;
-}
 
 FBulkDataBase::FBulkDataBase(FBulkDataBase&& Other)
 	: Data(Other.Data) // Copies the entire union

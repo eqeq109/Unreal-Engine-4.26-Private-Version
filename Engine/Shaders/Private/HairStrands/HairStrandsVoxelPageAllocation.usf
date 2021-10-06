@@ -531,20 +531,13 @@ void AllocateCS(uint GroupIndex : SV_GroupIndex, uint3 DispatchThreadId : SV_Dis
 	if (bIsValid)
 	{
 		const uint PageIndex = GroupBase + Offset;
-		const bool bIsAllocationValid = PageIndex < PageCount;
-
-		PageIndexBuffer[GridIndex] = bIsAllocationValid ? PageIndex : INVALID_VOXEL_PAGE_INDEX;
-		if (bIsAllocationValid)
-		{
-			PageToPageIndexBuffer[PageIndex] = GridIndex;
-		}
-
+		PageIndexBuffer[GridIndex] = PageIndex < PageCount ? PageIndex : INVALID_VOXEL_PAGE_INDEX;
+		PageToPageIndexBuffer[PageIndex] = GridIndex;
 		// Output the coordinates of the allocated page for indirect dispatch usage
-		// If the allocated failed (run out of page), then we mark the IndexCoord with a invalid GroupID
 		const uint LinearIndex = DispatchThreadId.x;
 		const uint3 PageIndexCoord = IndexToCoord(LinearIndex, PageIndexResolution);
 		const uint IndexRelativeToMacroGroupIndexOffset = PageIndex - PageIndexGlobalCounter[1];
-		PageIndexCoordBuffer[PageIndexOffset + IndexRelativeToMacroGroupIndexOffset] = uint4(PageIndexCoord, bIsAllocationValid ? MacroGroupId : INVALID_MACRO_GROUP_ID);
+		PageIndexCoordBuffer[PageIndexOffset + IndexRelativeToMacroGroupIndexOffset] = uint4(PageIndexCoord, MacroGroupId);
 	}
 	// Mark page index as invalid
 	// Insure that even if write more (due to larger dispatch count that needed), we do not stomp other instance group page index
@@ -601,7 +594,6 @@ uint IndirectGroupSize;
 
 RWBuffer<uint> OutPageIndexGlobalCounter;
 RWBuffer<uint> OutIndirectArgsBuffer;
-RWBuffer<uint> OutTotalRequestedPageAllocationBuffer;
 
 [numthreads(1, 1, 1)]
 void AddIndirectBufferCS(uint GroupIndex : SV_GroupIndex, uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -622,9 +614,6 @@ void AddIndirectBufferCS(uint GroupIndex : SV_GroupIndex, uint3 DispatchThreadId
 
 	// Copy current total to previous total
 	OutPageIndexGlobalCounter[1] = TotalAllocatedPageCount;
-
-	// The value will be written several times, but only the value written during the last macro group will give the final page count allocated/requested
-	OutTotalRequestedPageAllocationBuffer[0] = TotalAllocatedPageCount;
 }
 
 #endif

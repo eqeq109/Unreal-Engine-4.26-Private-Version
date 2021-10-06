@@ -39,13 +39,9 @@ struct AIMODULE_API FAIDamageEvent
 	/** Actor that instigated damage. Can be None */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
 	AActor* Instigator;
-
-	/** Optional named identifier for the damage. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sense")
-	FName Tag;
 	
 	FAIDamageEvent();
-	FAIDamageEvent(AActor* InDamagedActor, AActor* InInstigator, float DamageAmount, const FVector& EventLocation, const FVector& InHitLocation = FAISystem::InvalidLocation, FName InTag = NAME_None);
+	FAIDamageEvent(AActor* InDamagedActor, AActor* InInstigator, float DamageAmount, const FVector& EventLocation, const FVector& InHitLocation = FAISystem::InvalidLocation); 
 	void Compile();
 
 	bool IsValid() const
@@ -70,7 +66,7 @@ public:
 
 	/** EventLocation will be reported as Instigator's location at the moment of event happening*/
 	UFUNCTION(BlueprintCallable, Category = "AI|Perception", meta = (WorldContext="WorldContextObject", AdvancedDisplay="HitLocation"))
-	static void ReportDamageEvent(UObject* WorldContextObject, AActor* DamagedActor, AActor* Instigator, float DamageAmount, FVector EventLocation, FVector HitLocation, FName Tag = NAME_None);
+	static void ReportDamageEvent(UObject* WorldContextObject, AActor* DamagedActor, AActor* Instigator, float DamageAmount, FVector EventLocation, FVector HitLocation);
 
 protected:
 	virtual float Update() override;

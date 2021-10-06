@@ -107,9 +107,6 @@ public:
 protected:
 	virtual bool StreamCompressedInfoInternal(USoundWave* Wave, struct FSoundQualityInfo* QualityInfo) override;
 
-	friend class FAudioFormatOgg;
-	ENGINE_API int32 GetAudioDataStartOffset() const;
-
 private:
 	const uint8* GetLoadedChunk(USoundWave* InSoundWave, uint32 ChunkIndex, uint32& OutChunkSize);
 
@@ -124,7 +121,7 @@ private:
 	int32 TimesLoopedWithoutDecompressedAudio;
 
 	/** Critical section used to prevent multiple threads accessing same ogg-vorbis file handles at the same time */
-	mutable FCriticalSection VorbisCriticalSection;
+	FCriticalSection VorbisCriticalSection;
 
 	uint8 const* CurrentStreamingChunkData;
 	int32 CurrentStreamingChunkIndex;

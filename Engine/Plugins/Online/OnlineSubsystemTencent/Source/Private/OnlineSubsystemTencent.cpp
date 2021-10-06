@@ -205,11 +205,6 @@ FText FOnlineSubsystemTencent::GetOnlineServiceName() const
 	return NSLOCTEXT("FOnlineSubsystemTencent", "OnlineServiceName", "Tencent");
 }
 
-FText FOnlineSubsystemTencent::GetSocialPlatformName() const
-{
-	return NSLOCTEXT("FOnlineSubsystemTencent", "SocialPlatformName", "WeGame Friends");
-}
-
 bool FOnlineSubsystemTencent::Init()
 {
 	UE_LOG_ONLINE(Verbose, TEXT("FOnlineSubsystemTencent::Init() Name: %s"), *InstanceName.ToString());
@@ -559,12 +554,12 @@ bool FOnlineSubsystemTencent::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDev
 	{
 #if WITH_TENCENT_RAIL_SDK
 		bool bLocalUser = true;
-		FUniqueNetIdPtr UserId = nullptr;
+		TSharedPtr<const FUniqueNetId> UserId = nullptr;
 		
 		FString UserIdStr = FParse::Token(Cmd, true);
 		if (!UserIdStr.IsEmpty())
 		{
-			UserId = FUniqueNetIdRail::Create(UserIdStr);
+			UserId = MakeShared<const FUniqueNetIdRail>(UserIdStr);
 			bLocalUser = false;
 		}
 		else
@@ -576,7 +571,7 @@ bool FOnlineSubsystemTencent::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDev
 		{
 			TArray<FString> OutDebugKeys;
 			MetadataDataCache.GenerateKeyArray(OutDebugKeys);
-			FUniqueNetIdRailPtr UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
+			TSharedPtr<const FUniqueNetIdRail> UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
 			FOnlineAsyncTaskRailGetUserMetadata* InnerTask = new FOnlineAsyncTaskRailGetUserMetadata(this, *UserIdRail, OutDebugKeys, FOnOnlineAsyncTaskRailGetUserMetadataComplete::CreateLambda([this, bLocalUser, OutDebugKeys](const FGetUserMetadataTaskResult& Result)
 			{
 				if (Result.Error.WasSuccessful())
@@ -659,10 +654,10 @@ bool FOnlineSubsystemTencent::HandleSessionExecCommands(UWorld* InWorld, const T
 	if (FParse::Command(&Cmd, TEXT("DUMPMETADATA")))
 	{
 		// Retrieves session metadata based on the invite command line keys (tests individual steps, same as FOnlineAsyncTaskRailGetUserInvite)
-		FUniqueNetIdPtr UserId = GetFirstSignedInUser(TencentIdentity);
+		TSharedPtr<const FUniqueNetId> UserId = GetFirstSignedInUser(TencentIdentity);
 		if (UserId.IsValid())
 		{
-			FUniqueNetIdRailPtr UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
+			TSharedPtr<const FUniqueNetIdRail> UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
 
 			TWeakPtr<FOnlineSubsystemTencent, ESPMode::ThreadSafe> LocalWeakThis(AsShared());
 			FOnlineAsyncTaskRailGetInviteCommandline* OuterTask = new FOnlineAsyncTaskRailGetInviteCommandline(this, *UserIdRail, FOnOnlineAsyncTaskRailGetInviteCommandLineComplete::CreateLambda([LocalWeakThis, UserIdRail](const FGetInviteCommandLineTaskResult& OuterResult)
@@ -712,10 +707,10 @@ bool FOnlineSubsystemTencent::HandleSessionExecCommands(UWorld* InWorld, const T
 		FOnlineSessionTencentRailPtr TencentSessionRail = StaticCastSharedPtr<FOnlineSessionTencentRail>(TencentSession);
 		if (TencentSessionRail.IsValid())
 		{
-			FUniqueNetIdPtr UserId = GetFirstSignedInUser(TencentIdentity);
+			TSharedPtr<const FUniqueNetId> UserId = GetFirstSignedInUser(TencentIdentity);
 			if (UserId.IsValid())
 			{
-				FUniqueNetIdRailPtr UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
+				TSharedPtr<const FUniqueNetIdRail> UserIdRail = StaticCastSharedPtr<const FUniqueNetIdRail>(UserId);
 
 				TWeakPtr<FOnlineSubsystemTencent, ESPMode::ThreadSafe> LocalWeakThis(AsShared());
 				FOnOnlineAsyncTaskRailGetUserInviteComplete CompletionDelegate = FOnOnlineAsyncTaskRailGetUserInviteComplete::CreateLambda([LocalWeakThis, UserIdRail](const FGetUserInviteTaskResult& Result)
@@ -765,7 +760,7 @@ bool FOnlineSubsystemTencent::HandlePresenceExecCommands(UWorld* InWorld, const 
 
 		if (!UserIdStr.IsEmpty())
 		{
-			FUniqueNetIdRef ReportUserId(FUniqueNetIdRail::Create(UserIdStr));
+			TSharedRef<const FUniqueNetId> ReportUserId(MakeShared<const FUniqueNetIdRail>(UserIdStr));
 			if (ReportUserId->IsValid())
 			{
 				ReportedPlayers.Emplace(ReportUserId, PresenceStr);
@@ -788,7 +783,7 @@ bool FOnlineSubsystemTencent::HandlePresenceExecCommands(UWorld* InWorld, const 
 						const rail::RailFriendInfo& RailFriendInfo(Friends[RailIdx]);
 						if (RailFriendInfo.friend_rail_id != rail::kInvalidRailId)
 						{
-							FUniqueNetIdRef FriendId(FUniqueNetIdRail::Create(RailFriendInfo.friend_rail_id));
+							TSharedRef<const FUniqueNetId> FriendId(MakeShared<const FUniqueNetIdRail>(RailFriendInfo.friend_rail_id));
 							ReportedPlayers.Emplace(FriendId, PresenceStr);
 						}
 						else
@@ -850,12 +845,12 @@ bool FOnlineSubsystemTencent::HandlePresenceExecCommands(UWorld* InWorld, const 
 				rail::RailResult Result = RailFriends->GetFriendsList(&Friends);
 				if (Result == rail::kSuccess)
 				{
-					TArray<FUniqueNetIdRef> FriendIds;
+					TArray<TSharedRef<const FUniqueNetId>> FriendIds;
 					for (uint32 RailIdx = 0; RailIdx < Friends.size(); ++RailIdx)
 					{
 						if (Friends[RailIdx].friend_rail_id != rail::kInvalidRailId)
 						{
-							FUniqueNetIdRailRef FriendId = FUniqueNetIdRail::Create(Friends[RailIdx].friend_rail_id);
+							TSharedRef<const FUniqueNetIdRail> FriendId = MakeShared<const FUniqueNetIdRail>(Friends[RailIdx].friend_rail_id);
 							TencentPresence->QueryPresence(*FriendId, CompletionDelegate);
 						}
 					}
@@ -863,7 +858,7 @@ bool FOnlineSubsystemTencent::HandlePresenceExecCommands(UWorld* InWorld, const 
 			}
 			
 			// Query own presence
-			FUniqueNetIdPtr UserId = GetFirstSignedInUser(TencentIdentity);
+			TSharedPtr<const FUniqueNetId> UserId = GetFirstSignedInUser(TencentIdentity);
 			if (UserId.IsValid())
 			{
 				TencentPresence->QueryPresence(*UserId, CompletionDelegate);
@@ -880,7 +875,7 @@ bool FOnlineSubsystemTencent::HandleUsersExecCommands(UWorld* InWorld, const TCH
 	bool bWasHandled = false;
 	
 #if WITH_TENCENT_RAIL_SDK
-	const FUniqueNetIdPtr LocalUserId = GetFirstSignedInUser(TencentIdentity);
+	const TSharedPtr<const FUniqueNetId> LocalUserId = GetFirstSignedInUser(TencentIdentity);
 	const int32 LocalUserNum = LocalUserId.IsValid() ? TencentIdentity->GetPlatformUserIdFromUniqueNetId(*LocalUserId) : PLATFORMUSERID_NONE;
 	if (LocalUserNum != PLATFORMUSERID_NONE)
 	{
@@ -909,14 +904,14 @@ bool FOnlineSubsystemTencent::HandleUsersExecCommands(UWorld* InWorld, const TCH
 			FString UserIdString = Cmd;
 			if (!UserIdString.IsEmpty())
 			{
-				FUniqueNetIdPtr UserId = TencentIdentity->CreateUniquePlayerId(UserIdString);
+				TSharedPtr<const FUniqueNetId> UserId = TencentIdentity->CreateUniquePlayerId(UserIdString);
 				if (UserId.IsValid())
 				{
-					TArray<FUniqueNetIdRef> UserIds;
+					TArray<TSharedRef<const FUniqueNetId>> UserIds;
 					UserIds.Add(UserId.ToSharedRef());
 					
 					static FDelegateHandle DelegateHandle1;
-					FOnQueryUserInfoCompleteDelegate OnQueryUserInfoCompleteDelegate = FOnQueryUserInfoCompleteDelegate::CreateLambda([this, LocalUserNum, UserId](int32, bool bSucceeded, const TArray< FUniqueNetIdRef >&, const FString& ErrorString)
+					FOnQueryUserInfoCompleteDelegate OnQueryUserInfoCompleteDelegate = FOnQueryUserInfoCompleteDelegate::CreateLambda([this, LocalUserNum, UserId](int32, bool bSucceeded, const TArray< TSharedRef<const FUniqueNetId> >&, const FString& ErrorString)
 					{
 						if (bSucceeded)
 						{
@@ -963,18 +958,18 @@ bool FOnlineSubsystemTencent::HandleUsersExecCommands(UWorld* InWorld, const TCH
 				rail::RailResult Result = RailFriends->GetFriendsList(&Friends);
 				if (Result == rail::kSuccess)
 				{
-					TArray<FUniqueNetIdRef> UserIds;
+					TArray<TSharedRef<const FUniqueNetId>> UserIds;
 					for (uint32 Index = 0; Index < Friends.size(); ++Index)
 					{
-						UserIds.Emplace(FUniqueNetIdRail::Create(Friends[Index].friend_rail_id));
+						UserIds.Emplace(MakeShared<FUniqueNetIdRail>(Friends[Index].friend_rail_id));
 					}
 
 					static FDelegateHandle DelegateHandle2;
-					FOnQueryUserInfoCompleteDelegate OnQueryUserInfoCompleteDelegate = FOnQueryUserInfoCompleteDelegate::CreateLambda([this, LocalUserNum, UserIds](int32, bool bSucceeded, const TArray< FUniqueNetIdRef >&, const FString& ErrorString)
+					FOnQueryUserInfoCompleteDelegate OnQueryUserInfoCompleteDelegate = FOnQueryUserInfoCompleteDelegate::CreateLambda([this, LocalUserNum, UserIds](int32, bool bSucceeded, const TArray< TSharedRef<const FUniqueNetId> >&, const FString& ErrorString)
 					{
 						if (bSucceeded)
 						{
-							for (const FUniqueNetIdRef& UserId : UserIds)
+							for (const TSharedRef<const FUniqueNetId>& UserId : UserIds)
 							{
 								TSharedPtr<FOnlineUser> OnlineUser = TencentUser->GetUserInfo(LocalUserNum, *UserId);
 								if (OnlineUser.IsValid())
@@ -1033,18 +1028,18 @@ bool FOnlineSubsystemTencent::HandleFriendExecCommands(UWorld* InWorld, const TC
 			rail::RailArray<rail::RailFriendInfo> Friends;
 			rail::RailResult Result = RailFriends->GetFriendsList(&Friends);
 
-			TArray<FUniqueNetIdRef> FriendIds;
+			TArray<TSharedRef<const FUniqueNetId>> FriendIds;
 			for (uint32 RailIdx = 0; RailIdx < Friends.size(); ++RailIdx)
 			{
 				if (Friends[RailIdx].friend_rail_id != rail::kInvalidRailId)
 				{
-					FriendIds.Add(FUniqueNetIdRail::Create(Friends[RailIdx].friend_rail_id));
+					FriendIds.Add(MakeShared<const FUniqueNetIdRail>(Friends[RailIdx].friend_rail_id));
 				}
 			}
 
 			if (FriendIds.Num() > 0)
 			{
-				TencentUser->AddOnQueryUserInfoCompleteDelegate_Handle(0, FOnQueryUserInfoCompleteDelegate::CreateLambda([this](int32 LocalUserNum, bool bWasSuccessful, const TArray<FUniqueNetIdRef>& UserIds, const FString& ErrorStr)
+				TencentUser->AddOnQueryUserInfoCompleteDelegate_Handle(0, FOnQueryUserInfoCompleteDelegate::CreateLambda([this](int32 LocalUserNum, bool bWasSuccessful, const TArray<TSharedRef<const FUniqueNetId>>& UserIds, const FString& ErrorStr)
 				{
 					if (bWasSuccessful)
 					{
@@ -1074,7 +1069,7 @@ bool FOnlineSubsystemTencent::HandleFriendExecCommands(UWorld* InWorld, const TC
 			rail::RailArray<rail::RailFriendInfo> Friends;
 			rail::RailResult Result = RailFriends->GetFriendsList(&Friends);
 
-			FUniqueNetIdRailPtr LocalUserId = StaticCastSharedPtr<const FUniqueNetIdRail>(GetFirstSignedInUser(TencentIdentity));
+			TSharedPtr<const FUniqueNetIdRail> LocalUserId = StaticCastSharedPtr<const FUniqueNetIdRail>(GetFirstSignedInUser(TencentIdentity));
 			if (LocalUserId.IsValid())
 			{
 				for (uint32 RailIdx = 0; RailIdx < Friends.size(); ++RailIdx)
@@ -1084,7 +1079,7 @@ bool FOnlineSubsystemTencent::HandleFriendExecCommands(UWorld* InWorld, const TC
 						if (Friends[RailIdx].friend_rail_id != (rail::RailID)(*LocalUserId))
 						{
 							UE_LOG_ONLINE(Display, TEXT("Query game played with %llu"), Friends[RailIdx].friend_rail_id.get_id());
-							FUniqueNetIdRailPtr FriendId = FUniqueNetIdRail::Create(Friends[RailIdx].friend_rail_id);
+							TSharedPtr<const FUniqueNetIdRail> FriendId = MakeShared<FUniqueNetIdRail>(Friends[RailIdx].friend_rail_id);
 							FOnlineAsyncTaskRailQueryFriendPlayedGamesInfo* NewTask = new FOnlineAsyncTaskRailQueryFriendPlayedGamesInfo(this, *FriendId, FOnOnlineAsyncTaskRailQueryFriendPlayedGamesComplete::CreateLambda([](const FQueryFriendPlayedGamesTaskResult& Result)
 							{
 								UE_LOG_ONLINE(Display, TEXT("Query game played complete: %s"), *Result.Error.ToLogString());

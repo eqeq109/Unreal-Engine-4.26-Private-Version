@@ -23,7 +23,7 @@ struct FBranchFilter
 
 	/** Blend Depth **/
 	UPROPERTY(EditAnywhere, Category=Branch)
-	int32 BlendDepth = 0;
+	int32 BlendDepth;
 };
 
 USTRUCT()

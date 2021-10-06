@@ -234,7 +234,7 @@ void SSourceControlLogin::DisplayConnectionError(const FText& InErrorText)
 	}
 	else
 	{
-		SourceControlLog.Error(FText::Format(LOCTEXT("ConnectionErrorFormat", "Connection Error: {0}"), InErrorText));
+		SourceControlLog.Error(InErrorText);
 	}
 	
 	SourceControlLog.Notify();

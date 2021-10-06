@@ -46,13 +46,7 @@ void FDisplayClusterRenderSyncService::Shutdown()
 
 TUniquePtr<IDisplayClusterSession> FDisplayClusterRenderSyncService::CreateSession(FSocket* Socket, const FIPv4Endpoint& Endpoint, uint64 SessionId)
 {
-	return MakeUnique<FDisplayClusterSession<FDisplayClusterPacketInternal, true, true>>(
-		Socket,
-		this,
-		this,
-		SessionId,
-		FString::Printf(TEXT("%s_session_%lu_%s"), *GetName(), SessionId, *Endpoint.ToString()),
-		FDisplayClusterService::GetThreadPriority());
+	return MakeUnique<FDisplayClusterSession<FDisplayClusterPacketInternal, true, true>>(Socket, this, this, SessionId, FString::Printf(TEXT("%s_session_%lu_%s"), *GetName(), SessionId, *Endpoint.ToString()));
 }
 
 
@@ -95,7 +89,14 @@ TSharedPtr<FDisplayClusterPacketInternal> FDisplayClusterRenderSyncService::Proc
 	// Dispatch the packet
 	if (Request->GetName().Equals(DisplayClusterRenderSyncStrings::WaitForSwapSync::Name, ESearchCase::IgnoreCase))
 	{
-		WaitForSwapSync();
+		double ThreadTime  = 0.f;
+		double BarrierTime = 0.f;
+
+		WaitForSwapSync(&ThreadTime, &BarrierTime);
+
+		Response->SetTextArg(DisplayClusterRenderSyncStrings::ArgumentsDefaultCategory, DisplayClusterRenderSyncStrings::WaitForSwapSync::ArgThreadTime,  ThreadTime);
+		Response->SetTextArg(DisplayClusterRenderSyncStrings::ArgumentsDefaultCategory, DisplayClusterRenderSyncStrings::WaitForSwapSync::ArgBarrierTime, BarrierTime);
+
 		return Response;
 	}
 
@@ -109,9 +110,9 @@ TSharedPtr<FDisplayClusterPacketInternal> FDisplayClusterRenderSyncService::Proc
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProtocolRenderSync
 //////////////////////////////////////////////////////////////////////////////////////////////
-void FDisplayClusterRenderSyncService::WaitForSwapSync()
+void FDisplayClusterRenderSyncService::WaitForSwapSync(double* ThreadWaitTime, double* BarrierWaitTime)
 {
-	if (BarrierSwap.Wait() != FDisplayClusterBarrier::WaitResult::Ok)
+	if (BarrierSwap.Wait(ThreadWaitTime, BarrierWaitTime) != FDisplayClusterBarrier::WaitResult::Ok)
 	{
 		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::EExitType::NormalSoft, FString("Error on swap barrier. Exit required."));
 	}

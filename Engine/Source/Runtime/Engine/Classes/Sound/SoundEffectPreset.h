@@ -48,7 +48,7 @@ public:
 	virtual void BeginDestroy() override;
 
 protected:
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
@@ -105,7 +105,6 @@ public:
 		return NewEffectPtr;
 	}
 
-	// Creates a sound effect instance and initializes it
 	template <typename TInitData, typename TSoundEffectType>
 	static TSharedPtr<TSoundEffectType, ESPMode::ThreadSafe> CreateInstance(const TInitData& InInitData, USoundEffectPreset& InOutPreset)
 	{

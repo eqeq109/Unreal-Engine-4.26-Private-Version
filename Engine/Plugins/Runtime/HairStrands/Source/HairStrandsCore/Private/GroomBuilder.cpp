@@ -1436,9 +1436,10 @@ bool FGroomBuilder::ProcessHairDescription(const FHairDescription& HairDescripti
 			{
 				VertexWidth = VertexWidths[VertexID];
 			}
-			else if (StrandWidth != 0.f)
+
+			// Fall back to strand width if there was no vertex width
+			if (VertexWidth == 0.f && StrandWidth != 0.f)
 			{
-				// Fall back to strand width if there was no vertex width
 				VertexWidth = StrandWidth;
 			}
 
@@ -1494,12 +1495,20 @@ bool FGroomBuilder::BuildGroom(const FHairDescription& HairDescription, UGroomAs
 	return true;
 }
 
-void FGroomBuilder::BuildHairGroupData(FProcessedHairDescription& ProcessedHairDescription, const FHairGroupsInterpolation& InSettings, uint32 GroupIndex, FHairGroupData& OutHairGroupData)
+bool FGroomBuilder::BuildGroom(FProcessedHairDescription& ProcessedHairDescription, UGroomAsset* GroomAsset, uint32 GroupIndex)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FGroomBuilder::BuildHairGroupData);
+	if (!GroomAsset)
+	{
+		return false;
+	}
+
+	TRACE_CPUPROFILER_EVENT_SCOPE(FGroomBuilder::BuildGroom);
 
 	const uint32 GroupCount = ProcessedHairDescription.HairGroups.Num();
 	check(GroupIndex < GroupCount);
+	check(uint32(GroomAsset->GetNumHairGroups()) == GroupCount);
+
+	const FHairGroupsInterpolation& InSettings = GroomAsset->HairGroupsInterpolation[GroupIndex];
 
 	// Sanitize decimation values. Do not update the 'InSettings' values directly as this would change 
 	// the groom asset and thus would change the DDC key
@@ -1575,7 +1584,7 @@ void FGroomBuilder::BuildHairGroupData(FProcessedHairDescription& ProcessedHairD
 		FProcessedHairDescription::FHairGroup& Group = HairGroupIt.Value;
 		FHairGroupInfo& GroupInfo = Group.Key;
 		FHairGroupData& GroupData = Group.Value;
-		OutHairGroupData = MoveTemp(GroupData);
+		GroomAsset->HairGroupsData[GroupIndex] = MoveTemp(GroupData);
 	}
 
 	// If there's usable closest guides and guide weights attributes, fill them into the asset
@@ -1585,25 +1594,9 @@ void FGroomBuilder::BuildHairGroupData(FProcessedHairDescription& ProcessedHairD
 	//{
 	//	HairInterpolationBuilder::FillInterpolationData(GroomAsset, HairDescription);
 	//}
-}
 
-bool FGroomBuilder::BuildGroom(FProcessedHairDescription& ProcessedHairDescription, UGroomAsset* GroomAsset, uint32 GroupIndex)
-{
-	if (!GroomAsset)
-	{
-		return false;
-	}
-
-	TRACE_CPUPROFILER_EVENT_SCOPE(FGroomBuilder::BuildGroom);
-
-	const uint32 GroupCount = ProcessedHairDescription.HairGroups.Num();
-	check(GroupIndex < GroupCount);
-	check(uint32(GroomAsset->GetNumHairGroups()) == GroupCount);
-
-	const FHairGroupsInterpolation& InSettings = GroomAsset->HairGroupsInterpolation[GroupIndex];
+	
 	FHairGroupData& GroupData = GroomAsset->HairGroupsData[GroupIndex];
-
-	BuildHairGroupData(ProcessedHairDescription, InSettings, GroupIndex, GroupData);
 	BuildData(GroupData, InSettings, GroupIndex);
 
 	return true;

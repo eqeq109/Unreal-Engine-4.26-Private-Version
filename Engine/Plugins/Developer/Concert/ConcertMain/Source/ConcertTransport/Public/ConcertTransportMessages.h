@@ -43,23 +43,10 @@ enum class EConcertResponseCode : uint8
 UENUM()
 enum class EConcertReliableHandshakeState : uint8
 {
-	/** Handshake initialization state */
-	None,
 	/** Handshake is being negotiated */
 	Negotiate,
 	/** Handshake was successfully negotiated */
 	Success,
-};
-
-/** Versioning for concert message protocol */
-UENUM()
-enum class EConcertMessageVersion : uint32
-{
-	BeforeVersioning = 0,
-	Initial, 
-	// -----<new versions can be added above this line>-------------------------------------------------
-	VersionPlusOne,
-	LatestVersion = VersionPlusOne - 1
 };
 
 /** Base class for all message data sent through concert */
@@ -166,10 +153,6 @@ USTRUCT()
 struct FConcertEndpointDiscoveryEvent : public FConcertEventData
 {
 	GENERATED_BODY()
-
-	/** Holds the concert messages protocol version, default initialize to `BeforeVersioning` to handle message sent from older protocol. */
-	UPROPERTY()
-	EConcertMessageVersion ConcertProtocolVersion = EConcertMessageVersion::BeforeVersioning;
 };
 
 /** Message send when an endpoint is closed on a remote peer */
@@ -187,19 +170,19 @@ struct FConcertReliableHandshakeData : public FConcertEndpointDiscoveryEvent
 
 	/** State of the handshake */
 	UPROPERTY()
-	EConcertReliableHandshakeState HandshakeState = EConcertReliableHandshakeState::None;
+	EConcertReliableHandshakeState HandshakeState;
 
 	/** Channel ID we're going to send reliable messages of */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category="Concert Message")
-	uint16 ReliableChannelId = 0;
+	uint16 ReliableChannelId;
 
 	/** The next message index that the remote endpoint is going to send */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category="Concert Message")
-	uint16 NextMessageIndex = 0;
+	uint16 NextMessageIndex;
 
 	/** It's a timespan encoded in ticks. EndpointTimeoutTick represent the time it takes for the sending endpoint to consider another endpoint timed out */
 	UPROPERTY(config, EditAnywhere, AdvancedDisplay, Category = "Concert Message")
-	int64 EndpointTimeoutTick = 0;
+	int64 EndpointTimeoutTick;
 };
 
 /** Acknowledgment messages to reliable events */
@@ -210,7 +193,7 @@ struct FConcertAckData : public FConcertMessageData
 
 	/** Time when this acknowledgment was sent (UTC) */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category="Concert Message")
-	int64 AckSendTimeTicks  = 0;
+	int64 AckSendTimeTicks;
 
 	/** ID of the source message we're acknowledging */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category="Concert Message")
@@ -220,13 +203,6 @@ struct FConcertAckData : public FConcertMessageData
 /** Keep alive message */
 USTRUCT()
 struct FConcertKeepAlive : public FConcertMessageData
-{
-	GENERATED_BODY()
-};
-
-/** Force the endpoint to resend pending packages.*/
-USTRUCT()
-struct FConcertSendResendPending
 {
 	GENERATED_BODY()
 };

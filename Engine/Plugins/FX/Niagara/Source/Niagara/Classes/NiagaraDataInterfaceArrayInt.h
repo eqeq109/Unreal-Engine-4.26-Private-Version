@@ -12,8 +12,6 @@ class NIAGARA_API UNiagaraDataInterfaceArrayInt32 : public UNiagaraDataInterface
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Array")
 	TArray<int32> IntData;
-
-	TArray<int32>& GetArrayReference() { return IntData; }
 };
 
 UCLASS(EditInlineNew, Category = "Array", meta = (DisplayName = "Bool Array", Experimental), Blueprintable, BlueprintType)
@@ -23,6 +21,4 @@ class NIAGARA_API UNiagaraDataInterfaceArrayBool : public UNiagaraDataInterfaceA
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Array")
 	TArray<bool> BoolData;
-
-	TArray<bool>& GetArrayReference() { return BoolData; }
 };

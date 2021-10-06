@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Core.h"
 #include "Chaos/Array.h"
 #include "Chaos/UniformGrid.h"
 #include "Chaos/Vector.h"
@@ -22,7 +21,7 @@ inline void TryBulkSerializeArrayNDBase(FArchive& Ar, TArray<float>& Array)
 	Array.BulkSerialize(Ar);
 }
 
-inline void TryBulkSerializeArrayNDBase(FArchive& Ar, TArray<FVec3>& Array)
+inline void TryBulkSerializeArrayNDBase(FArchive& Ar, TArray<TVector<float, 3>>& Array)
 {
 	Array.BulkSerialize(Ar);
 }
@@ -32,7 +31,7 @@ class TArrayNDBase
 {
   public:
 
-	FORCEINLINE TArrayNDBase() { MCounts = TVec3<int32>(0); }
+	FORCEINLINE TArrayNDBase() { MCounts = TVector<int32, 3>(0); }
 
 	FORCEINLINE TArrayNDBase(const TVector<int32, d>& Counts, const TArray<T>& Array)
 	    : MCounts(Counts), MArray(Array) {}
@@ -93,12 +92,6 @@ class TArrayNDBase
 
 	FORCEINLINE int32 Num() const { return MArray.Num(); }
 	FORCEINLINE TVector<int32, d> Counts() const { return MCounts; }
-
-	FORCEINLINE void Reset()
-	{
-		MCounts = TVector<int32, d>(0);
-		MArray.Reset();
-	}
 
   protected:
 	TVector<int32, d> MCounts;
@@ -165,19 +158,19 @@ class TArrayND<T, 3> : public TArrayNDBase<TArrayND<T, 3>, T, 3>
 #if UE_BUILD_SHIPPING || UE_BUILD_TEST
 	FORCEINLINE TArrayND() {}
 #else
-	FORCEINLINE TArrayND() { MCounts = TVec3<int32>(0); }
+	FORCEINLINE TArrayND() { MCounts = TVector<int32, 3>(0); }
 #endif
 	FORCEINLINE TArrayND(const TUniformGrid<float, 3>& grid)
 	{
 		MCounts = grid.Counts();
 		MArray.SetNum(MCounts[0] * MCounts[1] * MCounts[2]);
 	}
-	FORCEINLINE TArrayND(const TVec3<int32>& Counts)
+	FORCEINLINE TArrayND(const TVector<int32, 3>& Counts)
 	{
 		MCounts = Counts;
 		MArray.SetNum(MCounts[0] * MCounts[1] * MCounts[2]);
 	}
-	FORCEINLINE TArrayND(const TVec3<int32>& Counts, const TArray<T>& Array)
+	FORCEINLINE TArrayND(const TVector<int32, 3>& Counts, const TArray<T>& Array)
 	    : Base(Counts, Array) { check(Counts.Product() == Array.Num()); }
 	FORCEINLINE TArrayND(const TArrayND<T, 3>& Other) = delete;
 	FORCEINLINE TArrayND(TArrayND<T, 3>&& Other)
@@ -190,8 +183,8 @@ class TArrayND<T, 3> : public TArrayNDBase<TArrayND<T, 3>, T, 3>
 		Base::operator=(MoveTemp(Other));
 		return *this;
 	}
-	FORCEINLINE T& operator()(const TVec3<int32>& Index) { return (*this)(Index[0], Index[1], Index[2]); }
-	FORCEINLINE const T& operator()(const TVec3<int32>& Index) const { return (*this)(Index[0], Index[1], Index[2]); }
+	FORCEINLINE T& operator()(const TVector<int32, 3>& Index) { return (*this)(Index[0], Index[1], Index[2]); }
+	FORCEINLINE const T& operator()(const TVector<int32, 3>& Index) const { return (*this)(Index[0], Index[1], Index[2]); }
 	FORCEINLINE T& operator()(const int32& x, const int32& y, const int32& z)
 	{
 		return MArray[(x * MCounts[1] + y) * MCounts[2] + z];

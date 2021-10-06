@@ -237,14 +237,6 @@ class ITextureCompressorModule : public IModuleInterface
 public:
 
 	/**
-	 * Whether the compressor for BuildSettings uses the FTaskGraph API.
-	 * 
-	 * @param BuildSettings - Build settings.
-	 * @returns true if FTaskGraph is used, false otherwise
-	 */
-	virtual bool UsesTaskGraph(const FTextureBuildSettings& BuildSettings) const = 0;
-
-	/**
 	 * Builds a texture from source images.
 	 * @param SourceMips - The input mips.
 	 * @param BuildSettings - Build settings.
@@ -290,7 +282,7 @@ public:
 	 * @param OutMip - The output mip.
 	 * @param SrcImage - The source longlat image.
 	 */
-	TEXTURECOMPRESSOR_API static void GenerateBaseCubeMipFromLongitudeLatitude2D(FImage* OutMip, const FImage& SrcImage, const uint32 MaxCubemapTextureResolution);
+	TEXTURECOMPRESSOR_API static void GenerateBaseCubeMipFromLongitudeLatitude2D(FImage* OutMip, const FImage& SrcImage, const int32 MaxCubemapTextureResolution);
 
 
 	/**

@@ -10,7 +10,7 @@
 
 #include "K2Node_DataprepProducer.generated.h"
 
-UCLASS()
+UCLASS(Experimental)
 class UK2Node_DataprepProducer : public UK2Node
 {
 public:

@@ -52,7 +52,7 @@ void UReplaySubsystem::OnCopyWorldData(UWorld* CurrentWorld, UWorld* LoadedWorld
 		}
 		else
 		{
-			StopExistingReplays(CurrentWorld);
+			StopExistingReplays();
 
 			if (CurrentCollection)
 			{
@@ -87,12 +87,12 @@ void UReplaySubsystem::OnSeamlessLevelTransition(UWorld* CurrentWorld)
 		{
 			if (!DemoNetDriver->IsPlaying() && !DemoNetDriver->IsRecordingMapChanges())
 			{
-				StopExistingReplays(CurrentWorld);
+				StopExistingReplays();
 			}
 		}
 		else
 		{
-			StopExistingReplays(CurrentWorld);
+			StopExistingReplays();
 		}
 	}
 }
@@ -140,7 +140,7 @@ void UReplaySubsystem::RecordReplay(const FString& Name, const FString& Friendly
 	// must be server and using a replication graph to use a replay connection
 	if (NetDriver && NetDriver->IsServer() && NetDriver->GetReplicationDriver() && ReplaySubsystem::CVarUseReplayConnection.GetValueOnAnyThread())
 	{
-		StopExistingReplays(CurrentWorld);
+		StopExistingReplays();
 
 		UReplayNetConnection* Connection = NewObject<UReplayNetConnection>();
 
@@ -161,7 +161,7 @@ void UReplaySubsystem::RecordReplay(const FString& Name, const FString& Friendly
 
 	if (!DemoNetDriver || !DemoNetDriver->IsRecordingMapChanges() || !DemoNetDriver->IsRecordingPaused())
 	{
-		StopExistingReplays(CurrentWorld);
+		StopExistingReplays();
 
 		bDestroyedDemoNetDriver = true;
 
@@ -221,7 +221,7 @@ bool UReplaySubsystem::PlayReplay(const FString& Name, UWorld* WorldOverride, co
 		return false;
 	}
 
-	StopExistingReplays(CurrentWorld);
+	StopExistingReplays();
 
 	FURL DemoURL;
 	UE_LOG(LogDemo, Log, TEXT("PlayReplay: Attempting to play demo %s"), *Name);
@@ -267,13 +267,13 @@ void UReplaySubsystem::StopReplay()
 {
 	if (UWorld* CurrentWorld = GetWorld())
 	{
-		const bool bWasReplaying = CurrentWorld->IsPlayingReplay();
+		const bool bLoadDefaultMap = CurrentWorld->IsPlayingReplay();
 
-		StopExistingReplays(CurrentWorld);
+		StopExistingReplays();
 
 		if (UGameInstance* GameInstance = GetGameInstance())
 		{
-			if (bWasReplaying && bLoadDefaultMapOnStop)
+			if (bLoadDefaultMap)
 			{
 				GEngine->BrowseToDefaultMap(*GameInstance->GetWorldContext());
 			}
@@ -285,11 +285,9 @@ void UReplaySubsystem::StopReplay()
 	}
 }
 
-void UReplaySubsystem::StopExistingReplays(UWorld* InWorld)
+void UReplaySubsystem::StopExistingReplays()
 {
-	UWorld* CurrentWorld = InWorld ? InWorld : GetWorld();
-
-	if (CurrentWorld)
+	if (UWorld* CurrentWorld = GetWorld())
 	{
 		CurrentWorld->DestroyDemoNetDriver();
 	}

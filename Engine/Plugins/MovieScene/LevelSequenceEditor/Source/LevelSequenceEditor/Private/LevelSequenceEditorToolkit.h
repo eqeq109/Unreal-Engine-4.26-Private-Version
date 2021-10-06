@@ -89,7 +89,7 @@ public:
 		Collector.AddReferencedObject(LevelSequence);
 	}
 
-	virtual void OnClose() override;
+	virtual bool OnRequestClose() override;
 	virtual bool CanFindInContentBrowser() const override;
 
 public:

@@ -31,7 +31,6 @@ protected:
 	TSharedPtr<IGroomTranslator> GetTranslator(const FString& Filename);
 
 	class UGroomImportOptions* ImportOptions;
-	class UGroomCacheImportOptions* GroomCacheImportOptions;
 
 private:
 	TArray<TSharedPtr<IGroomTranslator>> Translators;

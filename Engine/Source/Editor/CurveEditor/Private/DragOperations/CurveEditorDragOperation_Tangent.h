@@ -25,6 +25,9 @@ private:
 
 private:
 
+	/** The type of tangents we're dragging */
+	ECurvePointType PointType;
+
 	/** Ptr back to the curve editor */
 	FCurveEditor* CurveEditor;
 
@@ -40,8 +43,6 @@ private:
 		FCurveModelID CurveID;
 		/** All the handles within a given curve that we are dragging */
 		TArray<FKeyHandle> Handles;
-		/** All the point types within a given curve that we are dragging */
-		TArray<ECurvePointType> PointTypes;
 		/** The key attributes for each of the above handles */
 		TArray<FKeyAttributes> Attributes;
 	};

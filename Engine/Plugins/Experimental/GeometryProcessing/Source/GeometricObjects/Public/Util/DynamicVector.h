@@ -6,6 +6,7 @@
 
 #include <CoreMinimal.h>
 #include "Containers/StaticArray.h"
+#include "Containers/IndirectArray.h"
 #include "VectorTypes.h"
 #include "IndexTypes.h"
 
@@ -211,96 +212,7 @@ private:
 	unsigned int CurBlockUsed{0};
 
 	using BlockType = TStaticArray<Type, BlockSize>;
-	
-
-	/**
-	 * This is used to store/manage an array of BlockType*. Basically a stripped
-	 * down TIndirectArray that does not do range-checking on operator[] in non-debug builds
-	 */
-	template<typename ArrayType>
-	class TBlockVector
-	{
-	protected:
-		TArray<ArrayType*> Elements;
-
-	public:
-		TBlockVector() = default;
-		TBlockVector(TBlockVector&& Moved) = default;
-
-		TBlockVector(const TBlockVector& Copy)
-		{
-			int32 N = Copy.Num();
-			Elements.Reserve(N);
-			for (int32 k = 0; k < N; ++k)
-			{
-				Elements.Add(new ArrayType(*Copy.Elements[k]));
-			}
-		}
-		TBlockVector& operator=(const TBlockVector& Copy)
-		{
-			if (&Copy != this)
-			{
-				int32 N = Copy.Num();
-				Empty(N);
-				Elements.Reserve(N);
-				for (int32 k = 0; k < N; ++k)
-				{
-					Elements.Add(new ArrayType(*Copy.Elements[k]));
-				}
-			}
-			return *this;
-		}
-		TBlockVector& operator=(TBlockVector&& Moved)
-		{
-			if (&Moved != this)
-			{
-				Empty();
-				Elements = MoveTemp(Moved.Elements);
-			}
-			return *this;
-		}
-		~TBlockVector()
-		{
-			Empty();
-		}
-
-		int32 Num() const { return Elements.Num(); }
-
-#if UE_BUILD_DEBUG
-		ArrayType& operator[](int32 Index) { return *Elements[Index]; }
-		const ArrayType& operator[](int32 Index) const { return *Elements[Index]; }
-#else
-		ArrayType& operator[](int32 Index) { return *Elements.GetData()[Index]; }
-		const ArrayType& operator[](int32 Index) const { return *Elements.GetData()[Index]; }
-#endif
-
-		void Add(ArrayType* NewElement)
-		{
-			Elements.Add(NewElement);
-		}
-
-		void Truncate(int32 NewElementCount, bool bAllowShrinking)
-		{
-			for (int32 k = NewElementCount; k < Elements.Num(); ++k)
-			{
-				delete Elements[k];
-				Elements[k] = nullptr;
-			}
-			Elements.RemoveAt(NewElementCount, Elements.Num() - NewElementCount, bAllowShrinking);
-		}
-
-		void Empty(int32 NewReservedSize = 0)
-		{
-			for (int32 k = 0, N = Elements.Num(); k < N; ++k)
-			{
-				delete Elements[k];
-			}
-			Elements.Empty(NewReservedSize);
-		}
-	};
-
-	// memory chunks for dynamic vector
-	TBlockVector<BlockType> Blocks;
+	TIndirectArray<BlockType> Blocks;
 };
 
 template <class Type, int N>
@@ -458,13 +370,10 @@ using  TDynamicVector2i = TDynamicVectorN<int, 2>;
 template <class Type>
 void TDynamicVector<Type>::Clear()
 {
-	Blocks.Truncate(1, false);
+	Blocks.Empty();
 	CurBlock = 0;
 	CurBlockUsed = 0;
-	if (Blocks.Num() == 0)
-	{
-		Blocks.Add(new BlockType());
-	}
+	Blocks.Add(new BlockType());
 }
 
 template <class Type>
@@ -505,7 +414,7 @@ void TDynamicVector<Type>::Resize(size_t Count)
 	}
 	else
 	{
-		Blocks.Truncate(nNumSegs, false);
+		Blocks.RemoveAt(nNumSegs, nCurCount - nNumSegs);
 	}
 
 	// mark last segment

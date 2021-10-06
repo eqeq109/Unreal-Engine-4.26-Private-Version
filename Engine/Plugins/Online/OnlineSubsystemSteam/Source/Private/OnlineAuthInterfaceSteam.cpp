@@ -114,32 +114,31 @@ FString FOnlineAuthSteam::GetAuthTicket(uint32& AuthTokenHandle)
 
 FOnlineAuthSteam::SharedAuthUserSteamPtr FOnlineAuthSteam::GetUser(const FUniqueNetId& InUserId)
 {
-	if (SharedAuthUserSteamPtr* AuthUserPtr = AuthUsers.Find(InUserId.AsShared()))
+	const FUniqueNetIdSteam& SteamUserId = static_cast<const FUniqueNetIdSteam&>(InUserId);
+	if (AuthUsers.Contains(SteamUserId))
 	{
-		return *AuthUserPtr;
+		return AuthUsers[SteamUserId];
 	}
-	else
-	{
-		UE_LOG_ONLINE(Warning, TEXT("AUTH: Trying to fetch user %s entry but the user does not exist"), *InUserId.ToString());
-		return nullptr;
-	}
+
+	UE_LOG_ONLINE(Warning, TEXT("AUTH: Trying to fetch user %s entry but the user does not exist"), *SteamUserId.ToString());
+	return nullptr;
 }
 
 FOnlineAuthSteam::SharedAuthUserSteamPtr FOnlineAuthSteam::GetOrCreateUser(const FUniqueNetId& InUserId)
 {
-	if (SharedAuthUserSteamPtr* AuthUserPtr = AuthUsers.Find(InUserId.AsShared()))
+	const FUniqueNetIdSteam& SteamUserId = static_cast<const FUniqueNetIdSteam&>(InUserId);
+	if (!AuthUsers.Contains(SteamUserId))
 	{
-		return *AuthUserPtr;
+		SharedAuthUserSteamPtr TargetUser = MakeShareable(new FSteamAuthUser);
+		AuthUsers.Add(SteamUserId, TargetUser);
 	}
-	
-	SharedAuthUserSteamPtr AuthUserPtr = MakeShareable(new FSteamAuthUser);
-	AuthUsers.Add(InUserId.AsShared(), AuthUserPtr);
-	return AuthUserPtr;
+
+	return AuthUsers[SteamUserId];
 }
 
 bool FOnlineAuthSteam::AuthenticateUser(const FUniqueNetId& InUserId)
 {
-	const FUniqueNetIdSteam& SteamUserId = FUniqueNetIdSteam::Cast(InUserId);
+	const FUniqueNetIdSteam& SteamUserId = static_cast<const FUniqueNetIdSteam&>(InUserId);
 	if (SteamUserId.IsValid() && bEnabled)
 	{
 		// Create the user in the list if we don't already have them.
@@ -187,7 +186,7 @@ bool FOnlineAuthSteam::AuthenticateUser(const FUniqueNetId& InUserId)
 
 		uint8 AuthTokenRaw[STEAM_AUTH_MAX_TICKET_LENGTH_IN_BYTES];
 		int32 TicketSize = HexToBytes(TargetUser->RecvTicket, AuthTokenRaw);
-		CSteamID UserCSteamId = SteamUserId;
+		CSteamID UserCSteamId = CSteamID(*(uint64*)SteamUserId.GetBytes());
 
 		if (IsRunningDedicatedServer())
 		{
@@ -234,7 +233,7 @@ bool FOnlineAuthSteam::AuthenticateUser(const FUniqueNetId& InUserId)
 
 void FOnlineAuthSteam::EndAuthentication(const FUniqueNetId& InUserId)
 {
-	const FUniqueNetIdSteam& SteamId = FUniqueNetIdSteam::Cast(InUserId);
+	const FUniqueNetIdSteam& SteamId = static_cast<const FUniqueNetIdSteam&>(InUserId);
 	if (SteamId.IsValid())
 	{
 		CSteamID UserCSteamId = CSteamID(*(uint64*)SteamId.GetBytes());
@@ -277,7 +276,7 @@ void FOnlineAuthSteam::RevokeAllTickets()
 	// Also cleans up any other previous auth data.
 	for (SteamAuthentications::TIterator Users(AuthUsers); Users; ++Users)
 	{
-		EndAuthentication(*Users->Key);
+		EndAuthentication(Users->Key);
 	}
 
 	// Clean up all handles if they haven't been cleared already
@@ -295,7 +294,7 @@ void FOnlineAuthSteam::RevokeAllTickets()
 
 void FOnlineAuthSteam::MarkPlayerForKick(const FUniqueNetId& InUserId)
 {
-	const FUniqueNetIdSteam& SteamId = FUniqueNetIdSteam::Cast(InUserId);
+	const FUniqueNetIdSteam& SteamId = static_cast<const FUniqueNetIdSteam&>(InUserId);
 	SharedAuthUserSteamPtr TargetUser = GetUser(SteamId);
 	if (TargetUser.IsValid())
 	{
@@ -307,7 +306,7 @@ void FOnlineAuthSteam::MarkPlayerForKick(const FUniqueNetId& InUserId)
 bool FOnlineAuthSteam::KickPlayer(const FUniqueNetId& InUserId, bool bSuppressFailure)
 {
 	bool bKickSuccess = false;
-	const FUniqueNetIdSteam& SteamId = FUniqueNetIdSteam::Cast(InUserId);
+	const FUniqueNetIdSteam& SteamId = static_cast<const FUniqueNetIdSteam&>(InUserId);
 	UWorld* World = (SteamSubsystem != nullptr) ? GetWorldForOnline(SteamSubsystem->GetInstanceName()) : nullptr;
 
 	if (SteamUserPtr != nullptr && SteamUserPtr->GetSteamID() == SteamId)
@@ -369,16 +368,18 @@ bool FOnlineAuthSteam::KickPlayer(const FUniqueNetId& InUserId, bool bSuppressFa
 
 void FOnlineAuthSteam::RemoveUser(const FUniqueNetId& TargetUser)
 {
+	const FUniqueNetIdSteam& SteamId = static_cast<const FUniqueNetIdSteam&>(TargetUser);
+
 	if (!IsServer() || !bEnabled)
 	{
 		return;
 	}
 
-	if (AuthUsers.Contains(TargetUser.AsShared()))
+	if (AuthUsers.Contains(SteamId))
 	{
-		UE_LOG_ONLINE(Verbose, TEXT("AUTH: Removing user %s"), *TargetUser.ToString());
+		UE_LOG_ONLINE(Verbose, TEXT("AUTH: Removing user %s"), *SteamId.ToString());
 		EndAuthentication(TargetUser);
-		AuthUsers.Remove(TargetUser.AsShared());
+		AuthUsers.Remove(SteamId);
 	}
 }
 
@@ -395,7 +396,7 @@ bool FOnlineAuthSteam::Tick(float DeltaTime)
 		if (It->Value.IsValid())
 		{
 			SharedAuthUserSteamPtr CurUser = It->Value;
-			const FUniqueNetId& CurUserId = *It->Key;
+			const FUniqueNetIdSteam& CurUserId = It->Key;
 
 			// Kick any players that have failed authentication.
 			if (EnumHasAnyFlags(CurUser->Status, ESteamAuthStatus::FailKick))
@@ -497,7 +498,7 @@ void FOnlineAuthSteam::OnAuthResult(const FUniqueNetId& TargetId, int32 Response
 		return;
 	}
 
-	const FUniqueNetIdSteam& SteamId = FUniqueNetIdSteam::Cast(TargetId);
+	const FUniqueNetIdSteam& SteamId = static_cast<const FUniqueNetIdSteam&>(TargetId);
 	if (!SteamId.IsValid())
 	{
 		UE_LOG_ONLINE(Warning, TEXT("AUTH: Auth Callback cannot process invalid users!"));

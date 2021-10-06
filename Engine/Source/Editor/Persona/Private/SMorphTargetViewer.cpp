@@ -465,7 +465,7 @@ void SMorphTargetViewer::CreateMorphTargetList( const FString& SearchText )
 	if ( SkeletalMesh )
 	{
 		UDebugSkelMeshComponent* MeshComponent = PreviewScenePtr.Pin()->GetPreviewMeshComponent();
-		TArray<UMorphTarget*>& MorphTargets = SkeletalMesh->GetMorphTargets();
+		TArray<UMorphTarget*>& MorphTargets = SkeletalMesh->MorphTargets;
 
 		bool bDoFiltering = !SearchText.IsEmpty();
 

@@ -68,6 +68,4 @@ public:
 	TArray< FUsdPrimViewModelRef > Children;
 
 	TSharedRef< FUsdPrimModel > RowData; // Data model
-
-	bool bIsRenamingExistingPrim = false;
 };

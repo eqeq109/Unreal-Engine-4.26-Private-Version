@@ -21,7 +21,6 @@ class UDataprepContentConsumer;
 class UDataprepParameterizableObject;
 
 struct FAssetData;
-class UDataprepStringFilterMatchingArray;
 
 namespace DataprepWidgetUtils
 {
@@ -146,7 +145,7 @@ private:
 	void Construct();
 
 	/** Add widgets held by array of DetailTreeNode objects */
-	void AddWidgets( const TArray< TSharedRef< class IDetailTreeNode > >& DetailTree, int32& Index, float LeftPadding, const FDataprepParameterizationContext& ParameterizationContext, bool bChildNodes = false );
+	void AddWidgets( const TArray< TSharedRef< class IDetailTreeNode > >& DetailTree, int32& Index, float LeftPadding, const FDataprepParameterizationContext& ParameterizationContext);
 
 	/**
 	 * Inserts a generic widget for a property row into the grid panel
@@ -156,7 +155,7 @@ private:
 	 * @param LeftPadding				The Padding on the left of the row
 	 * @param ParameterizationContext	Parameterization context of the associated property
 	 */
-	void CreateDefaultWidget(int32 Index, TSharedPtr< SWidget >& NameWidget, TSharedPtr< SWidget >& ValueWidget, float LeftPadding, const FDataprepParameterizationContext& ParameterizationContext, bool bAddExpander = false, bool bChildNode = false );
+	void CreateDefaultWidget(int32 Index, TSharedPtr< SWidget >& NameWidget, TSharedPtr< SWidget >& ValueWidget, float LeftPadding, const FDataprepParameterizationContext& ParameterizationContext);
 
 	/** Callback used by all splitters in the details view, so that they move in sync */
 	void OnLeftColumnResized(float InNewWidth)
@@ -185,8 +184,6 @@ private:
 
 	/** Object to be detailed */
 	UObject* DetailedObject;
-
-	UDataprepStringFilterMatchingArray* StringArrayDetailedObject;
 
 	/** Not null if the detailed object is parameterizable */
 	UDataprepParameterizableObject* DetailedObjectAsParameterizable;

@@ -22,10 +22,16 @@ FInBunch::FInBunch( UNetConnection* InConnection, uint8* Src, int64 CountBits )
 ,	Next ( nullptr )
 ,	Connection ( InConnection )
 ,	ChIndex ( 0 )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	ChType( CHTYPE_None )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	ChName ( NAME_None )
 ,	ChSequence ( 0 )
 ,	bOpen ( 0 )
 ,	bClose ( 0 )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	bDormant ( 0 )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	bReliable ( 0 )
 ,	bPartial ( 0 )
 ,	bPartialInitial ( 0 )
@@ -51,10 +57,16 @@ FInBunch::FInBunch( FInBunch &InBunch, bool CopyBuffer )
 	Next =	InBunch.Next;
 	Connection = InBunch.Connection;
 	ChIndex = InBunch.ChIndex;
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	ChType = InBunch.ChType;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	ChName = InBunch.ChName;
 	ChSequence = InBunch.ChSequence;
 	bOpen =	InBunch.bOpen;
 	bClose = InBunch.bClose;
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	bDormant = InBunch.bDormant;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	bIsReplicationPaused = InBunch.bIsReplicationPaused;
 	bReliable =	InBunch.bReliable;
 	bPartial = InBunch.bPartial;
@@ -106,12 +118,18 @@ FOutBunch::FOutBunch( UChannel* InChannel, bool bInClose )
 ,	Channel		( InChannel )
 ,	Time		( 0 )
 ,	ChIndex		( InChannel->ChIndex )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	ChType		( InChannel->ChType )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	ChName		( InChannel->ChName )
 ,	ChSequence	( 0 )
 ,	PacketId	( 0 )
 ,	ReceivedAck	( 0 )
 ,	bOpen		( 0 )
 ,	bClose		( bInClose )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	bDormant	( 0 )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	bIsReplicationPaused	( 0 )
 ,	bReliable	( 0 )
 ,	bPartial	( 0 )
@@ -140,12 +158,18 @@ FOutBunch::FOutBunch( UPackageMap *InPackageMap, int64 MaxBits )
 ,	Channel		( nullptr )
 ,	Time		( 0 )
 ,	ChIndex		( 0 )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	ChType		( 0 )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,	ChName		( NAME_None )
 ,	ChSequence	( 0 )
 ,	PacketId	( 0 )
 ,	ReceivedAck	( 0 )
 ,	bOpen		( 0 )
 ,	bClose		( 0 )
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+,	bDormant	( 0 )
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 ,   bIsReplicationPaused	( 0 )
 ,	bReliable	( 0 )
 ,	bPartial	( 0 )

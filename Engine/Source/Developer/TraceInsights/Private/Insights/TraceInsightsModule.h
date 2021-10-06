@@ -87,7 +87,6 @@ protected:
 	TSharedRef<SDockTab> SpawnSessionInfoTab(const FSpawnTabArgs& Args);
 
 	void OnWindowClosedEvent(const TSharedRef<SWindow>&);
-
 protected:
 	TUniquePtr<Trace::FStoreService> StoreService;
 

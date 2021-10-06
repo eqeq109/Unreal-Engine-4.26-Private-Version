@@ -20,7 +20,7 @@ public:
 
 	// FOnlineUser
 
-	virtual FUniqueNetIdRef GetUserId() const override;
+	virtual TSharedRef<const FUniqueNetId> GetUserId() const override;
 	virtual FString GetRealName() const override;
 	virtual FString GetDisplayName(const FString& Platform = FString()) const override;
 	virtual bool GetUserAttribute(const FString& AttrName, FString& OutAttrValue) const override;
@@ -36,7 +36,7 @@ public:
 	 * Init/default constructor
 	 */
 	FOnlineFriendIOS(const FString& InUserId=TEXT("")) 
-		: UserId(FUniqueNetIdIOS::Create(InUserId))
+		: UserId(new FUniqueNetIdIOS(InUserId))
 	{
 	}
 
@@ -67,7 +67,7 @@ public:
 	}
 
 	/** User Id represented as a FUniqueNetId */
-	FUniqueNetIdRef UserId;
+	TSharedRef<const FUniqueNetId> UserId;
 	/** Any addition account data associated with the friend */
 	TMap<FString, FString> AccountData;
 	/** @temp presence info */

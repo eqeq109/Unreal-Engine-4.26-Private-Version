@@ -15,12 +15,6 @@ UMovieSceneComposureExportTrack::UMovieSceneComposureExportTrack(const FObjectIn
 #endif
 }
 
-bool UMovieSceneComposureExportTrack::SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const
-{ 
-	return SectionClass == UMovieSceneComposureExportSection::StaticClass(); 
-}
-
-
 FMovieSceneEvalTemplatePtr UMovieSceneComposureExportTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
 {
 	return FMovieSceneComposureExportSectionTemplate(*this);

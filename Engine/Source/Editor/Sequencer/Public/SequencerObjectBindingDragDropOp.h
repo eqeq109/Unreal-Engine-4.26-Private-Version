@@ -6,20 +6,12 @@
 #include "Input/DragAndDrop.h"
 #include "GraphEditorDragDropAction.h"
 
-namespace UE
-{
-namespace MovieScene
-{
-
-struct FFixedObjectBindingID;
-
-} // namespace MovieScene
-} // namespace UE
+struct FMovieSceneObjectBindingID;
 
 class FSequencerObjectBindingDragDropOp : public FGraphEditorDragDropAction
 {
 public:
 	DRAG_DROP_OPERATOR_TYPE( FSequencerDisplayNodeDragDropOpBase, FGraphEditorDragDropAction )
 
-	virtual TArray<UE::MovieScene::FFixedObjectBindingID> GetDraggedBindings() const = 0;
+	virtual TArray<FMovieSceneObjectBindingID> GetDraggedBindings() const = 0;
 };

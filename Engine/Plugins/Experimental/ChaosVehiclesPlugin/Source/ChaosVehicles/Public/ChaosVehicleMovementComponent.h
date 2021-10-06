@@ -698,6 +698,7 @@ public:
 
 	TUniquePtr<Chaos::FSimpleWheeledVehicle>& PhysicsVehicle()
 	{
+		check(PVehicle.IsValid());
 		return PVehicle;
 	}
 

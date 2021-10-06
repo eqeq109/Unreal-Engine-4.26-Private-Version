@@ -311,11 +311,7 @@ public:
 		return NumVertices;
 	}
 
-	/*
-	 * Return the smallest platform MaxGPUSkinBones value.
-	 */
-	ENGINE_API static int32 GetMinimumPerPlatformMaxGPUSkinBonesValue();
-	ENGINE_API static int32 GetMaxGPUSkinBones(const class ITargetPlatform* TargetPlatform = nullptr);
+	ENGINE_API static int32 GetMaxGPUSkinBones();
 
 	static const uint32 GHardwareMaxGPUSkinBones = 65536;
 	

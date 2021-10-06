@@ -165,17 +165,9 @@ public:
 	 *
 	 * @returns Size in bytes of array type.
 	 */
-	FORCEINLINE static constexpr size_t GetTypeSize()
+	FORCEINLINE size_t GetTypeSize() const
 	{
 		return sizeof(ElementType);
-	}
-
-	/** 
-	 * Helper function returning the alignment of the inner type.
-	 */
-	FORCEINLINE static constexpr size_t GetTypeAlignment()
-	{
-		return alignof(ElementType);
 	}
 
 	/**

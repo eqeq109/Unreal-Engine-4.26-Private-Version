@@ -2,9 +2,7 @@
 
 #pragma once
 
-#include "Misc/Optional.h"
 #include "Templates/UniquePtr.h"
-#include "UObject/NameTypes.h"
 
 #if USE_USD_SDK
 
@@ -63,18 +61,10 @@ namespace UE
 
 	// Wrapped pxr::UsdPrim functions, refer to the USD SDK documentation
 	public:
-		bool IsActive() const;
-		bool SetActive( bool bActive );
-
 		bool IsValid() const;
 		bool IsPseudoRoot() const;
 		bool IsModel() const;
 		bool IsGroup() const;
-
-		TArray<FName> GetAppliedSchemas() const;
-
-		bool IsA( FName SchemaType ) const;
-		bool HasAPI( FName SchemaType, TOptional<FName> InstanceName = {} ) const;
 
 		const FSdfPath GetPrimPath() const;
 		FUsdStage GetStage() const;
@@ -95,12 +85,8 @@ namespace UE
 		void Load();
 		void Unload();
 
-		bool RemoveProperty( FName PropName ) const;
-
-		FUsdAttribute CreateAttribute( const TCHAR* AttrName, FName TypeName ) const;
 		TArray< FUsdAttribute > GetAttributes() const;
 		FUsdAttribute GetAttribute(const TCHAR* AttrName) const;
-		bool HasAttribute(const TCHAR* AttrName) const;
 
 	private:
 		TUniquePtr< Internal::FUsdPrimImpl > Impl;

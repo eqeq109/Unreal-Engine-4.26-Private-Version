@@ -152,14 +152,11 @@ void FDatasmithFacadeMetaData::SetAssociatedElement(
 	}
 }
 
-void FDatasmithFacadeMetaData::RemoveProperty(
-	const FDatasmithFacadeKeyValueProperty* Property
+void FDatasmithFacadeMetaData::BuildScene(
+	FDatasmithFacadeScene& SceneRef
 )
 {
-	if (Property)
-	{
-		GetDatasmithMetaDataElement()->RemoveProperty( Property->GetDatasmithKeyValueProperty() );
-	}
+	SceneRef.GetScene()->AddMetaData(GetDatasmithMetaDataElement());
 }
 
 TSharedRef<IDatasmithMetaDataElement> FDatasmithFacadeMetaData::GetDatasmithMetaDataElement() const

@@ -166,8 +166,4 @@ protected:
 	void FocusCameraAtCursorHotkey();
 
 	void ConfigureRealTimeViewportsOverride(bool bEnable);
-
-	// analytics tracking
-	static FDateTime LastModeStartTimestamp;
-	static FDateTime LastToolStartTimestamp;
 };

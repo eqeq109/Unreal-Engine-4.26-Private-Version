@@ -311,25 +311,8 @@ public:
 	/** FRHITexture override.  See FRHITexture::GetNativeResource() */
 	virtual void* GetNativeResource() const override final
 	{
-		void* NativeResource = nullptr;
 		FD3D12Resource* Resource = GetResource();
-		if (Resource)
-		{
-			NativeResource = Resource->GetResource();
-		}
-		if (!NativeResource)
-		{
-			FD3D12TextureBase* Base = GetD3D12TextureFromRHITexture((FRHITexture*)this);
-			if (Base)
-			{
-				Resource = Base->GetResource();
-				if (Resource)
-				{
-					NativeResource = Resource->GetResource();
-				}
-			}
-		}
-		return NativeResource;
+		return (Resource == nullptr) ? nullptr : Resource->GetResource();
 	}
 
 	virtual void* GetTextureBaseRHI() override final
@@ -387,8 +370,6 @@ private:
 #endif
 
 	FD3D12TextureLayout TextureLayout;
-
-	mutable TUniquePtr<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> FirstSubresourceFootprint;
 };
 
 /** 3D Texture */

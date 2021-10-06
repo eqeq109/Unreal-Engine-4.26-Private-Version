@@ -19,7 +19,4 @@ public:
 
 	UPROPERTY()
 	bool bIsAMasterTrack;
-
-	UPROPERTY()
-	TArray<FName> FolderPath;
 };

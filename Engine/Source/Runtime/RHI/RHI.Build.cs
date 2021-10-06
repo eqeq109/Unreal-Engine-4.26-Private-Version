@@ -10,7 +10,6 @@ public class RHI : ModuleRules
 		PrivateDependencyModuleNames.Add("Core");
 		PrivateDependencyModuleNames.Add("TraceLog");
 		PrivateDependencyModuleNames.Add("ApplicationCore");
-		PrivateDependencyModuleNames.Add("GeForceNOWWrapper");
 
 		if (Target.bCompileAgainstEngine)
 		{
@@ -59,5 +58,7 @@ public class RHI : ModuleRules
 		}
 
 		PrivateIncludePaths.Add("Runtime/RHI/Private");
+
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "GeForceNOW");
     }
 }

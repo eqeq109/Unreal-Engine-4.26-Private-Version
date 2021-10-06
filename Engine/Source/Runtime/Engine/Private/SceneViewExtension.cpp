@@ -13,22 +13,14 @@ FSceneViewExtensionBase::~FSceneViewExtensionBase()
 	// so they will be automatically unregistered when removed.
 }
 
-// Temporary override so that old behaviour still functions. Will be removed along with IsActiveThisFrame(FViewport*).
-bool FSceneViewExtensionBase::IsActiveThisFrame_Internal(const FSceneViewExtensionContext & Context) const
-{
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return ISceneViewExtension::IsActiveThisFrame(Context.Viewport);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-}
-
-bool FSceneViewExtensionBase::IsActiveThisFrame(const FSceneViewExtensionContext& Context) const
+bool FSceneViewExtensionBase::IsActiveThisFrameInContext(FSceneViewExtensionContext& Context) const
 {
 	// Go over any existing activation lambdas
 	for (const FSceneViewExtensionIsActiveFunctor& IsActiveFunction : IsActiveThisFrameFunctions)
 	{
 		TOptional<bool> IsActive = IsActiveFunction(this, Context);
 
-		// If the function does not return a definitive answer, try the next one.
+		// If the function does not return a definive answer, try the next one.
 		if (IsActive.IsSet())
 		{
 			return IsActive.GetValue();
@@ -36,32 +28,16 @@ bool FSceneViewExtensionBase::IsActiveThisFrame(const FSceneViewExtensionContext
 	}
 
 	// Fall back to the validation based on the viewport.
-	return IsActiveThisFrame_Internal(Context);
+	return IsActiveThisFrame(Context.Viewport);
 }
 
-
-//
-// FWorldSceneViewExtension
-//
-
-FWorldSceneViewExtension::FWorldSceneViewExtension(const FAutoRegister& AutoReg, UWorld* InWorld)
-	: FSceneViewExtensionBase(AutoReg)
-	, World(InWorld)
-{
-	check(InWorld != nullptr);
-}
-
-bool FWorldSceneViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
-{
-	return World == Context.GetWorld();
-}
 
 
 //
 // FSceneViewExtensions
 //
 
-void FSceneViewExtensions::RegisterExtension(const FSceneViewExtensionRef& RegisterMe)
+void FSceneViewExtensions::RegisterExtension(const TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>& RegisterMe)
 {
 	if (ensure(GEngine))
 	{
@@ -83,41 +59,30 @@ void FSceneViewExtensions::RegisterExtension(const FSceneViewExtensionRef& Regis
 	}
 }
 
-void FSceneViewExtensions::ForEachActiveViewExtension(
-	const TArray<TWeakPtr<ISceneViewExtension, ESPMode::ThreadSafe>>& InExtensions,
-	const FSceneViewExtensionContext& InContext,
-	const TFunctionRef<void(const FSceneViewExtensionRef&)>& Func)
-{
-	for (const TWeakPtr<ISceneViewExtension, ESPMode::ThreadSafe>& ViewExtPtr : InExtensions)
-	{
-		TSharedPtr<ISceneViewExtension, ESPMode::ThreadSafe> ViewExt = ViewExtPtr.Pin();
-		if (ViewExt.IsValid() && ViewExt->IsActiveThisFrame(InContext))
-		{
-			Func(ViewExt.ToSharedRef());
-		}
-	}
-}
-
 // @todo viewext : We should cache all the active extensions in OnStartFrame somewhere
-const TArray<FSceneViewExtensionRef> FSceneViewExtensions::GatherActiveExtensions(FViewport* InViewport /* = nullptr */) const
+const TArray<TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>> FSceneViewExtensions::GatherActiveExtensions(FViewport* InViewport /* = nullptr */) const
 {
 	FSceneViewExtensionContext Context(InViewport);
 	return GatherActiveExtensions(Context);
 }
 
-const TArray<FSceneViewExtensionRef> FSceneViewExtensions::GatherActiveExtensions(const FSceneViewExtensionContext& InContext) const
+const TArray<TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>> FSceneViewExtensions::GatherActiveExtensions(FSceneViewExtensionContext& InContext) const
 {
-	TArray<FSceneViewExtensionRef> ActiveExtensions;
+	TArray<TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>> ActiveExtensions;
 	ActiveExtensions.Reserve(KnownExtensions.Num());
 
-	ForEachActiveViewExtension(KnownExtensions, InContext, [&ActiveExtensions](const FSceneViewExtensionRef& ActiveExtension)
+	for (auto& ViewExtPtr : KnownExtensions)
+	{
+		auto ViewExt = ViewExtPtr.Pin();
+		if (ViewExt.IsValid() && ViewExt->IsActiveThisFrameInContext(InContext))
 		{
-			ActiveExtensions.Add(ActiveExtension);
-		});
+			ActiveExtensions.Add(ViewExt.ToSharedRef());
+		}
+	}
 
 	struct SortPriority
 	{
-		bool operator () (const FSceneViewExtensionRef& A, const FSceneViewExtensionRef& B) const
+		bool operator () (const TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe>& A, const TSharedPtr<class ISceneViewExtension, ESPMode::ThreadSafe>& B) const
 		{
 			return A->GetPriority() > B->GetPriority();
 		}

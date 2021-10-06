@@ -31,7 +31,7 @@ namespace ChaosTest
 	using namespace Chaos;
 
 
-	GTEST_TEST(AllTraits, VehicleTest_SteeringUtilityTurnRadius)
+	TYPED_TEST(AllTraits, VehicleTest_SteeringUtilityTurnRadius)
 	{
 		float RadiusTolerance = 0.01f;
 
@@ -67,7 +67,7 @@ namespace ChaosTest
 
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SteeringUtilityIntersectTwoCircles)
+	TYPED_TEST(AllTraits, VehicleTest_SteeringUtilityIntersectTwoCircles)
 	{
 		{
 			float R1 = 3.f;
@@ -114,7 +114,7 @@ namespace ChaosTest
 		}
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SteeringUtilityCalcJointPositions)
+	TYPED_TEST(AllTraits, VehicleTest_SteeringUtilityCalcJointPositions)
 	{
 		float T = 1.0f;			// Track width
 		float Beta = 0.f;		// Angle
@@ -160,7 +160,7 @@ namespace ChaosTest
 
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SteeringUtilityAkermannSetup)
+	TYPED_TEST(AllTraits, VehicleTest_SteeringUtilityAkermannSetup)
 	{
 		float WheelBase = 3.8f;
 		float TrackWidth = 1.8f;
@@ -186,7 +186,7 @@ namespace ChaosTest
 		EXPECT_GT(H, 0.f);
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SystemTemplate)
+	TYPED_TEST(AllTraits, VehicleTest_SystemTemplate)
 	{
 		FSimpleTireConfig Setup;
 		{
@@ -201,7 +201,7 @@ namespace ChaosTest
 	}
 
 	// Aerodynamics
-	GTEST_TEST(AllTraits, VehicleTest_Aerodynamics)
+	TYPED_TEST(AllTraits, VehicleTest_Aerodynamics)
 	{
 		FSimpleAerodynamicsConfig Setup;
 		{
@@ -297,7 +297,7 @@ namespace ChaosTest
 		}*/
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_Aerofoil)
+	TYPED_TEST(AllTraits, VehicleTest_Aerofoil)
 	{
 		FAerofoilConfig RWingSetup;
 		RWingSetup.Offset.Set(-0.8f, 3.0f, 0.0f);
@@ -409,7 +409,7 @@ namespace ChaosTest
 
 
 	// Transmission
-	GTEST_TEST(AllTraits, VehicleTest_TransmissionManualGearSelection)
+	TYPED_TEST(AllTraits, VehicleTest_TransmissionManualGearSelection)
 	{
 		FSimpleTransmissionConfig Setup;
 		{
@@ -479,7 +479,7 @@ namespace ChaosTest
 
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_TransmissionAutoGearSelection)
+	TYPED_TEST(AllTraits, VehicleTest_TransmissionAutoGearSelection)
 	{
 		FSimpleTransmissionConfig Setup;
 		{
@@ -522,7 +522,7 @@ namespace ChaosTest
 
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_TransmissionGearRatios)
+	TYPED_TEST(AllTraits, VehicleTest_TransmissionGearRatios)
 	{
 		FSimpleTransmissionConfig Setup;
 		{
@@ -564,7 +564,7 @@ namespace ChaosTest
 	}
 
 	// Engine
-	GTEST_TEST(AllTraits, VehicleTest_EngineRPM)
+	TYPED_TEST(AllTraits, VehicleTest_EngineRPM)
 	{
 		// #todo: fix engine rev out of gear
 		//FSimpleEngineConfig Setup;
@@ -707,7 +707,7 @@ namespace ChaosTest
 		}
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_WheelBrakingLongitudinalSlip)
+	TYPED_TEST(AllTraits, VehicleTest_WheelBrakingLongitudinalSlip)
 	{
 		FSimpleWheelConfig Setup;
 		Setup.ABSEnabled = false;
@@ -789,7 +789,7 @@ namespace ChaosTest
 		EXPECT_GT(StoppingDistanceLowFriction, StoppingDistanceA);
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_WheelAcceleratingLongitudinalSlip)
+	TYPED_TEST(AllTraits, VehicleTest_WheelAcceleratingLongitudinalSlip)
 	{
 		FSimpleWheelConfig Setup;
 		Setup.ABSEnabled = false;
@@ -853,13 +853,13 @@ namespace ChaosTest
 		EXPECT_GT(SimulationTimeAccelSpin, SimulationTimeAccel);
 	}
 
-	GTEST_TEST(AllTraits, DISABLED_VehicleTest_WheelLateralSlip)
+	TYPED_TEST(AllTraits, DISABLED_VehicleTest_WheelLateralSlip)
 	{
 		FSimpleWheelConfig Setup;
 		FSimpleWheelSim Wheel(&Setup);
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_WheelRolling)
+	TYPED_TEST(AllTraits, VehicleTest_WheelRolling)
 	{
 		FSimpleWheelConfig Setup;
 		FSimpleWheelSim Wheel(&Setup);
@@ -958,7 +958,7 @@ namespace ChaosTest
 		return Sum;
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SuspensionSprungMassesTwoWheels)
+	TYPED_TEST(AllTraits, VehicleTest_SuspensionSprungMassesTwoWheels)
 	{
 		float TotalMass = 1000.f;
 		float Tolerance = 0.01f;
@@ -1042,7 +1042,7 @@ namespace ChaosTest
 		}
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SuspensionSprungMassesThreeWheels)
+	TYPED_TEST(AllTraits, VehicleTest_SuspensionSprungMassesThreeWheels)
 	{
 		float TotalMass = 1000.f;
 		float Tolerance = 0.01f;
@@ -1067,7 +1067,7 @@ namespace ChaosTest
 
 	}
 
-	GTEST_TEST(AllTraits, VehicleTest_SuspensionSprungMassesFourWheels)
+	TYPED_TEST(AllTraits, VehicleTest_SuspensionSprungMassesFourWheels)
 	{
 		float TotalMass = 1000.f;
 		float Tolerance = 0.1f;
@@ -1143,19 +1143,19 @@ namespace ChaosTest
 	float PlaneZPos = 1.0f;
 	bool RayCastPlane(FVec3& RayStart, FVec3& Direction, float Length, float& OutTime, FVec3& OutPosition, FVec3& OutNormal)
 	{
-		TPlane<float, 3> Plane(FVec3(1), FVec3(0, 0, PlaneZPos));
+		TPlane<float, 3> Plane(TVector<float, 3>(1), TVector<float, 3>(0, 0, PlaneZPos));
 		int32 FaceIndex;
 
 		return Plane.Raycast(RayStart, Direction, Length, 0, OutTime, OutPosition, OutNormal, FaceIndex);
 	}
 
-	void AddForceAtPosition(FPBDRigidsEvolutionGBF& Evolution, TPBDRigidParticleHandle<FReal, 3>* Rigid, const FVector& InForce, const FVector& InPosition)
+	void AddForceAtPosition(TPBDRigidParticleHandle<FReal, 3>* Rigid, const FVector& InForce, const FVector& InPosition)
 	{
 		const Chaos::FVec3& CurrentForce = Rigid->F();
 		const Chaos::FVec3& CurrentTorque = Rigid->Torque();
 		const Chaos::FVec3 WorldCOM = FParticleUtilitiesGT::GetCoMWorldPosition(Rigid);
 
-		Evolution.SetParticleObjectState(Rigid, EObjectStateType::Dynamic);
+		Rigid->SetObjectState(EObjectStateType::Dynamic);
 
 		const Chaos::FVec3 WorldTorque = Chaos::FVec3::CrossProduct(InPosition - WorldCOM, InForce);
 		Rigid->SetF(CurrentForce + InForce);
@@ -1172,11 +1172,13 @@ namespace ChaosTest
 	}
 
 	// #todo: break out vehicle simulation setup so it can be used across number of tests
-	GTEST_TEST(AllEvolutions, VehicleTest_SuspensionSpringLoad)
+	TYPED_TEST(AllEvolutions, VehicleTest_SuspensionSpringLoad)
 	{
-		FPBDRigidsSOAs Particles;
+		using TEvolution = TypeParam;
+
+		TPBDRigidsSOAs<FReal, 3> Particles;
 		THandleArray<FChaosPhysicsMaterial> PhysicalMaterials;
-		FPBDRigidsEvolutionGBF Evolution(Particles, PhysicalMaterials);
+		TEvolution Evolution(Particles, PhysicalMaterials);
 
 		float BodyMass = 1000.0f;
 		float Gravity = FMath::Abs(Evolution.GetGravityForces().GetAcceleration().Z);
@@ -1276,7 +1278,7 @@ namespace ChaosTest
 				if (bHit)
 				{
 					FVector SusForce = Suspension.GetSuspensionForceVector(BodyTM);
-					AddForceAtPosition(Evolution, Dynamic, SusForce, Start);
+					AddForceAtPosition(Dynamic, SusForce, Start);
 				}
 			}
 
@@ -1290,7 +1292,7 @@ namespace ChaosTest
 		EXPECT_LT(Dynamic->X().Z - ExpectedRestingPosition, Tolerance);
 	}
 
-	//GTEST_TEST(AllTraits, VehicleTest_SuspensionNaturalFrequency)
+	//TYPED_TEST(AllTraits, VehicleTest_SuspensionNaturalFrequency)
 	//{
 	//	float SprungMass = 250.f;
 	//	float SpringStiffness = 250.0f;

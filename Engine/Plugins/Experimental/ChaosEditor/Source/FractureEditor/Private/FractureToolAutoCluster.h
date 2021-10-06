@@ -8,15 +8,16 @@
 #include "FractureToolAutoCluster.generated.h"
 
 
-UCLASS(DisplayName = "Auto Cluster", Category = "FractureTools")
-class UFractureAutoClusterSettings : public UFractureToolSettings
+UCLASS()
+class UFractureAutoClusterSettings
+	: public UObject
 {
-public:
 	GENERATED_BODY()
 
-	UFractureAutoClusterSettings(const FObjectInitializer& ObjInit)
-		: Super(ObjInit)
-		, AutoClusterMode(EFractureAutoClusterMode::BoundingBox)
+public:
+
+	UFractureAutoClusterSettings()
+		: AutoClusterMode(EFractureAutoClusterMode::BoundingBox)
 		, SiteCount(10)
 	{}
 
@@ -25,11 +26,12 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = AutoCluster, meta = (DisplayName = "Cluster Sites"))// , UIMin = "1", UIMax = "5000", ClampMin = "1"))
 	uint32 SiteCount;
+
 };
 
 
 UCLASS(DisplayName="AutoCluster", Category="FractureTools")
-class UFractureToolAutoCluster: public UFractureModalTool
+class UFractureToolAutoCluster: public UFractureTool
 {
 public:
 	GENERATED_BODY()
@@ -42,10 +44,12 @@ public:
 	virtual FText GetApplyText() const override; 
 	virtual FSlateIcon GetToolIcon() const override;
 	virtual TArray<UObject*> GetSettingsObjects() const override;
+
 	virtual void RegisterUICommand( FFractureEditorCommands* BindingContext );
 
-	virtual void Execute(TWeakPtr<FFractureEditorModeToolkit> InToolkit) override;
+	virtual void ExecuteFracture(const FFractureContext& Context) override;
 
 	UPROPERTY(EditAnywhere, Category = AutoCluster)
-	UFractureAutoClusterSettings* AutoClusterSettings;
+	UFractureAutoClusterSettings* Settings;
+
 };

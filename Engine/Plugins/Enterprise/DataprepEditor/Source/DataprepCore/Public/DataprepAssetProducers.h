@@ -13,16 +13,21 @@ class UDataprepContentProducer;
 struct FDataprepProducerContext;
 
 /** Structure to hold on a producer and its configuration */
-USTRUCT()
+USTRUCT(Experimental)
 struct FDataprepAssetProducer
 {
 	GENERATED_BODY()
 
-	FDataprepAssetProducer() {}
+	FDataprepAssetProducer()
+		: Producer(nullptr)
+		, bIsEnabled( true )
+		, SupersededBy( INDEX_NONE )
+	{}
 
 	FDataprepAssetProducer(UDataprepContentProducer* InProducer, bool bInEnabled )
 		: Producer(InProducer)
 		, bIsEnabled( bInEnabled )
+		, SupersededBy( INDEX_NONE )
 	{}
 
 	FDataprepAssetProducer(UDataprepContentProducer* InProducer, bool bInEnabled, int32 SuperseedingIndex )
@@ -32,13 +37,13 @@ struct FDataprepAssetProducer
 	{}
 
 	UPROPERTY()
-	UDataprepContentProducer* Producer = nullptr;
+	UDataprepContentProducer* Producer;
 
 	UPROPERTY()
-	bool bIsEnabled = true;
+	bool bIsEnabled;
 
 	UPROPERTY()
-	int32 SupersededBy = INDEX_NONE;
+	int32 SupersededBy;
 };
 
 /**
@@ -46,7 +51,7 @@ struct FDataprepAssetProducer
  * the inputs of a DataprepAssetInterface. It provides a set of methods to edit the set of
  * producers and their respective configuration.
  */
-UCLASS()
+UCLASS(Experimental)
 class DATAPREPCORE_API UDataprepAssetProducers : public UObject
 {
 	GENERATED_BODY()

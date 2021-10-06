@@ -196,10 +196,10 @@ void SControlRigMappingWindow::AddNodeMapping(UBlueprint* NewSourceControlRig)
 		// this all can get very messy, so for now, we just support one for each
 		// create new mapper object
 		USkeletalMesh* SkeletalMesh = EditableSkeletalMeshPtr.Get();
-		TArray<UNodeMappingContainer*>& NodeMappingData = SkeletalMesh->GetNodeMappingData();
-		for (int32 Index = 0; Index < NodeMappingData.Num(); ++Index)
+
+		for (int32 Index = 0; Index < SkeletalMesh->NodeMappingData.Num(); ++Index)
 		{
-			if (NewSourceControlRig == NodeMappingData[Index]->GetSourceAsset())
+			if (NewSourceControlRig == SkeletalMesh->NodeMappingData[Index]->GetSourceAsset())
 			{
 				FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("ControlRigConfigAlreadyExists", "The same Control Rig configuration already exists in this mesh. Edit current existing setting."));
 				return;
@@ -216,7 +216,7 @@ void SControlRigMappingWindow::AddNodeMapping(UBlueprint* NewSourceControlRig)
 			NewMapperObject->SetTargetAsset(SkeletalMesh);
 			// add default mapping, this will map default settings
 			NewMapperObject->AddDefaultMapping();
-			CurrentlySelectedIndex = SkeletalMesh->GetNodeMappingData().Add(NewMapperObject);
+			CurrentlySelectedIndex = SkeletalMesh->NodeMappingData.Add(NewMapperObject);
 
 			RefreshList();
 		}
@@ -229,12 +229,11 @@ FReply SControlRigMappingWindow::OnDeleteNodeMappingButtonClicked()
 
 	// create new mapper object
 	USkeletalMesh* SkeletalMesh = EditableSkeletalMeshPtr.Get();
-	TArray<UNodeMappingContainer*>& NodeMappingData = SkeletalMesh->GetNodeMappingData();
-	if (NodeMappingData.IsValidIndex(CurrentlySelectedIndex))
+	if (SkeletalMesh->NodeMappingData.IsValidIndex(CurrentlySelectedIndex))
 	{
 		SkeletalMesh->Modify();
-		NodeMappingData.RemoveAt(CurrentlySelectedIndex);
-		CurrentlySelectedIndex = (NodeMappingData.Num() > 0) ? 0 : INDEX_NONE;
+		SkeletalMesh->NodeMappingData.RemoveAt(CurrentlySelectedIndex);
+		CurrentlySelectedIndex = (SkeletalMesh->NodeMappingData.Num() > 0) ? 0 : INDEX_NONE;
 		RefreshList();
 	}
 
@@ -245,7 +244,7 @@ FReply SControlRigMappingWindow::OnRefreshNodeMappingButtonClicked()
 {
 	// create new mapper object
 	USkeletalMesh* SkeletalMesh = EditableSkeletalMeshPtr.Get();
-	if (SkeletalMesh->GetNodeMappingData().IsValidIndex(CurrentlySelectedIndex))
+	if (SkeletalMesh->NodeMappingData.IsValidIndex(CurrentlySelectedIndex))
 	{
 		const FScopedTransaction Transaction(LOCTEXT("ControlRigMapping_Refresh", "Refresh Node Mapping"));
 
@@ -342,10 +341,9 @@ void SControlRigMappingWindow::RefreshList()
 	// @todo: have to make sure there is no duplicated name. If so, we'll have to create fake name
 	// for now, do path name
 	MappingOptionBoxList.Empty();
-	TArray<UNodeMappingContainer*>& NodeMappingData = EditableSkeletalMeshPtr->GetNodeMappingData();
-	for (int32 Index = 0; Index < NodeMappingData.Num(); ++Index)
+	for (int32 Index = 0; Index < EditableSkeletalMeshPtr->NodeMappingData.Num(); ++Index)
 	{
-		class UNodeMappingContainer* MappingData = NodeMappingData[Index];
+		class UNodeMappingContainer* MappingData = EditableSkeletalMeshPtr->NodeMappingData[Index];
 		if (MappingData)
 		{
 			MappingOptionBoxList.Add(MakeShareable(new UNodeMappingContainer*(MappingData)));
@@ -369,10 +367,9 @@ class UNodeMappingContainer* SControlRigMappingWindow::GetCurrentBoneMappingCont
 	if (EditableSkeletalMeshPtr.IsValid())
 	{
 		USkeletalMesh* Mesh = EditableSkeletalMeshPtr.Get();
-		TArray<UNodeMappingContainer*>& NodeMappingData = Mesh->GetNodeMappingData();
-		if (NodeMappingData.IsValidIndex(CurrentlySelectedIndex))
+		if (Mesh->NodeMappingData.IsValidIndex(CurrentlySelectedIndex))
 		{
-			return NodeMappingData[CurrentlySelectedIndex];
+			return Mesh->NodeMappingData[CurrentlySelectedIndex];
 		}
 	}
 
@@ -406,7 +403,7 @@ void SControlRigMappingWindow::CreateBoneMappingList(const FString& SearchText, 
 {
 	BoneMappingList.Empty();
 
-	const FReferenceSkeleton RefSkeleton = EditableSkeletalMeshPtr.Get()->GetRefSkeleton();
+	const FReferenceSkeleton RefSkeleton = EditableSkeletalMeshPtr.Get()->RefSkeleton;
 	UNodeMappingContainer* Container = GetCurrentBoneMappingContainer();
 	if (Container)
 	{
@@ -441,7 +438,7 @@ void SControlRigMappingWindow::CreateBoneMappingList(const FString& SearchText, 
 const struct FReferenceSkeleton& SControlRigMappingWindow::GetReferenceSkeleton() const
 {
 	static FReferenceSkeleton DummySkeleton;
-	return (EditableSkeletalMeshPtr.IsValid())? EditableSkeletalMeshPtr.Get()->GetRefSkeleton() : DummySkeleton;
+	return (EditableSkeletalMeshPtr.IsValid())? EditableSkeletalMeshPtr.Get()->RefSkeleton : DummySkeleton;
 }
 #undef LOCTEXT_NAMESPACE
 

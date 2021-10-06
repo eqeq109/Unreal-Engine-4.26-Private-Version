@@ -54,14 +54,20 @@ namespace EXmppPresenceStatus
 class FXmppUserPresence
 {
 public:
+	/** constructor */
+	FXmppUserPresence()
+		: Status(EXmppPresenceStatus::Offline)
+		, bIsAvailable(true)
+	{}
+
 	/** state of basic online status */
-	EXmppPresenceStatus::Type Status = EXmppPresenceStatus::Offline;
+	EXmppPresenceStatus::Type Status;
 	/** connected an available to receive messages */
-	bool bIsAvailable = true;
+	bool bIsAvailable;
 	/** time when presence was sent by the user */
-	FDateTime SentTime = FDateTime::MinValue();
+	FDateTime SentTime;
 	/** time when presence was sent by the user */
-	FDateTime ReceivedTime = FDateTime::MinValue();
+	FDateTime ReceivedTime;
 	/** app id user is logged in from */
 	FString AppId;
 	/** platform associated with this client */

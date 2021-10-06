@@ -26,7 +26,6 @@ public:
 
 #if WITH_EDITOR
 
-	virtual void PostRename(UObject* OldOuter, const FName OldName) override;
 	virtual void PostDuplicate(bool bDuplicateForPIE) override;
 
 	MOVIESCENETRACKS_API void AttemptUpgrade();

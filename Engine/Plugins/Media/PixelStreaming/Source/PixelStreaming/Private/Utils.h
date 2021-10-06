@@ -4,12 +4,7 @@
 
 #include "PixelStreamingPrivate.h"
 
-#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
 #include "Windows/WindowsPlatformMisc.h"
-#elif PLATFORM_LINUX
-#include "Linux/LinuxPlatformMisc.h"
-#endif
-
 #include "Containers/StringConv.h"
 #include "Containers/UnrealString.h"
 #include "Templates/SharedPointer.h"
@@ -18,10 +13,9 @@
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
 #include "Templates/Atomic.h"
-#include "WebRTCIncludes.h"
+
 #include <string>
 
-#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
 inline bool IsWindows7Plus()
 {
 	return FPlatformMisc::VerifyWindowsVersion(6, 1);
@@ -31,7 +25,6 @@ inline bool IsWindows8Plus()
 {
 	return FPlatformMisc::VerifyWindowsVersion(6, 2);
 }
-#endif
 
 inline FString ToString(const std::string& Str)
 {
@@ -112,7 +105,7 @@ inline const TCHAR* ToString(webrtc::PeerConnectionInterface::IceGatheringState 
 		TEXT("Unknown");
 }
 
-inline const TCHAR* ToString(webrtc::VideoFrameType FrameType)
+inline const TCHAR* ToString(webrtc::FrameType FrameType)
 {
 	TCHAR const* FrameTypesStr[] = {
 		TEXT("EmptyFrame"),
@@ -121,9 +114,9 @@ inline const TCHAR* ToString(webrtc::VideoFrameType FrameType)
 		TEXT("VideoFrameKey"),
 		TEXT("VideoFrameDelta")
 	};
-	int FrameTypeInt = (int)FrameType;
-	return ensureMsgf(0 <= FrameTypeInt && FrameTypeInt <= (int)webrtc::VideoFrameType::kVideoFrameDelta, TEXT("Invalid `webrtc::FrameType`: %d"), static_cast<uint32>(FrameType)) ?
-		FrameTypesStr[FrameTypeInt] :
+
+	return ensureMsgf(0 <= FrameType && FrameType <= webrtc::kVideoFrameDelta, TEXT("Invalid `webrtc::FrameType`: %d"), static_cast<uint32>(FrameType)) ?
+		FrameTypesStr[FrameType] :
 		TEXT("Unknown");
 }
 

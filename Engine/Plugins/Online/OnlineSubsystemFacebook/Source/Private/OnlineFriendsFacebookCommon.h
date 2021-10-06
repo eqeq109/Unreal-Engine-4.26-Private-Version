@@ -30,7 +30,7 @@ public:
 
 	// FOnlineUser
 
-	virtual FUniqueNetIdRef GetUserId() const override;
+	virtual TSharedRef<const FUniqueNetId> GetUserId() const override;
 	virtual FString GetRealName() const override;
 	virtual FString GetDisplayName(const FString& Platform = FString()) const override;
 	virtual bool GetUserAttribute(const FString& AttrName, FString& OutAttrValue) const override;
@@ -46,7 +46,7 @@ public:
 	 * Init/default constructor
 	 */
 	FOnlineFriendFacebook(const FString& InUserId=TEXT("")) 
-		: UserIdPtr(FUniqueNetIdFacebook::Create(InUserId))
+		: UserIdPtr(new FUniqueNetIdFacebook(InUserId))
 	{
 	}
 
@@ -88,7 +88,7 @@ private:
 	/** User Id */
 	FString UserIdStr;
 	/** User Id represented as a FUniqueNetId */
-	FUniqueNetIdRef UserIdPtr;
+	TSharedRef<const FUniqueNetId> UserIdPtr;
 	/** Profile picture */
 	FUserOnlineFacebookPicture Picture;
 	/** Any addition account data associated with the friend */

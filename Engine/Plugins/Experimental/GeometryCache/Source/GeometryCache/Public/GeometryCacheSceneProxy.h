@@ -33,8 +33,6 @@ public:
 	/* Create on rhi thread. Uninitialized with NumVertices space.*/
 	virtual void InitRHI() override;
 
-	virtual void ReleaseRHI() override;
-
 	/**
 	 * Sugar function to update from a typed array.
 	 */
@@ -87,23 +85,8 @@ public:
 
 	virtual FString GetFriendlyName() const override { return TEXT("FGeomCacheVertexBuffer"); }
 
-	FRHIShaderResourceView* GetBufferSRV() const { return BufferSRV; }
-
-protected:
+private:
 	int32 SizeInBytes;
-	FShaderResourceViewRHIRef BufferSRV;
-};
-
-class GEOMETRYCACHE_API FGeomCacheTangentBuffer : public FGeomCacheVertexBuffer
-{
-public:
-	virtual void InitRHI() override;
-};
-
-class GEOMETRYCACHE_API FGeomCacheColorBuffer : public FGeomCacheVertexBuffer
-{
-public:
-	virtual void InitRHI() override;
 };
 
 /** Index Buffer */
@@ -115,8 +98,6 @@ public:
 	/* Create on rhi thread. Uninitialized with NumIndices space.*/
 	virtual void InitRHI() override;
 
-	virtual void ReleaseRHI() override;
-
 	/**
 		Update the data and possibly reallocate if needed.
 	*/
@@ -125,11 +106,6 @@ public:
 	void UpdateSizeOnly(int32 NewNumIndices);
 
 	unsigned SizeInBytes() { return NumIndices * sizeof(uint32); }
-
-	FRHIShaderResourceView* GetBufferSRV() const { return BufferSRV; }
-
-protected:
-	FShaderResourceViewRHIRef BufferSRV;
 };
 
 /** Vertex Factory */
@@ -218,14 +194,6 @@ public:
 	 */
 	virtual void FindSampleIndexesFromTime(float Time, bool bLooping, bool bIsPlayingBackwards, int32& OutFrameIndex, int32& OutNextFrameIndex, float& InInterpolationFactor);
 
-	/**
-	 * Initialize the render resources. Must be called before the render resources are used.
-	 *
-	 * @param NumVertices - The initial number of vertices to initialize the buffers with. Must be greater than 0
-	 * @param NumIndices - The initial number of indices to initialize the buffers with. Must be greater than 0
-	 */
-	virtual void InitRenderResources(int32 NumVertices, int32 NumIndices);
-
 	/** MeshData storing information used for rendering this Track */
 	FGeometryCacheMeshData* MeshData;
 	FGeometryCacheMeshData* NextFrameMeshData;
@@ -233,10 +201,7 @@ public:
 	/** Frame numbers corresponding to MeshData, NextFrameMeshData */
 	int32 FrameIndex;
 	int32 NextFrameIndex;
-	int32 PreviousFrameIndex;
 	float InterpolationFactor;
-	float PreviousInterpolationFactor;
-	float SubframeInterpolationFactor;
 
 	/** Material applied to this Track */
 	TArray<UMaterialInterface*> Materials;
@@ -247,10 +212,10 @@ public:
 	float PositionBufferFrameTimes[2]; // Exact time after interpolation of the positions in the position buffer.
 	uint32 CurrentPositionBufferIndex; // CurrentPositionBufferIndex%2  is the last updated position buffer
 
-	FGeomCacheTangentBuffer TangentXBuffer;
-	FGeomCacheTangentBuffer TangentZBuffer;
+	FGeomCacheVertexBuffer TangentXBuffer;
+	FGeomCacheVertexBuffer TangentZBuffer;
 	FGeomCacheVertexBuffer TextureCoordinatesBuffer;
-	FGeomCacheColorBuffer ColorBuffer;
+	FGeomCacheVertexBuffer ColorBuffer;
 
 	/** Index buffer for this Track */
 	FGeomCacheIndexBuffer IndexBuffer;
@@ -268,8 +233,6 @@ public:
 
 	/** Flag to indicate which frame mesh data was selected during the update */
 	bool bNextFrameMeshDataSelected;
-
-	bool bResourcesInitialized;
 
 #if RHI_RAYTRACING
 	FRayTracingGeometry RayTracingGeometry;
@@ -297,7 +260,7 @@ public:
 	uint32 GetAllocatedSize(void) const;
 	// End FPrimitiveSceneProxy interface.
 
-	void UpdateAnimation(float NewTime, bool bLooping, bool bIsPlayingBackwards, float PlaybackSpeed, float MotionVectorScale);
+	void UpdateAnimation(float NewTime, bool bLooping, bool bIsPlayingBackwards, float PlaybackSpeed);
 
 	/** Update world matrix for specific section */
 	void UpdateSectionWorldMatrix(const int32 SectionIndex, const FMatrix& WorldMatrix);
@@ -313,8 +276,6 @@ public:
 	virtual void GetDynamicRayTracingInstances(FRayTracingMaterialGatheringContext& Context, TArray<FRayTracingInstance>& OutRayTracingInstances) override final;
 	virtual bool IsRayTracingRelevant() const override { return true; }
 #endif
-
-	const TArray<FGeomCacheTrackProxy*>& GetTracks() { return Tracks; }
 
 private:
 	void FrameUpdate() const;
@@ -386,12 +347,10 @@ private:
 	uint32 UpdatedFrameNum;
 	float Time;
 	float PlaybackSpeed;
-	float MotionVectorScale;
 
 	FMaterialRelevance MaterialRelevance;
 	uint32 bLooping : 1;
 	uint32 bIsPlayingBackwards : 1;
-	uint32 bExtrapolateFrames : 1;
 
 	/** Function used to create a new track proxy at construction */
 	TFunction<FGeomCacheTrackProxy*()> CreateTrackProxy;

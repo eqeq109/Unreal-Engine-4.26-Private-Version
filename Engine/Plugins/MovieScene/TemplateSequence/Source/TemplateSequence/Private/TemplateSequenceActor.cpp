@@ -50,7 +50,7 @@ void ATemplateSequenceActor::PostInitializeComponents()
 
 void ATemplateSequenceActor::BeginPlay()
 {
-	UMovieSceneSequenceTickManager::Get(this)->RegisterSequenceActor(this);
+	UMovieSceneSequenceTickManager::Get(this)->SequenceActors.Add(this);
 
 	Super::BeginPlay();
 	
@@ -68,13 +68,15 @@ void ATemplateSequenceActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		SequencePlayer->Stop();
 	}
 
-	UMovieSceneSequenceTickManager::Get(this)->UnregisterSequenceActor(this);
+	UMovieSceneSequenceTickManager::Get(this)->SequenceActors.Remove(this);
 
 	Super::EndPlay(EndPlayReason);
 }
 
-void ATemplateSequenceActor::TickFromSequenceTickManager(float DeltaSeconds)
+void ATemplateSequenceActor::Tick(float DeltaSeconds)
 {
+	Super::Tick(DeltaSeconds);
+
 	if (SequencePlayer)
 	{
 		SequencePlayer->Update(DeltaSeconds);
@@ -147,30 +149,14 @@ void ATemplateSequenceActor::OnSequenceLoaded(const FName& PackageName, UPackage
 
 bool ATemplateSequenceActor::RetrieveBindingOverrides(const FGuid& InBindingId, FMovieSceneSequenceID InSequenceID, TArray<UObject*, TInlineAllocator<1>>& OutObjects) const
 {
-	// If the given object binding ID corresponds to the template sequence's root binding, return the override we have.
-	// Otherwise, let the runtime do the normal lookup.
-	UTemplateSequence* TemplateSequenceObject = GetSequence();
-	if (!TemplateSequenceObject)
-	{
-		return true;
-	}
-
-	const FGuid RootBindingID = TemplateSequenceObject->GetRootObjectBindingID();
-	if (!RootBindingID.IsValid())
-	{
-		return true;
-	}
-	if (RootBindingID != InBindingId)
-	{
-		return true;
-	}
-
 	if (UObject* Object = BindingOverride.Object.Get())
 	{
 		OutObjects.Add(Object);
+		return false;
 	}
 
-	return !BindingOverride.bOverridesDefault;
+	// No binding overrides, use default binding.
+	return true;
 }
 
 UObject* ATemplateSequenceActor::GetInstanceData() const
@@ -178,12 +164,10 @@ UObject* ATemplateSequenceActor::GetInstanceData() const
 	return nullptr;
 }
 
-void ATemplateSequenceActor::SetBinding(AActor* Actor, bool bOverridesDefault)
+void ATemplateSequenceActor::SetBinding(AActor* Actor)
 {
 	BindingOverride.Object = Actor;
-	BindingOverride.bOverridesDefault = bOverridesDefault;
 
-	// Invalidate the root bound object's mapping, if any.
 	UTemplateSequence* TemplateSequenceObject = GetSequence();
 	if (SequencePlayer && TemplateSequenceObject)
 	{

@@ -17,9 +17,11 @@
 #include "XmlParser.h"
 
 
+#ifdef CAD_LIBRARY
 #include "CADData.h"
 #include "CADToolsModule.h"
 #include "CoreTechParametricSurfaceExtension.h"
+#endif // CAD_LIBRARY
 #include "DatasmithAdditionalData.h"
 #include "DatasmithDispatcher.h"
 #include "DatasmithMeshBuilder.h"
@@ -216,6 +218,7 @@ namespace PlmXml
 		ActorElement->SetScale(Transform.GetScale3D());
 	}
 
+#ifdef CAD_LIBRARY
 	class FPlmXmlMeshLoaderWithDatasmithDispatcher
 	{
 	public:
@@ -228,8 +231,8 @@ namespace PlmXml
 		TUniquePtr<FDatasmithMeshBuilder> MeshBuilderPtr;
 
 		CADLibrary::FImportParameters ImportParameters;
-		TMap<uint32, FString> CADFileToUnrealGeomMap;
-		TMap<uint32, FString> CADFileToUnrealFileMap;
+		TMap<uint32, FString> CADFileToUE4GeomMap;
+		TMap<uint32, FString> CADFileToUE4FileMap;
 
 		TArray<FString> FilePaths;
 
@@ -253,7 +256,7 @@ namespace PlmXml
 			ImportParameters.MaxNormalAngle = TessellationOptions.NormalTolerance;
 			ImportParameters.StitchingTechnique = (CADLibrary::EStitchingTechnique) TessellationOptions.StitchingTechnique;
 
-			DatasmithDispatcher = MakeUnique<DatasmithDispatcher::FDatasmithDispatcher>(ImportParameters, CacheDir, FPlatformMisc::NumberOfCores(), CADFileToUnrealFileMap, CADFileToUnrealGeomMap);
+			DatasmithDispatcher = MakeUnique<DatasmithDispatcher::FDatasmithDispatcher>(ImportParameters, CacheDir, FPlatformMisc::NumberOfCores(), CADFileToUE4FileMap, CADFileToUE4GeomMap);
 		}
 
 		// Adds geom file to load and returns Id to use in InstantiateMesh later(after all is loaded)
@@ -284,9 +287,9 @@ namespace PlmXml
 		void Process(const FDatasmithSceneSource& Source)
 		{
 			DatasmithDispatcher->Process(true);
-			SceneGraphBuilder = MakeUnique<FDatasmithSceneGraphBuilder>(CADFileToUnrealFileMap, CacheDir, DatasmithScene, Source, ImportParameters);
+			SceneGraphBuilder = MakeUnique<FDatasmithSceneGraphBuilder>(CADFileToUE4FileMap, CacheDir, DatasmithScene, Source, ImportParameters);
 			SceneGraphBuilder->LoadSceneGraphDescriptionFiles();
-			MeshBuilderPtr = MakeUnique<FDatasmithMeshBuilder>(CADFileToUnrealGeomMap, CacheDir, ImportParameters);
+			MeshBuilderPtr = MakeUnique<FDatasmithMeshBuilder>(CADFileToUE4GeomMap, CacheDir, ImportParameters);
 		}
 
 		void UnloadScene()
@@ -312,7 +315,69 @@ namespace PlmXml
 
 		void SetTessellationOptions(const UDatasmithCommonTessellationOptions& TessellationOptions);
 	};
+#else // CAD_LIBRARY
+	class FPlmXmlMeshLoaderSimple
+	{
+	public:
+		TSharedRef<IDatasmithScene> DatasmithScene;
 
+		TArray<FString> FilePaths;
+
+		FPlmXmlMeshLoaderSimple(TSharedRef<IDatasmithScene> InDatasmithScene, FDatasmithTessellationOptions& TessellationOptions)
+			: DatasmithScene(InDatasmithScene)
+		{
+		}
+
+		// Adds geom file to load and returns Id to use in InstantiateMesh later(after all is loaded)
+		int32 AddMeshToLoad(const FString& FullPath)
+		{
+			return FilePaths.Add(FullPath);
+		}
+
+		// Creates an instance of the mesh (identified by Id returned from AddMeshToLoad)
+		TSharedPtr<IDatasmithActorElement> InstantiateMesh(FString DatasmithName, int32 Id)
+		{
+			TSharedRef<IDatasmithActorElement> ActorElement = FDatasmithSceneFactory::CreateActor(*DatasmithName);
+			ActorElement->SetLabel(TEXT("Mesh")); // TODO: instantiated mesh label
+
+			if (FilePaths.IsValidIndex(Id))
+			{
+				FString Filename = FPaths::GetCleanFilename(FilePaths[Id]);
+
+				// Make sure file was loaded
+				// TODO: !!!
+				check(false);
+
+				FString DatasmithLabel = FDatasmithUtils::SanitizeObjectName(Filename);
+				ActorElement->SetLabel(*DatasmithLabel);
+			}
+
+			return ActorElement;
+		}
+
+		void Process(const FDatasmithSceneSource& Source)
+		{
+		}
+
+		void UnloadScene()
+		{
+		}
+
+		bool LoadStaticMesh(const TSharedRef<IDatasmithMeshElement>& MeshElement, FDatasmithMeshElementPayload& OutMeshPayload)
+		{
+			//CADLibrary::FMeshParameters MeshParameters;
+
+			//if (TOptional<FMeshDescription> Mesh = MeshBuilderPtr->GetMeshDescription(MeshElement, MeshParameters))
+			//{
+			//	OutMeshPayload.LodMeshes.Add(MoveTemp(Mesh.GetValue()));
+			//	return true;
+			//}
+			return false;
+		}
+
+		void SetTessellationOptions(const UDatasmithCommonTessellationOptions& TessellationOptions);
+	};
+#endif // CAD_LIBRARY
 	struct FParsedPlmXml
 	{
 		TMap<FString, const FXmlNode*> ExternalFileNodes;
@@ -1126,7 +1191,7 @@ namespace PlmXml
 		const FXmlNode* ProductDefNode = RootNode->FindChildNode("ProductDef");
 		if (!ProductDefNode)
 		{
-			UE_LOG(LogDatasmithPlmXmlImport, Warning, TEXT("PlmXml file has no ProductDef tag"));
+			UE_LOG(LogDatasmithPlmXmlImport, Error, TEXT("PlmXml file has no ProductDef tag"));
 			return false;
 		}
 
@@ -1134,7 +1199,7 @@ namespace PlmXml
 		const FXmlNode* InstanceGraphNode = ProductDefNode->FindChildNode("InstanceGraph");
 		if (!InstanceGraphNode)
 		{
-			UE_LOG(LogDatasmithPlmXmlImport, Warning, TEXT("PlmXml file has no InstanceGraph node"));
+			UE_LOG(LogDatasmithPlmXmlImport, Error, TEXT("PlmXml file has no InstanceGraph node"));
 			return false;
 		}
 

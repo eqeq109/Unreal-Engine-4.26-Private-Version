@@ -11,16 +11,6 @@ static uint64 GenerateCommandListID()
 	return FPlatformAtomics::InterlockedIncrement(&GCommandListIDCounter);
 }
 
-void FD3D12CommandListHandle::AddPendingResourceBarrier(FD3D12Resource* Resource, D3D12_RESOURCE_STATES State, uint32 SubResource)
-{
-	check(CommandListData);
-
-	FD3D12PendingResourceBarrier PRB = { Resource, State, SubResource };
-
-	CommandListData->PendingResourceBarriers.Add(PRB);
-	CommandListData->CurrentOwningContext->numPendingBarriers++;
-}
-
 void FD3D12CommandListHandle::AddTransitionBarrier(FD3D12Resource* pResource, D3D12_RESOURCE_STATES Before, D3D12_RESOURCE_STATES After, uint32 Subresource)
 {
 	check(CommandListData);
@@ -111,7 +101,7 @@ FD3D12CommandListHandle::FD3D12CommandListData::FD3D12CommandListData(FD3D12Devi
 		GFSDK_Aftermath_Result Result = GFSDK_Aftermath_DX12_CreateContextHandle(CommandList, &AftermathHandle);
 
 		check(Result == GFSDK_Aftermath_Result_Success);
-		ParentDevice->GetGPUProfiler().RegisterCommandList(CommandList, AftermathHandle);
+		ParentDevice->GetGPUProfiler().RegisterCommandList(AftermathHandle);
 	}
 #endif
 
@@ -300,8 +290,6 @@ void FD3D12CommandAllocator::Init(ID3D12Device* InDevice, const D3D12_COMMAND_LI
 
 namespace D3D12RHI
 {
-	static FCriticalSection CopyQueueCS;
-
 	void GetGfxCommandListAndQueue(FRHICommandList& RHICmdList, void*& OutGfxCmdList, void*& OutCommandQueue)
 	{
 		IRHICommandContext& RHICmdContext = RHICmdList.GetContext();
@@ -323,19 +311,13 @@ namespace D3D12RHI
 		OutCommandQueue = CommandQueue;
 	}
 
-	D3D12RHI_API void ExecuteCodeWithCopyCommandQueueUsage(TFunction<void(ID3D12CommandQueue*)>&& CodeToRun)
+	void GetCopyCommandQueue(FRHICommandList& RHICmdList, void*& OutCommandQueue)
 	{
-		IRHICommandContext* Context = GDynamicRHI->RHIGetDefaultContext();
-		checkSlow(Context);
-		FD3D12CommandContextBase& BaseCmdContext = (FD3D12CommandContextBase&)*Context;
+		IRHICommandContext& RHICmdContext = RHICmdList.GetContext();
+		FD3D12CommandContextBase& BaseCmdContext = (FD3D12CommandContextBase&)RHICmdContext;
+		check(BaseCmdContext.IsDefaultContext());
 
 		ID3D12CommandQueue* CommandQueue = BaseCmdContext.GetParentAdapter()->GetDevice(0)->GetD3DCommandQueue(ED3D12CommandQueueType::Copy);
-		checkSlow(CommandQueue);
-
-		{
-			FScopeLock Lock(&CopyQueueCS);
-			CodeToRun(CommandQueue);
-		}
+		OutCommandQueue = CommandQueue;
 	}
-
 }

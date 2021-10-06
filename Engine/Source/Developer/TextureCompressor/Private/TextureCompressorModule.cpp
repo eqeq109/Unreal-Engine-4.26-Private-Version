@@ -1201,28 +1201,28 @@ static FVector ComputeWSCubeDirectionAtTexelCenter(uint32 CubemapFace, uint32 x,
 	return DirectionWS;
 }
 
-static uint32 ComputeLongLatCubemapExtents(const FImage& SrcImage, const uint32 MaxCubemapTextureResolution)
+static int32 ComputeLongLatCubemapExtents(const FImage& SrcImage, const int32 MaxCubemapTextureResolution)
 {
-	return FMath::Clamp(1U << FMath::FloorLog2(SrcImage.SizeX / 2), 32U, MaxCubemapTextureResolution);
+	return FMath::Clamp(1 << FMath::FloorLog2(SrcImage.SizeX / 2), 32, MaxCubemapTextureResolution);
 }
 
-void ITextureCompressorModule::GenerateBaseCubeMipFromLongitudeLatitude2D(FImage* OutMip, const FImage& SrcImage, const uint32 MaxCubemapTextureResolution)
+void ITextureCompressorModule::GenerateBaseCubeMipFromLongitudeLatitude2D(FImage* OutMip, const FImage& SrcImage, const int32 MaxCubemapTextureResolution)
 {
 	FImage LongLatImage;
 	SrcImage.CopyTo(LongLatImage, ERawImageFormat::RGBA32F, EGammaSpace::Linear);
 	FImageViewLongLat LongLatView(LongLatImage);
 
 	// TODO_TEXTURE: Expose target size to user.
-	uint32 Extent = ComputeLongLatCubemapExtents(LongLatImage, MaxCubemapTextureResolution);
+	int32 Extent = ComputeLongLatCubemapExtents(LongLatImage, MaxCubemapTextureResolution);
 	float InvExtent = 1.0f / Extent;
 	OutMip->Init(Extent, Extent, 6, ERawImageFormat::RGBA32F, EGammaSpace::Linear);
 
 	for(uint32 Face = 0; Face < 6; ++Face)
 	{
 		FImageView2D MipView(*OutMip, Face);
-		for(uint32 y = 0; y < Extent; ++y)
+		for(int32 y = 0; y < Extent; ++y)
 		{
-			for(uint32 x = 0; x < Extent; ++x)
+			for(int32 x = 0; x < Extent; ++x)
 			{
 				FVector DirectionWS = ComputeWSCubeDirectionAtTexelCenter(Face, x, y, InvExtent);
 				MipView.Access(x, y) = LongLatView.LookupLongLat(DirectionWS);
@@ -2060,16 +2060,15 @@ static bool CompressMipChain(
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(CompressMipChain)
 
-	const bool bImageHasAlphaChannel = DetectAlphaChannel(MipChain[0]);
-
 	// now call the Ex version now that we have the proper MipChain
-	const FTextureFormatCompressorCaps CompressorCaps = TextureFormat->GetFormatCapabilitiesEx(Settings, MipChain.Num(), MipChain[0], bImageHasAlphaChannel);
+	const FTextureFormatCompressorCaps CompressorCaps = TextureFormat->GetFormatCapabilitiesEx(Settings, MipChain.Num(), MipChain[0]);
 	OutNumMipsInTail = CompressorCaps.NumMipsInTail;
 	OutExtData = CompressorCaps.ExtData;
 
 	TIndirectArray<FAsyncCompressionTask> AsyncCompressionTasks;
 	int32 MipCount = MipChain.Num();
 	check(MipCount >= (int32)CompressorCaps.NumMipsInTail);
+	const bool bImageHasAlphaChannel = DetectAlphaChannel(MipChain[0]);
 	const int32 MinAsyncCompressionSize = 128;
 	const bool bAllowParallelBuild = TextureFormat->AllowParallelBuild();
 	bool bCompressionSucceeded = true;
@@ -2135,7 +2134,7 @@ static bool CompressMipChain(
 		FCompressedImage2D& DestMip = OutMips[MipIndex];
 		DestMip.SizeX = FMath::Max(1, PrevMip.SizeX >> 1);
 		DestMip.SizeY = FMath::Max(1, PrevMip.SizeY >> 1);
-		DestMip.SizeZ = Settings.bVolume ? FMath::Max(1, PrevMip.SizeZ >> 1) : PrevMip.SizeZ;
+		DestMip.SizeZ = FMath::Max(1, PrevMip.SizeZ >> 1);
 		DestMip.PixelFormat = PrevMip.PixelFormat;
 	}
 
@@ -2184,23 +2183,6 @@ public:
 		:	nvTextureToolsHandle(0)
 #endif	//PLATFORM_WINDOWS
 	{
-	}
-
-	virtual bool UsesTaskGraph(const FTextureBuildSettings& BuildSettings) const override
-	{
-		const ITextureFormat* TextureFormat = nullptr;
-		ITargetPlatformManagerModule* TPM = GetTargetPlatformManager();
-		if (TPM)
-		{
-			TextureFormat = TPM->FindTextureFormat(BuildSettings.TextureFormatName);
-		}
-
-		if (TextureFormat)
-		{
-			return TextureFormat->UsesTaskGraph();
-		}
-
-		return false;
 	}
 
 	virtual bool BuildTexture(
@@ -2563,7 +2545,15 @@ private:
 		// Generate any missing mips in the chain.
 		if (NumOutputMips > OutMipChain.Num())
 		{
-			GenerateMipChain(BuildSettings, OutMipChain.Last(), OutMipChain);
+			// Do angular filtering of cubemaps if requested.
+			if (BuildSettings.bCubemap)
+			{
+				GenerateAngularFilteredMips(OutMipChain, NumOutputMips, BuildSettings.DiffuseConvolveMipLevel);
+			}
+			else
+			{
+				GenerateMipChain(BuildSettings, OutMipChain.Last(), OutMipChain);
+			}
 		}
 		check(OutMipChain.Num() == NumOutputMips);
 

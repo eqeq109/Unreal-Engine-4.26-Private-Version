@@ -133,8 +133,6 @@ public:
 	virtual void RHIVirtualTextureSetFirstMipVisible(FRHITexture2D* Texture, uint32 FirstMip) final override;
 	virtual void RHIExecuteCommandList(FRHICommandList* CmdList) final override;
 	virtual void* METALRHI_API RHIGetNativeDevice() final override;
-	virtual void* METALRHI_API RHIGetNativeGraphicsQueue() final override;
-	virtual void* METALRHI_API RHIGetNativeComputeQueue() final override;
 	virtual void* METALRHI_API RHIGetNativeInstance() final override;
 	virtual class IRHICommandContext* METALRHI_API RHIGetDefaultContext() final override;
 	virtual IRHIComputeContext* RHIGetDefaultAsyncComputeContext() final override;
@@ -207,8 +205,6 @@ public:
 	virtual FRHIShaderLibraryRef RHICreateShaderLibrary_RenderThread(class FRHICommandListImmediate& RHICmdList, EShaderPlatform Platform, FString FilePath, FString Name) final override;
 
 	virtual void RHIUpdateUniformBuffer(FRHIUniformBuffer* UniformBufferRHI, const void* Contents) final override;
-
-	virtual bool RHIIsTypedUAVLoadSupported(EPixelFormat PixelFormat) override;
 
 	virtual uint16 RHIGetPlatformTextureMaxSampleCount() override;
 

@@ -9,13 +9,13 @@
 #if WITH_TENCENTSDK
 #if WITH_TENCENT_RAIL_SDK
 
-FOnlineFriendTencent::FOnlineFriendTencent(FOnlineSubsystemTencent* InTencentSubsystem, const FUniqueNetIdRailRef InUserId)
+FOnlineFriendTencent::FOnlineFriendTencent(FOnlineSubsystemTencent* InTencentSubsystem, const TSharedRef<const FUniqueNetIdRail> InUserId)
 	: TencentSubsystem(InTencentSubsystem)
 	, UserId(InUserId)
 {
 }
 
-FUniqueNetIdRef FOnlineFriendTencent::GetUserId() const
+TSharedRef<const FUniqueNetId> FOnlineFriendTencent::GetUserId() const
 {
 	return UserId;
 }
@@ -62,7 +62,7 @@ const FOnlineUserPresence& FOnlineFriendTencent::GetPresence() const
 	}
 }
 
-FUniqueNetIdRef FOnlineRecentPlayerTencent::GetUserId() const
+TSharedRef<const FUniqueNetId> FOnlineRecentPlayerTencent::GetUserId() const
 {
 	return UserId;
 }
@@ -122,7 +122,7 @@ void FOnlineFriendsTencent::OnLoginChanged(int32 LocalUserNum)
 	IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
 	if (IdentityInt.IsValid())
 	{
-		FUniqueNetIdRailPtr UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
+		TSharedPtr<const FUniqueNetIdRail> UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
 		if (UserId.IsValid())
 		{
 			ELoginStatus::Type LoginStatus = IdentityInt->GetLoginStatus(LocalUserNum);
@@ -154,13 +154,13 @@ bool FOnlineFriendsTencent::ReadFriendsList(int32 LocalUserNum, const FString& L
 				{
 					FOnlinePresenceTencentPtr PresenceInt = StaticCastSharedPtr<FOnlinePresenceTencent>(TencentSubsystem->GetPresenceInterface());
 
-					TArray<FUniqueNetIdRef> FriendIds;
+					TArray<TSharedRef<const FUniqueNetId>> FriendIds;
 					for (uint32 RailIdx = 0; RailIdx < Friends.size(); ++RailIdx)
 					{
 						const rail::RailFriendInfo& RailFriendInfo(Friends[RailIdx]);
 						if (RailFriendInfo.friend_rail_id != rail::kInvalidRailId)
 						{
-							FUniqueNetIdRef FriendId(FUniqueNetIdRail::Create(RailFriendInfo.friend_rail_id));
+							TSharedRef<const FUniqueNetId> FriendId(MakeShared<const FUniqueNetIdRail>(RailFriendInfo.friend_rail_id));
 							UE_LOG_ONLINE_FRIEND(VeryVerbose, TEXT("Friend Id: %s State: %s"), *FriendId->ToDebugString(), *LexToString(RailFriendInfo.online_state.friend_online_state));
 							
 							PresenceInt->SetUserOnlineState(*FriendId, RailOnlineStateToOnlinePresence(RailFriendInfo.online_state.friend_online_state));
@@ -237,7 +237,7 @@ bool FOnlineFriendsTencent::ReadFriendsList(int32 LocalUserNum, const FString& L
 	return bSucceeded;
 }
 
-void FOnlineFriendsTencent::OnQueryUsersForFriendsListComplete(int32 LocalUserNum, bool bWasSuccessful, const TArray<FUniqueNetIdRef>& UserIds, const FString& ErrorStr, FString ListName, TArray<FUniqueNetIdRef> ExpectedFriendIds)
+void FOnlineFriendsTencent::OnQueryUsersForFriendsListComplete(int32 LocalUserNum, bool bWasSuccessful, const TArray<TSharedRef<const FUniqueNetId>>& UserIds, const FString& ErrorStr, FString ListName, TArray<TSharedRef<const FUniqueNetId>> ExpectedFriendIds)
 {
 	if (UserIds.Num() != ExpectedFriendIds.Num())
 	{
@@ -246,11 +246,11 @@ void FOnlineFriendsTencent::OnQueryUsersForFriendsListComplete(int32 LocalUserNu
 	}
 
 	{
-		for (const FUniqueNetIdRef& UserId : UserIds)
+		for (const TSharedRef<const FUniqueNetId>& UserId : UserIds)
 		{
-			for (int32 FriendIdx = 0; FriendIdx < ExpectedFriendIds.Num(); ++FriendIdx)//FUniqueNetIdRef ExpectedId : ExpectedFriendIds)
+			for (int32 FriendIdx = 0; FriendIdx < ExpectedFriendIds.Num(); ++FriendIdx)//TSharedRef<const FUniqueNetId> ExpectedId : ExpectedFriendIds)
 			{
-				const FUniqueNetIdRef& ExpectedId = ExpectedFriendIds[FriendIdx];
+				const TSharedRef<const FUniqueNetId>& ExpectedId = ExpectedFriendIds[FriendIdx];
 				if (*ExpectedId == *UserId)
 				{
 					// Not a ref in the iterator because remove doesn't allow the exact memory address
@@ -277,24 +277,24 @@ void FOnlineFriendsTencent::OnQueryUsersForFriendsListComplete(int32 LocalUserNu
 			IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
 			if (IdentityInt.IsValid())
 			{
-				FUniqueNetIdRailPtr LocalUserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
+				TSharedPtr<const FUniqueNetIdRail> LocalUserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
 				if (LocalUserId.IsValid())
 				{
 					// Get/add friends lists for user
 					FOnlineFriendsListTencent& FriendList = FriendsLists.FindOrAdd(static_cast<rail::RailID>(*LocalUserId));
 
 					// refresh friends list
-					TArray<FUniqueNetIdRef> PresenceUserIds;
+					TArray<TSharedRef<const FUniqueNetId>> PresenceUserIds;
 					PresenceUserIds.Empty(UserIds.Num());
 					FriendList.Friends.Empty(UserIds.Num());
-					for (const FUniqueNetIdRef& FriendUserId : UserIds)
+					for (const TSharedRef<const FUniqueNetId>& FriendUserId : UserIds)
 					{
 						if (*FriendUserId != *LocalUserId)
 						{
 							TSharedPtr<FOnlineUser> FriendUser = TencentUser->GetUserInfo(LocalUserNum, *FriendUserId);
 							if (FriendUser.IsValid())
 							{
-								FUniqueNetIdRailRef FriendRailUserId = StaticCastSharedRef<const FUniqueNetIdRail>(FriendUserId);
+								TSharedRef<const FUniqueNetIdRail> FriendRailUserId = StaticCastSharedRef<const FUniqueNetIdRail>(FriendUserId);
 
 								UE_LOG_ONLINE_FRIEND(VeryVerbose, TEXT("  Id: %s"), *FriendRailUserId->ToDebugString());
 								UE_LOG_ONLINE_FRIEND(VeryVerbose, TEXT("  Display name: %s"), *FriendUser->GetDisplayName());
@@ -381,18 +381,18 @@ bool FOnlineFriendsTencent::SendInvite(int32 LocalUserNum, const FUniqueNetId& F
 	FString ErrorStr;
 	bool bStarted = false;
 
-	const FUniqueNetIdRail& RailFriendId = *static_cast<const FUniqueNetIdRail*>(&FriendId);
+	const FUniqueNetIdRail& RailFriendId = static_cast<const FUniqueNetIdRail>(FriendId);
 	if (RailFriendId.IsValid())
 	{
 		IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
 		if (IdentityInt.IsValid())
 		{
-			FUniqueNetIdPtr LocalUserId = TencentSubsystem->GetIdentityInterface()->GetUniquePlayerId(LocalUserNum);
+			TSharedPtr<const FUniqueNetId> LocalUserId = TencentSubsystem->GetIdentityInterface()->GetUniquePlayerId(LocalUserNum);
 			if (LocalUserId.IsValid())
 			{
 				FOnOnlineAsyncTaskRailAddFriendComplete CompletionDelegate;
 				CompletionDelegate.BindThreadSafeSP(this, &FOnlineFriendsTencent::SendInvite_Complete, LocalUserNum, FriendId.AsShared(), ListName, Delegate);
-				FOnlineAsyncTaskRailAddFriend* AsyncTask = new FOnlineAsyncTaskRailAddFriend(TencentSubsystem, RailFriendId, CompletionDelegate);
+				FOnlineAsyncTaskRailAddFriend* AsyncTask = new FOnlineAsyncTaskRailAddFriend(TencentSubsystem, static_cast<const FUniqueNetIdRail>(FriendId), CompletionDelegate);
 				TencentSubsystem->QueueAsyncTask(AsyncTask);
 				bStarted = true;
 			}
@@ -415,7 +415,7 @@ bool FOnlineFriendsTencent::SendInvite(int32 LocalUserNum, const FUniqueNetId& F
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("SendInvite request failed. %s"), *ErrorStr);
 
-		FUniqueNetIdRef FriendIdRef(FriendId.AsShared());
+		TSharedRef<const FUniqueNetId> FriendIdRef(FriendId.AsShared());
 		TencentSubsystem->ExecuteNextTick([Delegate, LocalUserNum, FriendIdRef, ListName, ErrorStr]()
 		{
 			Delegate.ExecuteIfBound(LocalUserNum, false, *FriendIdRef, ListName, ErrorStr);
@@ -424,7 +424,7 @@ bool FOnlineFriendsTencent::SendInvite(int32 LocalUserNum, const FUniqueNetId& F
 	return bStarted;
 }
 
-void FOnlineFriendsTencent::SendInvite_Complete(const FOnlineError& Result, const int32 LocalUserNum, const FUniqueNetIdRef FriendId, const FString ListName, const FOnSendInviteComplete CompletionDelegate)
+void FOnlineFriendsTencent::SendInvite_Complete(const FOnlineError& Result, const int32 LocalUserNum, const TSharedRef<const FUniqueNetId> FriendId, const FString ListName, const FOnSendInviteComplete CompletionDelegate)
 {
 	if (Result.WasSuccessful())
 	{
@@ -471,7 +471,7 @@ bool FOnlineFriendsTencent::RejectInvite(int32 LocalUserNum, const FUniqueNetId&
 
 void FOnlineFriendsTencent::SetFriendAlias(int32 LocalUserNum, const FUniqueNetId& FriendId, const FString& ListName, const FString& Alias, const FOnSetFriendAliasComplete& Delegate /*= FOnSetFriendAliasComplete()*/)
 {
-	FUniqueNetIdRef FriendIdRef = FriendId.AsShared();
+	TSharedRef<const FUniqueNetId> FriendIdRef = FriendId.AsShared();
 	TencentSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsTencent::SetFriendAlias is not implemented"));
@@ -481,7 +481,7 @@ void FOnlineFriendsTencent::SetFriendAlias(int32 LocalUserNum, const FUniqueNetI
 
 void FOnlineFriendsTencent::DeleteFriendAlias(int32 LocalUserNum, const FUniqueNetId& FriendId, const FString& ListName, const FOnDeleteFriendAliasComplete& Delegate)
 {
-	FUniqueNetIdRef FriendIdRef = FriendId.AsShared();
+	TSharedRef<const FUniqueNetId> FriendIdRef = FriendId.AsShared();
 	TencentSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsTencent::DeleteFriendAlias is not implemented"));
@@ -508,7 +508,7 @@ bool FOnlineFriendsTencent::GetFriendsList(int32 LocalUserNum, const FString& Li
 	IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
 	if (IdentityInt.IsValid())
 	{
-		FUniqueNetIdRailPtr UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
+		TSharedPtr<const FUniqueNetIdRail> UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
 		if (UserId.IsValid())
 		{
 			FOnlineFriendsListTencent* FriendList = FriendsLists.Find(static_cast<rail::RailID>(*UserId));
@@ -557,7 +557,7 @@ void FOnlineFriendsTencent::AddRecentPlayers(const FUniqueNetId& UserId, const T
 	bool bTriggerDelegate = true;
 	FOnlineError Error(EOnlineErrorResult::Unknown);
 
-	FUniqueNetIdRef UserIdRef = UserId.AsShared();
+	TSharedRef<const FUniqueNetId> UserIdRef = UserId.AsShared();
 	if (InRecentPlayers.Num() > 0)
 	{
 		FOnlineIdentityTencentPtr IdentityInt = StaticCastSharedPtr<FOnlineIdentityTencent>(TencentSubsystem->GetIdentityInterface());
@@ -660,7 +660,7 @@ bool FOnlineFriendsTencent::QueryRecentPlayers(const FUniqueNetId& UserId, const
 	bool bStarted = false;
 	if (UserId.IsValid())
 	{
-		FUniqueNetIdRef UserIdRef = UserId.AsShared();
+		TSharedRef<const FUniqueNetId> UserIdRef = UserId.AsShared();
 		TWeakPtr<FOnlineFriendsTencent, ESPMode::ThreadSafe> LocalWeakThis(AsShared());
 		FOnlineAsyncTaskRailQueryPlayedWithFriendsList* NewTask = new FOnlineAsyncTaskRailQueryPlayedWithFriendsList(TencentSubsystem, FOnOnlineAsyncTaskRailQueryPlayedWithFriendsListComplete::CreateLambda([LocalWeakThis, UserIdRef, Namespace](const FQueryPlayedWithFriendsListTaskResult& Result)
 		{
@@ -753,9 +753,9 @@ bool FOnlineFriendsTencent::GetRecentPlayers(const FUniqueNetId& UserId, const F
 void FOnlineFriendsTencent::DumpRecentPlayers() const
 {
 	UE_LOG_ONLINE_FRIEND(Display, TEXT("Recent Players"));
-	for (const TPair<FUniqueNetIdRef, TArray<TSharedRef<FOnlineRecentPlayerTencent>>>& SingleUserList : RecentPlayersLists)
+	for (const TPair<TSharedRef<const FUniqueNetId>, TArray<TSharedRef<FOnlineRecentPlayerTencent>>>& SingleUserList : RecentPlayersLists)
 	{
-		const FUniqueNetIdRef& UserId = SingleUserList.Key;
+		const TSharedRef<const FUniqueNetId>& UserId = SingleUserList.Key;
 		UE_LOG_ONLINE_FRIEND(Display, TEXT("LocalUser: %s"), *UserId->ToDebugString());
 		for (const TSharedRef<FOnlineRecentPlayerTencent>& RecentPlayer : SingleUserList.Value)
 		{
@@ -860,7 +860,7 @@ TSharedPtr<FOnlineFriendTencent> FOnlineFriendsTencent::FindFriendEntry(int32 Lo
 {
 	TSharedPtr<FOnlineFriendTencent> Result;
 	IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
-	FUniqueNetIdRailPtr UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
+	TSharedPtr<const FUniqueNetIdRail> UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
 	if (UserId.IsValid())
 	{
 		// Find the friends lists available for the local user
@@ -884,7 +884,7 @@ TSharedPtr<FOnlineFriendTencent> FOnlineFriendsTencent::FindFriendEntry(int32 Lo
 			// Create friend entry if missing
 			if (bAddIfMissing && !Result.IsValid())
 			{
-				FUniqueNetIdRailRef FriendUserId = StaticCastSharedRef<const FUniqueNetIdRail>(FriendId.AsShared());
+				TSharedRef<const FUniqueNetIdRail> FriendUserId = StaticCastSharedRef<const FUniqueNetIdRail>(FriendId.AsShared());
 				TSharedRef<FOnlineFriendTencent> FriendEntry = MakeShared<FOnlineFriendTencent>(TencentSubsystem, FriendUserId);
 				FriendList->Friends.Add(FriendEntry);
 				Result = FriendEntry;

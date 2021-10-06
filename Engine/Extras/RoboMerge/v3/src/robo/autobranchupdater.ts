@@ -98,12 +98,12 @@ export class AutoBranchUpdater implements Bot {
 			// .json file, the file will have to be recommitted anyway
 			this.lastCl = change.change;
 
-			await this._tryReloadBranchDefs();
+			this._tryReloadBranchDefs();
 		}
 		return true
 	}
 
-	async _tryReloadBranchDefs() {
+	_tryReloadBranchDefs() {
 		let branchGraphText
 		try {
 			branchGraphText = require('fs').readFileSync(`${this.workspace.directory}/${this.graphBot.filename}`, 'utf8')
@@ -115,7 +115,7 @@ export class AutoBranchUpdater implements Bot {
 		}
 
 		const validationErrors: string[] = []
-		const result = BranchDefs.parseAndValidate(validationErrors, branchGraphText, await this.p4.streams())
+		const result = BranchDefs.parseAndValidate(validationErrors, branchGraphText)
 		if (!result.branchGraphDef) {
 			// @todo email author of changes!
 			let errText = 'failed to parse/validate branch specs file\n'

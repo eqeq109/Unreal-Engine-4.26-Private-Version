@@ -2,16 +2,16 @@
 
 #pragma once
 
-#include "CoreTypes.h"
+#include "CoreMinimal.h"
 #include "MovieSceneFwd.h"
 #include "Misc/InlineValue.h"
 #include "Evaluation/MovieSceneAnimTypeID.h"
-#include "Evaluation/PreAnimatedState/MovieSceneRestoreStateParams.h"
 
 class IMovieScenePlayer;
 struct FMovieSceneContext;
 struct FMovieSceneEvaluationOperand;
 struct FPersistentEvaluationData;
+
 
 /**
  * Base class for all pre-animated state tokens that apply to UObjects. Store any cached state in derived classes
@@ -24,12 +24,9 @@ struct IMovieScenePreAnimatedToken
 	 * Restore state for the specified object, only called when this token was created with a bound object
 	 *
 	 * @param Object The object to restore state for
-	 * @param Params Parameters for restoring state
+	 * @param Player The movie scene player that is responsible for playing back the sequence
 	 */
-	virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params) = 0;
-
-	UE_DEPRECATED(4.27, "Please use the overload that takes UE::MovieScene::FRestoreStateParams")
-	virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player) {}
+	virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player) = 0;
 };
 typedef TInlineValue<IMovieScenePreAnimatedToken, 32> IMovieScenePreAnimatedTokenPtr;
 
@@ -71,12 +68,9 @@ struct IMovieScenePreAnimatedGlobalToken
 	/**
 	 * Restore global state for a master track.
 	 *
-	 * @param Params Parameters for restoring state
+	 * @param Player The movie scene player that is responsible for playing back the sequence
 	 */
-	virtual void RestoreState(const UE::MovieScene::FRestoreStateParams& Params) = 0;
-
-	UE_DEPRECATED(4.27, "Please use the overload that takes UE::MovieScene::FRestoreStateParams")
-	virtual void RestoreState(IMovieScenePlayer& Player) {}
+	virtual void RestoreState(IMovieScenePlayer& Player) = 0;
 };
 typedef TInlineValue<IMovieScenePreAnimatedGlobalToken, 32> IMovieScenePreAnimatedGlobalTokenPtr;
 
@@ -131,7 +125,7 @@ struct IMovieSceneSharedExecutionToken
 /** Stateless pre-animated state token producer that simply calls a static function as the token */
 struct FStatelessPreAnimatedTokenProducer : IMovieScenePreAnimatedTokenProducer
 {
-	typedef void (*StaticFunction)(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params);
+	typedef void (*StaticFunction)(UObject&, IMovieScenePlayer&);
 
 	FStatelessPreAnimatedTokenProducer(StaticFunction InFunction) : Function(InFunction) {}
 
@@ -144,9 +138,9 @@ struct FStatelessPreAnimatedTokenProducer : IMovieScenePreAnimatedTokenProducer
 	{
 		FToken(StaticFunction InFunctionPtr) : FunctionPtr(InFunctionPtr) {}
 
-		virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params) override
+		virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player) override
 		{
-			(*FunctionPtr)(Object, Params);
+			(*FunctionPtr)(Object, Player);
 		}
 
 		StaticFunction FunctionPtr;

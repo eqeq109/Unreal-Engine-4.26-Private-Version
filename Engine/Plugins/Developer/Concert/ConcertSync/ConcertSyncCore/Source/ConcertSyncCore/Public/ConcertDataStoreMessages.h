@@ -37,7 +37,7 @@ struct FConcertDataStore_Integer
 
 	/** The stored value. */
 	UPROPERTY(VisibleAnywhere, Category = "Concert Data Store Value")
-	uint64 Value = 0;
+	uint64 Value;
 
 	/** Converts the struct to a uint8. @see FConcertDataStore_StoreValue::DeserializeUnchecked<T>(). */
 	explicit operator uint8() const { return static_cast<uint8>(Value); }
@@ -77,7 +77,7 @@ struct FConcertDataStore_Double
 	GENERATED_BODY()
 
 	UPROPERTY(VisibleAnywhere, Category = "Concert Data Store Value")
-	double Value = 0.0;
+	double Value;
 
 	/** Converts the struct to a double. @see FConcertDataStore_StoreValue::DeserializeUnchecked<T>(). */
 	explicit operator double() const { return Value; }
@@ -273,7 +273,7 @@ struct FConcertDataStore_StoreValue
 	 * is large.
 	 */
 	UPROPERTY(VisibleAnywhere, Category = "Concert Data Store Value")
-	uint32 Version = 0;
+	uint32 Version;
 
 	/** Contains the value in its serialized and compact form. @see DeserializeUnchecked(). */
 	UPROPERTY(VisibleAnywhere, Category = "Concert Data Store Value")

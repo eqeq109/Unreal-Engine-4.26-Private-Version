@@ -73,7 +73,7 @@ FCameraCutTrackEditor::FCameraCutTrackEditor(TSharedRef<ISequencer> InSequencer)
 }
 
 void FCameraCutTrackEditor::OnRelease()
-{	
+{
 	const FCameraCutTrackCommands& Commands = FCameraCutTrackCommands::Get();
 	Commands.BindingCount--;
 	
@@ -271,9 +271,9 @@ const FSlateBrush* FCameraCutTrackEditor::GetIconBrush() const
 }
 
 
-bool FCameraCutTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, FSequencerDragDropParams& DragDropParams)
+bool FCameraCutTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, UMovieSceneTrack* Track, int32 RowIndex, const FGuid& TargetObjectGuid)
 {
-	if (!DragDropParams.Track->IsA(UMovieSceneCameraCutTrack::StaticClass()))
+	if (!Track->IsA(UMovieSceneCameraCutTrack::StaticClass()))
 	{
 		return false;
 	}
@@ -285,8 +285,6 @@ bool FCameraCutTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, FSe
 		return false;
 	}
 	
-	UMovieSceneCameraCutTrack* CameraCutTrack = Cast<UMovieSceneCameraCutTrack>(DragDropParams.Track);
-
 	TSharedPtr<FActorDragDropGraphEdOp> DragDropOp = StaticCastSharedPtr<FActorDragDropGraphEdOp>( Operation );
 
 	for (auto& ActorPtr : DragDropOp->Actors)
@@ -298,8 +296,6 @@ bool FCameraCutTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, FSe
 			UCameraComponent* CameraComponent = MovieSceneHelpers::CameraComponentFromActor(Actor);
 			if (CameraComponent)
 			{
-				FFrameNumber EndFrameNumber = CameraCutTrack->FindEndTimeForCameraCut(DragDropParams.FrameNumber);
-				DragDropParams.FrameRange = TRange<FFrameNumber>(DragDropParams.FrameNumber, EndFrameNumber);
 				return true;
 			}
 		}
@@ -309,9 +305,9 @@ bool FCameraCutTrackEditor::OnAllowDrop(const FDragDropEvent& DragDropEvent, FSe
 }
 
 
-FReply FCameraCutTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, const FSequencerDragDropParams& DragDropParams)
+FReply FCameraCutTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, UMovieSceneTrack* Track, int32 RowIndex, const FGuid& TargetObjectGuid)
 {
-	if (!DragDropParams.Track->IsA(UMovieSceneCameraCutTrack::StaticClass()))
+	if (!Track->IsA(UMovieSceneCameraCutTrack::StaticClass()))
 	{
 		return FReply::Unhandled();
 	}
@@ -325,7 +321,7 @@ FReply FCameraCutTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, const 
 	
 	TSharedPtr<FActorDragDropGraphEdOp> DragDropOp = StaticCastSharedPtr<FActorDragDropGraphEdOp>( Operation );
 
-	FMovieSceneTrackEditor::BeginKeying(DragDropParams.FrameNumber);
+	FMovieSceneTrackEditor::BeginKeying();
 
 	bool bAnyDropped = false;
 	for (auto& ActorPtr : DragDropOp->Actors)
@@ -361,7 +357,7 @@ FKeyPropertyResult FCameraCutTrackEditor::AddKeyInternal( FFrameNumber KeyTime, 
 	UMovieSceneCameraCutTrack* CameraCutTrack = FindOrCreateCameraCutTrack();
 	const TArray<UMovieSceneSection*>& AllSections = CameraCutTrack->GetAllSections();
 
-	UMovieSceneCameraCutSection* NewSection = CameraCutTrack->AddNewCameraCut(UE::MovieScene::FRelativeObjectBindingID(ObjectGuid), KeyTime);
+	UMovieSceneCameraCutSection* NewSection = CameraCutTrack->AddNewCameraCut(FMovieSceneObjectBindingID(ObjectGuid, MovieSceneSequenceID::Root, EMovieSceneObjectBindingSpace::Local), KeyTime);
 	KeyPropertyResult.bTrackModified = true;
 	KeyPropertyResult.SectionsCreated.Add(NewSection);
 

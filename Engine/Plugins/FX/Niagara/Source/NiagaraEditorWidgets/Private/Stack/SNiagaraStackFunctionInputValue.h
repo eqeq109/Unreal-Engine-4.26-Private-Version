@@ -7,8 +7,6 @@
 #include "Widgets/Views/SExpanderArrow.h"
 #include "ViewModels/Stack/NiagaraStackFunctionInput.h"
 #include "SGraphActionMenu.h"
-#include "Widgets/SItemSelector.h"
-#include "Widgets/SNiagaraFilterBox.h"
 
 class UNiagaraStackFunctionInput;
 class UNiagaraScript;
@@ -17,8 +15,6 @@ class SBox;
 class IStructureDetailsView;
 class SComboButton;
 struct FGraphActionListBuilderBase;
-
-typedef SItemSelector<FString, TSharedPtr<FNiagaraMenuAction_Generic>, ENiagaraMenuSections> SNiagaraMenuActionSelector;
 
 class SNiagaraStackFunctionInputValue: public SCompoundWidget
 {
@@ -101,9 +97,9 @@ private:
 
 	TSharedRef<SWidget> OnGetAvailableHandleMenu();
 
-	TSharedRef<SWidget> GetVersionSelectorDropdownMenu();
-	void SwitchToVersion(FNiagaraAssetVersion Version);
-	FSlateColor GetVersionSelectorColor() const;
+	void OnActionSelected(const TArray<TSharedPtr<FEdGraphSchemaAction>>& SelectedActions, ESelectInfo::Type InSelectionType);
+
+	void CollectAllActions(FGraphActionListBuilderBase& OutAllActions);
 
 	void SetToLocalValue();
 
@@ -137,7 +133,7 @@ private:
 
 	bool OnFunctionInputAllowDrop(TSharedPtr<FDragDropOperation> DragDropOperation);
 
-	TArray<TSharedPtr<FNiagaraMenuAction_Generic>> CollectDynamicInputActionsForReassign() const;
+	void CollectDynamicInputActionsForReassign(FGraphActionListBuilderBase& DynamicInputActions) const;
 
 	void ShowReassignDynamicInputScriptMenu();
 
@@ -157,29 +153,7 @@ private:
 	TSharedPtr<SNiagaraParameterEditor> LocalValueStructParameterEditor;
 	TSharedPtr<IStructureDetailsView> LocalValueStructDetailsView;
 
-	TSharedPtr<SNiagaraMenuActionSelector> ActionSelector;
-	TSharedPtr<SNiagaraFilterBox> FilterBox;
 	TSharedPtr<SComboButton> SetFunctionInputButton;
 
 	static bool bLibraryOnly;
-
-private:
-	TArray<TSharedPtr<FNiagaraMenuAction_Generic>> CollectActions();
-	TArray<FString> OnGetCategoriesForItem(const TSharedPtr<FNiagaraMenuAction_Generic>& Item);
-	TArray<ENiagaraMenuSections> OnGetSectionsForItem(const TSharedPtr<FNiagaraMenuAction_Generic>& Item);
-	bool OnCompareSectionsForEquality(const ENiagaraMenuSections& SectionA, const ENiagaraMenuSections& SectionB);
-	bool OnCompareSectionsForSorting(const ENiagaraMenuSections& SectionA, const ENiagaraMenuSections& SectionB);
-	bool OnCompareCategoriesForEquality(const FString& CategoryA, const FString& CategoryB);
-	bool OnCompareCategoriesForSorting(const FString& CategoryA, const FString& CategoryB);
-	bool OnCompareItemsForEquality(const TSharedPtr<FNiagaraMenuAction_Generic>& ItemA, const TSharedPtr<FNiagaraMenuAction_Generic>& ItemB);
-	bool OnCompareItemsForSorting(const TSharedPtr<FNiagaraMenuAction_Generic>& ItemA, const TSharedPtr<FNiagaraMenuAction_Generic>& ItemB);
-	TSharedRef<SWidget> OnGenerateWidgetForSection(const ENiagaraMenuSections& Section);
-	TSharedRef<SWidget> OnGenerateWidgetForCategory(const FString& Category);
-	TSharedRef<SWidget> OnGenerateWidgetForItem(const TSharedPtr<FNiagaraMenuAction_Generic>& Item);
-	bool DoesItemPassCustomFilter(const TSharedPtr<FNiagaraMenuAction_Generic>& Item);
-	void OnItemActivated(const TSharedPtr<FNiagaraMenuAction_Generic>& Item);
-
-	void TriggerRefresh(const TMap<EScriptSource, bool>& SourceState);
-
-	FText GetFilterText() const { return ActionSelector->GetFilterText(); }
 };

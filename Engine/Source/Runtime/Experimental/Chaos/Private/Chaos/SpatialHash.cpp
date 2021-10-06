@@ -263,10 +263,10 @@ namespace Chaos
 			// If ClosestPoints have more than one point find the closest one
 			if (ClosestPoints.Num() > 1)
 			{
-				FReal DistanceSquared = TNumericLimits<FReal>::Max();
+				float DistanceSquared = FLT_MAX;
 				for (auto& PointIdx : ClosestPoints)
 				{
-					FVec3 Diff = Particle - MParticles[PointIdx];
+					FVector Diff = Particle - MParticles[PointIdx];
 					T DiffSquared = Diff.SizeSquared();
 					if (DiffSquared < DistanceSquared)
 					{
@@ -392,6 +392,6 @@ namespace Chaos
 		return XIndex + YIndex * MNumberOfCellsX + ZIndex * MNumberOfCellsX * MNumberOfCellsY;
 	}
 
-	template class TSpatialHash<FReal>;
+	template class TSpatialHash<float>;
 }
 

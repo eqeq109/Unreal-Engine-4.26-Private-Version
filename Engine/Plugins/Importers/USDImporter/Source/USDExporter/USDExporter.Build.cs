@@ -15,40 +15,32 @@ namespace UnrealBuildTool.Rules
 					"Core",
 					"CoreUObject",
 					"Engine",
-					"UnrealUSDWrapper",
-					"Foliage"
+					"UnrealUSDWrapper"
 				}
-			);
+				);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
                     "EditorStyle",
                     "GeometryCache",
-                    "PropertyEditor",
-                    "RawMesh",
-                    "RenderCore",
-                    "RHI",
-					"CinematicCamera",
 					"InputCore",
 					"JsonUtilities",
-					"Landscape",
-					"LevelSequence",
 					"MaterialBaking", // So that we can use some of the export option properties
-					"MaterialUtilities",
 					"MeshDescription",
 					"MeshUtilities",
 					"MessageLog",
+                    "PropertyEditor",
 					"PythonScriptPlugin",
+                    "RawMesh",
+                    "RenderCore",
+                    "RHI",
 					"Slate",
 					"SlateCore",
-					"StaticMeshDescription",
 					"UnrealEd",
-					"USDClasses",
-					"USDStageImporter", // For USDOptionsWindow
 					"USDUtilities",
                 }
-			);
+				);
 		}
 	}
 }

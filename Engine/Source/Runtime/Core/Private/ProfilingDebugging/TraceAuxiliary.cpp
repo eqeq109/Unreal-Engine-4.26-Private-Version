@@ -423,9 +423,6 @@ void FTraceAuxiliary::Initialize(const TCHAR* CommandLine)
 	{
 		GTraceAuxiliary.Connect(ETraceConnectType::File, nullptr);
 	}
-
-	Trace::ThreadRegister(TEXT("GameThread"), FPlatformTLS::GetCurrentThreadId(), -1);
-
 #endif
 }
 

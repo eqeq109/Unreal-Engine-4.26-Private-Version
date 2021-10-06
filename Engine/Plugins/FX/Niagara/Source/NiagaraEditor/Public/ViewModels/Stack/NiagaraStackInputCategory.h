@@ -33,14 +33,13 @@ public:
 
 	void ResetInputs();
 
-	void AddInput(FName InInputParameterHandle, FNiagaraTypeDefinition InInputType, EStackParameterBehavior InParameterBehavior, bool bIsHidden, bool bIsChildInput);
+	void AddInput(FName InInputParameterHandle, FNiagaraTypeDefinition InInputType, EStackParameterBehavior InParameterBehavior, bool bIsVisible, bool bIsChildInput);
 
 	//~ UNiagaraStackEntry interface
 	virtual FText GetDisplayName() const override;
 	virtual bool GetShouldShowInStack() const override;
 	virtual EStackRowStyle GetStackRowStyle() const override;
 	virtual bool GetIsEnabled() const override;
-	virtual void GetSearchItems(TArray<FStackSearchItem>& SearchItems) const override;
 
 	void SetShouldShowInStack(bool bInShouldShowInStack);
 
@@ -65,7 +64,7 @@ private:
 		FName ParameterHandle;
 		FNiagaraTypeDefinition Type;
 		EStackParameterBehavior ParameterBehavior;
-		bool bIsHidden;
+		bool bIsVisible;
 		bool bIsChildInput;
 	};
 

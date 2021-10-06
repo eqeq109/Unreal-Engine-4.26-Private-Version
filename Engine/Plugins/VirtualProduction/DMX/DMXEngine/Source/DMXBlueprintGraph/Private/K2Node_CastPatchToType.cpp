@@ -24,12 +24,12 @@
 
 #define LOCTEXT_NAMESPACE "UK2Node_DMXCastToFixtureType"
 
-const FName UDEPRECATED_K2Node_CastPatchToType::InputPinName_FixturePatch(TEXT("Input_FixturePatch"));
-const FName UDEPRECATED_K2Node_CastPatchToType::InputPinName_FixtureTypeRef(TEXT("Input_FixtureTypeRef"));
+const FName UK2Node_CastPatchToType::InputPinName_FixturePatch(TEXT("Input_FixturePatch"));
+const FName UK2Node_CastPatchToType::InputPinName_FixtureTypeRef(TEXT("Input_FixtureTypeRef"));
 
-const FName UDEPRECATED_K2Node_CastPatchToType::OutputPinName_AttributesMap(TEXT("Output_FixtureTypeAttributesMap"));
+const FName UK2Node_CastPatchToType::OutputPinName_AttributesMap(TEXT("Output_FixtureTypeAttributesMap"));
 
-UDEPRECATED_K2Node_CastPatchToType::UDEPRECATED_K2Node_CastPatchToType()
+UK2Node_CastPatchToType::UK2Node_CastPatchToType()
 {
 	bIsEditable = true;
 	bIsExposed = false;
@@ -96,7 +96,7 @@ FArchive& operator<<(FArchive& Ar, FUserPinInfo& Info)
  * it'll skip the serialization of the structs we have as IN pins (UE bug?). However, the grandparent class serializes it 
  * correctly. This method basically merges both serializations so it works as expected
  */
-void UDEPRECATED_K2Node_CastPatchToType::Serialize(FArchive& Ar)
+void UK2Node_CastPatchToType::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FFrameworkObjectVersion::GUID);
 
@@ -198,7 +198,7 @@ void UDEPRECATED_K2Node_CastPatchToType::Serialize(FArchive& Ar)
 }
 
 
-void UDEPRECATED_K2Node_CastPatchToType::AllocateDefaultPins()
+void UK2Node_CastPatchToType::AllocateDefaultPins()
 {
 	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 
@@ -225,12 +225,12 @@ void UDEPRECATED_K2Node_CastPatchToType::AllocateDefaultPins()
 	Super::AllocateDefaultPins();
 }
 
-FText UDEPRECATED_K2Node_CastPatchToType::GetNodeTitle(ENodeTitleType::Type TitleType) const
+FText UK2Node_CastPatchToType::GetNodeTitle(ENodeTitleType::Type TitleType) const
 {
 	return LOCTEXT("TooltipText", "Cast Fixture Patch to Fixture Type");
 }
 
-void UDEPRECATED_K2Node_CastPatchToType::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
+void UK2Node_CastPatchToType::ExpandNode(class FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
 {
 	Super::ExpandNode(CompilerContext, SourceGraph);	
 
@@ -490,7 +490,7 @@ void UDEPRECATED_K2Node_CastPatchToType::ExpandNode(class FKismetCompilerContext
 	}
 }
 
-void UDEPRECATED_K2Node_CastPatchToType::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
+void UK2Node_CastPatchToType::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const
 {
 	UClass* ActionKey = GetClass();
 	if (ActionRegistrar.IsOpenForRegistration(ActionKey))
@@ -502,18 +502,18 @@ void UDEPRECATED_K2Node_CastPatchToType::GetMenuActions(FBlueprintActionDatabase
 	}
 }
 
-FText UDEPRECATED_K2Node_CastPatchToType::GetMenuCategory() const
+FText UK2Node_CastPatchToType::GetMenuCategory() const
 {
 	return FText::FromString(DMX_K2_CATEGORY_NAME);
 }
 
-void UDEPRECATED_K2Node_CastPatchToType::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
+void UK2Node_CastPatchToType::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
 {
 	Super::NotifyPinConnectionListChanged(Pin);
 }
 
 
-UEdGraphPin* UDEPRECATED_K2Node_CastPatchToType::CreatePinFromUserDefinition(const TSharedPtr<FUserPinInfo> NewPinInfo)
+UEdGraphPin* UK2Node_CastPatchToType::CreatePinFromUserDefinition(const TSharedPtr<FUserPinInfo> NewPinInfo)
 {
 	UEdGraphPin* NewPin = CreatePin(NewPinInfo->DesiredPinDirection, NewPinInfo->PinType, NewPinInfo->PinName);
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
@@ -527,7 +527,7 @@ UEdGraphPin* UDEPRECATED_K2Node_CastPatchToType::CreatePinFromUserDefinition(con
 	return NewPin;
 }
 
-bool UDEPRECATED_K2Node_CastPatchToType::ModifyUserDefinedPinDefaultValue(TSharedPtr<FUserPinInfo> PinInfo, const FString& NewDefaultValue)
+bool UK2Node_CastPatchToType::ModifyUserDefinedPinDefaultValue(TSharedPtr<FUserPinInfo> PinInfo, const FString& NewDefaultValue)
 {
 	if (Super::ModifyUserDefinedPinDefaultValue(PinInfo, NewDefaultValue))
 	{
@@ -539,7 +539,7 @@ bool UDEPRECATED_K2Node_CastPatchToType::ModifyUserDefinedPinDefaultValue(TShare
 	return false;
 }
 
-void UDEPRECATED_K2Node_CastPatchToType::ExposeAttributes()
+void UK2Node_CastPatchToType::ExposeAttributes()
 {
 	ResetAttributes();
 
@@ -597,7 +597,7 @@ void UDEPRECATED_K2Node_CastPatchToType::ExposeAttributes()
 	}	
 }
 
-void UDEPRECATED_K2Node_CastPatchToType::ResetAttributes()
+void UK2Node_CastPatchToType::ResetAttributes()
 {
 	if(bIsExposed)
 	{
@@ -617,7 +617,7 @@ void UDEPRECATED_K2Node_CastPatchToType::ResetAttributes()
 	bIsExposed = false;
 }
 
-UDMXEntityFixtureType* UDEPRECATED_K2Node_CastPatchToType::GetSelectedFixtureType()
+UDMXEntityFixtureType* UK2Node_CastPatchToType::GetSelectedFixtureType()
 {
 	UEdGraphPin* InPin_FixtureTypeRef = FindPin(InputPinName_FixtureTypeRef);
 	if (InPin_FixtureTypeRef == nullptr)
@@ -644,7 +644,7 @@ UDMXEntityFixtureType* UDEPRECATED_K2Node_CastPatchToType::GetSelectedFixtureTyp
 	return nullptr;
 }
 
-FString UDEPRECATED_K2Node_CastPatchToType::GetFixturePatchValueAsString() const
+FString UK2Node_CastPatchToType::GetFixturePatchValueAsString() const
 {
 	UEdGraphPin* FixturePatchPin = FindPin(InputPinName_FixtureTypeRef);
 

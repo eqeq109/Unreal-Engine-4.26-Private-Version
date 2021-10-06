@@ -5,9 +5,6 @@
 #include "VectorField/VectorFieldAnimated.h"
 #include "NiagaraShader.h"
 #include "ShaderParameterUtils.h"
-#include "NiagaraSystem.h"
-#include "NiagaraEmitterHandle.h"
-#include "NiagaraComponent.h"
 #if INTEL_ISPC
 #include "NiagaraDataInterfaceVectorField.ispc.generated.h"
 #endif
@@ -97,8 +94,7 @@ void UNiagaraDataInterfaceVectorField::PostInitProperties()
 	//Can we register data interfaces as regular types and fold them into the FNiagaraVariable framework for UI and function calls etc?
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
-		ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable | ENiagaraTypeRegistryFlags::AllowParameter;
-		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), Flags);
+		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), /*bCanBeParameter*/ true, /*bCanBePayload*/ false, /*bIsUserDefined*/ false);
 	}
 }
 
@@ -195,109 +191,14 @@ bool UNiagaraDataInterfaceVectorField::CanExecuteOnTarget(ENiagaraSimTarget Targ
 /*--------------------------------------------------------------------------------------------------------------------------*/
 
 #if WITH_EDITOR	
-void UNiagaraDataInterfaceVectorField::GetFeedback(UNiagaraSystem* InAsset, UNiagaraComponent* InComponent, TArray<FNiagaraDataInterfaceError>& OutErrors, TArray<FNiagaraDataInterfaceFeedback>& OutWarnings, TArray<FNiagaraDataInterfaceFeedback>& OutInfo)
+TArray<FNiagaraDataInterfaceError> UNiagaraDataInterfaceVectorField::GetErrors()
 {
-	OutWarnings.Empty();
-	OutInfo.Empty();
-
 	UVectorFieldStatic* StaticVectorField = Cast<UVectorFieldStatic>(Field);
 	UVectorFieldAnimated* AnimatedVectorField = Cast<UVectorFieldAnimated>(Field);
-
-	// There are a few cases that we are trying to handle here:
-	// 1) We have selected the DataInterface inline in the stack, in which case Component will be nullptr and we won't be in any of the ExposedParameters.
-	// 2) We have selected the DataInterface in the User Parameters editor in the stack, in which case Component will be nullptr and we WILL be in the ExposedParameters.
-	// 3) We have selected the DataInterface in the component panel. Component won't be nullptr in this case.
-	TArray<FName> DIAliases;
-	if (InComponent)
-	{
-		for (const UNiagaraDataInterface* DI : InComponent->GetOverrideParameters().GetDataInterfaces())
-		{
-			if (DI && (DI == this || DI->GetClass() == this->GetClass()))
-			{
-				if (DI == this || DI->Equals(this))
-				{
-					const FNiagaraVariableBase* Var = InComponent->GetOverrideParameters().FindVariable(DI);
-					if (Var)
-					{
-						DIAliases.AddUnique(Var->GetName());
-					}
-				}
-			}
-		}
-	}
-	else if (InAsset)
-	{
-		for (const UNiagaraDataInterface* DI : InAsset->GetExposedParameters().GetDataInterfaces())
-		{
-			if (DI && (DI == this || DI->GetClass() == this->GetClass()))
-			{
-				if (DI == this || DI->Equals(this))
-				{
-					const FNiagaraVariableBase* Var = InAsset->GetExposedParameters().FindVariable(DI);
-					if (Var)
-					{
-						DIAliases.AddUnique(Var->GetName());
-					}
-				}
-			}
-		}
-	}
 	
-	// Filter through all the relevant CPU scripts
-	bool bHasCPUFunctions = false;
-	if (InAsset)
-	{
-		TArray<UNiagaraScript*> Scripts;
-		Scripts.Add(InAsset->GetSystemSpawnScript());
-		Scripts.Add(InAsset->GetSystemUpdateScript());
-		for (auto&& EmitterHandle : InAsset->GetEmitterHandles())
-		{
-			TArray<UNiagaraScript*> OutScripts;
-			EmitterHandle.GetInstance()->GetScripts(OutScripts, false);
-			Scripts.Append(OutScripts);
-		}
-
-		for (const auto Script : Scripts)
-		{
-			const TArray<FNiagaraScriptDataInterfaceInfo>& CachedDefaultDIs = Script->GetCachedDefaultDataInterfaces();
-
-			for (int32 Idx = 0; Idx < Script->GetVMExecutableData().DataInterfaceInfo.Num(); Idx++)
-			{
-				const auto& DIInfo = Script->GetVMExecutableData().DataInterfaceInfo[Idx];
-				if (DIInfo.MatchesClass(GetClass()))
-				{
-					// Only the SampleField function is relevant for CPU access
-					bool bHasCPUFunctionsReferenced = false;
-					for (const FNiagaraFunctionSignature& Sig : DIInfo.RegisteredFunctions)
-					{
-						if (Sig.Name == SampleVectorFieldName)
-						{
-							bHasCPUFunctionsReferenced = true;
-							break;
-						}
-					}
-
-					if (bHasCPUFunctionsReferenced)
-					{
-						bool bMatchFound = false;
-						// We assume that if the properties match or we are referencing an external variable whose name is in the list of candidates found in the prior search, it's a valid match for us.
-						if (CachedDefaultDIs.IsValidIndex(Idx) && CachedDefaultDIs[Idx].DataInterface != nullptr &&
-							(CachedDefaultDIs[Idx].DataInterface->Equals(this) || DIAliases.Contains(CachedDefaultDIs[Idx].Name)))
-						{
-							bMatchFound = true;
-							UNiagaraEmitter* OuterEmitter = Script->GetTypedOuter<UNiagaraEmitter>();
-							if (OuterEmitter && (OuterEmitter->SimTarget == ENiagaraSimTarget::CPUSim || Script->IsSystemScript(Script->Usage)))
-							{
-								bHasCPUFunctions = true;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (StaticVectorField != nullptr && !StaticVectorField->bAllowCPUAccess && bHasCPUFunctions)
+	// TODO(mv): Improve error messages?
+	TArray<FNiagaraDataInterfaceError> Errors;
+	if (StaticVectorField != nullptr && !StaticVectorField->bAllowCPUAccess)
 	{
 		FNiagaraDataInterfaceError CPUAccessNotAllowedError(
 			FText::Format(
@@ -313,7 +214,7 @@ void UNiagaraDataInterfaceVectorField::GetFeedback(UNiagaraSystem* InAsset, UNia
 				}
 			)
 		);
-		OutErrors.Add(CPUAccessNotAllowedError);
+		Errors.Add(CPUAccessNotAllowedError);
 	}
 	else if (AnimatedVectorField != nullptr)
 	{
@@ -322,7 +223,7 @@ void UNiagaraDataInterfaceVectorField::GetFeedback(UNiagaraSystem* InAsset, UNia
 			LOCTEXT("AnimatedVectorFieldsNotSupportedError", "Animated vector fields are not supported."),
 			nullptr
 		);
-		OutErrors.Add(AnimatedVectorFieldsNotSupportedError);
+		Errors.Add(AnimatedVectorFieldsNotSupportedError);
 	}
 	else if (Field == nullptr)
 	{
@@ -331,14 +232,14 @@ void UNiagaraDataInterfaceVectorField::GetFeedback(UNiagaraSystem* InAsset, UNia
 			LOCTEXT("VectorFieldNotLoadedError", "No Vector Field is loaded."),
 			nullptr
 		);
-		OutErrors.Add(VectorFieldNotLoadedError);
+		Errors.Add(VectorFieldNotLoadedError);
 	}
+	return Errors;
 }
 #endif // WITH_EDITOR	
 
 /*--------------------------------------------------------------------------------------------------------------------------*/
 
-#if WITH_EDITORONLY_DATA
 void UNiagaraDataInterfaceVectorField::GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
 	static const TCHAR *FormatDeclarations = TEXT(R"(
@@ -425,7 +326,6 @@ bool UNiagaraDataInterfaceVectorField::GetFunctionHLSL(const FNiagaraDataInterfa
 	}
 	return false;
 }
-#endif
 
 void FNiagaraDataInterfaceParametersCS_VectorField::Bind(const FNiagaraDataInterfaceGPUParamInfo& ParameterInfo, const class FShaderParameterMap& ParameterMap)
 {
@@ -600,7 +500,7 @@ void UNiagaraDataInterfaceVectorField::SampleVectorField(FVectorVMContext& Conte
 				ispc::SampleVectorField(XParam.GetDest(), YParam.GetDest(), ZParam.GetDest(),
 					XParam.IsConstant(), YParam.IsConstant(), ZParam.IsConstant(),
 					OutSampleX.GetDest(), OutSampleY.GetDest(), OutSampleZ.GetDest(),
-					(ispc::FHalfVector*) FieldSamples.GetData(), FieldSamples.Num() - sizeof(ispc::FHalfVector), (ispc::FVector&)MinBounds, (ispc::FVector&)OneOverBoundSize,
+					(ispc::FHalfVector*) FieldSamples.GetData(), (ispc::FVector&)MinBounds, (ispc::FVector&)OneOverBoundSize,
 					(ispc::FVector&)Size, (ispc::FVector&)TilingAxes, Context.NumInstances);
 			}
 			else

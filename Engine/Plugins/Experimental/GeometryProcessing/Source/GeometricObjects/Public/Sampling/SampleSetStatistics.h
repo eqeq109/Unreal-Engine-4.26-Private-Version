@@ -95,23 +95,23 @@ typedef TSampleSetStatistics<double> FSampleSetStatisticsd;
 template<typename RealType>
 struct TSampleSetStatisticBuilder
 {
-	int32 NumStatistics;
+	int32 Num;
 	TArray<TSampleSetStatistics<RealType>> Statistics;
 	TArray<typename TSampleSetStatistics<RealType>::FFixedCountData> FixedCountBuildData;
 
 
-	TSampleSetStatisticBuilder(int32 NumStatisticsIn = 1)
+	TSampleSetStatisticBuilder(int32 Count)
 	{
-		NumStatistics = NumStatisticsIn;
-		Statistics.Init(TSampleSetStatistics<RealType>(), NumStatistics);
-		FixedCountBuildData.SetNum(NumStatistics);
+		Num = Count;
+		Statistics.Init(TSampleSetStatistics<RealType>(), Num);
+		FixedCountBuildData.SetNum(Num);
 	}
 
 	const TSampleSetStatistics<RealType>& operator[](int32 Index) const { return Statistics[Index]; }
 
 	void Begin_FixedCount(int64 Count)
 	{
-		for (int32 j = 0; j < NumStatistics; ++j)
+		for (int32 j = 0; j < Num; ++j)
 		{
 			FixedCountBuildData[j] = Statistics[j].Begin_FixedCount(Count);
 		}
@@ -119,7 +119,7 @@ struct TSampleSetStatisticBuilder
 
 	void StartSecondPass_FixedCount()
 	{
-		for (int32 j = 0; j < NumStatistics; ++j)
+		for (int32 j = 0; j < Num; ++j)
 		{
 			Statistics[j].StartSecondPass_FixedCount(FixedCountBuildData[j]);
 		}
@@ -127,34 +127,15 @@ struct TSampleSetStatisticBuilder
 
 	void CompleteSecondPass_FixedCount()
 	{
-		for (int32 j = 0; j < NumStatistics; ++j)
+		for (int32 j = 0; j < Num; ++j)
 		{
 			Statistics[j].CompleteSecondPass_FixedCount(FixedCountBuildData[j]);
 		}
 	}
 
-	void AccumulateValue_FixedCount(int32 StatisticIndex, const RealType Value)
+	void AccumulateValue_FixedCount(int32 Index, const RealType Value)
 	{
-		Statistics[StatisticIndex].AccumulateValue_FixedCount(Value, FixedCountBuildData[StatisticIndex]);
+		Statistics[Index].AccumulateValue_FixedCount(Value, FixedCountBuildData[Index]);
 	}
-
-
-	template<typename EnumerableType>
-	void ComputeMultiPass(int64 Count, const EnumerableType& MultiEnumerableType)
-	{
-		check(NumStatistics == 1);
-		Begin_FixedCount(Count);
-		for (RealType Value : MultiEnumerableType)
-		{
-			Statistics[0].AccumulateValue_FixedCount(Value, FixedCountBuildData[0]);
-		}
-		StartSecondPass_FixedCount();
-		for (RealType Value : MultiEnumerableType)
-		{
-			Statistics[0].AccumulateValue_FixedCount(Value, FixedCountBuildData[0]);
-		}
-		CompleteSecondPass_FixedCount();
-	}
-
 };
 

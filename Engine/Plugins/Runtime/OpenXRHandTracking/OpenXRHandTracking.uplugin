@@ -10,14 +10,13 @@
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
-	"EnabledByDefault": true,
-	"CanContainContent": true,
-	"IsBetaVersion": false,
+	"EnabledByDefault": false,
+	"CanContainContent": false,
+	"IsBetaVersion": true,
 	"Installed": false,
 	"SupportedTargetPlatforms": [
 		"Win32",
 		"Win64",
-		"Linux",
 		"HoloLens",
 		"Android"
 	],
@@ -29,7 +28,6 @@
 			"WhitelistPlatforms": [
 				"Win32",
 				"Win64",
-				"Linux",
 				"HoloLens",
 				"Android"
 			]
@@ -42,7 +40,6 @@
 			"WhitelistPlatforms": [
 				"Win32",
 				"Win64",
-				"Linux",
 				"HoloLens",
 				"Android"
 			]

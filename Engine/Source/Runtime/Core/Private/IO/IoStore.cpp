@@ -157,32 +157,19 @@ struct FChunkBlock
 	uint64 CompressedSize = 0;
 	uint64 UncompressedSize = 0;
 	FName CompressionMethod = NAME_None;
-	FSHAHash Signature;
 };
 
 struct FIoStoreWriteQueueEntry
 {
 	FIoStoreWriteQueueEntry* Next = nullptr;
-	IIoStoreWriteRequest* Request = nullptr;
 	FIoChunkId ChunkId;
 	FIoChunkHash ChunkHash;
 	FIoBuffer ChunkBuffer;
-	uint64 Sequence = 0;
-	uint64 UncompressedSize = 0;
-	uint64 CompressedSize = 0;
-	uint64 Padding = 0;
-	uint64 Offset = 0;
-	FArchive* ContainerArchive = nullptr;
+	uint64 ChunkSize = 0;
+	TArray<FFileRegion> Regions;
 	TArray<FChunkBlock> ChunkBlocks;
 	FIoWriteOptions Options;
-	FGraphEventRef HashBarrier;
-	FGraphEventRef HashTask;
-	FGraphEventRef CreateChunkBlocksBarrier;
-	FGraphEventRef CreateChunkBlocksTask;
-	FEvent* WriteCompletedEvent = nullptr;
-	int32 PartitionIndex = -1;
-	bool bAdded = false;
-	bool bModified = false;
+	FGraphEventRef CreateChunkBlocksTask = FGraphEventRef();
 };
 
 class FIoStoreWriteQueue
@@ -213,7 +200,6 @@ public:
 				Tail->Next = Entry;
 				Tail = Entry;
 			}
-			Entry->Next = nullptr;
 		}
 
 		Event->Trigger();
@@ -250,6 +236,11 @@ public:
 		Event->Trigger();
 	}
 
+	bool IsDoneAdding() const
+	{
+		return bIsDoneAdding;
+	}
+
 	bool IsEmpty() const
 	{
 		FScopeLock _(&CriticalSection);
@@ -274,10 +265,6 @@ public:
 
 	~FIoStoreWriterContextImpl()
 	{
-		CompressionQueue.CompleteAdding();
-		WriteQueue.CompleteAdding();
-		CompressorThread.Wait();
-		WriterThread.Wait();
 		if (MemoryFreedEvent)
 		{
 			FPlatformProcess::ReturnSynchEventToPool(MemoryFreedEvent);
@@ -289,21 +276,12 @@ public:
 		WriterSettings = InWriterSettings;
 		MemoryFreedEvent = FPlatformProcess::GetSynchEventFromPool(false);
 
-		PaddingBuffer.SetNumZeroed(int32(WriterSettings.CompressionBlockSize));
-		CompressorThread = Async(EAsyncExecution::Thread, [this]() { CompressorThreadFunc(); });
-		WriterThread = Async(EAsyncExecution::Thread, [this]() { WriterThreadFunc(); });
+		if (InWriterSettings.WriterMemoryLimit > 0)
+		{
+			NumBytesAvailable = InWriterSettings.WriterMemoryLimit;
+		}
 
 		return FIoStatus::Ok;
-	}
-
-	FIoStoreWriterContext::FProgress GetProgress() const
-	{
-		FIoStoreWriterContext::FProgress Progress;
-		Progress.TotalChunksCount = TotalChunksCount.Load();
-		Progress.HashedChunksCount = HashedChunksCount.Load();
-		Progress.CompressedChunksCount = CompressedChunksCount.Load();
-		Progress.SerializedChunksCount = SerializedChunksCount.Load();
-		return Progress;
 	}
 
 	const FIoStoreWriterSettings& GetSettings() const
@@ -311,107 +289,56 @@ public:
 		return WriterSettings;
 	}
 
-	void BeginCompress(FIoStoreWriteQueueEntry* QueueEntry)
+	FIoStoreWriteQueueEntry* AllocQueueEntry(
+		const FIoChunkId& ChunkId,
+		const FIoChunkHash& ChunkHash,
+		FIoBuffer ChunkBuffer,
+		const FIoWriteOptions& Options)
 	{
-		CompressionQueue.Enqueue(QueueEntry);
+		const uint64 ChunkSize = ChunkBuffer.DataSize();
+
+		for (;;)
+		{
+			{
+				FScopeLock _(&CriticalSection);
+				if (NumBytesAvailable > ChunkSize)
+				{
+					NumBytesAvailable -= ChunkSize;
+
+					ChunkBuffer.MakeOwned();
+					FIoStoreWriteQueueEntry* Entry = new FIoStoreWriteQueueEntry();
+					Entry->ChunkId = ChunkId;
+					Entry->ChunkHash = ChunkHash;
+					Entry->ChunkBuffer = ChunkBuffer;
+					Entry->ChunkSize = ChunkSize;
+					Entry->Options = Options;
+
+					return Entry;
+				}
+			}
+			{
+				TRACE_CPUPROFILER_EVENT_SCOPE(WaitForMemory);
+				MemoryFreedEvent->Wait();
+			}
+		}
 	}
 
-	void BeginWrite(FIoStoreWriteQueueEntry* QueueEntry)
+	void FreeQueueEntry(FIoStoreWriteQueueEntry* QueueEntry)
 	{
-		WriteQueue.Enqueue(QueueEntry);
+		{
+			FScopeLock _(&CriticalSection);
+			NumBytesAvailable += QueueEntry->ChunkSize;
+		}
+
+		delete QueueEntry;
+		MemoryFreedEvent->Trigger();
 	}
 
 private:
-	void BeginCompressEntry(FIoStoreWriteQueueEntry* Entry)
-	{
-		check(!Entry->CompressedSize);
-		check(!Entry->ChunkBuffer.DataSize());
-		uint64 LocalUsedBufferMemory = UsedBufferMemory.Load();
-		while (LocalUsedBufferMemory > 0 && LocalUsedBufferMemory + Entry->UncompressedSize > DefaultMemoryLimit)
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(WaitForBufferMemory);
-			MemoryFreedEvent->Wait();
-			LocalUsedBufferMemory = UsedBufferMemory.Load();
-		}
-		UsedBufferMemory.AddExchange(Entry->UncompressedSize);
-		Entry->Request->PrepareSourceBufferAsync(Entry->CreateChunkBlocksBarrier);
-	}
-
-	void WriteEntry(FIoStoreWriteQueueEntry* Entry)
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(WriteToContainerFile);
-		if (Entry->Padding > 0)
-		{
-			if (PaddingBuffer.Num() < Entry->Padding)
-			{
-				PaddingBuffer.SetNumZeroed(int32(Entry->Padding));
-			}
-			Entry->ContainerArchive->Serialize(PaddingBuffer.GetData(), Entry->Padding);
-		}
-		check(Entry->Offset == Entry->ContainerArchive->Tell());
-		Entry->ContainerArchive->Serialize(Entry->ChunkBuffer.Data(), Entry->ChunkBuffer.DataSize());
-		Entry->ChunkBuffer = FIoBuffer();
-		uint64 UsedBefore = UsedBufferMemory.SubExchange(Entry->UncompressedSize);
-		check(UsedBefore >= Entry->UncompressedSize);
-		MemoryFreedEvent->Trigger();
-		if (Entry->WriteCompletedEvent)
-		{
-			Entry->WriteCompletedEvent->Trigger();
-		}
-		SerializedChunksCount.IncrementExchange();
-	}
-
-	void CompressorThreadFunc()
-	{
-		for (;;)
-		{
-			FIoStoreWriteQueueEntry* Entry = CompressionQueue.DequeueOrWait();
-			if (!Entry)
-			{
-				return;
-			}
-			while (Entry)
-			{
-				FIoStoreWriteQueueEntry* Next = Entry->Next;
-				BeginCompressEntry(Entry);
-				Entry = Next;
-			}
-		}
-	}
-
-	void WriterThreadFunc()
-	{
-		for (;;)
-		{
-			FIoStoreWriteQueueEntry* Entry = WriteQueue.DequeueOrWait();
-			if (!Entry)
-			{
-				return;
-			}
-			while (Entry)
-			{
-				FIoStoreWriteQueueEntry* Next = Entry->Next;
-				WriteEntry(Entry);
-				Entry = Next;
-			}
-		}
-	}
-
 	FIoStoreWriterSettings WriterSettings;
 	FCriticalSection CriticalSection;
 	FEvent* MemoryFreedEvent = nullptr;
-	TAtomic<uint64> UsedBufferMemory{ 0 };
-	TFuture<void> CompressorThread;
-	TFuture<void> WriterThread;
-	FIoStoreWriteQueue CompressionQueue;
-	FIoStoreWriteQueue WriteQueue;
-	TArray<uint8> PaddingBuffer;
-	TAtomic<uint64> TotalChunksCount{ 0 };
-	TAtomic<uint64> HashedChunksCount{ 0 };
-	TAtomic<uint64> CompressedChunksCount{ 0 };
-	TAtomic<uint64> SerializedChunksCount{ 0 };
-	
-	friend class FIoStoreWriterImpl;
+	uint64 NumBytesAvailable = DefaultMemoryLimit;
 };
 
 FIoStoreWriterContext::FIoStoreWriterContext()
@@ -430,9 +357,9 @@ UE_NODISCARD FIoStatus FIoStoreWriterContext::Initialize(const FIoStoreWriterSet
 	return Impl->Initialize(InWriterSettings);
 }
 
-FIoStoreWriterContext::FProgress FIoStoreWriterContext::GetProgress() const
+static uint64 GetPadding(const uint64 Offset, const uint64 Alignment)
 {
-	return Impl->GetProgress();
+	return (Alignment - (Offset % Alignment)) % Alignment;
 }
 
 class FIoStoreToc
@@ -555,15 +482,33 @@ public:
 	{
 	}
 
-	UE_NODISCARD FIoStatus Initialize(FIoStoreWriterContextImpl& InContext, const FIoContainerSettings& InContainerSettings, const TArray<TUniquePtr<FIoStoreReader>>& PatchSourceReaders)
+	UE_NODISCARD FIoStatus Initialize(FIoStoreWriterContextImpl& InContext, const FIoContainerSettings& InContainerSettings)
 	{
 		WriterContext = &InContext;
 		ContainerSettings = InContainerSettings;
 
 		TocFilePath = Environment.GetPath() + TEXT(".utoc");
-		
+		FString ContainerFilePath = Environment.GetPath() + TEXT(".ucas");
+
 		IPlatformFile& Ipf = IPlatformFile::GetPlatformPhysical();
-		Ipf.CreateDirectoryTree(*FPaths::GetPath(TocFilePath));
+		Ipf.CreateDirectoryTree(*FPaths::GetPath(ContainerFilePath));
+
+		ContainerFileHandle.Reset(Ipf.OpenWrite(*ContainerFilePath, /* append */ false, /* allowread */ true));
+
+		if (!ContainerFileHandle)
+		{
+			return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore container file '") << *ContainerFilePath << TEXT("'");
+		}
+
+		if (InContext.GetSettings().bEnableFileRegions)
+		{
+			FString RegionsFilePath = ContainerFilePath + FFileRegion::RegionsFileExtension;
+			RegionsArchive.Reset(IFileManager::Get().CreateFileWriter(*RegionsFilePath));
+			if (!RegionsArchive)
+			{
+				return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore regions file '") << *RegionsFilePath << TEXT("'");
+			}
+		}
 
 		FIoStatus Status = FIoStatus::Ok;
 		if (InContext.GetSettings().bEnableCsvOutput)
@@ -571,7 +516,7 @@ public:
 			Status = EnableCsvOutput();
 		}
 
-		PrepareLayout(PatchSourceReaders);
+		WriterThread = Async(EAsyncExecution::Thread, [this]() { ProcessChunksThread(); });
 
 		return Status;
 	}
@@ -590,49 +535,39 @@ public:
 		return FIoStatus::Ok;
 	}
 
-	void Append(const FIoChunkId& ChunkId, IIoStoreWriteRequest* Request, const FIoWriteOptions& WriteOptions)
+	UE_NODISCARD FIoStatus Append(const FIoChunkId& ChunkId, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions, TArrayView<const FFileRegion> Regions)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(AppendWriteRequest);
-		checkf(ChunkId.IsValid(), TEXT("ChunkId is not valid!"));
+		return Append(ChunkId, FIoChunkHash::HashBuffer(Chunk.Data(), Chunk.DataSize()), Chunk, WriteOptions, Regions);
+	}
+
+	UE_NODISCARD FIoStatus Append(const FIoChunkId& ChunkId, const FIoChunkHash& ChunkHash, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions, TArrayView<const FFileRegion> InRegions)
+	{
+		if (!ChunkId.IsValid())
+		{
+			return FIoStatus(EIoErrorCode::InvalidParameter, TEXT("ChunkId is not valid!"));
+		}
+
 		IsMetadataDirty = true;
 
-		FIoStoreWriteQueueEntry* Entry = new FIoStoreWriteQueueEntry();
-		Entry->Sequence = Entries.Num();
-		WriterContext->TotalChunksCount.IncrementExchange();
-		Entries.Add(Entry);
-		Entry->ChunkId = ChunkId;
-		Entry->Options = WriteOptions;
-		Entry->Request = Request;
-		Entry->HashBarrier = FGraphEvent::CreateGraphEvent();
-		FGraphEventArray HashPrereqs;
-		HashPrereqs.Add(Entry->HashBarrier);
-		Entry->HashTask = FFunctionGraphTask::CreateAndDispatchWhenReady([this, Entry]()
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(HashChunk);
-			FIoBuffer ChunkBuffer = Entry->Request->ConsumeSourceBuffer();
-			Entry->UncompressedSize = ChunkBuffer.DataSize();
-			Entry->ChunkHash = FIoChunkHash::HashBuffer(ChunkBuffer.Data(), ChunkBuffer.DataSize());
-			WriterContext->HashedChunksCount.IncrementExchange();
-		}, TStatId(), &HashPrereqs, ENamedThreads::AnyHiPriThreadHiPriTask);
-		
-		Entry->CreateChunkBlocksBarrier = FGraphEvent::CreateGraphEvent();
-		FGraphEventArray CreateBlocksPrereqs;
-		CreateBlocksPrereqs.Add(Entry->CreateChunkBlocksBarrier);
+		FIoStoreWriteQueueEntry* Entry = WriterContext->AllocQueueEntry(ChunkId, ChunkHash, Chunk, WriteOptions);
+		Entry->Regions = InRegions;
 		Entry->CreateChunkBlocksTask = FFunctionGraphTask::CreateAndDispatchWhenReady([this, Entry]()
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(CreateChunkBlocks);
-			Entry->ChunkBuffer = Entry->Request->ConsumeSourceBuffer();
+		{ 
 			CreateChunkBlocks(Entry, ContainerSettings, WriterContext->GetSettings());
-			WriterContext->CompressedChunksCount.IncrementExchange();
-		}, TStatId(), &CreateBlocksPrereqs, ENamedThreads::AnyHiPriThreadHiPriTask);
-		
-		Entry->Request->PrepareSourceBufferAsync(Entry->HashBarrier);
+		}, TStatId(), nullptr, ENamedThreads::AnyHiPriThreadHiPriTask);
+
+		WriteQueue.Enqueue(Entry);
+
+		return FIoStatus::Ok;
+	}
+
+	UE_NODISCARD FIoStatus AppendPadding(uint64 Count)
+	{
+		return FIoStatus::Ok;
 	}
 
 	UE_NODISCARD TIoStatusOr<FIoStoreWriterResult> Flush()
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FlushContainer);
-
 		if (!IsMetadataDirty)
 		{
 			return Result;
@@ -640,195 +575,8 @@ public:
 
 		IsMetadataDirty = false;
 
-		const FIoStoreWriterSettings& Settings = WriterContext->GetSettings();
-		uint64 UncompressedFileOffset = 0;
-
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(WaitForChunkHashes);
-			Algo::Reverse(Entries);
-			for (FIoStoreWriteQueueEntry* Entry : Entries)
-			{
-				FTaskGraphInterface::Get().WaitUntilTaskCompletes(Entry->HashTask);
-				Entry = Entry->Next;
-			}
-		}
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(FinalizeLayout);
-			FinalizeLayout(Entries);
-		}
-
-		for (FIoStoreWriteQueueEntry* Entry : Entries)
-		{
-			WriterContext->BeginCompress(Entry);
-		}
-
-		const uint64 MaxPartitionSize = Settings.MaxPartitionSize > 0 ? Settings.MaxPartitionSize : MAX_uint64;
-		uint64 TotalEntryUncompressedSize = 0;
-		int32 CurrentPartitionIndex = 0;
-		FIoStoreWriteQueueEntry* LastEntry = Entries.Num() ? Entries.Last() : nullptr;
-		if (LastEntry)
-		{
-			LastEntry->WriteCompletedEvent = FPlatformProcess::GetSynchEventFromPool(false);
-		}
-		bool bHasMemoryMappedEntry = false;
-		for (FIoStoreWriteQueueEntry* Entry : Entries)
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(WriteChunk);
-			FTaskGraphInterface::Get().WaitUntilTaskCompletes(Entry->CreateChunkBlocksTask);
-			
-			uint64 EntryWriteSize = Entry->ChunkBuffer.DataSize();
-			FPartition* TargetPartition = &Partitions[CurrentPartitionIndex];
-			int32 NextPartitionIndexToTry = CurrentPartitionIndex + 1;
-			if (Entry->PartitionIndex >= 0)
-			{
-				TargetPartition = &Partitions[Entry->PartitionIndex];
-				if (TargetPartition->ReservedSpace > Entry->CompressedSize)
-				{
-					TargetPartition->ReservedSpace -= Entry->CompressedSize;
-				}
-				else
-				{
-					TargetPartition->ReservedSpace = 0;
-				}
-				NextPartitionIndexToTry = CurrentPartitionIndex;
-			}
-			bHasMemoryMappedEntry |= Entry->Options.bIsMemoryMapped;
-			const uint64 ChunkAlignment = Entry->Options.bIsMemoryMapped ? Settings.MemoryMappingAlignment : 0;
-			checkf(EntryWriteSize <= MaxPartitionSize, TEXT("Chunk is too large, increase max partition size!"));
-			for (;;)
-			{
-				uint64 OffsetBeforePadding = TargetPartition->Offset;
-				if (ChunkAlignment)
-				{
-					TargetPartition->Offset = Align(TargetPartition->Offset, ChunkAlignment);
-				}
-				if (Settings.CompressionBlockAlignment)
-				{
-					bool bCrossesBlockBoundary = Align(TargetPartition->Offset, Settings.CompressionBlockAlignment) != Align(TargetPartition->Offset + EntryWriteSize - 1, Settings.CompressionBlockAlignment);
-					if (bCrossesBlockBoundary)
-					{
-						TargetPartition->Offset = Align(TargetPartition->Offset, Settings.CompressionBlockAlignment);
-					}
-				}
-
-				if (TargetPartition->Offset + EntryWriteSize + TargetPartition->ReservedSpace > MaxPartitionSize)
-				{
-					TargetPartition->Offset = OffsetBeforePadding;
-					while (Partitions.Num() <= NextPartitionIndexToTry)
-					{
-						FPartition& NewPartition = Partitions.AddDefaulted_GetRef();
-						NewPartition.Index = Partitions.Num() - 1;
-					}
-					CurrentPartitionIndex = NextPartitionIndexToTry;
-					TargetPartition = &Partitions[CurrentPartitionIndex];
-					++NextPartitionIndexToTry;
-				}
-				else
-				{
-					Entry->Padding = TargetPartition->Offset - OffsetBeforePadding;
-					TotalPaddedBytes += Entry->Padding;
-					break;
-				}
-			}
-
-			if (!TargetPartition->ContainerFileHandle)
-			{
-				TRACE_CPUPROFILER_EVENT_SCOPE(CreatePartitionContainerFile);
-				CreatePartitionContainerFile(*TargetPartition);
-			}
-			Entry->ContainerArchive = TargetPartition->ContainerFileHandle.Get();
-			Entry->Offset = TargetPartition->Offset;
-			WriterContext->BeginWrite(Entry);
-			
-			FIoOffsetAndLength OffsetLength;
-			OffsetLength.SetOffset(UncompressedFileOffset);
-			OffsetLength.SetLength(Entry->UncompressedSize);
-
-			FIoStoreTocEntryMeta ChunkMeta{ Entry->ChunkHash, FIoStoreTocEntryMetaFlags::None };
-			if (Entry->Options.bIsMemoryMapped)
-			{
-				ChunkMeta.Flags |= FIoStoreTocEntryMetaFlags::MemoryMapped;
-			}
-
-			for (const FChunkBlock& ChunkBlock : Entry->ChunkBlocks)
-			{
-				check(ChunkBlock.Offset + ChunkBlock.Size <= EntryWriteSize);
-
-				FIoStoreTocCompressedBlockEntry& BlockEntry = Toc.AddCompressionBlockEntry();
-				BlockEntry.SetOffset(TargetPartition->Index * Settings.MaxPartitionSize + TargetPartition->Offset + ChunkBlock.Offset);
-				BlockEntry.SetCompressedSize(uint32(ChunkBlock.CompressedSize));
-				BlockEntry.SetUncompressedSize(uint32(ChunkBlock.UncompressedSize));
-				BlockEntry.SetCompressionMethodIndex(Toc.AddCompressionMethodEntry(ChunkBlock.CompressionMethod));
-
-				if (!ChunkBlock.CompressionMethod.IsNone())
-				{
-					ChunkMeta.Flags |= FIoStoreTocEntryMetaFlags::Compressed;
-				}
-
-				if (ContainerSettings.IsSigned())
-				{
-					FSHAHash& Signature = Toc.AddBlockSignatureEntry();
-					Signature = ChunkBlock.Signature;
-				}
-			}
-
-			const int32 TocEntryIndex = Toc.AddChunkEntry(Entry->ChunkId, OffsetLength, ChunkMeta);
-			check(TocEntryIndex != INDEX_NONE);
-
-			if (ContainerSettings.IsIndexed() && Entry->Options.FileName.Len() > 0)
-			{
-				Toc.AddToFileIndex(Entry->Options.FileName, TocEntryIndex);
-			}
-
-			const uint64 RegionStartOffset = TargetPartition->Offset;
-			TargetPartition->Offset += EntryWriteSize;
-			UncompressedFileOffset += Align(Entry->UncompressedSize, Settings.CompressionBlockSize);
-			TotalEntryUncompressedSize += Entry->UncompressedSize;
-
-			if (Settings.bEnableFileRegions)
-			{
-				FFileRegion::AccumulateFileRegions(TargetPartition->AllFileRegions, RegionStartOffset, RegionStartOffset, TargetPartition->Offset, Entry->Request->GetRegions());
-			}
-		}
-		if (LastEntry)
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(WaitForWritesToComplete);
-			LastEntry->WriteCompletedEvent->Wait();
-			FPlatformProcess::ReturnSynchEventToPool(LastEntry->WriteCompletedEvent);
-		}
-		
-		UncompressedContainerSize = TotalEntryUncompressedSize + TotalPaddedBytes;
-		CompressedContainerSize = 0;
-		for (FPartition& Partition : Partitions)
-		{
-			CompressedContainerSize += Partition.Offset;
-
-			if (bHasMemoryMappedEntry)
-			{
-				uint64 ExtraPaddingBytes = Align(Partition.Offset, Settings.MemoryMappingAlignment) - Partition.Offset;
-				if (ExtraPaddingBytes)
-				{
-					TArray<uint8> Padding;
-					Padding.SetNumZeroed(int32(ExtraPaddingBytes));
-					Partition.ContainerFileHandle->Serialize(Padding.GetData(), ExtraPaddingBytes);
-					CompressedContainerSize += ExtraPaddingBytes;
-					UncompressedContainerSize += ExtraPaddingBytes;
-					Partition.Offset += ExtraPaddingBytes;
-				}
-			}
-			
-			if (Partition.ContainerFileHandle)
-			{
-				Partition.ContainerFileHandle->Flush();
-				check(Partition.ContainerFileHandle->Tell() == Partition.Offset);
-			}
-
-			if (Partition.RegionsArchive)
-			{
-				FFileRegion::SerializeFileRegions(*Partition.RegionsArchive.Get(), Partition.AllFileRegions);
-				Partition.RegionsArchive->Flush();
-			}
-		}
+		WriteQueue.CompleteAdding();
+		WriterThread.Wait();
 
 		FIoStoreTocResource& TocResource = Toc.GetTocResource();
 
@@ -860,6 +608,11 @@ public:
 			return TocSize.Status();
 		}
 
+		if (RegionsArchive.IsValid())
+		{
+			RegionsArchive->Flush();
+		}
+
 		Result.ContainerId = ContainerSettings.ContainerId;
 		Result.ContainerName = FPaths::GetBaseFilename(TocFilePath);
 		Result.ContainerFlags = ContainerSettings.ContainerFlags;
@@ -872,234 +625,128 @@ public:
 		Result.CompressionMethod = EnumHasAnyFlags(ContainerSettings.ContainerFlags, EIoContainerFlags::Compressed)
 			? WriterContext->GetSettings().CompressionMethod
 			: NAME_None;
-		Result.ModifiedChunksCount = 0;
-		Result.AddedChunksCount = 0;
-		Result.ModifiedChunksSize= 0;
-		Result.AddedChunksSize = 0;
-		for (FIoStoreWriteQueueEntry* Entry : Entries)
-		{
-			if (Entry->bModified)
-			{
-				++Result.ModifiedChunksCount;
-				Result.ModifiedChunksSize += Entry->CompressedSize;
-			}
-			else if (Entry->bAdded)
-			{
-				++Result.AddedChunksCount;
-				Result.AddedChunksSize += Entry->CompressedSize;
-			}
-			delete Entry->Request;
-			delete Entry;
-		}
-
-		Entries.Empty();
 
 		return Result;
 	}
 
 private:
-	struct FPartition
+	void ProcessChunksThread()
 	{
-		TUniquePtr<FArchive> ContainerFileHandle;
-		TUniquePtr<FArchive> RegionsArchive;
-		uint64 Offset = 0;
-		uint64 ReservedSpace = 0;
-		TArray<FFileRegion> AllFileRegions;
-		int32 Index = -1;
-	};
+		const FIoStoreWriterSettings& Settings = WriterContext->GetSettings();
+		TArray<uint8> PaddingBuffer;
+		uint64 UncompressedFileOffset = 0;
 
-	struct FLayoutEntry
-	{
-		FLayoutEntry* Prev = nullptr;
-		FLayoutEntry* Next = nullptr;
-		uint64 IdealOrder = 0;
-		uint64 CompressedSize = uint64(-1);
-		FIoChunkHash Hash;
-		FIoStoreWriteQueueEntry* QueueEntry = nullptr;
-		int32 PartitionIndex = -1;
-	};
-
-	void PrepareLayout(const TArray<TUniquePtr<FIoStoreReader>>& PatchSourceReaders)
-	{
-		LayoutEntriesHead = new FLayoutEntry();
-		LayoutEntries.Add(LayoutEntriesHead);
-		FLayoutEntry* PrevEntryLink = LayoutEntriesHead;
-
-		for (const TUniquePtr<FIoStoreReader>& PatchSourceReader : PatchSourceReaders)
+		auto CrossesBlockBoundry = [](const uint64 FileOffset, const uint64 ChunkSize, const uint64 ChunkAlignment, const uint64 BlockSize) -> bool
 		{
-			PatchSourceReader->EnumerateChunks([this, &PrevEntryLink](const FIoStoreTocChunkInfo& ChunkInfo)
+			const uint64 AlignedOffset = ChunkAlignment > 0 ? Align(FileOffset, ChunkAlignment) : FileOffset;
+			return BlockSize > 0 ? Align(AlignedOffset, BlockSize) != Align(AlignedOffset + ChunkSize - 1, BlockSize) : false;
+		};
+
+		auto WritePadding = [&PaddingBuffer](IFileHandle& FileHandle, const uint64 BlockSize) -> uint64
+		{
+			const uint64 Padding = GetPadding(FileHandle.Tell(), BlockSize);
+			if (Padding > 0)
 			{
-				FLayoutEntry* PreviousBuildEntry = new FLayoutEntry();
-				LayoutEntries.Add(PreviousBuildEntry);
+				PaddingBuffer.SetNumZeroed(int32(Padding), false);
+				FileHandle.Write(PaddingBuffer.GetData(), Padding);
+			}
+			return Padding;
+		};
 
-				PreviousBuildEntry->Hash = ChunkInfo.Hash;
-				PreviousBuildEntry->PartitionIndex = ChunkInfo.PartitionIndex;
-				PreviousBuildEntry->CompressedSize = ChunkInfo.CompressedSize;
-				PrevEntryLink->Next = PreviousBuildEntry;
-				PreviousBuildEntry->Prev = PrevEntryLink;
-				PrevEntryLink = PreviousBuildEntry;
-				PreviousBuildLayoutEntryByChunkId.Add(ChunkInfo.Id, PreviousBuildEntry);
-				return true;
-			});
+		TArray<FFileRegion> AllFileRegions;
+		
+		for (;;)
+		{
+			FIoStoreWriteQueueEntry* Entry = WriteQueue.DequeueOrWait();
 
-			if (!ContainerSettings.bGenerateDiffPatch)
+			if (!Entry && WriteQueue.IsDoneAdding())
 			{
 				break;
 			}
-		}
 
-		LayoutEntriesTail = new FLayoutEntry();
-		LayoutEntries.Add(LayoutEntriesTail);
-		PrevEntryLink->Next = LayoutEntriesTail;
-		LayoutEntriesTail->Prev = PrevEntryLink;
-	}
-
-	void FinalizeLayout(TArray<FIoStoreWriteQueueEntry*>& WriteQueueEntries)
-	{
-		FPartition& Partition = Partitions.AddDefaulted_GetRef();
-		Partition.Index = 0;
-
-		Algo::Sort(WriteQueueEntries, [](const FIoStoreWriteQueueEntry* A, const FIoStoreWriteQueueEntry* B)
-		{
-			uint64 AOrderHint = A->Request->GetOrderHint();
-			uint64 BOrderHint = B->Request->GetOrderHint();
-			if (AOrderHint != BOrderHint)
+			while (Entry)
 			{
-				return AOrderHint < BOrderHint;
-			}
-			return A->Sequence < B->Sequence;
-		});
-
-		TMap<int64, FLayoutEntry*> LayoutEntriesByOrderMap;
-		int64 IdealOrder = 0;
-		TArray<FLayoutEntry*> UnassignedEntries;
-		for (FIoStoreWriteQueueEntry* WriteQueueEntry : WriteQueueEntries)
-		{
-			FLayoutEntry* FindPreviousEntry = PreviousBuildLayoutEntryByChunkId.FindRef(WriteQueueEntry->ChunkId);
-			if (FindPreviousEntry)
-			{
-				if (FindPreviousEntry->Hash != WriteQueueEntry->ChunkHash)
+				if (Entry->CreateChunkBlocksTask.IsValid())
 				{
-					WriteQueueEntry->bModified = true;
+					FTaskGraphInterface::Get().WaitUntilTaskCompletes(Entry->CreateChunkBlocksTask);
 				}
-				else
+
+				const uint64 ChunkAlignment = Entry->Options.bIsMemoryMapped ? Settings.MemoryMappingAlignment : 0;
+				if (CrossesBlockBoundry(ContainerFileHandle->Tell(), Entry->ChunkBuffer.DataSize(), ChunkAlignment, Settings.CompressionBlockAlignment))
 				{
-					FindPreviousEntry->QueueEntry = WriteQueueEntry;
-					FindPreviousEntry->IdealOrder = IdealOrder;
-					WriteQueueEntry->PartitionIndex = FindPreviousEntry->PartitionIndex;
+					TotalPaddedBytes += WritePadding(*ContainerFileHandle, Settings.CompressionBlockAlignment);
 				}
-			}
-			else
-			{
-				WriteQueueEntry->bAdded = true;
-			}
-			if (WriteQueueEntry->bModified | WriteQueueEntry->bAdded)
-			{
-				FLayoutEntry* NewLayoutEntry = new FLayoutEntry();
-				NewLayoutEntry->QueueEntry = WriteQueueEntry;
-				NewLayoutEntry->IdealOrder = IdealOrder;
-				LayoutEntries.Add(NewLayoutEntry);
-				UnassignedEntries.Add(NewLayoutEntry);
-			}
-			++IdealOrder;
-		}
-			
-		if (ContainerSettings.bGenerateDiffPatch)
-		{
-			LayoutEntriesHead->Next = LayoutEntriesTail;
-			LayoutEntriesTail->Prev = LayoutEntriesHead;
-		}
-		else
-		{
-			for (FLayoutEntry* EntryIt = LayoutEntriesHead->Next; EntryIt != LayoutEntriesTail; EntryIt = EntryIt->Next)
-			{
-				if (!EntryIt->QueueEntry)
+
+				if (ChunkAlignment > 0)
 				{
-					EntryIt->Prev->Next = EntryIt->Next;
-					EntryIt->Next->Prev = EntryIt->Prev;
+					TotalPaddedBytes += WritePadding(*ContainerFileHandle, ChunkAlignment);
 				}
-				else
+
+				const uint64 FileOffset = ContainerFileHandle->Tell();
+
+				FIoOffsetAndLength OffsetLength;
+				OffsetLength.SetOffset(UncompressedFileOffset);
+				OffsetLength.SetLength(Entry->ChunkSize);
+
+				FIoStoreTocEntryMeta ChunkMeta { Entry->ChunkHash, FIoStoreTocEntryMetaFlags::None };
+				if (Entry->Options.bIsMemoryMapped)
 				{
-					LayoutEntriesByOrderMap.Add(EntryIt->IdealOrder, EntryIt);
+					ChunkMeta.Flags |= FIoStoreTocEntryMetaFlags::MemoryMapped;
 				}
-			}
-		}
-		FLayoutEntry* LastAddedEntry = LayoutEntriesHead;
-		for (FLayoutEntry* UnassignedEntry : UnassignedEntries)
-		{
-			check(UnassignedEntry->QueueEntry);
-			FLayoutEntry* PutAfterEntry = LayoutEntriesByOrderMap.FindRef(UnassignedEntry->IdealOrder - 1);
-			if (!PutAfterEntry)
-			{
-				PutAfterEntry = LastAddedEntry;
-			}
 
-			UnassignedEntry->Prev = PutAfterEntry;
-			UnassignedEntry->Next = PutAfterEntry->Next;
-			PutAfterEntry->Next->Prev = UnassignedEntry;
-			PutAfterEntry->Next = UnassignedEntry;
-			LayoutEntriesByOrderMap.Add(UnassignedEntry->IdealOrder, UnassignedEntry);
-			LastAddedEntry = UnassignedEntry;
-		}
-
-		TArray<FIoStoreWriteQueueEntry*> IncludedQueueEntries;
-		for (FLayoutEntry* EntryIt = LayoutEntriesHead->Next; EntryIt != LayoutEntriesTail; EntryIt = EntryIt->Next)
-		{
-			check(EntryIt->QueueEntry);
-			IncludedQueueEntries.Add(EntryIt->QueueEntry);
-			int32 ReserveInPartitionIndex = EntryIt->QueueEntry->PartitionIndex;
-			if (ReserveInPartitionIndex >= 0)
-			{
-				while (Partitions.Num() <= ReserveInPartitionIndex)
+				for (const FChunkBlock& ChunkBlock : Entry->ChunkBlocks)
 				{
-					FPartition& NewPartition = Partitions.AddDefaulted_GetRef();
-					NewPartition.Index = Partitions.Num() - 1;
+					check(ChunkBlock.Offset + ChunkBlock.Size <= Entry->ChunkBuffer.DataSize());
+
+					FIoStoreTocCompressedBlockEntry& BlockEntry = Toc.AddCompressionBlockEntry();
+					BlockEntry.SetOffset(FileOffset + ChunkBlock.Offset);
+					BlockEntry.SetCompressedSize(uint32(ChunkBlock.CompressedSize));
+					BlockEntry.SetUncompressedSize(uint32(ChunkBlock.UncompressedSize));
+					BlockEntry.SetCompressionMethodIndex(Toc.AddCompressionMethodEntry(ChunkBlock.CompressionMethod));
+
+					if (!ChunkBlock.CompressionMethod.IsNone())
+					{
+						ChunkMeta.Flags |= FIoStoreTocEntryMetaFlags::Compressed;
+					}
+
+					if (ContainerSettings.IsSigned())
+					{
+						FSHAHash& Signature = Toc.AddBlockSignatureEntry();
+						FSHA1::HashBuffer(Entry->ChunkBuffer.Data() + ChunkBlock.Offset, ChunkBlock.Size, Signature.Hash);
+					}
 				}
-				FPartition& ReserveInPartition = Partitions[ReserveInPartitionIndex];
-				check(EntryIt->CompressedSize != uint64(-1));
-				ReserveInPartition.ReservedSpace += EntryIt->CompressedSize;
-			}
-		}
-		Swap(WriteQueueEntries, IncludedQueueEntries);
 
-		LayoutEntriesHead = nullptr;
-		LayoutEntriesTail = nullptr;
-		PreviousBuildLayoutEntryByChunkId.Empty();
-		for (FLayoutEntry* Entry : LayoutEntries)
-		{
-			delete Entry;
-		}
-		LayoutEntries.Empty();
-	}
+				const int32 TocEntryIndex = Toc.AddChunkEntry(Entry->ChunkId, OffsetLength, ChunkMeta);
+				check(TocEntryIndex != INDEX_NONE);
 
-	FIoStatus CreatePartitionContainerFile(FPartition& Partition)
-	{
-		check(!Partition.ContainerFileHandle);
-		FString ContainerFilePath = Environment.GetPath();
-		if (Partition.Index > 0)
-		{
-			ContainerFilePath += FString::Printf(TEXT("_s%d"), Partition.Index);
-		}
-		ContainerFilePath += TEXT(".ucas");
-		
-		Partition.ContainerFileHandle.Reset(IFileManager::Get().CreateFileWriter(*ContainerFilePath));
-		//IPlatformFile& Ipf = IPlatformFile::GetPlatformPhysical();
-		//Partition.ContainerFileHandle.Reset(Ipf.OpenWrite(*ContainerFilePath, /* append */ false, /* allowread */ true));
-		if (!Partition.ContainerFileHandle)
-		{
-			return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore container file '") << *ContainerFilePath << TEXT("'");
-		}
-		if (WriterContext->GetSettings().bEnableFileRegions)
-		{
-			FString RegionsFilePath = ContainerFilePath + FFileRegion::RegionsFileExtension;
-			Partition.RegionsArchive.Reset(IFileManager::Get().CreateFileWriter(*RegionsFilePath));
-			if (!Partition.RegionsArchive)
-			{
-				return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore regions file '") << *RegionsFilePath << TEXT("'");
+				if (ContainerSettings.IsIndexed() && Entry->Options.FileName.Len() > 0)
+				{
+					Toc.AddToFileIndex(Entry->Options.FileName, TocEntryIndex);
+				}
+
+				ContainerFileHandle->Write(Entry->ChunkBuffer.Data(), Entry->ChunkBuffer.DataSize());
+				UncompressedFileOffset += Align(Entry->ChunkSize, Settings.CompressionBlockSize);
+
+				if (Settings.bEnableFileRegions)
+				{
+					FFileRegion::AccumulateFileRegions(AllFileRegions, FileOffset, FileOffset, ContainerFileHandle->Tell(), Entry->Regions);
+				}
+
+				FIoStoreWriteQueueEntry* Free = Entry;
+				Entry = Entry->Next;
+				WriterContext->FreeQueueEntry(Free);
 			}
 		}
 
-		return FIoStatus::Ok;
+		UncompressedContainerSize = UncompressedFileOffset + TotalPaddedBytes;
+		CompressedContainerSize = ContainerFileHandle->Tell();
+
+		check(WriteQueue.IsEmpty());
+
+		if (Settings.bEnableFileRegions)
+		{
+			FFileRegion::SerializeFileRegions(*RegionsArchive.Get(), AllFileRegions);
+		}
 	}
 
 	static void CreateChunkBlocks(
@@ -1134,8 +781,6 @@ private:
 				ChunkBuffer = AlignedBuffer;
 			}
 
-			UncompressedEntry->CompressedSize = ChunkBuffer.DataSize();
-
 			uint64 UncompressedOffset = 0;
 			uint64 RemainingSize = UncompressedSize;
 			while (RemainingSize)
@@ -1167,16 +812,14 @@ private:
 				CompressedBlock = MakeUnique<uint8[]>(CompressedBlockSize);
 
 				FName CompressionMethod = WriterSettings.CompressionMethod;
-				{
-					TRACE_CPUPROFILER_EVENT_SCOPE(CompressMemory);
-					const bool bCompressed = FCompression::CompressMemory(
-						CompressionMethod,
-						CompressedBlock.Get(),
-						CompressedBlockSize,
-						UncompressedBlock,
-						UncompressedBlockSize);
-					check(bCompressed);
-				}
+				const bool bCompressed = FCompression::CompressMemory(
+					CompressionMethod,
+					CompressedBlock.Get(),
+					CompressedBlockSize,
+					UncompressedBlock,
+					UncompressedBlockSize);
+
+				check(bCompressed);
 				check(CompressedBlockSize > 0);
 
 				if (CompressedBlockSize >= UncompressedBlockSize)
@@ -1210,12 +853,12 @@ private:
 				UncompressedBlock	+= UncompressedBlockSize;
 			}
 
-			Entry->CompressedSize = BlockOffset;
+			const uint64 CompressedSize = BlockOffset;
 			
-			Entry->ChunkBuffer = FIoBuffer(Entry->CompressedSize);
+			Entry->ChunkBuffer = FIoBuffer(CompressedSize);
 			
 			uint8* CompressedChunkBuffer = Entry->ChunkBuffer.Data();
-			FMemory::Memzero(CompressedChunkBuffer, Entry->CompressedSize); 
+			FMemory::Memzero(CompressedChunkBuffer, CompressedSize); 
 
 			for (int32 BlockIndex = 0; BlockIndex < CompressedBlocks.Num(); ++BlockIndex)
 			{
@@ -1232,18 +875,10 @@ private:
 
 		if (ContainerSettings.IsEncrypted())
 		{
-			for (FChunkBlock& ChunkBlock : Entry->ChunkBlocks)
+			for (const FChunkBlock& ChunkBlock : Entry->ChunkBlocks)
 			{
 				check(IsAligned(ChunkBlock.Size, FAES::AESBlockSize));
 				FAES::EncryptData(Entry->ChunkBuffer.Data() + ChunkBlock.Offset, static_cast<uint32>(ChunkBlock.Size), ContainerSettings.EncryptionKey);
-			}
-		}
-
-		if (ContainerSettings.IsSigned())
-		{
-			for (FChunkBlock& ChunkBlock : Entry->ChunkBlocks)
-			{
-				FSHA1::HashBuffer(Entry->ChunkBuffer.Data() + ChunkBlock.Offset, ChunkBlock.Size, ChunkBlock.Signature.Hash);
 			}
 		}
 	}
@@ -1253,14 +888,12 @@ private:
 	FIoContainerSettings		ContainerSettings;
 	FString						TocFilePath;
 	FIoStoreToc					Toc;
-	TArray<FPartition>			Partitions;
-	TArray<FIoStoreWriteQueueEntry*> Entries;
-	TArray<FLayoutEntry*>		LayoutEntries;
-	FLayoutEntry*				LayoutEntriesHead = nullptr;
-	FLayoutEntry*				LayoutEntriesTail = nullptr;
-	TMap<FIoChunkId, FLayoutEntry*> PreviousBuildLayoutEntryByChunkId;
+	TUniquePtr<IFileHandle>		ContainerFileHandle;
+	TUniquePtr<FArchive>		RegionsArchive;
 	TUniquePtr<FArchive>		CsvArchive;
 	FIoStoreWriterResult		Result;
+	TFuture<void>				WriterThread;
+	FIoStoreWriteQueue			WriteQueue;
 	uint64						TotalPaddedBytes = 0;
 	uint64						UncompressedContainerSize = 0;
 	uint64						CompressedContainerSize = 0;
@@ -1277,54 +910,19 @@ FIoStoreWriter::~FIoStoreWriter()
 	(void)Impl->Flush();
 }
 
-FIoStatus FIoStoreWriter::Initialize(const FIoStoreWriterContext& Context, const FIoContainerSettings& ContainerSettings, const TArray<TUniquePtr<FIoStoreReader>>& PatchSourceReaders)
+FIoStatus FIoStoreWriter::Initialize(const FIoStoreWriterContext& Context, const FIoContainerSettings& ContainerSettings)
 {
-	return Impl->Initialize(*Context.Impl, ContainerSettings, PatchSourceReaders);
+	return Impl->Initialize(*Context.Impl, ContainerSettings);
 }
 
-void FIoStoreWriter::Append(const FIoChunkId& ChunkId, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions)
+FIoStatus FIoStoreWriter::Append(const FIoChunkId& ChunkId, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions, TArrayView<const FFileRegion> Regions)
 {
-	struct FWriteRequest
-		: IIoStoreWriteRequest
-	{
-		FWriteRequest(FIoBuffer InSourceBuffer)
-		{
-			SourceBuffer = InSourceBuffer;
-			SourceBuffer.MakeOwned();
-		}
-
-		virtual ~FWriteRequest() = default;
-
-		void PrepareSourceBufferAsync(FGraphEventRef CompletionEvent) override
-		{
-			TArray<FBaseGraphTask*> NewTasks;
-			CompletionEvent->DispatchSubsequents(NewTasks);
-		}
-
-		FIoBuffer ConsumeSourceBuffer() override
-		{
-			return SourceBuffer;
-		}
-
-		uint64 GetOrderHint() override
-		{
-			return MAX_uint64;
-		}
-
-		TArrayView<const FFileRegion> GetRegions()
-		{
-			return TArrayView<const FFileRegion>();
-		}
-
-		FIoBuffer SourceBuffer;
-	};
-
-	Append(ChunkId, new FWriteRequest(Chunk), WriteOptions);
+	return Impl->Append(ChunkId, Chunk, WriteOptions, Regions);
 }
 
-void FIoStoreWriter::Append(const FIoChunkId& ChunkId, IIoStoreWriteRequest* Request, const FIoWriteOptions& WriteOptions)
+FIoStatus FIoStoreWriter::Append(const FIoChunkId& ChunkId, const FIoChunkHash& ChunkHash, FIoBuffer Chunk, const FIoWriteOptions& WriteOptions, TArrayView<const FFileRegion> Regions)
 {
-	Impl->Append(ChunkId, Request, WriteOptions);
+	return Impl->Append(ChunkId, ChunkHash, Chunk, WriteOptions, Regions);
 }
 
 TIoStatusOr<FIoStoreWriterResult> FIoStoreWriter::Flush()
@@ -1342,9 +940,21 @@ public:
 
 	UE_NODISCARD FIoStatus Initialize(const FIoStoreEnvironment& InEnvironment, const TMap<FGuid, FAES::FAESKey>& InDecryptionKeys)
 	{
+		TStringBuilder<256> ContainerFilePath;
+		ContainerFilePath.Append(InEnvironment.GetPath());
+
 		TStringBuilder<256> TocFilePath;
-		TocFilePath.Append(InEnvironment.GetPath());
+		TocFilePath.Append(ContainerFilePath);
+
+		ContainerFilePath.Append(TEXT(".ucas"));
 		TocFilePath.Append(TEXT(".utoc"));
+
+		IPlatformFile& Ipf = FPlatformFileManager::Get().GetPlatformFile();
+		ContainerFileHandle.Reset(Ipf.OpenAsyncRead(*ContainerFilePath));
+		if (!ContainerFileHandle)
+		{
+			return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore container file '") << *TocFilePath << TEXT("'");
+		}
 
 		FIoStoreTocResource& TocResource = Toc.GetTocResource();
 		FIoStatus TocStatus = FIoStoreTocResource::Read(*TocFilePath, EIoStoreTocReadOptions::ReadAll, TocResource);
@@ -1354,24 +964,6 @@ public:
 		}
 
 		Toc.Initialize();
-
-		IPlatformFile& Ipf = FPlatformFileManager::Get().GetPlatformFile();
-		ContainerFileHandles.Reserve(TocResource.Header.PartitionCount);
-		for (uint32 PartitionIndex = 0; PartitionIndex < TocResource.Header.PartitionCount; ++PartitionIndex)
-		{
-			TStringBuilder<256> ContainerFilePath;
-			ContainerFilePath.Append(InEnvironment.GetPath());
-			if (PartitionIndex > 0)
-			{
-				ContainerFilePath.Append(FString::Printf(TEXT("_s%d"), PartitionIndex));
-			}
-			ContainerFilePath.Append(TEXT(".ucas"));
-			ContainerFileHandles.Emplace(Ipf.OpenAsyncRead(*ContainerFilePath));
-			if (!ContainerFileHandles.Last())
-			{
-				return FIoStatusBuilder(EIoErrorCode::FileOpenFailed) << TEXT("Failed to open IoStore container file '") << *TocFilePath << TEXT("'");
-			}
-		}
 
 		if (EnumHasAnyFlags(TocResource.Header.ContainerFlags, EIoContainerFlags::Encrypted))
 		{
@@ -1489,9 +1081,7 @@ public:
 				UncompressedBuffer.SetNumUninitialized(UncompressedSize);
 			}
 		
-			int32 PartitionIndex = int32(CompressionBlock.GetOffset() / TocResource.Header.PartitionSize);
-			int64 PartitionOffset = int64(CompressionBlock.GetOffset() % TocResource.Header.PartitionSize);
-			TUniquePtr<IAsyncReadRequest> ReadRequest(ContainerFileHandles[PartitionIndex]->ReadRequest(PartitionOffset, RawSize, AIOP_Normal, nullptr, CompressedBuffer.GetData()));
+			TUniquePtr<IAsyncReadRequest> ReadRequest(ContainerFileHandle->ReadRequest(CompressionBlock.GetOffset(), RawSize, AIOP_Normal, nullptr, CompressedBuffer.GetData()));
 			{
 				TRACE_CPUPROFILER_EVENT_SCOPE(WaitForIo);
 				ReadRequest->WaitCompletion();
@@ -1529,18 +1119,6 @@ public:
 		return DirectoryIndexReader;
 	}
 
-	bool TocChunkContainsBlockIndex(const int32 TocEntryIndex, const int32 BlockIndex) const
-	{
-		const FIoStoreTocResource& TocResource = Toc.GetTocResource();
-		const FIoOffsetAndLength& OffsetLength = TocResource.ChunkOffsetLengths[TocEntryIndex];
-
-		const uint64 CompressionBlockSize = TocResource.Header.CompressionBlockSize;
-		int32 FirstBlockIndex = int32(OffsetLength.GetOffset() / CompressionBlockSize);
-		int32 LastBlockIndex = int32((Align(OffsetLength.GetOffset() + OffsetLength.GetLength(), CompressionBlockSize) - 1) / CompressionBlockSize);
-
-		return BlockIndex >= FirstBlockIndex && BlockIndex <= LastBlockIndex;
-	}
-
 private:
 	FIoStoreTocChunkInfo GetTocChunkInfo(const int32 TocEntryIndex) const
 	{
@@ -1558,23 +1136,6 @@ private:
 		ChunkInfo.bForceUncompressed = bIsContainerCompressed && !EnumHasAnyFlags(Meta.Flags, FIoStoreTocEntryMetaFlags::Compressed);
 		ChunkInfo.Offset = OffsetLength.GetOffset();
 		ChunkInfo.Size = OffsetLength.GetLength();
-		
-		const uint64 CompressionBlockSize = TocResource.Header.CompressionBlockSize;
-		int32 FirstBlockIndex = int32(OffsetLength.GetOffset() / CompressionBlockSize);
-		int32 LastBlockIndex = int32((Align(OffsetLength.GetOffset() + OffsetLength.GetLength(), CompressionBlockSize) - 1) / CompressionBlockSize);
-
-		ChunkInfo.CompressedSize = 0;
-		ChunkInfo.PartitionIndex = -1;
-		for (int32 BlockIndex = FirstBlockIndex; BlockIndex <= LastBlockIndex; ++BlockIndex)
-		{
-			const FIoStoreTocCompressedBlockEntry& CompressionBlock = TocResource.CompressionBlocks[BlockIndex];
-			ChunkInfo.CompressedSize += CompressionBlock.GetCompressedSize();
-			if (ChunkInfo.PartitionIndex < 0)
-			{
-				ChunkInfo.PartitionIndex = int32(CompressionBlock.GetOffset() / TocResource.Header.PartitionSize);
-			}
-		}
-
 
 		return ChunkInfo;
 	}
@@ -1588,7 +1149,7 @@ private:
 
 	FIoStoreToc Toc;
 	FAES::FAESKey DecryptionKey;
-	TArray<TUniquePtr<IAsyncReadFileHandle>> ContainerFileHandles;
+	TUniquePtr<IAsyncReadFileHandle> ContainerFileHandle;
 	FIoDirectoryIndexReader DirectoryIndexReader;
 	static thread_local FThreadBuffers* ThreadBuffers;
 };
@@ -1663,11 +1224,12 @@ FIoStatus FIoStoreTocResource::Read(const TCHAR* TocFilePath, EIoStoreTocReadOpt
 	}
 
 	// Header
-	FIoStoreTocHeader& Header = OutTocResource.Header;
-	if (!TocFileHandle->Read(reinterpret_cast<uint8*>(&Header), sizeof(FIoStoreTocHeader)))
+	if (!TocFileHandle->Read(reinterpret_cast<uint8*>(&OutTocResource.Header), sizeof(FIoStoreTocHeader)))
 	{
 		return FIoStatusBuilder(EIoErrorCode::CorruptToc) << TEXT("Failed to read IoStore TOC file '") << TocFilePath << TEXT("'");
 	}
+
+	const FIoStoreTocHeader& Header = OutTocResource.Header;
 
 	if (!Header.CheckMagic())
 	{
@@ -1682,11 +1244,6 @@ FIoStatus FIoStoreTocResource::Read(const TCHAR* TocFilePath, EIoStoreTocReadOpt
 	if (Header.TocCompressedBlockEntrySize != sizeof(FIoStoreTocCompressedBlockEntry))
 	{
 		return FIoStatusBuilder(EIoErrorCode::CorruptToc) << TEXT("TOC compressed block entry size mismatch while reading '") << TocFilePath << TEXT("'");
-	}
-
-	if (Header.Version < static_cast<uint8>(EIoStoreTocVersion::DirectoryIndex))
-	{
-		return FIoStatusBuilder(EIoErrorCode::CorruptToc) << TEXT("Outdated TOC header version while reading '") << TocFilePath << TEXT("'");
 	}
 
 	const uint64 TotalTocSize = TocFileHandle->Size() - sizeof(FIoStoreTocHeader);
@@ -1766,7 +1323,8 @@ FIoStatus FIoStoreTocResource::Read(const TCHAR* TocFilePath, EIoStoreTocReadOpt
 	}
 
 	// Directory index
-	if (EnumHasAnyFlags(ReadOptions, EIoStoreTocReadOptions::ReadDirectoryIndex) &&
+	if (Header.Version >= static_cast<uint8>(EIoStoreTocVersion::DirectoryIndex) &&
+		EnumHasAnyFlags(ReadOptions, EIoStoreTocReadOptions::ReadDirectoryIndex) &&
 		EnumHasAnyFlags(Header.ContainerFlags, EIoContainerFlags::Indexed) &&
 		Header.DirectoryIndexSize > 0)
 	{
@@ -1779,12 +1337,6 @@ FIoStatus FIoStoreTocResource::Read(const TCHAR* TocFilePath, EIoStoreTocReadOpt
 	{
 		const FIoStoreTocEntryMeta* ChunkMetas = reinterpret_cast<const FIoStoreTocEntryMeta*>(TocMeta);
 		OutTocResource.ChunkMetas = MakeArrayView<FIoStoreTocEntryMeta const>(ChunkMetas, Header.TocEntryCount);
-	}
-
-	if (Header.Version < static_cast<uint8>(EIoStoreTocVersion::PartitionSize))
-	{
-		Header.PartitionCount = 1;
-		Header.PartitionSize = MAX_uint64;
 	}
 
 	return FIoStatus::Ok;
@@ -1833,21 +1385,6 @@ TIoStatusOr<uint64> FIoStoreTocResource::Write(
 	TocHeader.ContainerId = ContainerSettings.ContainerId;
 	TocHeader.EncryptionKeyGuid = ContainerSettings.EncryptionKeyGuid;
 	TocHeader.ContainerFlags = ContainerSettings.ContainerFlags;
-	if (TocHeader.TocEntryCount == 0)
-	{
-		TocHeader.PartitionCount = 0;
-		TocHeader.PartitionSize = MAX_uint64;
-	}
-	else if (WriterSettings.MaxPartitionSize)
-	{
-		TocHeader.PartitionCount = uint32(Align(TocResource.CompressionBlocks.Last().GetOffset(), WriterSettings.MaxPartitionSize) / WriterSettings.MaxPartitionSize);
-		TocHeader.PartitionSize = WriterSettings.MaxPartitionSize;
-	}
-	else
-	{
-		TocHeader.PartitionCount = 1;
-		TocHeader.PartitionSize = MAX_uint64;
-	}
 
 	TocFileHandle->Seek(0);
 
@@ -1935,38 +1472,4 @@ TIoStatusOr<uint64> FIoStoreTocResource::Write(
 	TocFileHandle->Flush(true);
 
 	return TocFileHandle->Tell();
-}
-
-void FIoStoreReader::GetFilenames(TArray<FString>& OutFileList) const
-{
-	const FIoDirectoryIndexReader& DirectoryIndex = GetDirectoryIndexReader();
-
-	DirectoryIndex.IterateDirectoryIndex(
-		FIoDirectoryIndexHandle::RootDirectory(),
-		TEXT(""),
-		[&OutFileList](FString Filename, uint32 TocEntryIndex) -> bool
-		{
-			OutFileList.AddUnique(Filename);
-			return true;
-		});
-}
-
-void FIoStoreReader::GetFilenamesByBlockIndex(const TArray<int32>& InBlockIndexList, TArray<FString>& OutFileList) const
-{
-	const FIoDirectoryIndexReader& DirectoryIndex = GetDirectoryIndexReader();
-
-	DirectoryIndex.IterateDirectoryIndex(FIoDirectoryIndexHandle::RootDirectory(), TEXT(""),
-		[this, &InBlockIndexList, &OutFileList](FString Filename, uint32 TocEntryIndex) -> bool
-		{
-			for (int32 BlockIndex : InBlockIndexList)
-			{
-				if (Impl->TocChunkContainsBlockIndex(TocEntryIndex, BlockIndex))
-				{
-					OutFileList.AddUnique(Filename);
-					break;
-				}
-			}
-
-			return true;
-		});
 }

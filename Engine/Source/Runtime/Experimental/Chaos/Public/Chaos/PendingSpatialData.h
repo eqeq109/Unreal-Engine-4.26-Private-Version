@@ -12,7 +12,7 @@ namespace Chaos
 /** Used for updating intermediate spatial structures when they are finished */
 struct FPendingSpatialData
 {
-	FAccelerationStructureHandle AccelerationHandle;
+	TAccelerationStructureHandle<FReal, 3> AccelerationHandle;
 	FSpatialAccelerationIdx SpatialIdx;
 	int32 SyncTimestamp;	//indicates the inputs timestamp associated with latest change. Only relevant for external queue
 	bool bDelete;

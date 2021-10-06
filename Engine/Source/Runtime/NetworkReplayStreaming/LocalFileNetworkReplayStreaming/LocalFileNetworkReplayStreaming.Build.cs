@@ -6,7 +6,6 @@ namespace UnrealBuildTool.Rules
     {
         public LocalFileNetworkReplayStreaming(ReadOnlyTargetRules Target) : base(Target)
         {
-			ShortName = "LFNRS";
 			PrivateDependencyModuleNames.AddRange(
                 new string[]
 				{

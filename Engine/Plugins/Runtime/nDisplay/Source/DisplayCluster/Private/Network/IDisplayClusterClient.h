@@ -11,7 +11,8 @@
 class IDisplayClusterClient
 {
 public:
-	virtual ~IDisplayClusterClient() = default;
+	virtual ~IDisplayClusterClient() = 0
+	{ }
 
 public:
 	// Connects to a server

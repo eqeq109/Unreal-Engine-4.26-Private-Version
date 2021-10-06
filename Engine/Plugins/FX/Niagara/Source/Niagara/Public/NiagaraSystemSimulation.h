@@ -206,15 +206,19 @@ protected:
 
 struct FNiagaraSystemSimulationTickContext
 {
-public:
-	FNiagaraSystemSimulationTickContext(class FNiagaraSystemSimulation* InOwner, TArray<FNiagaraSystemInstance*>& InInstances, FNiagaraDataSet& InDataSet, float InDeltaSeconds, int32 InSpawnNum, bool bAllowAsync);
+private:
+	FNiagaraSystemSimulationTickContext(TArray<FNiagaraSystemInstance*>& InInstances, FNiagaraDataSet& InDataSet)
+		: Instances(InInstances)
+		, DataSet(InDataSet)
+	{
+	}
 
-	bool IsRunningAsync() const { return bRunningAsync; }
-
 public:
+	static FNiagaraSystemSimulationTickContext MakeContextForTicking(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, const FGraphEventRef& MyCompletionGraphEvent);
+	static FNiagaraSystemSimulationTickContext MakeContextForSpawning(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, bool bAllowAsync);
+
 	class FNiagaraSystemSimulation*		Owner;
 	UNiagaraSystem*						System;
-	UWorld*								World;
 
 	TArray<FNiagaraSystemInstance*>&	Instances;
 	FNiagaraDataSet&					DataSet;
@@ -224,18 +228,19 @@ public:
 
 	int									EffectsQuality;
 
-	bool								bRunningAsync = false;
-	FGraphEventArray					BeforeInstancesTickGraphEvents;
-	FGraphEventArray*					CompletionEvents = nullptr;
+	FGraphEventRef						MyCompletionGraphEvent;
+	FGraphEventArray*					FinalizeEvents;
+
+	bool								bTickAsync;
+	bool								bTickInstancesAsync;
 };
 
 /** Simulation performing all system and emitter scripts for a instances of a UNiagaraSystem in a world. */
 class FNiagaraSystemSimulation : public TSharedFromThis<FNiagaraSystemSimulation, ESPMode::ThreadSafe>, FGCObject
 {
 	friend FNiagaraSystemSimulationTickContext;
-	friend class FNiagaraDebugHud;
-
 public:
+
 	//FGCObject Interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector)override;
 	//FGCObject Interface END
@@ -261,9 +266,9 @@ public:
 
 	/** Promote instances that have ticked during */
 
-	/** Wait for system simulation concurrent tick to complete.  If bEnsureComplete is true we will trigger an ensure if it is not complete. */
-	void WaitForConcurrentTickComplete(bool bEnsureComplete = false);
-	/** Wait for system instances concurrent tick to complete.  If bEnsureComplete is true we will trigger an ensure if it is not complete. */
+	/** Wait for system simulation tick to complete.  If bEnsureComplete is true we will trigger an ensure if it is not complete. */
+	void WaitForSystemTickComplete(bool bEnsureComplete = false);
+	/** Wait for instances tick to complete.  If bEnsureComplete is true we will trigger an ensure if it is not complete. */
 	void WaitForInstancesTickComplete(bool bEnsureComplete = false);
 
 	void RemoveInstance(FNiagaraSystemInstance* Instance);
@@ -278,8 +283,8 @@ public:
 
 	FNiagaraParameterStore& GetScriptDefinedDataInterfaceParameters();
 
-	/** Transfers a system instance from the current simulation into this one. */
-	void TransferInstance(FNiagaraSystemInstance* SystemInst);
+	/** Transfers a system instance from SourceSimulation. */
+	void TransferInstance(FNiagaraSystemSimulation* SourceSimulation, FNiagaraSystemInstance* SystemInst);
 
 	void DumpInstance(const FNiagaraSystemInstance* Inst)const;
 
@@ -292,10 +297,7 @@ public:
 	FNiagaraScriptExecutionContextBase* GetUpdateExecutionContext() { return UpdateExecContext.Get(); }
 
 	void AddTickGroupPromotion(FNiagaraSystemInstance* Instance);
-
-	void RemoveFromInstanceList(FNiagaraSystemInstance* Instance);
-	void AddToInstanceList(FNiagaraSystemInstance* Instance, ENiagaraSystemInstanceState InstanceState);
-	void SetInstanceState(FNiagaraSystemInstance* Instance, ENiagaraSystemInstanceState NewState);
+	int32 AddPendingSystemInstance(FNiagaraSystemInstance* Instance);
 
 	const FString& GetCrashReporterTag()const;
 
@@ -308,8 +310,6 @@ public:
 	/** If true we use legacy simulation contexts that could not handle per instance DI calls in the system scripts and would force the whole simulation solo. */
 	static bool UseLegacySystemSimulationContexts();
 	static void OnChanged_UseLegacySystemSimulationContexts(class IConsoleVariable* CVar);
-
-	FORCEINLINE UWorld* GetWorld()const{return World;}
 
 protected:
 	/** Sets constant parameter values */
@@ -332,8 +332,6 @@ protected:
 	void AddSystemToTickBatch(FNiagaraSystemInstance* Instance, FNiagaraSystemSimulationTickContext& Context);
 	void FlushTickBatch(FNiagaraSystemSimulationTickContext& Context);
 
-	TArray<FNiagaraSystemInstance*>& GetSystemInstances(ENiagaraSystemInstanceState State) { check(State != ENiagaraSystemInstanceState::None); return SystemInstancesPerState[int32(State)]; }
-
 	/** System of instances being simulated.  We use a weak object ptr here because once the last referencing object goes away this system may be come invalid at runtime. */
 	TWeakObjectPtr<UNiagaraSystem> WeakSystem;
 
@@ -346,15 +344,12 @@ protected:
 	/** World this system simulation belongs to. */
 	UWorld* World;
 
-	/** System instance per state. */
-	TArray<FNiagaraSystemInstance*> SystemInstancesPerState[int32(ENiagaraSystemInstanceState::Num)];
-
-	/** Data set for the Running instance state. */
+	/** Main dataset containing system instance attribute data. */
 	FNiagaraDataSet MainDataSet;
-	/** Data set for the Spawning instance state. */
+	/** DataSet used if we have to spawn instances outside of their tick. */
 	FNiagaraDataSet SpawningDataSet;
-	/** Data set for the Paused instance state. */
-	FNiagaraDataSet PausedDataSet;
+	/** DataSet used to store pausing instance data. */
+	FNiagaraDataSet PausedInstanceData;
 
 	/**
 	As there's a 1 to 1 relationship between system instance and their execution in this simulation we must pull all that instances parameters into a dataset for simulation.
@@ -394,6 +389,16 @@ protected:
 	FNiagaraParameterDirectBinding<float> SpawnGlobalSystemCountScaleParam;
 	FNiagaraParameterDirectBinding<float> UpdateGlobalSystemCountScaleParam;
 
+	/** System instances that have been spawned and are now simulating. */
+	TArray<FNiagaraSystemInstance*> SystemInstances;
+	/** System instances that are about to be spawned outside of regular ticking. */
+	TArray<FNiagaraSystemInstance*> SpawningInstances;
+	/** System instances that are paused. */
+	TArray<FNiagaraSystemInstance*> PausedSystemInstances;
+
+	/** System instances that are pending to be spawned. */
+	TArray<FNiagaraSystemInstance*> PendingSystemInstances;
+
 	/** List of instances that are pending a tick group promotion. */
 	TArray<FNiagaraSystemInstance*> PendingTickGroupPromotions;
 
@@ -412,10 +417,8 @@ protected:
 	/** Current tick batch we're filling ready for processing, potentially in an async task. */
 	FNiagaraSystemTickBatch TickBatch;
 
-	/** Event to track the system simulation async tick is complete. */
-	FGraphEventRef ConcurrentTickGraphEvent;
-	/** Event to track all work is complete, i.e. System Concurrent, Instance Concurrent, Finalize */
-	FGraphEventRef AllWorkCompleteGraphEvent;
+	/** Current task that is executing */
+	FGraphEventRef SystemTickGraphEvent;
 
 	mutable FString CrashReporterTag;
 

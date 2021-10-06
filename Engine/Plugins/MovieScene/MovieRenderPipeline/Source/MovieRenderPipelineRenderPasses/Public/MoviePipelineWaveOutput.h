@@ -10,7 +10,9 @@ class MOVIERENDERPIPELINERENDERPASSES_API UMoviePipelineWaveOutput : public UMov
 {
 	GENERATED_BODY()
 
-	UMoviePipelineWaveOutput()
+		UMoviePipelineWaveOutput()
+		: FileNameFormat(TEXT("{sequence_name}"))
+		, OutstandingWrites(0)
 	{
 	}
 
@@ -18,7 +20,6 @@ public:
 #if WITH_EDITOR
 	virtual FText GetDisplayText() const override { return NSLOCTEXT("MovieRenderPipeline", "AudioSettingDisplayName", ".wav Audio"); }
 #endif
-	virtual void OnShotFinishedImpl(const UMoviePipelineExecutorShot* InShot, const bool bFlushToDisk) override;
 
 protected:
 	virtual void BeginFinalizeImpl() override;
@@ -26,14 +27,12 @@ protected:
 	virtual void ValidateStateImpl() override;
 	virtual void BuildNewProcessCommandLineImpl(FString& InOutUnrealURLParams, FString& InOutCommandLineArgs) const override;
 public:
-	/* File name format string override. If specified it will override the FileNameFormat from the Output setting. */
+	/** What format string should the final files use? Can include folder prefixes, and format string ({shot_name}, etc.) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "File Output")
-	FString FileNameFormatOverride;
+	FString FileNameFormat;
 
 private:
 	/** Kept alive during finalization because the writer writes async to disk but doesn't expect to fall out of scope */
 	TArray<TUniquePtr<Audio::FSoundWavePCMWriter>> ActiveWriters;
-
-	/** Keep track of segments that we've already written to disk to avoid re-writing them (and generating new Output Futures) */
-	TSet<FGuid> AlreadyWrittenSegments;
+	TAtomic<int32> OutstandingWrites;
 };

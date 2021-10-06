@@ -38,11 +38,8 @@ private:
 #endif
 
 #if WITH_EDITORONLY_DATA
-	UPROPERTY(Transient)
+	UPROPERTY(transient)
 	TArray<TWeakObjectPtr<class AWaterBody>> SelectedWaterBodies;
-
-	UPROPERTY(Transient)
-	UBillboardComponent* ActorIcon;
 #endif
 
 	/** The water mesh component */

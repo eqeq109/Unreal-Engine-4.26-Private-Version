@@ -6,7 +6,6 @@
 #include "EngineGlobals.h"
 #include "Engine/Engine.h"
 #include "Editor.h"
-#include "ScopedTransaction.h"
 #include "Widgets/Colors/SColorBlock.h"
 #include "DetailWidgetRow.h"
 #include "DetailLayoutBuilder.h"
@@ -280,24 +279,24 @@ TSharedRef<SColorPicker> FColorStructCustomization::CreateInlineColorPicker(TWea
 
 void FColorStructCustomization::OnSetColorFromColorPicker(FLinearColor NewColor)
 {
+	FString ColorString;
 	if (bIsLinearColor)
 	{
-		LastPickerColorString = NewColor.ToString();
+		ColorString = NewColor.ToString();
 	}
 	else
 	{
 		const bool bSRGB = true;
 		FColor NewFColor = NewColor.ToFColor(bSRGB);
-		LastPickerColorString = NewFColor.ToString();
+		ColorString = NewFColor.ToString();
 	}
 
-	EPropertyValueSetFlags::Type PropertyFlags = EPropertyValueSetFlags::NotTransactable;
-	PropertyFlags |= bIsInteractive ? EPropertyValueSetFlags::InteractiveChange : 0;
-	StructPropertyHandle->SetValueFromFormattedString(LastPickerColorString, PropertyFlags);
+	StructPropertyHandle->SetValueFromFormattedString(ColorString, bIsInteractive ? EPropertyValueSetFlags::InteractiveChange : 0);
 	StructPropertyHandle->NotifyFinishedChangingProperties();
 }
 
-void FColorStructCustomization::ResetColors()
+
+void FColorStructCustomization::OnColorPickerCancelled(FLinearColor OriginalColor)
 {
 	TArray<FString> PerObjectColors;
 
@@ -316,34 +315,18 @@ void FColorStructCustomization::ResetColors()
 
 	if (PerObjectColors.Num() > 0)
 	{
-		// See @TODO in FColorStructCustomization::OnColorPickerWindowClosed
-		// ensure(StructPropertyHandle->SetPerObjectValues(PerObjectColors, EPropertyValueSetFlags::NotTransactable) == FPropertyAccess::Success);
-		StructPropertyHandle->SetPerObjectValues(PerObjectColors, EPropertyValueSetFlags::NotTransactable);
+		StructPropertyHandle->SetPerObjectValues(PerObjectColors);
 	}
-}
-
-void FColorStructCustomization::OnColorPickerCancelled(FLinearColor OriginalColor)
-{
-	ResetColors();
-	LastPickerColorString.Reset();
 
 	GEditor->CancelTransaction(0);
 }
 
 void FColorStructCustomization::OnColorPickerWindowClosed(const TSharedRef<SWindow>& Window)
 {
-	// Transact only at the end to avoid opening a lingering transaction. Reset value before transacting.
-	if (!LastPickerColorString.IsEmpty())
-	{
-		//@TODO: Not using reset & apply instant scoped transition pattern since certain property nodes are 
-		// returning nullptr when finding objects to modify on reset, so we can't reset correctly for those.
-		// ResetColors();
-		{
-			// FScopedTransaction Transaction(FText::Format(LOCTEXT("SetColorProperty", "Edit {0}"), StructPropertyHandle->GetPropertyDisplayName()));
-			StructPropertyHandle->SetValueFromFormattedString(LastPickerColorString);
-		}
-	}
-
+	// pushes the last value from the interactive change without the interactive flag
+	FString ColorString;
+	StructPropertyHandle->GetValueAsFormattedString(ColorString);
+	StructPropertyHandle->SetValueFromFormattedString(ColorString);
 	GEditor->EndTransaction();
 }
 

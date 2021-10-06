@@ -53,13 +53,9 @@
 		for (int32 Index = 0; Index < ElementsCount; ++Index) \
 		{ \
 			TSharedPtr<IDatasmithElement> Element = SceneElement->GetElementFuntionName(Index); \
-			if ( Element->IsA( EElementType ) ) \
+			if ( Element->IsA( EElementType ) && Element->IsSubType( (uint64)EElementSubType ) ) \
 			{ \
-				TSharedPtr<IElementType> CastedElement = StaticCastSharedPtr<IElementType>(Element); \
-				if ( CastedElement->IsSubType( EElementSubType ) ) \
-				{ \
-					Result.Add(FindOrAddElement(StaticCastSharedPtr<IElementType>(Element))); \
-				} \
+				Result.Add(FindOrAddElement(StaticCastSharedPtr<IElementType>(Element))); \
 			} \
 		} \
 	} \
@@ -779,34 +775,29 @@ UDatasmithObjectElement* UDatasmithSceneElementBase::FindOrAddElement(const TSha
 	{
 		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithMetaDataElement>(InElement));
 	}
-	else if (InElement->IsA(EDatasmithElementType::Variant))
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::PropertyCapture))
 	{
-		TSharedPtr<IDatasmithVariantElement> VariantElement = StaticCastSharedPtr<IDatasmithVariantElement>(InElement);
-
-		if (VariantElement->IsSubType(EDatasmithElementVariantSubType::PropertyCapture))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithPropertyCaptureElement>(InElement));
-		}
-		else if (VariantElement->IsSubType(EDatasmithElementVariantSubType::ObjectPropertyCapture))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithObjectPropertyCaptureElement>(InElement));
-		}
-		else if (VariantElement->IsSubType(EDatasmithElementVariantSubType::ActorBinding))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithActorBindingElement>(InElement));
-		}
-		else if (VariantElement->IsSubType(EDatasmithElementVariantSubType::Variant))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithVariantElement>(InElement));
-		}
-		else if (VariantElement->IsSubType(EDatasmithElementVariantSubType::VariantSet))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithVariantSetElement>(InElement));
-		}
-		else if (VariantElement->IsSubType(EDatasmithElementVariantSubType::LevelVariantSets))
-		{
-			Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithLevelVariantSetsElement>(InElement));
-		}
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithPropertyCaptureElement>(InElement));
+	}
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::ObjectPropertyCapture))
+	{
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithObjectPropertyCaptureElement>(InElement));
+	}
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::ActorBinding))
+	{
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithActorBindingElement>(InElement));
+	}
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::Variant))
+	{
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithVariantElement>(InElement));
+	}
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::VariantSet))
+	{
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithVariantSetElement>(InElement));
+	}
+	else if (InElement->IsA(EDatasmithElementType::Variant) && InElement->IsSubType((uint64)EDatasmithElementVariantSubType::LevelVariantSets))
+	{
+		Object = FindOrAddElement(StaticCastSharedPtr<IDatasmithLevelVariantSetsElement>(InElement));
 	}
 
 	return Object;

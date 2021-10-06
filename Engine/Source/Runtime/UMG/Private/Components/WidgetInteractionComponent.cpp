@@ -139,7 +139,7 @@ UWidgetInteractionComponent::FWidgetTraceResult UWidgetInteractionComponent::Per
 			TArray<UPrimitiveComponent*> PrimitiveChildren;
 			GetRelatedComponentsToIgnoreInAutomaticHitTesting(PrimitiveChildren);
 
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(WidgetInteractionComponentTrace));
+			FCollisionQueryParams Params = FCollisionQueryParams::DefaultQueryParam;
 			Params.AddIgnoredComponents(PrimitiveChildren);
 
 			TraceResult.LineStartLocation = WorldLocation;
@@ -154,7 +154,7 @@ UWidgetInteractionComponent::FWidgetTraceResult UWidgetInteractionComponent::Per
 			TArray<UPrimitiveComponent*> PrimitiveChildren;
 			GetRelatedComponentsToIgnoreInAutomaticHitTesting(PrimitiveChildren);
 
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(WidgetInteractionComponentTrace));
+			FCollisionQueryParams Params = FCollisionQueryParams::DefaultQueryParam;
 			Params.AddIgnoredComponents(PrimitiveChildren);
 
 			APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
@@ -196,7 +196,8 @@ UWidgetInteractionComponent::FWidgetTraceResult UWidgetInteractionComponent::Per
 		}
 		case EWidgetInteractionSource::Custom:
 		{
-			WorldDirection = (CustomHitResult.TraceEnd - CustomHitResult.TraceStart).GetSafeNormal();
+			const FTransform WorldTransform = GetComponentTransform();
+			WorldDirection = WorldTransform.GetUnitAxis(EAxis::X);
 			TraceResult.HitResult = CustomHitResult;
 			TraceResult.bWasHit = CustomHitResult.bBlockingHit;
 			TraceResult.LineStartLocation = CustomHitResult.TraceStart;
@@ -219,7 +220,7 @@ UWidgetInteractionComponent::FWidgetTraceResult UWidgetInteractionComponent::Per
 					break;
 				}
 			}
-			else if (HitResult.bBlockingHit)
+			else
 			{
 				// If we hit something that wasn't a widget component, we're done.
 				break;
@@ -444,30 +445,15 @@ void UWidgetInteractionComponent::PressPointerKey(FKey Key)
 	FWidgetPath WidgetPathUnderFinger = LastWidgetPath.ToWidgetPath();
 
 	ensure(PointerIndex >= 0);
-	FPointerEvent PointerEvent;
-	if (Key.IsTouch())
-	{
-		PointerEvent = FPointerEvent(
-			VirtualUser->GetUserIndex(),
-			(uint32)PointerIndex,
-			LocalHitLocation,
-			LastLocalHitLocation,
-			1.0f,
-			false);
-	}
-	else
-	{
-		PointerEvent = FPointerEvent(
-			VirtualUser->GetUserIndex(),
-			(uint32)PointerIndex,
-			LocalHitLocation,
-			LastLocalHitLocation,
-			PressedKeys,
-			Key,
-			0.0f,
-			ModifierKeys);
-	}
-	
+	FPointerEvent PointerEvent(
+		VirtualUser->GetUserIndex(),
+		(uint32)PointerIndex,
+		LocalHitLocation,
+		LastLocalHitLocation,
+		PressedKeys,
+		Key,
+		0.0f,
+		ModifierKeys);
 		
 	FReply Reply = FSlateApplication::Get().RoutePointerDownEvent(WidgetPathUnderFinger, PointerEvent);
 	
@@ -491,33 +477,17 @@ void UWidgetInteractionComponent::ReleasePointerKey(FKey Key)
 	PressedKeys.Remove(Key);
 	
 	FWidgetPath WidgetPathUnderFinger = LastWidgetPath.ToWidgetPath();
-	// Need to clear the widget path for cases where the component isn't ticking/clearing itself.
-	LastWidgetPath = FWeakWidgetPath();
 
 	ensure(PointerIndex >= 0);
-	FPointerEvent PointerEvent;
-	if (Key.IsTouch())
-	{
-		PointerEvent = FPointerEvent(
-			VirtualUser->GetUserIndex(),
-			(uint32)PointerIndex,
-			LocalHitLocation,
-			LastLocalHitLocation,
-			1.0f,
-			false);
-	}
-	else
-	{
-		PointerEvent = FPointerEvent(
-			VirtualUser->GetUserIndex(),
-			(uint32)PointerIndex,
-			LocalHitLocation,
-			LastLocalHitLocation,
-			PressedKeys,
-			Key,
-			0.0f,
-			ModifierKeys);
-	}
+	FPointerEvent PointerEvent(
+		VirtualUser->GetUserIndex(),
+		(uint32)PointerIndex,
+		LocalHitLocation,
+		LastLocalHitLocation,
+		PressedKeys,
+		Key,
+		0.0f,
+		ModifierKeys);
 		
 	FReply Reply = FSlateApplication::Get().RoutePointerUpEvent(WidgetPathUnderFinger, PointerEvent);
 }

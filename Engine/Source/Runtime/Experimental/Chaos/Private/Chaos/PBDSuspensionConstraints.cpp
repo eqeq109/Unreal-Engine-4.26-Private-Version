@@ -25,7 +25,7 @@ namespace Chaos
 	}
 
 
-	TVec2<FGeometryParticleHandle*> FPBDSuspensionConstraintHandle::GetConstrainedParticles() const
+	TVector<TGeometryParticleHandle<float, 3>*, 2> FPBDSuspensionConstraintHandle::GetConstrainedParticles() const
 	{
 		return ConstraintContainer->GetConstrainedParticles(ConstraintIndex);
 	}
@@ -79,7 +79,7 @@ namespace Chaos
 
 	void FPBDSuspensionConstraints::ApplySingle(const FReal Dt, int32 ConstraintIndex) const
 	{
-		FGenericParticleHandle Particle = ConstrainedParticles[ConstraintIndex];
+		TGenericParticleHandle<FReal, 3> Particle = ConstrainedParticles[ConstraintIndex];
 		const FPBDSuspensionSettings& Setting = ConstraintSettings[ConstraintIndex];
 
 		if (Particle->IsDynamic() && Setting.Enabled)
@@ -104,7 +104,7 @@ namespace Chaos
 
 			// This constraint is causing considerable harm to the steering effect from the tires, using only the z component for damping
 			// makes this issue go away, rather than using DotProduct against the expected AxisWorld vector
-			FReal PointVelocityAlongAxis = FVec3::DotProduct(ArmVelocity, AxisWorld);
+			float PointVelocityAlongAxis = FVec3::DotProduct(ArmVelocity, AxisWorld);
 
 			if (Distance < Setting.MinLength)
 			{
@@ -129,7 +129,7 @@ namespace Chaos
 				FReal DLambda = 0.f;
 				{
 					// #todo: Preload, better scaled spring damping like other suspension 0 -> 1 range
-					FReal SpringCompression = (Setting.MaxLength - Distance) /*+ Setting.SpringPreload*/;
+					float SpringCompression = (Setting.MaxLength - Distance) /*+ Setting.SpringPreload*/;
 
 					FReal VelDt = PointVelocityAlongAxis;
 

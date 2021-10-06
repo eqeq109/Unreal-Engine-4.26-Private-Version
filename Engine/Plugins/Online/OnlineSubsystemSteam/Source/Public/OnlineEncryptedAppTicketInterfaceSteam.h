@@ -28,6 +28,7 @@ enum class ESteamEncryptedAppTicketState;
  * @param ResultCode - Steam API EResult code describing the result of the API call.
  */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnEncryptedAppTicketResponse, bool /*bEncryptedDataAvailable*/, int32 /*ResultCode*/);
+typedef FOnEncryptedAppTicketResponse::FDelegate FOnEncryptedAppTicketResponseDelegate;
 
 class ONLINESUBSYSTEMSTEAM_API FOnlineEncryptedAppTicketSteam :
 	public FSelfRegisteringExec
@@ -70,7 +71,7 @@ public:
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar) override;
 
 	/* Attach to this delegate to get notified about the encrypted application ticket results. */
-	FOnEncryptedAppTicketResponse OnEncryptedAppTicketResultDelegate;
+	FOnEncryptedAppTicketResponseDelegate OnEncryptedAppTicketResultDelegate;
 
 private:
 

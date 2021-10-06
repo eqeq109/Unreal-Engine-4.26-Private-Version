@@ -173,12 +173,12 @@ public:
 				else
 				{
 					bool bHasGuidsChanged = false;
-					CachedRequestState.RepLayout->ReceiveProperties_BackwardsCompatible(PackageMapClient->GetConnection(), nullptr, Params.Data, static_cast<FNetBitReader&>(Ar), Params.bOutHasMoreUnmapped, false, bHasGuidsChanged, Params.Object);
+					CachedRequestState.RepLayout->ReceiveProperties_BackwardsCompatible(PackageMapClient->GetConnection(), nullptr, Params.Data, static_cast<FNetBitReader&>(Ar), Params.bOutHasMoreUnmapped, false, bHasGuidsChanged);
 				}
 			}
 			else
 			{
-				CachedRequestState.RepLayout->SerializePropertiesForStruct(Params.Struct, Ar, Params.Map, Params.Data, Params.bOutHasMoreUnmapped, Params.Object);
+				CachedRequestState.RepLayout->SerializePropertiesForStruct(Params.Struct, Ar, Params.Map, Params.Data, Params.bOutHasMoreUnmapped);
 			}
 		}
 	}
@@ -220,6 +220,8 @@ public:
 	}
 
 public:
+
+	// These can go away once we do a full merge of Custom Delta and RepLayout.
 
 	static bool SendCustomDeltaProperty(
 		const FRepLayout& RepLayout,
@@ -830,7 +832,6 @@ void FObjectReplicator::ReceivedNak( int32 NakPacketId )
 
 				// If this is a dynamic array property, we have to look through the list of retirement records to see if we need to reset the base state
 				FPropertyRetirement* Rec = Retirement.Next; // Retirement[i] is head and not actually used in this case
-				uint32 LastAcknowledged = 0;
 				while (Rec != nullptr)
 				{
 					if (NakPacketId > Rec->OutPacketIdRange.Last)
@@ -838,7 +839,6 @@ void FObjectReplicator::ReceivedNak( int32 NakPacketId )
 						// We can assume this means this record's packet was ack'd, so we can get rid of the old state
 						check(Retirement.Next == Rec);
 						Retirement.Next = Rec->Next;
-						LastAcknowledged = Rec->FastArrayChangelistHistory;
 						delete Rec;
 						Rec = Retirement.Next;
 						continue;
@@ -849,12 +849,6 @@ void FObjectReplicator::ReceivedNak( int32 NakPacketId )
 
 						// The Nack'd packet did update this property, so we need to replace the buffer in RecentDynamic
 						// with the buffer we used to create this update (which was dropped), so that the update will be recreated on the next replicate actor
-						
-						if (LastAcknowledged != 0 && Rec->DynamicState.IsValid())
-						{
-							Rec->DynamicState->SetLastAckedHistory(LastAcknowledged);
-						}
-
 						SendingRepState->RecentCustomDeltaState[i] = Rec->DynamicState;
 
 						// We can get rid of the rest of the saved off base states since we will be regenerating these updates on the next replicate actor
@@ -1219,20 +1213,9 @@ bool FObjectReplicator::ReceivedRPC(FNetBitReader& Reader, const FReplicationFla
 		uint8* Parms = new(FMemStack::Get(), MEM_Zeroed, Function->ParmsSize)uint8;
 
 		// Use the replication layout to receive the rpc parameter values
-		UFunction* LayoutFunction = Function;
-		while (LayoutFunction->GetSuperFunction())
-		{
-			LayoutFunction = LayoutFunction->GetSuperFunction();
-		}
+		TSharedPtr<FRepLayout> FuncRepLayout = Connection->Driver->GetFunctionRepLayout(Function);
 
-		TSharedPtr<FRepLayout> FuncRepLayout = Connection->Driver->GetFunctionRepLayout(LayoutFunction);
-		if (!FuncRepLayout.IsValid())
-		{
-			UE_LOG(LogRep, Error, TEXT("ReceivedRPC: GetFunctionRepLayout returned an invalid layout."));
-			return false;
-		}
-
-		FuncRepLayout->ReceivePropertiesForRPC(Object, LayoutFunction, OwningChannel, Reader, Parms, UnmappedGuids);
+		FuncRepLayout->ReceivePropertiesForRPC(Object, Function, OwningChannel, Reader, Parms, UnmappedGuids);
 
 		if (Reader.IsError())
 		{
@@ -1418,7 +1401,6 @@ void FObjectReplicator::PostReceivedBunch()
 
 static FORCEINLINE FPropertyRetirement** UpdateAckedRetirements(
 	FPropertyRetirement& Retire,
-	uint32& LastAcknowledged,
 	const int32 OutAckPacketId,
 	const UObject* Object)
 {
@@ -1426,7 +1408,6 @@ static FORCEINLINE FPropertyRetirement** UpdateAckedRetirements(
 
 	FPropertyRetirement** Rec = &Retire.Next; // Note the first element is 'head' that we don't actually use
 
-	LastAcknowledged = 0;
 	while (*Rec != nullptr)
 	{
 		if (OutAckPacketId >= (*Rec)->OutPacketIdRange.Last)
@@ -1439,7 +1420,6 @@ static FORCEINLINE FPropertyRetirement** UpdateAckedRetirements(
 			Retire.Next = ToDelete->Next;
 			Rec = &Retire.Next;
 
-			LastAcknowledged = ToDelete->FastArrayChangelistHistory;
 			delete ToDelete;
 			continue;
 		}
@@ -1555,13 +1535,7 @@ void FObjectReplicator::ReplicateCustomDeltaProperties( FNetBitWriter & Bunch, F
 
 			// Update Retirement records with this new state so we can handle packet drops.
 			// LastNext will be pointer to the last "Next" pointer in the list (so pointer to a pointer)
-			uint32 LastAcknowledged = 0;
-			LastNext = UpdateAckedRetirements(Retire, LastAcknowledged, Connection->OutAckPacketId, Object);
-
-			if (LastAcknowledged != 0 && OldState.IsValid())
-			{
-				OldState->SetLastAckedHistory(LastAcknowledged);
-			}
+			LastNext = UpdateAckedRetirements(Retire, Connection->OutAckPacketId, Object);
 
 			check(LastNext != nullptr);
 			check(*LastNext == nullptr);
@@ -1585,15 +1559,6 @@ void FObjectReplicator::ReplicateCustomDeltaProperties( FNetBitWriter & Bunch, F
 
 			// Remember what the old state was at this point in time.  If we get a nak, we will need to revert back to this.
 			(*LastNext)->DynamicState = OldState;
-
-			// Using NewState's ChangelistHistory seems counter intuitive at first, because it *seems* like we should be using the history from the OldState.
-			// However, PropertyRetirements associate the OldState with the state of replication **in case of a NAK**.
-			// So, in the case of an ACK, we know that we no longer need to hold onto that OldState because the client has received
-			// the NewState (which will become our OldState the next time we send something).
-			if (NewState.IsValid())
-			{
-				(*LastNext)->FastArrayChangelistHistory = NewState->GetChangelistHistory();
-			}
 		}
 
 		// Save NewState into the RecentCustomDeltaState array (old state is a reference into our RecentCustomDeltaState map)
@@ -1643,19 +1608,8 @@ bool FObjectReplicator::ReplicateProperties( FOutBunch & Bunch, FReplicationFlag
 	//		and all the work could just be done in a single place.
 
 	// Update change list (this will re-use work done by previous connections)
-
-	const bool bUseCheckpointRepState = (Connection->ResendAllDataState == EResendAllDataState::SinceCheckpoint);
-
-	if (bUseCheckpointRepState && !CheckpointRepState.IsValid())
-	{
-		TSharedPtr<FRepChangedPropertyTracker> RepChangedPropertyTracker = Connection->Driver->FindOrCreateRepChangedPropertyTracker(GetObject());
-
-		CheckpointRepState = RepLayout->CreateRepState((const uint8*)Object, RepChangedPropertyTracker, ECreateRepStateFlags::SkipCreateReceivingState);
-	}
-
-	FSendingRepState* SendingRepState = (bUseCheckpointRepState && CheckpointRepState.IsValid()) ? CheckpointRepState->GetSendingRepState() : RepState->GetSendingRepState();
-
-	const ERepLayoutResult UpdateResult = FNetSerializeCB::UpdateChangelistMgr(*RepLayout, SendingRepState, *ChangelistMgr, Object, Connection->Driver->ReplicationFrame, RepFlags, OwningChannel->bForceCompareProperties || bUseCheckpointRepState);
+	FSendingRepState* SendingRepState = ((Connection->ResendAllDataState == EResendAllDataState::SinceCheckpoint) && CheckpointRepState.IsValid()) ? CheckpointRepState->GetSendingRepState() : RepState->GetSendingRepState();
+	const ERepLayoutResult UpdateResult = FNetSerializeCB::UpdateChangelistMgr(*RepLayout, SendingRepState, *ChangelistMgr, Object, Connection->Driver->ReplicationFrame, RepFlags, OwningChannel->bForceCompareProperties);
 
 	if (UNLIKELY(ERepLayoutResult::FatalError == UpdateResult))
 	{
@@ -1679,11 +1633,17 @@ bool FObjectReplicator::ReplicateProperties( FOutBunch & Bunch, FReplicationFlag
 	if ( Connection->ResendAllDataState != EResendAllDataState::None )
 	{
 		// If we are resending data since open, we don't want to affect the current state of channel/replication, so just send the data, and return
-		const bool bWroteImportantData = Writer.GetNumBits() != 0;
+		const bool WroteImportantData = Writer.GetNumBits() != 0;
 
-		if (bWroteImportantData)
+		if ( WroteImportantData )
 		{
 			OwningChannel->WriteContentBlockPayload( Object, Bunch, bHasRepLayout, Writer );
+
+			if (Connection->ResendAllDataState == EResendAllDataState::SinceCheckpoint)
+			{
+				UpdateCheckpoint();
+			}
+
 			return true;
 		}
 
@@ -2078,7 +2038,7 @@ void FObjectReplicator::UpdateUnmappedObjects(bool & bOutHasMoreUnmapped)
 	FReceivingRepState* ReceivingRepState = RepState->GetReceivingRepState();
 	const bool bHasQueuedBunches = OwningChannel && OwningChannel->QueuedBunches.Num() > 0;
 
-	checkf(bHasQueuedBunches || ReceivingRepState->RepNotifies.Num() == 0 || Connection->Driver->ShouldSkipRepNotifies(),
+	checkf(bHasQueuedBunches || ReceivingRepState->RepNotifies.Num() == 0,
 		TEXT("Failed RepState RepNotifies check. Num=%d. Object=%s. Channel QueuedBunches=%d"),
 		ReceivingRepState->RepNotifies.Num(), *Object->GetFullName(), OwningChannel ? OwningChannel->QueuedBunches.Num() : 0);
 
@@ -2278,6 +2238,28 @@ void FObjectReplicator::WritePropertyHeaderAndPayload(
 	const int32 HeaderBits = static_cast<int64>(OwningChannel->WriteFieldHeaderAndPayload(Bunch, ClassCache, FieldCache, NetFieldExportGroup, Payload)) - Payload.GetNumBits();
 
 	NETWORK_PROFILER(GNetworkProfiler.TrackWritePropertyHeader(Property, HeaderBits, nullptr));
+}
+
+void FObjectReplicator::UpdateCheckpoint()
+{
+	TArray<uint16> CheckpointChangelist;
+
+	if (CheckpointRepState.IsValid())
+	{
+		CheckpointChangelist = MoveTemp(CheckpointRepState->GetSendingRepState()->LifetimeChangelist);
+	}
+	else
+	{
+		CheckpointChangelist = RepState->GetSendingRepState()->LifetimeChangelist;
+	}
+
+	// Update rep state
+	TSharedPtr<FRepChangedPropertyTracker> RepChangedPropertyTracker = Connection->Driver->FindOrCreateRepChangedPropertyTracker( GetObject() );
+
+	CheckpointRepState = RepLayout->CreateRepState((const uint8*)GetObject(), RepChangedPropertyTracker, ECreateRepStateFlags::SkipCreateReceivingState);
+
+	// Keep current set of changed properties
+	CheckpointRepState->GetSendingRepState()->LifetimeChangelist = MoveTemp(CheckpointChangelist);
 }
 
 FScopedActorRoleSwap::FScopedActorRoleSwap(AActor* InActor)

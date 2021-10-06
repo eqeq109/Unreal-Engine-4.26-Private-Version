@@ -86,7 +86,7 @@ void FPreLoadScreenManager::Initialize(FSlateRenderer& InSlateRenderer)
     bInitialized = true;
 
 	// Initialize shaders, because otherwise they might not be guaranteed to exist at this point
-	if (!FPlatformProperties::RequiresCookedData() && GShaderCompilingManager)
+	if (!FPlatformProperties::RequiresCookedData())
 	{
 		TArray<int32> ShaderMapIds;
 		ShaderMapIds.Add(GlobalShaderMapId);
@@ -482,15 +482,15 @@ void FPreLoadScreenManager::EarlyPlayRenderFrameTick()
 {
 	bool bIsResponsibleForRendering_Local = true;
 
-	if (!bRenderingEnabled || !FSlateApplication::IsInitialized())
+	if (!bRenderingEnabled)
 	{
-		// If rendering disabled, FPreLoadScreenManager is responsible for rendering but choosing not to, probably because the
+		// In this case FPreLoadScreenManager is responsible for rendering but choosing not to, probably because the
 		// app is not in the foreground.
+		return;
+	}
 
-		// Cycle lock to give a chance to another thread to re-enable rendering.
-		AcquireCriticalSection.Unlock();
-		FPlatformProcess::Sleep(0);
-		AcquireCriticalSection.Lock();
+	if (!FSlateApplication::IsInitialized())
+	{
 		return;
 	}
 

@@ -41,27 +41,28 @@ public:
 			// Check blueprint utils (we need to load them to query their validity against these assets)
 			TArray<FAssetData> UtilAssets;
 			FBlutilityMenuExtensions::GetBlutilityClasses(UtilAssets, UAssetActionUtility::StaticClass()->GetFName());
-			for (const FAssetData& UtilAsset : UtilAssets)
+			if (UtilAssets.Num() > 0)
 			{
-				if(UEditorUtilityBlueprint* Blueprint = Cast<UEditorUtilityBlueprint>(UtilAsset.GetAsset()))
+				for (const FAssetData& Asset : SelectedAssets)
 				{
-					if(UClass* BPClass = Blueprint->GeneratedClass.Get())
+					for (const FAssetData& UtilAsset : UtilAssets)
 					{
-						if(UAssetActionUtility* DefaultObject = Cast<UAssetActionUtility>(BPClass->GetDefaultObject()))
+						if(UEditorUtilityBlueprint* Blueprint = Cast<UEditorUtilityBlueprint>(UtilAsset.GetAsset()))
 						{
-							if (UClass* SupportedClass = DefaultObject->GetSupportedClass())
+							if(UClass* BPClass = Blueprint->GeneratedClass.Get())
 							{
-								bool bIsActionForBlueprints = DefaultObject->IsActionForBlueprints();
-								bool bPassesClassFilter = false;
-
-								for (const FAssetData& Asset : SelectedAssets)
+								if(UAssetActionUtility* DefaultObject = Cast<UAssetActionUtility>(BPClass->GetDefaultObject()))
 								{
+									bool bIsActionForBlueprints = DefaultObject->IsActionForBlueprints();
+									UClass* SupportedClass = DefaultObject->GetSupportedClass();
+									
+									bool bPassesClassFilter = false;
 									if(bIsActionForBlueprints)
 									{
 										if(UBlueprint* AssetAsBlueprint = Cast<UBlueprint>(Asset.GetAsset()))
 										{
 											// It's a blueprint, but is it the right kind?
-											bPassesClassFilter = AssetAsBlueprint->ParentClass && AssetAsBlueprint->ParentClass->IsChildOf(SupportedClass);
+											bPassesClassFilter = (SupportedClass == nullptr || (SupportedClass && AssetAsBlueprint->ParentClass && AssetAsBlueprint->ParentClass->IsChildOf(SupportedClass)));
 										}
 										else
 										{
@@ -72,19 +73,14 @@ public:
 									else
 									{
 										// Is the asset the right kind?
-										bPassesClassFilter = Asset.GetClass()->IsChildOf(SupportedClass);
+										bPassesClassFilter = (SupportedClass == nullptr || (SupportedClass && Asset.GetClass()->IsChildOf(SupportedClass)));
 									}
 
-									if (bPassesClassFilter)
+									if(bPassesClassFilter)
 									{
-										SupportedUtils.Add(DefaultObject);
-										break;
+										SupportedUtils.AddUnique(DefaultObject);
 									}
 								}
-							}
-							else
-							{
-								SupportedUtils.Add(DefaultObject);
 							}
 						}
 					}

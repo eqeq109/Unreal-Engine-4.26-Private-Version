@@ -309,9 +309,9 @@ void FSimpleHMD::PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHIC
 	check(IsInRenderingThread());
 }
 
-bool FSimpleHMD::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+bool FSimpleHMD::IsActiveThisFrame(class FViewport* InViewport) const
 {
-	return GEngine && GEngine->IsStereoscopic3D(Context.Viewport);
+	return GEngine && GEngine->IsStereoscopic3D(InViewport);
 }
 
 FSimpleHMD::FSimpleHMD(const FAutoRegister& AutoRegister) :

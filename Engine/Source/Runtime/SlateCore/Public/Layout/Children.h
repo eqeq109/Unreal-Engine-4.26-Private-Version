@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/IndirectArray.h"
 #include "Misc/Attribute.h"
 #include "Layout/Margin.h"
 #include "Widgets/SNullWidget.h"
@@ -340,40 +341,44 @@ public:
  * ChildType must have a public member SWidget* Widget;
  */
 template<typename SlotType>
-class TPanelChildren : public FChildren
+class TPanelChildren : public FChildren, private TIndirectArray< SlotType >
 {
 private:
-	TArray<TUniquePtr<SlotType>> Children;
-
 	virtual const FSlotBase& GetSlotAt(int32 ChildIndex) const override
 	{
-		return *Children[ChildIndex];
+		return (*this)[ChildIndex];
 	}
 
 public:
 	TPanelChildren(SWidget* InOwner)
 		: FChildren(InOwner)
+		, bEmptying(false)
 	{
 	}
 	
 	virtual int32 Num() const override
 	{
-		return Children.Num();
+		return TIndirectArray<SlotType>::Num();
 	}
 
 	virtual TSharedRef<SWidget> GetChildAt( int32 Index ) override
 	{
-		return Children[Index]->GetWidget();
+		return (*this)[Index].GetWidget();
 	}
 
 	virtual TSharedRef<const SWidget> GetChildAt( int32 Index ) const override
 	{
-		return Children[Index]->GetWidget();
+		return (*this)[Index].GetWidget();
 	}
 
 	int32 Add( SlotType* Slot )
 	{
-		int32 Index = Children.Add(TUniquePtr<SlotType>(Slot));
+		if ( bEmptying )
+		{
+			return INDEX_NONE;
+		}
+
+		int32 Index = TIndirectArray< SlotType >::Add(Slot);
 
 		if (Owner)
 		{
@@ -385,42 +390,47 @@ public:
 
 	void RemoveAt( int32 Index )
 	{
-		// NOTE:
-		// We don't do any invalidating here, that's handled by the FSlotBase, which eventually calls ConditionallyDetatchParentWidget
+		if ( !bEmptying )
+		{
+			// NOTE:
+			// We don't do any invalidating here, that's handled by the FSlotBase, which eventually calls ConditionallyDetatchParentWidget
 
-		// Steal the instance from the array, then free the element.
-		// This alleviates issues where (misbehaving) destructors on the children may call back into this class and query children while they are being destroyed.
-		TUniquePtr<SlotType> SlotToRemove = MoveTemp(Children[Index]);
-		Children.RemoveAt(Index);
-		SlotToRemove.Reset();
+			TIndirectArray< SlotType >::RemoveAt(Index);
+		}
 	}
 
-	void Empty(int32 Slack = 0)
+	void Empty()
 	{
-		// NOTE:
-		// We don't do any invalidating here, that's handled by the FSlotBase, which eventually calls ConditionallyDetatchParentWidget
+		if ( !bEmptying )
+		{
+			// NOTE:
+			// We don't do any invalidating here, that's handled by the FSlotBase, which eventually calls ConditionallyDetatchParentWidget
 
-		// We empty children by first transferring them onto a stack-owned array, then freeing the elements.
-		// This alleviates issues where (misbehaving) destructors on the children may call back into this class and query children while they are being destroyed.
-		// By storing the children on the stack first, we defer the destruction of children until after we have emptied our owned container.
-		TArray<TUniquePtr<SlotType>> ChildrenCopy = MoveTemp(Children);
+			TGuardValue<bool> GuardEmptying(bEmptying, true);
 
-		// Explicitly calling Empty is not really necessary (it is already empty/moved-from now), but we call it for safety
-		Children.Empty();
+			// We empty children by first transferring them onto a stack-owned array, then freeing the elements.
+			// This alleviates issues where (misbehaving) destructors on the children may call back into this class and query children while they are being destroyed.
+			// By storing the children on the stack first, we defer the destruction of children until after we have emptied our owned container.
+			TIndirectArray< SlotType > ChildrenCopy = MoveTemp(static_cast<TIndirectArray< SlotType >&>(*this));
 
-		// ChildrenCopy will now be emptied and moved back (to preserve any allocated memory)
-		ChildrenCopy.Empty(Slack);
-		Children = MoveTemp(ChildrenCopy);
+			// Explicitly calling Empty is not really necessary (it is already empty/moved-from now), but we call it for safety
+			TIndirectArray< SlotType >::Empty();
+
+			// ChildrenCopy will now be destroyed 
+		}
 	}
 
 	void Insert(SlotType* Slot, int32 Index)
 	{
-		Children.Insert(TUniquePtr<SlotType>(Slot), Index);
-
-		// Don't do parent manipulation if this panel has no owner.
-		if (Owner)
+		if (!bEmptying)
 		{
-			Slot->AttachWidgetParent(Owner);
+			TIndirectArray< SlotType >::Insert(Slot, Index);
+
+			// Don't do parent manipulation if this panel has no owner.
+			if (Owner)
+			{
+				Slot->AttachWidgetParent(Owner);
+			}
 		}
 	}
 
@@ -428,10 +438,18 @@ public:
 	{
 		// @todo this is going to cause a problem for draw ordering
 
+		// Since we're dealing with an Indirect Array, we can't move an item already in the array.
+		if (IndexToMove > IndexToDestination) // going up
 		{
-			TUniquePtr<SlotType> SlotToMove = MoveTemp(Children[IndexToMove]);
-			Children.RemoveAt(IndexToMove);
-			Children.Insert(MoveTemp(SlotToMove), IndexToDestination);
+			TIndirectArray< SlotType >::Insert(new SlotType(), IndexToDestination);
+			TIndirectArray< SlotType >::Swap(IndexToDestination, IndexToMove + 1);
+			TIndirectArray< SlotType >::RemoveAt(IndexToMove + 1);
+		}
+		else // going down
+		{
+			TIndirectArray< SlotType >::Insert(new SlotType(), IndexToDestination + 1);
+			TIndirectArray< SlotType >::Swap(IndexToMove, IndexToDestination + 1);
+			TIndirectArray< SlotType >::RemoveAt(IndexToMove);
 		}
 
 		if (Owner)
@@ -442,24 +460,21 @@ public:
 
 	void Reserve( int32 NumToReserve )
 	{
-		Children.Reserve(NumToReserve);
+		TIndirectArray< SlotType >::Reserve(NumToReserve);
 	}
 
 	bool IsValidIndex( int32 Index ) const
 	{
-		return Children.IsValidIndex( Index );
+		return TIndirectArray< SlotType >::IsValidIndex( Index );
 	}
 
-	const SlotType& operator[](int32 Index) const { return *Children[Index]; }
-	SlotType& operator[](int32 Index) { return *Children[Index]; }
+	const SlotType& operator[](int32 Index) const { return TIndirectArray< SlotType >::operator[](Index); }
+	SlotType& operator[](int32 Index) { return TIndirectArray< SlotType >::operator[](Index); }
 
 	template <class PREDICATE_CLASS>
 	void Sort( const PREDICATE_CLASS& Predicate )
 	{
-		Children.Sort([&Predicate](const TUniquePtr<SlotType>& One, const TUniquePtr<SlotType>& Two)
-		{
-			return Predicate(*One, *Two);
-		});
+		::Sort(TIndirectArray< SlotType >::GetData(), TIndirectArray<SlotType>::Num(), Predicate);
 		if (Owner)
 		{
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
@@ -469,10 +484,7 @@ public:
 	template <class PREDICATE_CLASS>
 	void StableSort(const PREDICATE_CLASS& Predicate)
 	{
-		Children.StableSort([&Predicate](const TUniquePtr<SlotType>& One, const TUniquePtr<SlotType>& Two)
-		{
-			return Predicate(*One, *Two);
-		});
+		::StableSort(TIndirectArray< SlotType >::GetData(), TIndirectArray< SlotType >::Num(), Predicate);
 		if (Owner)
 		{
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
@@ -481,12 +493,15 @@ public:
 
 	void Swap( int32 IndexA, int32 IndexB )
 	{
-		Children.Swap(IndexA, IndexB);
+		TIndirectArray< SlotType >::Swap(IndexA, IndexB);
 		if (Owner)
 		{
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
 		}
 	}
+
+private:
+	bool bEmptying;
 };
 
 
@@ -612,11 +627,9 @@ private:
  * TSlotlessChildren should not be used for general-purpose widgets.
  */
 template<typename ChildType>
-class TSlotlessChildren : public FChildren
+class TSlotlessChildren : public FChildren, private TArray< TSharedRef<ChildType> >
 {
 private:
-	TArray<TSharedRef<ChildType>> Children;
-
 	virtual const FSlotBase& GetSlotAt(int32 ChildIndex) const override
 	{
 		// @todo slate : slotless children should be removed altogether; for now they return a fake slot.
@@ -633,17 +646,17 @@ public:
 
 	virtual int32 Num() const override
 	{
-		return Children.Num();
+		return TArray< TSharedRef<ChildType> >::Num();
 	}
 
 	virtual TSharedRef<SWidget> GetChildAt( int32 Index ) override
 	{
-		return Children[Index];
+		return (*this)[Index];
 	}
 
 	virtual TSharedRef<const SWidget> GetChildAt( int32 Index ) const override
 	{
-		return Children[Index];
+		return (*this)[Index];
 	}
 
 	int32 Add( const TSharedRef<ChildType>& Child )
@@ -653,7 +666,7 @@ public:
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
 		}
 
-		int32 Index = Children.Add(Child);
+		int32 Index = TArray< TSharedRef<ChildType> >::Add(Child);
 
 		if (Owner)
 		{
@@ -664,11 +677,12 @@ public:
 		}
 
 		return Index;
+
 	}
 
 	void Reset(int32 NewSize = 0)
 	{
-		for (int32 ChildIndex = 0; ChildIndex < Children.Num(); ChildIndex++)
+		for (int ChildIndex = 0; ChildIndex < TArray< TSharedRef<ChildType> >::Num(); ChildIndex++)
 		{
 			TSharedRef<SWidget> Child = GetChildAt(ChildIndex);
 			if (Child != SNullWidget::NullWidget)
@@ -677,22 +691,12 @@ public:
 			}
 		}
 
-		// We reset children by first transferring them onto a stack-owned array, then freeing the elements.
-		// This alleviates issues where (misbehaving) destructors on the children may call back into this class and query children while they are being destroyed.
-		// By storing the children on the stack first, we defer the destruction of children until after we have reset our owned container.
-		TArray<TSharedRef<ChildType>> ChildrenCopy = MoveTemp(Children);
-
-		// Explicitly calling Reset is not really necessary (it is already empty/moved-from now), but we call it for safety
-		Children.Reset();
-
-		// ChildrenCopy will now be reset and moved back (to preserve any allocated memory)
-		ChildrenCopy.Reset(NewSize);
-		Children = MoveTemp(ChildrenCopy);
+		TArray< TSharedRef<ChildType> >::Reset(NewSize);
 	}
 
-	void Empty(int32 Slack = 0)
+	void Empty()
 	{
-		for (int32 ChildIndex = 0; ChildIndex < Children.Num(); ChildIndex++)
+		for (int ChildIndex = 0; ChildIndex < TArray< TSharedRef<ChildType> >::Num(); ChildIndex++)
 		{
 			TSharedRef<SWidget> Child = GetChildAt(ChildIndex);
 			if (Child != SNullWidget::NullWidget)
@@ -701,17 +705,7 @@ public:
 			}
 		}
 
-		// We empty children by first transferring them onto a stack-owned array, then freeing the elements.
-		// This alleviates issues where (misbehaving) destructors on the children may call back into this class and query children while they are being destroyed.
-		// By storing the children on the stack first, we defer the destruction of children until after we have emptied our owned container.
-		TArray<TSharedRef<ChildType>> ChildrenCopy = MoveTemp(Children);
-
-		// Explicitly calling Empty is not really necessary (it is already empty/moved-from now), but we call it for safety
-		Children.Empty();
-
-		// ChildrenCopy will now be emptied and moved back (to preserve any allocated memory)
-		ChildrenCopy.Empty(Slack);
-		Children = MoveTemp(ChildrenCopy);
+		TArray< TSharedRef<ChildType> >::Empty();
 	}
 
 	void Insert(const TSharedRef<ChildType>& Child, int32 Index)
@@ -721,7 +715,7 @@ public:
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
 		}
 
-		Children.Insert(Child, Index);
+		TArray< TSharedRef<ChildType> >::Insert(Child, Index);
 
 		if (Owner)
 		{
@@ -739,7 +733,8 @@ public:
 			Child->ConditionallyDetatchParentWidget(Owner);
 		}
 
-		return Children.Remove( Child );
+		const int32 NumFoundAndRemoved = TArray< TSharedRef<ChildType> >::Remove( Child );
+		return NumFoundAndRemoved;
 	}
 
 	void RemoveAt( int32 Index )
@@ -750,27 +745,28 @@ public:
 			Child->ConditionallyDetatchParentWidget(Owner);
 		}
 
-		// Note: Child above ensures the instance we're removing from the array won't run its destructor until after it's fully removed from the array
-		Children.RemoveAt( Index );
+		TArray< TSharedRef<ChildType> >::RemoveAt( Index );
 	}
 
 	int32 Find( const TSharedRef<ChildType>& Item ) const
 	{
-		return Children.Find( Item );
+		return TArray< TSharedRef<ChildType> >::Find( Item );
 	}
 
 	TArray< TSharedRef< ChildType > > AsArrayCopy() const
 	{
-		return TArray<TSharedRef<ChildType>>(Children);
+		const int32 NumChildren = this->Num();
+		TArray< TSharedRef< ChildType > > Copy(*this);
+		return Copy;
 	}
 
-	const TSharedRef<ChildType>& operator[](int32 Index) const { return Children[Index]; }
-	TSharedRef<ChildType>& operator[](int32 Index) { return Children[Index]; }
+	const TSharedRef<ChildType>& operator[](int32 Index) const { return TArray< TSharedRef<ChildType> >::operator[](Index); }
+	TSharedRef<ChildType>& operator[](int32 Index) { return TArray< TSharedRef<ChildType> >::operator[](Index); }
 
 	template <class PREDICATE_CLASS>
 	void Sort( const PREDICATE_CLASS& Predicate )
 	{
-		Children.Sort( Predicate );
+		TArray< TSharedRef<ChildType> >::Sort( Predicate );
 		if (Owner && bChangesInvalidatePrepass)
 		{
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);
@@ -779,7 +775,7 @@ public:
 
 	void Swap( int32 IndexA, int32 IndexB )
 	{
-		Children.Swap(IndexA, IndexB);
+		TIndirectArray< ChildType >::Swap(IndexA, IndexB);
 		if (Owner && bChangesInvalidatePrepass)
 		{
 			Owner->Invalidate(EInvalidateWidget::ChildOrder);

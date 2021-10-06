@@ -1,8 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ImgMediaSource.h"
-#include "ImgMediaMipMapInfo.h"
-#include "ImgMediaMipMapInfoManager.h"
 #include "ImgMediaPrivate.h"
 
 #include "HAL/FileManager.h"
@@ -13,11 +11,8 @@
  *****************************************************************************/
 
 UImgMediaSource::UImgMediaSource()
-	: IsPathRelativeToProjectRoot(false)
-	, FrameRateOverride(0, 0)
-	, MipMapInfo(MakeShared<FImgMediaMipMapInfo, ESPMode::ThreadSafe>())
-{
-}
+	: FrameRateOverride(0, 0)
+{ }
 
 
 /* UImgMediaSource interface
@@ -33,7 +28,6 @@ void UImgMediaSource::SetSequencePath(const FString& Path)
 {
 	const FString SanitizedPath = FPaths::GetPath(Path);
 
-	IsPathRelativeToProjectRoot = false;
 	if (SanitizedPath.IsEmpty() || SanitizedPath.StartsWith(TEXT(".")))
 	{
 		SequencePath.Path = SanitizedPath;
@@ -51,36 +45,6 @@ void UImgMediaSource::SetSequencePath(const FString& Path)
 
 		SequencePath.Path = FullPath;
 	}
-}
-
-
-void UImgMediaSource::AddGlobalCamera(AActor* InActor)
-{
-	FImgMediaMipMapInfoManager::Get().AddCamera(InActor);
-}
-
-
-void UImgMediaSource::RemoveGlobalCamera(AActor* InActor)
-{
-	FImgMediaMipMapInfoManager::Get().RemoveCamera(InActor);
-}
-
-
-void UImgMediaSource::AddTargetObject(AActor* InActor, float Width)
-{
-	MipMapInfo->AddObject(InActor, Width, 0.0f);
-}
-
-
-void UImgMediaSource::RemoveTargetObject(AActor* InActor)
-{
-	MipMapInfo->RemoveObject(InActor);
-}
-
-
-void UImgMediaSource::SetMipLevelDistance(float Distance)
-{
-	MipMapInfo->SetMipLevelDistance(Distance);
 }
 
 
@@ -113,22 +77,12 @@ FString UImgMediaSource::GetMediaOption(const FName& Key, const FString& Default
 	return Super::GetMediaOption(Key, DefaultValue);
 }
 
-TSharedPtr<IMediaOptions::FDataContainer, ESPMode::ThreadSafe> UImgMediaSource::GetMediaOption(const FName& Key, const TSharedPtr<FDataContainer, ESPMode::ThreadSafe>& DefaultValue) const
-{
-	if (Key == ImgMedia::MipMapInfoOption)
-	{
-		return MipMapInfo;
-	}
-
-	return Super::GetMediaOption(Key, DefaultValue);
-}
 
 bool UImgMediaSource::HasMediaOption(const FName& Key) const
 {
 	if ((Key == ImgMedia::FrameRateOverrideDenonimatorOption) ||
 		(Key == ImgMedia::FrameRateOverrideNumeratorOption) ||
-		(Key == ImgMedia::ProxyOverrideOption) ||
-		(Key == ImgMedia::MipMapInfoOption))
+		(Key == ImgMedia::ProxyOverrideOption))
 	{
 		return true;
 	}
@@ -164,16 +118,7 @@ FString UImgMediaSource::GetFullPath() const
 
 	if (SequencePath.Path.StartsWith(TEXT("./")))
 	{
-		FString RelativeDir;
-		if (IsPathRelativeToProjectRoot)
-		{
-			RelativeDir = FPaths::ProjectDir();
-		}
-		else
-		{
-			RelativeDir = FPaths::ProjectContentDir();
-		}
-		return FPaths::ConvertRelativePathToFull(RelativeDir, SequencePath.Path.RightChop(2));
+		return FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir(), SequencePath.Path.RightChop(2));
 	}
 
 	return FPaths::ConvertRelativePathToFull(SequencePath.Path);

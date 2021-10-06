@@ -244,16 +244,6 @@ namespace UnrealGameSync
 
 	class UserSettings
 	{
-		/// <summary>
-		/// Enum that decribes which robomerge changes to show
-		/// </summary>
-		public enum RobomergeShowChangesOption
-		{
-			All,		// Show all changes from robomerge
-			Badged,		// Show only robomerge changes that have an associated badge
-			None		// Show no robomerge changes
-		};
-
 		string FileName;
 		ConfigFile ConfigFile = new ConfigFile();
 
@@ -266,12 +256,8 @@ namespace UnrealGameSync
 		public bool bAutoResolveConflicts;
 		public bool bShowUnreviewedChanges;
 		public bool bShowAutomatedChanges;
-		public RobomergeShowChangesOption ShowRobomerge;
-		public bool bAnnotateRobmergeChanges;
 		public bool bShowLocalTimes;
 		public bool bKeepInTray;
-		public Guid[] EnabledTools;
-		public bool bShowNetCoreInfo;
 		public int FilterIndex;
 		public UserSelectedProjectSettings LastProject;
 		public List<UserSelectedProjectSettings> OpenProjects;
@@ -365,27 +351,8 @@ namespace UnrealGameSync
 			bAutoResolveConflicts = (ConfigFile.GetValue("General.AutoResolveConflicts", "1") != "0");
 			bShowUnreviewedChanges = ConfigFile.GetValue("General.ShowUnreviewed", true);
 			bShowAutomatedChanges = ConfigFile.GetValue("General.ShowAutomated", false);
-
-			// safely parse the filter enum
-			ShowRobomerge = RobomergeShowChangesOption.All;
-			Enum.TryParse(ConfigFile.GetValue("General.RobomergeFilter", ""), out ShowRobomerge);
-
-			bAnnotateRobmergeChanges = ConfigFile.GetValue("General.AnnotateRobomerge", true);
 			bShowLocalTimes = ConfigFile.GetValue("General.ShowLocalTimes", false);
 			bKeepInTray = ConfigFile.GetValue("General.KeepInTray", true);
-
-			List<Guid> EnabledTools = ConfigFile.GetGuidValues("General.EnabledTools", new Guid[0]).ToList();
-			if (ConfigFile.GetValue("General.EnableP4VExtensions", false))
-			{
-				EnabledTools.Add(new Guid("963850A0-BF63-4E0E-B903-1C5954C7DCF8"));
-			}
-			if (ConfigFile.GetValue("General.EnableUshell", false))
-			{
-				EnabledTools.Add(new Guid("922EED87-E732-464C-92DC-5A8F7ED955E2"));
-			}
-			this.EnabledTools = EnabledTools.ToArray();
-
-			bShowNetCoreInfo = ConfigFile.GetValue("General.ShowNetCoreInfo", true);
 			int.TryParse(ConfigFile.GetValue("General.FilterIndex", "0"), out FilterIndex);
 
 			string LastProjectString = ConfigFile.GetValue("General.LastProject", null);
@@ -730,8 +697,6 @@ namespace UnrealGameSync
 			GeneralSection.SetValue("AutoResolveConflicts", bAutoResolveConflicts);
 			GeneralSection.SetValue("ShowUnreviewed", bShowUnreviewedChanges);
 			GeneralSection.SetValue("ShowAutomated", bShowAutomatedChanges);
-			GeneralSection.SetValue("RobomergeFilter", ShowRobomerge.ToString());
-			GeneralSection.SetValue("AnnotateRobomerge", bAnnotateRobmergeChanges);
 			GeneralSection.SetValue("ShowLocalTimes", bShowLocalTimes);
 			if(LastProject != null)
 			{
@@ -739,8 +704,6 @@ namespace UnrealGameSync
 			}
 			GeneralSection.SetValues("OpenProjects", OpenProjects.Select(x => x.ToConfigEntry()).ToArray());
 			GeneralSection.SetValue("KeepInTray", bKeepInTray);
-			GeneralSection.SetValues("EnabledTools", EnabledTools);
-			GeneralSection.SetValue("ShowNetCoreInfo", bShowNetCoreInfo);
 			GeneralSection.SetValue("FilterIndex", FilterIndex);
 			GeneralSection.SetValues("RecentProjects", RecentProjects.Select(x => x.ToConfigEntry()).ToArray());
 			GeneralSection.SetValues("SyncFilter", SyncView);

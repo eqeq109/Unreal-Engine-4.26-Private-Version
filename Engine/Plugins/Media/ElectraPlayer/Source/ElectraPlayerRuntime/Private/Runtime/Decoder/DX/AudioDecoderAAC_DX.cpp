@@ -57,9 +57,6 @@ if (FAILED(res))						\
 /*********************************************************************************************************************/
 /*********************************************************************************************************************/
 
-DECLARE_CYCLE_STAT(TEXT("FAudioDecoderAAC::Decode()"), STAT_ElectraPlayer_AudioAACDecode, STATGROUP_ElectraPlayer);
-DECLARE_CYCLE_STAT(TEXT("FAudioDecoderAAC::ConvertOutput()"), STAT_ElectraPlayer_AudioAACConvertOutput, STATGROUP_ElectraPlayer);
-
 
 #define AACDEC_PCM_SAMPLE_SIZE  2048
 #define AACDEC_MAX_CHANNELS		6
@@ -638,15 +635,14 @@ namespace Electra
 		}
 		else
 		{
+			CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
+
 			// Create the input sample.
 			TRefCountPtr<IMFMediaBuffer>	InputSampleBuffer;
 			BYTE* pbNewBuffer = nullptr;
 			DWORD					dwMaxBufferSize = 0;
 			DWORD					dwSize = 0;
 			LONGLONG				llSampleTime = 0;
-
-			SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-			CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
 
 			VERIFY_HR(MFCreateSample(InputSample.GetInitReference()), "Failed to create audio decoder input sample", ERRCODE_INTERNAL_COULD_NOT_CREATE_INPUT_SAMPLE);
 			VERIFY_HR(MFCreateMemoryBuffer((DWORD)InSize, InputSampleBuffer.GetInitReference()), "Failed to create audio decoder input sample memory buffer", ERRCODE_INTERNAL_COULD_NOT_CREATE_INPUTBUFFER);
@@ -670,8 +666,7 @@ namespace Electra
 			}
 			if (!CurrentDecoderOutputBuffer.IsValid())
 			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+				CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 				if (!CreateDecoderOutputBuffer())
 				{
@@ -683,19 +678,18 @@ namespace Electra
 			CurrentDecoderOutputBuffer->PrepareForProcess();
 
 			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+				CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 				res = DecoderTransform->ProcessOutput(0, 1, &CurrentDecoderOutputBuffer->mOutputBuffer, &dwStatus);
 			}
 
 			if (res == MF_E_TRANSFORM_NEED_MORE_INPUT)
 			{
+				CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
+
 				// Flushing / draining?
 				if (bFlush)
 				{
 					// Yes. This means we have received all pending output and are done now.
-					SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-					CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
 					if (!bFlushOnly)
 					{
 						// After a drain issue a flush.
@@ -722,8 +716,6 @@ namespace Electra
 			}
 			else if (res == MF_E_TRANSFORM_STREAM_CHANGE)
 			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
 				// Update output type.
 				if (!SetDecoderOutputType())
 				{
@@ -750,7 +742,8 @@ namespace Electra
 				VERIFY_HR(DecodedOutputSample->ConvertToContiguousBuffer(DecodedLinearOutputBuffer.GetInitReference()), "Failed to convert audio decoder output sample to contiguous buffer", ERRCODE_INTERNAL_COULD_NOT_MAKE_CONTIGUOUS_OUTPUT_BUFFER);
 				VERIFY_HR(DecodedLinearOutputBuffer->GetCurrentLength(&dwBufferLen), "Failed to get audio decoder output buffer current length", ERRCODE_INTERNAL_COULD_NOT_GET_OUTPUT_BUFFER_LENGTH);
 				VERIFY_HR(DecodedLinearOutputBuffer->Lock(&pDecompressedData, &dwMaxBufferLen, &dwBufferLen), "Failed to lock audio decoder output buffer", ERRCODE_INTERNAL_COULD_NOT_LOCK_OUTPUT_BUFFER)
-				VERIFY_HR(MFCreateWaveFormatExFromMFMediaType(CurrentOutputMediaType.GetReference(), &OutputWaveFormatPtr, &WaveFormatSize, MFWaveFormatExConvertFlag_Normal), "Failed to create audio decoder output buffer format info", ERRCODE_INTERNAL_COULD_NOT_CREATE_OUTPUT_BUFFER_FORMAT_INFO);
+
+					VERIFY_HR(MFCreateWaveFormatExFromMFMediaType(CurrentOutputMediaType.GetReference(), &OutputWaveFormatPtr, &WaveFormatSize, MFWaveFormatExConvertFlag_Normal), "Failed to create audio decoder output buffer format info", ERRCODE_INTERNAL_COULD_NOT_CREATE_OUTPUT_BUFFER_FORMAT_INFO);
 				FMemory::Memcpy(&OutputWaveFormat, OutputWaveFormatPtr, sizeof(OutputWaveFormat));
 				CoTaskMemFree(OutputWaveFormatPtr);
 				OutputWaveFormatPtr = nullptr;
@@ -773,8 +766,7 @@ namespace Electra
 
 					if (CurrentRenderOutputBuffer == nullptr)
 					{
-						SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-						CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+						CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 						UEMediaError bufResult = Renderer->AcquireBuffer(CurrentRenderOutputBuffer, 0, BufferAcquireOptions);
 						check(bufResult == UEMEDIA_ERROR_OK || bufResult == UEMEDIA_ERROR_INSUFFICIENT_DATA);
@@ -788,8 +780,7 @@ namespace Electra
 					NotifyReadyBufferListener(bHaveAvailSmpBlk);
 					if (bHaveAvailSmpBlk)
 					{
-						SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACConvertOutput);
-						CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACConvertOutput);
+						CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 						FTimeValue OutputSampleDuration;
 						OutputSampleDuration.SetFromND(nSamplesProduced, OutputWaveFormat.nSamplesPerSec);
@@ -885,8 +876,7 @@ namespace Electra
 			// Notify optional buffer listener that we will now be needing an AU for our input buffer.
 			if (!bError && InputBufferListener && AccessUnits.Num() == 0)
 			{
-				SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-				CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+				CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 				FAccessUnitBufferInfo	sin;
 				IAccessUnitBufferListener::FBufferStats	stats;
@@ -963,8 +953,7 @@ namespace Electra
 				// Need to create a decoder instance?
 				if (!DecoderTransform.IsValid() && !bError)
 				{
-					SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-					CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+					CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 					// Can't create a decoder based on dummy data.
 					if (!pData->bIsDummyData)
@@ -1014,8 +1003,7 @@ namespace Electra
 						// Need a new output buffer?
 						if (CurrentRenderOutputBuffer == nullptr)
 						{
-							SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACDecode);
-							CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACDecode);
+							CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 							UEMediaError bufResult = Renderer->AcquireBuffer(CurrentRenderOutputBuffer, 0, BufferAcquireOptions);
 							check(bufResult == UEMEDIA_ERROR_OK || bufResult == UEMEDIA_ERROR_INSUFFICIENT_DATA);
@@ -1030,8 +1018,7 @@ namespace Electra
 						NotifyReadyBufferListener(bHaveAvailSmpBlk);
 						if (bHaveAvailSmpBlk)
 						{
-							SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_AudioAACConvertOutput);
-							CSV_SCOPED_TIMING_STAT(ElectraPlayer, AudioAACConvertOutput);
+							CSV_SCOPED_TIMING_STAT(ElectraPlayer, FAudioDecoderAAC_Worker);
 
 							// Clear to silence
 							SIZE_T CurrentRenderOutputBufferSize = (SIZE_T)CurrentRenderOutputBuffer->GetBufferProperties().GetValue("size").GetInt64();

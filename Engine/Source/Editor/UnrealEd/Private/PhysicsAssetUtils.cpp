@@ -31,9 +31,9 @@ static int32 GetChildIndex(int32 BoneIndex, USkeletalMesh* SkelMesh, const TArra
 {
 	int32 ChildIndex = INDEX_NONE;
 
-	for(int32 i=0; i<SkelMesh->GetRefSkeleton().GetRawBoneNum(); i++)
+	for(int32 i=0; i<SkelMesh->RefSkeleton.GetRawBoneNum(); i++)
 	{
-		int32 ParentIndex = SkelMesh->GetRefSkeleton().GetParentIndex(i);
+		int32 ParentIndex = SkelMesh->RefSkeleton.GetParentIndex(i);
 
 		if (ParentIndex == BoneIndex && Infos[i].Positions.Num() > 0)
 		{
@@ -76,20 +76,20 @@ static float CalcBoneInfoLength(const FBoneVertInfo& Info)
  */
 static float GetMaximalMinSizeBelow(int32 BoneIndex, USkeletalMesh* SkelMesh, const TArray<FBoneVertInfo>& Infos)
 {
-	check( Infos.Num() == SkelMesh->GetRefSkeleton().GetRawBoneNum() );
+	check( Infos.Num() == SkelMesh->RefSkeleton.GetRawBoneNum() );
 
 	UE_LOG(LogPhysics, Log, TEXT("-------------------------------------------------"));
 
 	float MaximalMinBoxSize = 0.f;
 
 	// For all bones that are children of the supplied one...
-	for(int32 i=BoneIndex; i<SkelMesh->GetRefSkeleton().GetRawBoneNum(); i++)
+	for(int32 i=BoneIndex; i<SkelMesh->RefSkeleton.GetRawBoneNum(); i++)
 	{
-		if( SkelMesh->GetRefSkeleton().BoneIsChildOf(i, BoneIndex) )
+		if( SkelMesh->RefSkeleton.BoneIsChildOf(i, BoneIndex) )
 		{
 			float MinBoneDim = CalcBoneInfoLength( Infos[i] );
 			
-			UE_LOG(LogPhysics, Log,  TEXT("Parent: %s Bone: %s Size: %f"), *SkelMesh->GetRefSkeleton().GetBoneName(BoneIndex).ToString(), *SkelMesh->GetRefSkeleton().GetBoneName(i).ToString(), MinBoneDim );
+			UE_LOG(LogPhysics, Log,  TEXT("Parent: %s Bone: %s Size: %f"), *SkelMesh->RefSkeleton.GetBoneName(BoneIndex).ToString(), *SkelMesh->RefSkeleton.GetBoneName(i).ToString(), MinBoneDim );
 
 			MaximalMinBoxSize = FMath::Max(MaximalMinBoxSize, MinBoneDim);
 		}
@@ -121,7 +121,7 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 	// For each bone, get the vertices most firmly attached to it.
 	TArray<FBoneVertInfo> Infos;
 	MeshUtilities.CalcBoneVertInfos(SkelMesh, Infos, (Params.VertWeight == EVW_DominantWeight));
-	check(Infos.Num() == SkelMesh->GetRefSkeleton().GetRawBoneNum());
+	check(Infos.Num() == SkelMesh->RefSkeleton.GetRawBoneNum());
 
 	PhysicsAsset->CollisionDisableTable.Empty();
 
@@ -130,7 +130,7 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 	//If bone is big enough, make a body
 	//If not, add bone to parent for possible merge
 
-	const TArray<FTransform> LocalPose = SkelMesh->GetRefSkeleton().GetRefBonePose();
+	const TArray<FTransform> LocalPose = SkelMesh->RefSkeleton.GetRefBonePose();
 	TMap<int32, FBoneVertInfo> BoneToMergedBones;
 	TMap<FName, TArray<FName>> BoneNameToMergedParent;
 	const int32 NumBones = Infos.Num();
@@ -144,7 +144,7 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 		if(MyMergedSize < Params.MinBoneSize && MyMergedSize >= Params.MinWeldSize)
 		{
 			//Too small to make a body for, so let's merge with parent bone. TODO: use a merge threshold
-			const int32 ParentIndex = SkelMesh->GetRefSkeleton().GetParentIndex(BoneIdx);
+			const int32 ParentIndex = SkelMesh->RefSkeleton.GetParentIndex(BoneIdx);
 			if(ParentIndex != INDEX_NONE)
 			{
 				MergedSizes[ParentIndex] += MyMergedSize;
@@ -170,7 +170,7 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 	{
 		if (MergedSizes[BoneIndex] > Params.MinBoneSize)
 		{
-			const int32 ParentBoneIndex = SkelMesh->GetRefSkeleton().GetParentIndex(BoneIndex);
+			const int32 ParentBoneIndex = SkelMesh->RefSkeleton.GetParentIndex(BoneIndex);
 			if(ParentBoneIndex == INDEX_NONE)
 			{
 				break;	//We already have a single root body, so don't worry about it
@@ -215,7 +215,7 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 		if (bMakeBone)
 		{
 			// Go ahead and make this bone physical.
-			FName BoneName = SkelMesh->GetRefSkeleton().GetBoneName(BoneIndex);
+			FName BoneName = SkelMesh->RefSkeleton.GetBoneName(BoneIndex);
 
 			SlowTask.EnterProgressFrame(1.0f, FText::Format(NSLOCTEXT("PhysicsAssetEditor", "ResetCollsionStepInfo", "Generating collision for {0}"), FText::FromName(BoneName)));
 
@@ -252,10 +252,10 @@ bool CreateFromSkeletalMeshInternal(UPhysicsAsset* PhysicsAsset, USkeletalMesh* 
 						RelTM = RelTM * LocalPose[ParentIndex];
 
 						//Travel up the hierarchy to find a parent which has a valid body
-						ParentIndex = SkelMesh->GetRefSkeleton().GetParentIndex(ParentIndex);
+						ParentIndex = SkelMesh->RefSkeleton.GetParentIndex(ParentIndex);
 						if(ParentIndex != INDEX_NONE)
 						{
-							ParentName = SkelMesh->GetRefSkeleton().GetBoneName(ParentIndex);
+							ParentName = SkelMesh->RefSkeleton.GetBoneName(ParentIndex);
 							ParentBodyIndex = PhysicsAsset->FindBodyIndex(ParentName);
 						}
 						else
@@ -349,7 +349,7 @@ bool CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USkeletalMesh* SkelMesh
 
 	FSkinnedBoneTriangleCache TriangleCache(*SkelMesh, Params);
 
-	if (Params.GeomType == EFG_SingleConvexHull || Params.GeomType == EFG_MultiConvexHull)
+	if ( Params.GeomType == EFG_MultiConvexHull )
 	{
 		TriangleCache.BuildCache();
 	}
@@ -371,7 +371,7 @@ bool CreateFromSkeletalMesh(UPhysicsAsset* PhysicsAsset, USkeletalMesh* SkelMesh
 
 	if(bSuccess && bSetToMesh)
 	{
-		SkelMesh->SetPhysicsAsset(PhysicsAsset);
+		SkelMesh->PhysicsAsset = PhysicsAsset;
 		SkelMesh->MarkPackageDirty();
 	}
 
@@ -447,8 +447,7 @@ FVector ComputeEigenVector(const FMatrix& A)
 bool CreateCollisionFromBoneInternal(UBodySetup* bs, USkeletalMesh* skelMesh, int32 BoneIndex, const FPhysAssetCreateParams& Params, const FBoneVertInfo& Info, const FSkinnedBoneTriangleCache& TriangleCache)
 {
 #if WITH_EDITOR
-	// multi convex hull can fail so wait to clear it ( will be called in DecomposeMeshToHulls() )
-	if (Params.GeomType != EFG_SingleConvexHull && Params.GeomType != EFG_MultiConvexHull)
+	if (Params.GeomType != EFG_MultiConvexHull)	//multi convex hull can fail so wait to clear it
 	{
 		// Empty any existing collision.
 		bs->RemoveSimpleCollision();
@@ -527,7 +526,30 @@ bool CreateCollisionFromBoneInternal(UBodySetup* bs, USkeletalMesh* skelMesh, in
 
 		bs->AggGeom.SphereElems.Add(SphereElem);
 	}
-	else if (Params.GeomType == EFG_SingleConvexHull || Params.GeomType == EFG_MultiConvexHull)
+	// Deal with creating a single convex hull
+	else if (Params.GeomType == EFG_SingleConvexHull)
+	{
+		if (Info.Positions.Num())
+		{
+			FKConvexElem ConvexElem;
+
+			// Add all of the vertices for this bone to the convex element
+			for (int32 index = 0; index < Info.Positions.Num(); index++)
+			{
+				ConvexElem.VertexData.Add(Info.Positions[index]);
+			}
+			ConvexElem.UpdateElemBox();
+			bs->AggGeom.ConvexElems.Add(ConvexElem);
+		}
+		else
+		{
+			FMessageLog EditorErrors("EditorErrors");
+			EditorErrors.Warning(NSLOCTEXT("PhysicsAssetUtils", "ConvexNoPositions", "Unable to create a convex hull for the given bone as there are no vertices associated with the bone."));
+			EditorErrors.Open();
+			return false;
+		}
+	}
+	else if (Params.GeomType == EFG_MultiConvexHull)
 	{
 		TArray<FVector> Verts;
 		TArray<uint32> Indices;
@@ -535,8 +557,7 @@ bool CreateCollisionFromBoneInternal(UBodySetup* bs, USkeletalMesh* skelMesh, in
 
 		if (Verts.Num())
 		{
-			const int32 HullCount = Params.GeomType == EFG_SingleConvexHull ? 1 : Params.HullCount;
-			DecomposeMeshToHulls(bs, Verts, Indices, HullCount, Params.MaxHullVerts);
+			DecomposeMeshToHulls(bs, Verts, Indices, Params.HullCount, Params.MaxHullVerts);
 		}
 		else
 		{
@@ -574,6 +595,8 @@ bool CreateCollisionFromBoneInternal(UBodySetup* bs, USkeletalMesh* skelMesh, in
 			SphylElem.Radius = FMath::Max(BoxExtent.X, BoxExtent.Y) * 1.01f;
 			SphylElem.Length = BoxExtent.Z * 1.01f;
 		}
+
+
 
 		bs->AggGeom.SphylElems.Add(SphylElem);
 	}
@@ -618,7 +641,7 @@ bool CreateCollisionFromBone(UBodySetup* bs, USkeletalMesh* skelMesh, int32 Bone
 
 	FSkinnedBoneTriangleCache TriangleCache(*skelMesh, Params);
 
-	if (Params.GeomType == EFG_SingleConvexHull || Params.GeomType == EFG_MultiConvexHull)
+	if ( Params.GeomType == EFG_MultiConvexHull )
 	{
 		TriangleCache.BuildCache();
 	}
@@ -632,7 +655,7 @@ bool CreateCollisionFromBones(UBodySetup* bs, USkeletalMesh* skelMesh, const TAr
 
 	FSkinnedBoneTriangleCache TriangleCache(*skelMesh, Params);
 
-	if (Params.GeomType == EFG_SingleConvexHull || Params.GeomType == EFG_MultiConvexHull)
+	if (Params.GeomType == EFG_MultiConvexHull)
 	{
 		TriangleCache.BuildCache();
 	}
@@ -660,13 +683,13 @@ void WeldBodies(UPhysicsAsset* PhysAsset, int32 BaseBodyIndex, int32 AddBodyInde
 	}
 
 	UBodySetup* Body1 = PhysAsset->SkeletalBodySetups[BaseBodyIndex];
-	int32 Bone1Index = SkelComp->SkeletalMesh->GetRefSkeleton().FindBoneIndex(Body1->BoneName);
+	int32 Bone1Index = SkelComp->SkeletalMesh->RefSkeleton.FindBoneIndex(Body1->BoneName);
 	check(Bone1Index != INDEX_NONE);
 	FTransform Bone1TM = SkelComp->GetBoneTransform(Bone1Index);
 	Bone1TM.RemoveScaling();
 
 	UBodySetup* Body2 = PhysAsset->SkeletalBodySetups[AddBodyIndex];
-	int32 Bone2Index = SkelComp->SkeletalMesh->GetRefSkeleton().FindBoneIndex(Body2->BoneName);
+	int32 Bone2Index = SkelComp->SkeletalMesh->RefSkeleton.FindBoneIndex(Body2->BoneName);
 	check(Bone2Index != INDEX_NONE);
 	FTransform Bone2TM = SkelComp->GetBoneTransform(Bone2Index);
 	Bone2TM.RemoveScaling();

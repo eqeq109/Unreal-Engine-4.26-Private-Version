@@ -35,7 +35,7 @@ struct FEngineShowFlagsSetting
 	FString ShowFlagName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SceneCapture)
-	bool Enabled=false;
+	bool Enabled;
 
 
 	bool operator == (const FEngineShowFlagsSetting& Other) const

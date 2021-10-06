@@ -82,10 +82,10 @@ const UNiagaraClipboardFunctionInput* UNiagaraClipboardFunctionInput::CreateExpr
 	return NewInput;
 }
 
-const UNiagaraClipboardFunctionInput* UNiagaraClipboardFunctionInput::CreateDynamicValue(UObject* InOuter, FName InInputName, FNiagaraTypeDefinition InInputType, TOptional<bool> bInEditConditionValue, FString InDynamicValueName, UNiagaraScript* InDynamicValue, const FGuid& InScriptVersion)
+const UNiagaraClipboardFunctionInput* UNiagaraClipboardFunctionInput::CreateDynamicValue(UObject* InOuter, FName InInputName, FNiagaraTypeDefinition InInputType, TOptional<bool> bInEditConditionValue, FString InDynamicValueName, UNiagaraScript* InDynamicValue)
 {
 	UNiagaraClipboardFunctionInput* NewInput = MakeNewInput(InOuter, InInputName, InInputType, bInEditConditionValue, ENiagaraClipboardFunctionInputValueMode::Dynamic);
-	NewInput->Dynamic = UNiagaraClipboardFunction::CreateScriptFunction(NewInput, InDynamicValueName, InDynamicValue, InScriptVersion);
+	NewInput->Dynamic = UNiagaraClipboardFunction::CreateScriptFunction(NewInput, InDynamicValueName, InDynamicValue);
 	return NewInput;
 }
 
@@ -110,14 +110,12 @@ bool UNiagaraClipboardFunctionInput::CopyValuesFrom(const UNiagaraClipboardFunct
 	return true;
 }
 
-UNiagaraClipboardFunction* UNiagaraClipboardFunction::CreateScriptFunction(UObject* InOuter, FString InFunctionName, UNiagaraScript* InScript, const FGuid& InScriptVersion, const TArray<FNiagaraStackMessage> InMessages)
+UNiagaraClipboardFunction* UNiagaraClipboardFunction::CreateScriptFunction(UObject* InOuter, FString InFunctionName, UNiagaraScript* InScript)
 {
 	UNiagaraClipboardFunction* NewFunction = Cast<UNiagaraClipboardFunction>(NewObject<UNiagaraClipboardFunction>(InOuter));
 	NewFunction->ScriptMode = ENiagaraClipboardFunctionScriptMode::ScriptAsset;
 	NewFunction->FunctionName = InFunctionName;
 	NewFunction->Script = InScript;
-	NewFunction->ScriptVersion = InScriptVersion;
-	NewFunction->Messages = InMessages;
 	return NewFunction;
 }
 
@@ -395,8 +393,7 @@ UNiagaraClipboardFunctionInput* UNiagaraClipboardEditorScriptingUtilities::Creat
 			InputType,
 			bInHasEditCondition ? TOptional<bool>(bInEditConditionValue) : TOptional<bool>(),
 			InDynamicValueName,
-			InDynamicValue,
-			FGuid()));
+			InDynamicValue));
 	}
 	return nullptr;
 }

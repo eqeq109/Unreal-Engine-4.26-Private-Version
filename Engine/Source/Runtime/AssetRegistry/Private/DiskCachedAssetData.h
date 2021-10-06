@@ -26,8 +26,7 @@ public:
 	 * Serialize as part of the registry cache. This is not meant to be serialized as part of a package so  it does not handle versions normally
 	 * To version this data change FAssetRegistryVersion or CacheSerializationVersion
 	 */
-	template<class Archive>
-	void SerializeForCache(Archive&& Ar)
+	void SerializeForCache(FArchive& Ar)
 	{
 		Ar << Timestamp;
 		Ar << Extension;

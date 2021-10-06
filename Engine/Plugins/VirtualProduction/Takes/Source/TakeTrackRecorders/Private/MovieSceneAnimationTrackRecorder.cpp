@@ -66,7 +66,7 @@ void UMovieSceneAnimationTrackRecorder::CreateAnimationAssetAndSequence(const AA
 			FAssetRegistryModule::AssetCreated(AnimSequence.Get());
 
 			// Assign the skeleton we're recording to the newly created Animation Sequence.
-			AnimSequence->SetSkeleton(SkeletalMeshComponent->SkeletalMesh->GetSkeleton());
+			AnimSequence->SetSkeleton(SkeletalMeshComponent->SkeletalMesh->Skeleton);
 		}
 	}
 
@@ -193,10 +193,13 @@ void UMovieSceneAnimationTrackRecorder::StopRecordingImpl()
 {
 	AnimationSerializer.Close();
 
-	// Legacy Animation Recorder allowed recording into an animation asset directly and not creating an movie section
-	const bool bShowAnimationAssetCreatedToast = false;
-	InitialRootTransform = AnimationRecorder.Recorder.Get()->GetInitialRootTransform();
-	AnimationRecorder.FinishRecording(bShowAnimationAssetCreatedToast);
+	if (SkeletalMeshComponent.IsValid())
+	{
+		// Legacy Animation Recorder allowed recording into an animation asset directly and not creating an movie section
+		const bool bShowAnimationAssetCreatedToast = false;
+		InitialRootTransform = AnimationRecorder.Recorder.Get()->GetInitialRootTransform();
+		AnimationRecorder.FinishRecording(bShowAnimationAssetCreatedToast);
+	}
 }
 
 void UMovieSceneAnimationTrackRecorder::FinalizeTrackImpl()

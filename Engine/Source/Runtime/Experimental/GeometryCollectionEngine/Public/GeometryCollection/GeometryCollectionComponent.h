@@ -497,37 +497,11 @@ public:
 	UPROPERTY()
 	FGeomComponentCacheParameters CacheParameters;
 
-	/**
-	*  SetDynamicState
-	*    This function will dispatch a command to the physics thread to apply
-	*    a kinematic to dynamic state change for the geo collection particles within the field.
-	*
-	*	 @param Radius Radial influence from the position
-	*    @param Position The location of the command
-	*
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Field", DisplayName = "Set Dynamic State")
-	void ApplyKinematicField(UPARAM(DisplayName = "Field Radius") float Radius, 
-							 UPARAM(DisplayName = "Center Position") FVector Position);
+	UFUNCTION(BlueprintCallable, Category = "Field")
+	void ApplyKinematicField(float Radius, FVector Position);
 
-	/**
-	*  AddPhysicsField
-	*    This function will dispatch a command to the physics thread to apply
-	*    a generic evaluation of a user defined transient field network. See documentation,
-	*    for examples of how to recreate variations of the above generic
-	*    fields using field networks
-	*
-	*	 @param Enabled Is this force enabled for evaluation.
-	*    @param Target Type of field supported by the solver.
-	*    @param MetaData Meta data used to assist in evaluation
-	*    @param Field Base evaluation node for the field network.
-	*
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Field", DisplayName = "Add Physics Field")
-	void ApplyPhysicsField(UPARAM(DisplayName = "Enable Field") bool Enabled, 
-						   UPARAM(DisplayName = "Physics Type") EGeometryCollectionPhysicsTypeEnum Target, 
-						   UPARAM(DisplayName = "Meta Data") UFieldSystemMetaData* MetaData, 
-						   UPARAM(DisplayName = "Field Node") UFieldNodeBase* Field);
+	UFUNCTION(BlueprintCallable, Category = "Field")
+	void ApplyPhysicsField(bool Enabled, EGeometryCollectionPhysicsTypeEnum Target, UFieldSystemMetaData* MetaData, UFieldNodeBase* Field);
 
 	/**
 	* Blueprint event
@@ -652,7 +626,7 @@ protected:
 	void GetInitializationCommands(TArray<FFieldSystemCommand>& CombinedCommmands);
 
 	/** Issue a field command for the physics thread */
-	void DispatchFieldCommand(const FFieldSystemCommand& InCommand);
+	void DispatchCommand(const FFieldSystemCommand& InCommand);
 
 	void CalculateLocalBounds();
 	void CalculateGlobalMatrices();

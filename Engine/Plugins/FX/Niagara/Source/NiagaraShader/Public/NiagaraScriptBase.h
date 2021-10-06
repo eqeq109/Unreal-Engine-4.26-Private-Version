@@ -11,8 +11,6 @@ struct NIAGARASHADER_API FSimulationStageMetaData
 {
 	GENERATED_USTRUCT_BODY()
 public:
-	FSimulationStageMetaData();
-
 	/** User simulation stage name. */
 	UPROPERTY()
 	FName SimulationStageName;
@@ -39,11 +37,11 @@ public:
 
 	/** Index of the simulation stage where we begin iterating. This is meant to encompass iteration count without having an entry for each iteration.*/
 	UPROPERTY()
-	int32 MinStage = 0;
+	int32 MinStage;
 
 	/** Index of the simulation stage where we end iterating. This is meant to encompass iteration count without having an entry for each iteration.*/
 	UPROPERTY()
-	int32 MaxStage = 0;
+	int32 MaxStage;
 };
 
 UCLASS(MinimalAPI, abstract)
@@ -51,6 +49,5 @@ class UNiagaraScriptBase : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
-	virtual void ModifyCompilationEnvironment(struct FShaderCompilerEnvironment& OutEnvironment) const PURE_VIRTUAL(UNiagaraScriptBase::ModifyCompilationEnvironment, );
 	virtual TConstArrayView<FSimulationStageMetaData> GetSimulationStageMetaData() const PURE_VIRTUAL(UNiagaraScriptBase::GetSimulationStageMetaData(), return MakeArrayView<FSimulationStageMetaData>(nullptr, 0); )
 };

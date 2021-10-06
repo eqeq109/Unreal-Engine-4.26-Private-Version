@@ -17,15 +17,15 @@ struct FNiagaraVariableLayoutInfo
 
 	/** Start index for the float components in the main buffer. */
 	UPROPERTY()
-	uint32 FloatComponentStart = 0;
+	uint32 FloatComponentStart;
 
 	/** Start index for the int32 components in the main buffer. */
 	UPROPERTY()
-	uint32 Int32ComponentStart = 0;
+	uint32 Int32ComponentStart;
 
 	/** Start index for the half components in the main buffer. */
 	UPROPERTY()
-	uint32 HalfComponentStart = 0;
+	uint32 HalfComponentStart;
 
 	uint32 GetNumFloatComponents()const { return LayoutInfo.FloatComponentByteOffsets.Num(); }
 	uint32 GetNumInt32Components()const { return LayoutInfo.Int32ComponentByteOffsets.Num(); }
@@ -103,19 +103,13 @@ protected:
 class NIAGARA_API FNiagaraDataBuffer : public FNiagaraSharedObject
 {
 	friend class FScopedNiagaraDataSetGPUReadback;
-	friend class NiagaraEmitterInstanceBatcher;
-	
 protected:
 	virtual ~FNiagaraDataBuffer();
 
 public:
 	FNiagaraDataBuffer(FNiagaraDataSet* InOwner);
 	void Allocate(uint32 NumInstances, bool bMaintainExisting = false);
-
-	void AllocateGPU(FRHICommandList& RHICmdList, uint32 InNumInstances, ERHIFeatureLevel::Type FeatureLevel, const TCHAR* DebugSimName);
-	void SwapGPU(FNiagaraDataBuffer* BufferToAlias);
-	void ReleaseGPU();
-
+	void AllocateGPU(uint32 InNumInstances, FNiagaraGPUInstanceCountManager& GPUInstanceCountManager, FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, const TCHAR* DebugSimName);
 	void SwapInstances(uint32 OldIndex, uint32 NewIndex);
 	void KillInstance(uint32 InstanceIdx);
 	void CopyTo(FNiagaraDataBuffer& DestBuffer, int32 SrcStartIdx, int32 DestStartIdx, int32 NumInstances)const;
@@ -160,10 +154,12 @@ public:
 
 	FORCEINLINE void SetNumInstances(uint32 InNumInstances) { check(InNumInstances <= NumInstancesAllocated); NumInstances = InNumInstances; }
 	FORCEINLINE void SetNumSpawnedInstances(uint32 InNumSpawnedInstances) { NumSpawnedInstances = InNumSpawnedInstances; }
+	FORCEINLINE uint32 GetSizeBytes()const { return FloatData.Num() + Int32Data.Num(); }
 	FORCEINLINE FRWBuffer& GetGPUBufferFloat() { return GPUBufferFloat; }
 	FORCEINLINE FRWBuffer& GetGPUBufferInt() { return GPUBufferInt; }
 	FORCEINLINE FRWBuffer& GetGPUBufferHalf() { return GPUBufferHalf; }
 	FORCEINLINE uint32 GetGPUInstanceCountBufferOffset() const { return GPUInstanceCountBufferOffset; }
+	FORCEINLINE void ClearGPUInstanceCountBufferOffset() { GPUInstanceCountBufferOffset = INDEX_NONE; }
 	FORCEINLINE FRWBuffer& GetGPUIDToIndexTable() { return GPUIDToIndexTable; }
 
 	FORCEINLINE int32 GetSafeComponentBufferSize() const { return GetSafeComponentBufferSize(GetNumInstancesAllocated()); }
@@ -187,14 +183,11 @@ public:
 	static void SetOutputShaderParams(FRHICommandList& RHICmdList, class FNiagaraShader* Shader, FNiagaraDataBuffer* Buffer);
 	static void UnsetShaderParams(FRHICommandList& RHICmdList, class FNiagaraShader* Shader);
 
-	void ClearGPUInstanceCount()
-	{
-		GPUInstanceCountBufferOffset = INDEX_NONE;
-	}
+	void ReleaseGPUInstanceCount(FNiagaraGPUInstanceCountManager& GPUInstanceCountManager);
 
 	void BuildRegisterTable();
-
 private:
+
 	FORCEINLINE void CheckUsage(bool bReadOnly)const;
 
 	FORCEINLINE int32 GetSafeComponentBufferSize(int32 RequiredSize) const
@@ -232,9 +225,6 @@ private:
 	FRWBuffer GPUIDToIndexTable;
 	/** GPU Buffer containing half values for GPU simulations. */
 	FRWBuffer GPUBufferHalf;
-#if NIAGARA_MEMORY_TRACKING
-	int32 AllocationSizeBytes = 0;
-#endif
 	//////////////////////////////////////////////////////////////////////////
 
 	/** Number of instances in data. */
@@ -310,8 +300,6 @@ General storage class for all per instance simulation data in Niagara.
 class NIAGARA_API FNiagaraDataSet
 {
 	friend FNiagaraDataBuffer;
-	friend class NiagaraEmitterInstanceBatcher;
-
 public:
 
 	FNiagaraDataSet();
@@ -334,7 +322,7 @@ public:
 	void Allocate(int32 NumInstances, bool bMaintainExisting = false);
 
 	/** Returns size in bytes for all data buffers currently allocated by this dataset. */
-	int64 GetSizeBytes() const;
+	uint32 GetSizeBytes()const;
 
 	FORCEINLINE bool IsInitialized() const { return bInitialized; }
 	FORCEINLINE ENiagaraSimTarget GetSimTarget() const { return CompiledData->SimTarget; }
@@ -385,6 +373,9 @@ public:
 		check(DestinationData);
 		return *DestinationData;
 	}
+
+	/** Release the GPU instance counts so that they can be reused */
+	void ReleaseGPUInstanceCounts(FNiagaraGPUInstanceCountManager& GPUInstanceCountManager);
 
 	void AllocateGPUFreeIDs(uint32 InNumInstances, FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, const TCHAR* DebugSimName);
 
@@ -441,11 +432,6 @@ private:
 
 	/** Buffer we're currently simulating into. Only valid while we're simulating i.e between PrepareForSimulate and EndSimulate calls.*/
 	FNiagaraDataBuffer* DestinationData;
-
-#if NIAGARA_MEMORY_TRACKING
-	/** Tracked memory allocations */
-	std::atomic<int64> BufferSizeBytes;
-#endif
 
 	/**
 	Actual data storage. These are passed to and read directly by the RT.

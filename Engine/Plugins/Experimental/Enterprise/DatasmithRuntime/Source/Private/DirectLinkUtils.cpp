@@ -150,6 +150,41 @@ TArray<FDatasmithRuntimeSourceInfo> UDirectLinkProxy::GetListOfSources()
 	return FDestinationProxy::GetEndpointProxy().GetListOfSources();
 }
 
+FString UDirectLinkProxy::GetDestinationName(ADatasmithRuntimeActor* DatasmithRuntimeActor)
+{
+	return DatasmithRuntimeActor ? DatasmithRuntimeActor->GetDestinationName() : FString();
+}
+
+bool UDirectLinkProxy::IsConnected(ADatasmithRuntimeActor* DatasmithRuntimeActor)
+{
+	return DatasmithRuntimeActor ? DatasmithRuntimeActor->IsConnected() : false;
+}
+
+FString UDirectLinkProxy::GetSourcename(ADatasmithRuntimeActor* DatasmithRuntimeActor)
+{
+	return DatasmithRuntimeActor ? DatasmithRuntimeActor->GetSourceName() : TEXT("None");
+}
+
+void UDirectLinkProxy::ConnectToSource(ADatasmithRuntimeActor* DatasmithRuntimeActor, int32 SourceIndex)
+{
+	using namespace DatasmithRuntime;
+
+	if (DatasmithRuntimeActor)
+	{
+		const TArray<FDatasmithRuntimeSourceInfo>& SourcesList = FDestinationProxy::GetEndpointProxy().GetListOfSources();
+
+		if (SourcesList.IsValidIndex(SourceIndex))
+		{
+			DatasmithRuntimeActor->OpenConnection(SourcesList[SourceIndex].Hash);
+		}
+		else if (SourceIndex == INDEX_NONE)
+		{
+			DatasmithRuntimeActor->CloseConnection();
+			DatasmithRuntimeActor->Reset();
+		}
+	}
+}
+
 namespace DatasmithRuntime
 {
 	TSharedPtr<FDirectLinkEndpointProxy> FDestinationProxy::EndpointProxy;
@@ -166,10 +201,6 @@ namespace DatasmithRuntime
 
 #if !NO_LOGGING
 		LogDatasmith.SetVerbosity( ELogVerbosity::Error );
-#ifndef DIRECTLINK_LOG
-		LogDirectLink.SetVerbosity( ELogVerbosity::Warning );
-		LogDirectLinkNet.SetVerbosity( ELogVerbosity::Warning );
-#endif
 #if !WITH_EDITOR || defined(NO_DL_DEBUG)
 		LogDirectLink.SetVerbosity( ELogVerbosity::Warning );
 		LogDirectLinkNet.SetVerbosity( ELogVerbosity::Warning );
@@ -181,13 +212,6 @@ namespace DatasmithRuntime
 	{
 		DirectLinkProxy.Reset();
 		FDestinationProxy::EndpointProxy.Reset();
-	}
-
-	const TArray<FDatasmithRuntimeSourceInfo>& FDestinationProxy::GetListOfSources()
-	{
-		static TArray<FDatasmithRuntimeSourceInfo> EmptyList;
-
-		return FDestinationProxy::EndpointProxy ? FDestinationProxy::EndpointProxy->GetListOfSources() : EmptyList;
 	}
 
 	FDirectLinkEndpointProxy::~FDirectLinkEndpointProxy()
@@ -477,7 +501,9 @@ namespace DatasmithRuntime
 				const FString& SourceName = DataPointInfo.Name;
 
 				FString SourceLabel = SourceName + TEXT("-") + EndPointInfo.ExecutableName + TEXT("-") + FString::FromInt((int32)EndPointInfo.ProcessId);
-				LastSources.Emplace(SourceLabel, DataPointId);
+
+				const uint32 SourceIdentifer = HashCombine(GetTypeHash(DataPointId), GetTypeHash(DataPointInfo.EndpointAddress));
+				LastSources.Emplace(*SourceLabel, SourceIdentifer);
 			}
 		}
 

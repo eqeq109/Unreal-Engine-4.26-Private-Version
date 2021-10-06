@@ -556,14 +556,14 @@ const size_t LLMPageSize = 4096;
 
 void* LLMAlloc(size_t Size)
 {
-	size_t AlignedSize = Align(Size, LLMPageSize);
+	int AlignedSize = Align(Size, LLMPageSize);
 
 	off_t DirectMem = 0;
 	void* Addr = VirtualAlloc(NULL, Size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
 	check(Addr);
 
-	LLMMallocTotal += static_cast<int64>(AlignedSize);
+	LLMMallocTotal += AlignedSize;
 
 	return Addr;
 }
@@ -572,8 +572,8 @@ void LLMFree(void* Addr, size_t Size)
 {
 	VirtualFree(Addr, 0, MEM_RELEASE);
 
-	size_t AlignedSize = Align(Size, LLMPageSize);
-	LLMMallocTotal -= static_cast<int64>(AlignedSize);
+	int AlignedSize = Align(Size, LLMPageSize);
+	LLMMallocTotal -= AlignedSize;
 }
 
 

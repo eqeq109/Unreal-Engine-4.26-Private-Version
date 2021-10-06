@@ -60,36 +60,22 @@ enum class EUpscaleStage
 	MAX
 };
 
-/** Interface for custom spatial upscaling algorithm meant to be set on the FSceneViewFamily by ISceneViewExtension::BeginRenderViewFamily(). */
-class RENDERER_API ISpatialUpscaler : public ISceneViewFamilyExtention
+struct FUpscaleInputs
 {
-public:
-	struct FInputs
-	{
-		// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
-		FScreenPassRenderTarget OverrideOutput;
+	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
+	FScreenPassRenderTarget OverrideOutput;
 
-		// [Required] The input scene color and view rect.
-		FScreenPassTexture SceneColor;
+	// [Required] The input scene color and view rect.
+	FScreenPassTexture SceneColor;
 
-		// Whether this is a secondary upscale to the final view family target.
-		EUpscaleStage Stage = EUpscaleStage::MAX;
-	};
+	// [Required] The method to use when upscaling.
+	EUpscaleMethod Method = EUpscaleMethod::MAX;
 
-	virtual const TCHAR* GetDebugName() const = 0;
+	// [Optional] A configuration used to control Panini projection. Disabled in the default state.
+	FPaniniProjectionConfig PaniniConfig;
 
-	/** Create a new ISpatialUpscaler interface for a new view family. */
-	virtual ISpatialUpscaler* Fork_GameThread(const class FSceneViewFamily& ViewFamily) const = 0;
-
-	virtual FScreenPassTexture AddPasses(
-		FRDGBuilder& GraphBuilder,
-		const FViewInfo& View,
-		const FInputs& PassInputs) const = 0;
-
-	static FScreenPassTexture AddDefaultUpscalePass(
-		FRDGBuilder& GraphBuilder,
-		const FViewInfo& View,
-		const FInputs& PassInputs,
-		EUpscaleMethod Method,
-		FPaniniProjectionConfig PaniniConfig);
+	// Whether this is a secondary upscale to the final view family target.
+	EUpscaleStage Stage = EUpscaleStage::MAX;
 };
+
+FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FUpscaleInputs& Inputs);

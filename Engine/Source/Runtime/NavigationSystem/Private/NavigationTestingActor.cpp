@@ -282,6 +282,11 @@ void ANavigationTestingActor::TickMe()
 
 #endif // WITH_EDITOR
 
+void ANavigationTestingActor::OnPathUpdated(INavigationPathGenerator* PathGenerator)
+{
+
+}
+
 FVector ANavigationTestingActor::GetNavAgentLocation() const
 { 
 	return GetActorLocation(); 

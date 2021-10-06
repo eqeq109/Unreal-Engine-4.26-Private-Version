@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#ifdef CAD_INTERFACE
 #include "CoreMinimal.h"
 
 #include "CADData.h"
@@ -51,20 +52,23 @@ public:
 
 
 
-class DATASMITHCADTRANSLATOR_API FDatasmithSceneBaseGraphBuilder
+class DATASMITHCADTRANSLATOR_API FDatasmithSceneGraphBuilder
 {
 public:
-	FDatasmithSceneBaseGraphBuilder(
-		CADLibrary::FArchiveSceneGraph* InSceneGraph,
+	FDatasmithSceneGraphBuilder(
+		TMap<uint32, FString>& InCADFileToUE4FileMap, 
+		const FString& InCachePath, 
 		TSharedRef<IDatasmithScene> InScene, 
 		const FDatasmithSceneSource& InSource, 
 		const CADLibrary::FImportParameters& InImportParameters);
 
-	virtual ~FDatasmithSceneBaseGraphBuilder() {}
+	bool Build();
 
-	virtual bool Build();
+	void LoadSceneGraphDescriptionFiles();
 
-protected:
+	void FillAnchorActor(const TSharedRef< IDatasmithActorElement >& ActorElement, const FString& CleanFilenameOfCADFile);
+private:
+
 	TSharedPtr< IDatasmithActorElement > BuildInstance(int32 InstanceIndex, const ActorData& ParentData);
 	TSharedPtr< IDatasmithActorElement > BuildComponent(CADLibrary::FArchiveComponent& Component, const ActorData& ParentData);
 	TSharedPtr< IDatasmithActorElement > BuildBody(int32 BodyIndex, const ActorData& ParentData);
@@ -77,15 +81,17 @@ protected:
 	TSharedPtr<IDatasmithMaterialIDElement> FindOrAddMaterial(uint32 MaterialUuid);
 
 	TSharedPtr< IDatasmithActorElement > CreateActor(const TCHAR* ActorUUID, const TCHAR* ActorLabel);
-	virtual TSharedPtr< IDatasmithMeshElement > FindOrAddMeshElement(CADLibrary::FArchiveBody& Body, FString& InLabel);
+	TSharedPtr< IDatasmithMeshElement > FindOrAddMeshElement(CADLibrary::FArchiveBody& Body, FString& InLabel);
 
 	void GetNodeUUIDAndName(TMap<FString, FString>& InInstanceNodeMetaDataMap, TMap<FString, FString>& InReferenceNodeMetaDataMap, int32 InComponentIndex, const TCHAR* InParentUEUUID, FString& OutUEUUID, FString& OutName);
 
 protected:
-	CADLibrary::FArchiveSceneGraph* SceneGraph;
+	TMap<uint32, FString>& CADFileToSceneGraphDescriptionFile;
+	const FString& CachePath;
 	TSharedRef<IDatasmithScene> DatasmithScene;
 	const CADLibrary::FImportParameters& ImportParameters;
 	const uint32 ImportParametersHash;
+
 	CADLibrary::FFileDescription rootFileDescription;
 
 	TArray<CADLibrary::FArchiveSceneGraph> ArchiveMockUps;
@@ -101,33 +107,10 @@ protected:
 
 	TArray<uint32> AncestorSceneGraphHash;
 
+	CADLibrary::FArchiveSceneGraph* SceneGraph;
 
 	bool bPreferMaterial;
 	bool bMaterialPropagationIsTopDown;
 };
 
-class DATASMITHCADTRANSLATOR_API FDatasmithSceneGraphBuilder : public FDatasmithSceneBaseGraphBuilder
-{
-public:
-	FDatasmithSceneGraphBuilder(
-		TMap<uint32, FString>& InCADFileToUE4FileMap, 
-		const FString& InCachePath, 
-		TSharedRef<IDatasmithScene> InScene, 
-		const FDatasmithSceneSource& InSource, 
-		const CADLibrary::FImportParameters& InImportParameters);
-
-	virtual ~FDatasmithSceneGraphBuilder() {}
-
-	virtual bool Build() override;
-
-	void LoadSceneGraphDescriptionFiles();
-
-	void FillAnchorActor(const TSharedRef< IDatasmithActorElement >& ActorElement, const FString& CleanFilenameOfCADFile);
-
-protected:
-	virtual TSharedPtr< IDatasmithMeshElement > FindOrAddMeshElement(CADLibrary::FArchiveBody& Body, FString& InLabel);
-
-protected:
-	TMap<uint32, FString>& CADFileToSceneGraphDescriptionFile;
-	const FString& CachePath;
-};
+#endif // CAD_INTERFACE

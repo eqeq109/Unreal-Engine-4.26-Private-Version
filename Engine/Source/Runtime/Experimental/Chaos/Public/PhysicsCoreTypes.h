@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Chaos/Real.h"
 
 #include "PhysicsCoreTypes.generated.h"
 
@@ -40,4 +39,4 @@ namespace Chaos
 	template<class T, int>
 	class TPBDRigidParticles;
 }
-typedef Chaos::TPBDRigidParticles<Chaos::FReal, 3> FParticlesType;
+typedef Chaos::TPBDRigidParticles<float, 3> FParticlesType;

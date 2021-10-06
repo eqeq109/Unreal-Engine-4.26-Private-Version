@@ -2,7 +2,6 @@
 
 #include "OnlineUserCloudInterfaceIOS.h"
 #include "HAL/PlatformProcess.h"
-#include "Misc/ScopeLock.h"
 #include "PlatformFeatures.h"
 
 @implementation IOSCloudStorage
@@ -484,7 +483,7 @@ void FOnlineUserCloudInterfaceIOS::InitCloudSave(bool InIOSAlwaysSyncCloudFiles)
 	SaveSystem->OnReadUserCloudFileBeginDelegate = FIOSSaveGameSystem::FOnReadUserCloudFileBegin::CreateRaw(this, &FOnlineUserCloudInterfaceIOS::OnReadUserCloudFileBegin);
 	SaveSystem->OnDeleteUserCloudFileBeginDelegate = FIOSSaveGameSystem::FOnDeleteUserCloudFileBegin::CreateRaw(this, &FOnlineUserCloudInterfaceIOS::OnDeleteUserCloudFileBegin);
 
-	UniqueNetId = FUniqueNetIdIOS::Create();
+	UniqueNetId = MakeShareable(new FUniqueNetIdIOS(""));
 
 	UpdateDictionary = [NSMutableDictionary new];
 	

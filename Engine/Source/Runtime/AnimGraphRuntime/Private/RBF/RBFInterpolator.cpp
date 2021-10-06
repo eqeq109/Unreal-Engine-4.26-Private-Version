@@ -21,8 +21,9 @@ PRAGMA_DEFAULT_VISIBILITY_END
 #endif
 
 bool FRBFInterpolatorBase::SetUpperKernel(
-	const TArrayView<float>& UpperKernel,
-	int32 Size
+	const TArrayView<float>& UpperKernel, 
+	int32 Size,
+	bool bSmoothing
 )
 {
 	using namespace Eigen;
@@ -33,7 +34,7 @@ bool FRBFInterpolatorBase::SetUpperKernel(
 	// portion.
 	FullKernel = MatrixXf::Identity(Size, Size);
 
-	for (int32 c = 0, i = 0; i < Size; i++)
+	for (int32 c = 0, i = 0; i < Size; i++)	
 	{
 		for (int32 j = i; j < Size; j++)
 		{
@@ -66,15 +67,25 @@ bool FRBFInterpolatorBase::SetUpperKernel(
 	// Eigen will now happily pick LU factorization with partial pivoting for 
 	// the inverse, which is blazingly fast.
 
-	Coeffs.Init(0.0f, Size * Size);
-	Map<MatrixXf> Result(Coeffs.GetData(), Size, Size);
-
 	// If the matrix is non-invertible, return now and bail out.
 	float Det = FullKernel.determinant();
 	if (FMath::IsNearlyZero(Det))
 		return false;
 
-	Result = FullKernel.inverse();
+	Coeffs.SetNumZeroed(Size * Size);
+	Map<MatrixXf> Result(Coeffs.GetData(), Size, Size);
 
+	if (bSmoothing)
+	{
+		const float Lambda = 0.001f;
+		MatrixXf B = FullKernel.transpose();
+		FullKernel = B * FullKernel + Lambda * MatrixXf::Identity(Size, Size);
+
+		Result = PartialPivLU<MatrixXf>(FullKernel).solve(B);
+	}
+	else
+	{
+		Result = FullKernel.inverse();
+	}
 	return true;
 }

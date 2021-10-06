@@ -16,7 +16,7 @@
 #include "Factories/FbxTextureImportData.h"
 
 #include "Materials/MaterialInterface.h"
-#include "Rendering/SkeletalMeshLODImporterData.h"
+#include "SkelImport.h"
 #include "Logging/TokenizedMessage.h"
 #include "Misc/FbxErrors.h"
 #include "FbxImporter.h"
@@ -37,7 +37,6 @@
 #include "Engine/StaticMesh.h"
 #include "IMeshReductionInterfaces.h"
 #include "ObjectTools.h"
-#include "Misc/AutomationTest.h"
 
 DEFINE_LOG_CATEGORY(LogFbx);
 
@@ -639,7 +638,6 @@ int32 FFbxImporter::GetImportType(const FString& InFilename)
 	if (OpenFile(Filename))
 	{
 		bool bHasAnimation = false;
-		bool bHasAnimationOnSkeletalMesh = false;
 		FbxSceneInfo SceneInfo;
 		if (GetSceneInfo(Filename, SceneInfo, true))
 		{
@@ -653,7 +651,6 @@ int32 FFbxImporter::GetImportType(const FString& InFilename)
 			}
 
 			bHasAnimation = SceneInfo.bHasAnimation;
-			bHasAnimationOnSkeletalMesh = SceneInfo.bHasAnimationOnSkeletalMesh;
 		}
 
 		// In case no Geometry was found, check for animation (FBX can still contain mesh data though)
@@ -663,17 +660,10 @@ int32 FFbxImporter::GetImportType(const FString& InFilename)
 			{
 				Result = 2;
 			}
+			// by default detects as skeletalmesh since it has animation curves
 			else if (Result == 0)
 			{
-				// by default detects as skeletalmesh since it has animation curves
-				if (bHasAnimationOnSkeletalMesh)
-				{
-					Result = 1;
-				}
-				else
-				{
-					Result = 0;
-				}
+				Result = 1;
 			}
 		}
 	}
@@ -827,7 +817,6 @@ bool FFbxImporter::GetSceneInfo(FString Filename, FbxSceneInfo& SceneInfo, bool 
 		}
 		
 		SceneInfo.bHasAnimation = false;
-		SceneInfo.bHasAnimationOnSkeletalMesh = false;
 		int32 AnimCurveNodeCount = Scene->GetSrcObjectCount<FbxAnimCurveNode>();
 		// sadly Max export with animation curve node by default without any change, so 
 		// we'll have to skip the first two curves, which is translation/rotation
@@ -838,17 +827,6 @@ bool FFbxImporter::GetSceneInfo(FString Filename, FbxSceneInfo& SceneInfo, bool 
 			if (CurAnimCruveNode->IsAnimated(true))
 			{
 				SceneInfo.bHasAnimation = true;
-
-				const FbxProperty DstProperty = CurAnimCruveNode->GetDstProperty();
-				const FbxObject* AnimatedObject = DstProperty.GetFbxObject();
-				if (AnimatedObject && (AnimatedObject->Is<FbxGeometry>() || (AnimatedObject->Is<FbxNode>() && IsUnrealBone((FbxNode*)AnimatedObject))))
-				{
-					SceneInfo.bHasAnimationOnSkeletalMesh = true;
-				}
-			}
-
-			if (SceneInfo.bHasAnimation && SceneInfo.bHasAnimationOnSkeletalMesh)
-			{
 				break;
 			}
 		}
@@ -1173,7 +1151,7 @@ void FFbxImporter::FixMaterialClashName()
 	for (int32 MaterialIndex = 0; MaterialIndex < MaterialArray.Size(); ++MaterialIndex)
 	{
 		FbxSurfaceMaterial *Material = MaterialArray[MaterialIndex];
-		FString MaterialName = MakeName(Material->GetName());
+		FString MaterialName = UTF8_TO_TCHAR(MakeName(Material->GetName()));
 		MaterialTextures.Append(GetFbxMaterialTextures(*Material));
 
 		if (!bKeepNamespace)
@@ -1263,32 +1241,6 @@ void FFbxImporter::EnsureNodeNameAreValid(const FString& BaseFilename)
 		AllNodeName.Add(NodeName);
 	}
 }
-
-void FFbxImporter::RemoveFBXMetaData(const UObject* Object)
-{
-	TArray<FName> KeysToRemove;
-	if (const TMap<FName, FString>* ExistingUMetaDataTagValues = UMetaData::GetMapForObject(Object))
-	{
-		for (const TPair<FName, FString>& KeyValue : *ExistingUMetaDataTagValues)
-		{
-			if (KeyValue.Key.ToString().StartsWith(FBX_METADATA_PREFIX, ESearchCase::IgnoreCase))
-			{
-				KeysToRemove.Add(KeyValue.Key);
-			}
-		}
-	}
-
-	if (KeysToRemove.Num() > 0)
-	{
-		UMetaData* PackageMetaData = Object->GetOutermost()->GetMetaData();
-		checkSlow(PackageMetaData);
-		for (const FName& KeyToRemove : KeysToRemove)
-		{
-			PackageMetaData->RemoveValue(Object, KeyToRemove);
-		}
-	}
-}
-
 
 FString FFbxImporter::GetFileAxisDirection()
 {
@@ -1776,32 +1728,43 @@ bool FFbxImporter::ImportFromFile(const FString& Filename, const FString& Type, 
 	return Result;
 }
 
-FString FFbxImporter::MakeName(const ANSICHAR* Name)
+ANSICHAR* FFbxImporter::MakeName(const ANSICHAR* Name) const
 {
-	const TCHAR SpecialChars[] = {TEXT('.'), TEXT(','), TEXT('/'), TEXT('`'), TEXT('%')};
+	const int SpecialChars[] = {'.', ',', '/', '`', '%'};
 
-	FString TmpName = MakeString(Name);
+	const int len = FCStringAnsi::Strlen(Name);
+	ANSICHAR* TmpName = new ANSICHAR[len+1];
 	
-	// Remove namespaces
-	int32 LastNamespaceTokenIndex = INDEX_NONE;
-	if (TmpName.FindLastChar(TEXT(':'), LastNamespaceTokenIndex))
-	{
-		const bool bAllowShrinking = true;
-		//+1 to remove the ':' character we found
-		TmpName.RightChopInline(LastNamespaceTokenIndex + 1, bAllowShrinking);
-	}
+	FCStringAnsi::Strcpy(TmpName, len + 1, Name);
 
-	//Remove the special chars
 	for ( int32 i = 0; i < UE_ARRAY_COUNT(SpecialChars); i++ )
 	{
-		TmpName.ReplaceCharInline(SpecialChars[i], TEXT('_'), ESearchCase::CaseSensitive);
+		ANSICHAR* CharPtr = TmpName;
+		while ( (CharPtr = FCStringAnsi::Strchr(CharPtr,SpecialChars[i])) != NULL )
+		{
+			CharPtr[0] = '_';
+		}
 	}
 
-	
+	// Remove namespaces
+	ANSICHAR* NewName;
+	NewName = FCStringAnsi::Strchr(TmpName, ':');
+	  
+	// there may be multiple namespace, so find the last ':'
+	while (NewName && FCStringAnsi::Strchr(NewName + 1, ':'))
+	{
+		NewName = FCStringAnsi::Strchr(NewName + 1, ':');
+	}
+
+	if (NewName)
+	{
+		return NewName + 1;
+	}
+
 	return TmpName;
 }
 
-FString FFbxImporter::MakeString(const ANSICHAR* Name)
+FString FFbxImporter::MakeString(const ANSICHAR* Name) const
 {
 	return FString(ANSI_TO_TCHAR(Name));
 }
@@ -3012,11 +2975,14 @@ FbxNode* FFbxImporter::FindFBXMeshesByBone(const FName& RootBoneName, bool bExpa
 	// names of the nodes before checking them against the name of the Unreal bone
 	if (!SkeletonRoot)
 	{
+		ANSICHAR TmpBoneName[64];
+
 		for (int32 NodeIndex = 0; NodeIndex < Scene->GetNodeCount(); NodeIndex++)
 		{
 			FbxNode* FbxNode = Scene->GetNode(NodeIndex);
 
-			FString FbxBoneName = FSkeletalMeshImportData::FixupBoneName(MakeName(FbxNode->GetName()));
+			FCStringAnsi::Strcpy(TmpBoneName, 64, MakeName(FbxNode->GetName()));
+			FString FbxBoneName = FSkeletalMeshImportData::FixupBoneName(TmpBoneName);
 
 			if (FbxBoneName == BoneNameString)
 			{
@@ -3332,77 +3298,5 @@ void FFbxImporter::ImportNodeCustomProperties(UObject* Object, FbxNode* Node, bo
 }
 
 } // namespace UnFbx
-
-#if WITH_DEV_AUTOMATION_TESTS
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFbxUnitTest, "Editor.Import.Fbx.UnitTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FFbxUnitTest::RunTest(const FString& Parameters)
-{
-	const ANSICHAR TestData[][64] = { "SimpleTest"
-									, "SimpleTest_1"
-									, "SimpleTest.1"
-									, "SimpleTest,1"
-									, "SimpleTest/1"
-									, "SimpleTest`1"
-									, "SimpleTest%1"
-									, "One:SimpleTest"
-									, "One::SimpleTest"
-									, "One:Two:SimpleTest"
-									, "One::Two::SimpleTest"
-									, "O.n,e::/Two:%:Si`mpleTest" };
-
-	const FString Results[3] = { FString(TEXT("SimpleTest"))
-								, FString(TEXT("SimpleTest_1"))
-								, FString(TEXT("Si_mpleTest")) };
-
-	auto RunOneTest = [&TestData, &Results, this](int32 DataIndex, int32 ResultIndex)
-	{
-		FString ResultInternal = UnFbx::FFbxImporter::MakeName(TestData[DataIndex]);
-		if (!ResultInternal.Equals(Results[ResultIndex]))
-		{
-			FStringFormatOrderedArguments OrderedArguments;
-			OrderedArguments.Add(FStringFormatArg(UnFbx::FFbxImporter::MakeString(TestData[DataIndex])));
-			OrderedArguments.Add(FStringFormatArg(ResultInternal));
-			OrderedArguments.Add(FStringFormatArg(Results[ResultIndex]));
-			FString ErrorMessage = FString::Format(TEXT("Fbx importer MakeName function transform name [{0}] into [{1}], but expected [{2}]."), OrderedArguments);
-			AddError(ErrorMessage);
-		}
-	};
-
-	//////////////////////////////////////////////////////////////////////////
-	// String with no change test
-
-	RunOneTest(0, 0);
-
-	//////////////////////////////////////////////////////////////////////////
-	// Special character tests return all TestData_2
-
-	RunOneTest(1, 1);
-	RunOneTest(2, 1);
-	RunOneTest(3, 1);
-	RunOneTest(4, 1);
-	RunOneTest(5, 1);
-	RunOneTest(6, 1);
-
-	//////////////////////////////////////////////////////////////////////////
-	//namespace tests return all TestData_1
-
-	RunOneTest(7, 0);
-	RunOneTest(8, 0);
-	RunOneTest(9, 0);
-	RunOneTest(10, 0);
-
-	//////////////////////////////////////////////////////////////////////////
-	// Mix test
-
-	RunOneTest(11, 2);
-
-	return true;
-}
-
-
-#endif //WITH_DEV_AUTOMATION_TESTS
-
 
 #undef LOCTEXT_NAMESPACE

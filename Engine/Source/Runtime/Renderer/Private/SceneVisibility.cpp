@@ -1634,10 +1634,7 @@ static int32 OcclusionCull(FRHICommandListImmediate& RHICmdList, const FScene* S
 	
 	// Disable HZB on OpenGL platforms to avoid rendering artifacts
 	// It can be forced on by setting HZBOcclusion to 2
-	bool bHZBOcclusion = !IsOpenGLPlatform(GShaderPlatformForFeatureLevel[Scene->GetFeatureLevel()]);
-	bHZBOcclusion = bHZBOcclusion && GHZBOcclusion;
-	bHZBOcclusion = bHZBOcclusion && FDataDrivenShaderPlatformInfo::GetSupportsHZBOcclusion(GShaderPlatformForFeatureLevel[Scene->GetFeatureLevel()]);
-	bHZBOcclusion = bHZBOcclusion || (GHZBOcclusion == 2);
+	bool bHZBOcclusion = (!IsOpenGLPlatform(GShaderPlatformForFeatureLevel[Scene->GetFeatureLevel()]) && !IsSwitchPlatform(GShaderPlatformForFeatureLevel[Scene->GetFeatureLevel()]) && GHZBOcclusion) || (GHZBOcclusion == 2);
 
 	// Use precomputed visibility data if it is available.
 	if (View.PrecomputedVisibilityData)
@@ -1701,11 +1698,6 @@ static int32 OcclusionCull(FRHICommandListImmediate& RHICmdList, const FScene* S
 				bSubmitQueries &= (FrameParity  && IStereoRendering::IsAPrimaryView(View)) ||
 								  (!FrameParity && IStereoRendering::IsASecondaryView(View));
 			}
-
-			View.ViewState->PrimitiveOcclusionQueryPool.AdvanceFrame(
-				ViewState->OcclusionFrameCounter,
-				FOcclusionQueryHelpers::GetNumBufferedFrames(Scene->GetFeatureLevel()),
-				View.ViewState->IsRoundRobinEnabled() && !View.bIsSceneCapture && IStereoRendering::IsStereoEyeView(View));
 
 			NumOccludedPrimitives += FetchVisibilityForPrimitives(Scene, View, bSubmitQueries, bHZBOcclusion, DynamicVertexBuffer);
 
@@ -1933,7 +1925,6 @@ struct FRelevancePacket
 	bool bTranslucentSurfaceLighting;
 	bool bUsesSceneDepth;
 	bool bUsesCustomDepthStencil;
-	bool bShouldRenderDepthToTranslucency;
 	bool bSceneHasSkyMaterial;
 	bool bHasSingleLayerWaterMaterial;
 	bool bHasTranslucencySeparateModulation;
@@ -1970,7 +1961,6 @@ struct FRelevancePacket
 		, bTranslucentSurfaceLighting(false)
 		, bUsesSceneDepth(false)
 		, bUsesCustomDepthStencil(false)
-		, bShouldRenderDepthToTranslucency(false)
 		, bSceneHasSkyMaterial(false)
 		, bHasSingleLayerWaterMaterial(false)
 		, bHasTranslucencySeparateModulation(false)
@@ -2097,7 +2087,6 @@ struct FRelevancePacket
 			bSceneHasSkyMaterial |= ViewRelevance.bUsesSkyMaterial;
 			bHasSingleLayerWaterMaterial |= ViewRelevance.bUsesSingleLayerWaterMaterial;
 			bHasTranslucencySeparateModulation |= ViewRelevance.bSeparateTranslucencyModulate;
-			bShouldRenderDepthToTranslucency |= ViewRelevance.bShouldRenderDepthToTranslucency;
 
 			if (ViewRelevance.bRenderCustomDepth)
 			{
@@ -2248,8 +2237,7 @@ struct FRelevancePacket
 							&& !bHiddenByHLODFade)
 						{
 							bool bMobileIsInDepthPassMaskedMesh = (bMobileMaskedInEarlyPass && ViewRelevance.bMasked) && ShadingPath == EShadingPath::Mobile;
-							bool bMobileIsInFullDepthPass = (StaticMeshRelevance.bUseForDepthPass && Scene->EarlyZPassMode == DDM_AllOpaque) && ShadingPath == EShadingPath::Mobile;
-							if ((StaticMeshRelevance.bUseForDepthPass && bDrawDepthOnly && ShadingPath != EShadingPath::Mobile) || bMobileIsInDepthPassMaskedMesh || bMobileIsInFullDepthPass)
+							if ((StaticMeshRelevance.bUseForDepthPass && bDrawDepthOnly && ShadingPath != EShadingPath::Mobile) || bMobileIsInDepthPassMaskedMesh)
 							{
 								DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::DepthPass);
 
@@ -2267,41 +2255,27 @@ struct FRelevancePacket
 							// Mark static mesh as visible for rendering
 							if (StaticMeshRelevance.bUseForMaterial && (ViewRelevance.bRenderInMainPass || ViewRelevance.bRenderCustomDepth))
 							{
-								// Specific logic for mobile packets
-								if (ShadingPath == EShadingPath::Mobile)
-								{
-									// Skydome must not be added to base pass bucket
-									if (!StaticMeshRelevance.bUseSkyMaterial)
-									{
-										DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::BasePass);
-										DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::MobileBasePassCSM);
-									}
-									else
-									{
-										DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::SkyPass);
-									}
-									// bUseSingleLayerWaterMaterial is added to BasePass on Mobile. No need to add it to SingleLayerWaterPass
-
-									MarkMask |= EMarkMaskBits::StaticMeshVisibilityMapMask;
-								}
-								else // Regular shading path
-								{
-									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::BasePass);
-									MarkMask |= EMarkMaskBits::StaticMeshVisibilityMapMask;
-
-									if (StaticMeshRelevance.bUseSkyMaterial)
-									{
-										DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::SkyPass);
-									}
-									if (StaticMeshRelevance.bUseSingleLayerWaterMaterial)
-									{
-										DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::SingleLayerWaterPass);
-									}
-								}
+								DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::BasePass);
+								MarkMask |= EMarkMaskBits::StaticMeshVisibilityMapMask;
 
 								if (StaticMeshRelevance.bUseAnisotropy)
 								{
 									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::AnisotropyPass);
+								}
+
+								if (ShadingPath == EShadingPath::Mobile)
+								{
+									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::MobileBasePassCSM);
+								}
+								else if(StaticMeshRelevance.bUseSkyMaterial)
+								{
+									// Not needed on Mobile path as in this case everything goes into the regular base pass
+									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::SkyPass);
+								}
+								else if(StaticMeshRelevance.bUseSingleLayerWaterMaterial)
+								{
+									// Not needed on Mobile path as in this case everything goes into the regular base pass
+									DrawCommandPacket.AddCommandsForMesh(PrimitiveIndex, PrimitiveSceneInfo, StaticMeshRelevance, StaticMesh, Scene, bCanCache, EMeshPass::SingleLayerWaterPass);
 								}
 
 								if (ViewRelevance.bRenderCustomDepth)
@@ -2473,7 +2447,6 @@ struct FRelevancePacket
 		WriteView.bHasDistortionPrimitives |= bHasDistortionPrimitives;
 		WriteView.bHasCustomDepthPrimitives |= bHasCustomDepthPrimitives;
 		WriteView.bUsesCustomDepthStencilInTranslucentMaterials |= bUsesCustomDepthStencil;
-		WriteView.bShouldRenderDepthToTranslucency |= bShouldRenderDepthToTranslucency;
 		DirtyIndirectLightingCacheBufferPrimitives.AppendTo(WriteView.DirtyIndirectLightingCacheBufferPrimitives);
 
 		WriteView.MeshDecalBatches.Append(MeshDecalBatches);
@@ -2923,7 +2896,22 @@ void FSceneRenderer::GatherDynamicMeshElements(
 				const FPrimitiveBounds& Bounds = InScene->PrimitiveBounds[PrimitiveIndex];
 				Collector.SetPrimitive(PrimitiveSceneInfo->Proxy, PrimitiveSceneInfo->DefaultDynamicHitProxyId);
 
+				// Mark DynamicMeshEndIndices start.
+				if (PrimitiveIndex > 0)
+				{
+					for (int32 ViewIndex = 0; ViewIndex < ViewCount; ViewIndex++)
+					{
+						InViews[ViewIndex].DynamicMeshEndIndices[PrimitiveIndex - 1] = Collector.GetMeshBatchCount(ViewIndex);
+					}
+				}
+
 				PrimitiveSceneInfo->Proxy->GetDynamicMeshElements(InViewFamily.Views, InViewFamily, ViewMaskFinal, Collector);
+
+				// Mark DynamicMeshEndIndices end.
+				for (int32 ViewIndex = 0; ViewIndex < ViewCount; ViewIndex++)
+				{
+					InViews[ViewIndex].DynamicMeshEndIndices[PrimitiveIndex] = Collector.GetMeshBatchCount(ViewIndex);
+				}
 
 				// Compute DynamicMeshElementsMeshPassRelevance for this primitive.
 				for (int32 ViewIndex = 0; ViewIndex < ViewCount; ViewIndex++)
@@ -2946,12 +2934,6 @@ void FSceneRenderer::GatherDynamicMeshElements(
 						}
 					}
 				}
-			}
-
-			// Mark DynamicMeshEndIndices end.
-			for (int32 ViewIndex = 0; ViewIndex < ViewCount; ViewIndex++)
-			{
-				InViews[ViewIndex].DynamicMeshEndIndices[PrimitiveIndex] = Collector.GetMeshBatchCount(ViewIndex);
 			}
 		}
 	}
@@ -3057,15 +3039,11 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 
 	if (IsHairStrandsEnabled(EHairStrandsShaderType::All, Scene->GetShaderPlatform()) && Views.Num() > 0 && !ViewFamily.EngineShowFlags.HitProxies)
 	{
-		// If we are rendering from scene capture we don't need to run another time the hair bookmarks.
-		if (Views[0].AllowGPUParticleUpdate())
-		{
-			FRDGBuilder GraphBuilder(RHICmdList);
+		FRDGBuilder GraphBuilder(RHICmdList);
 
-			FHairStrandsBookmarkParameters Parameters = CreateHairStrandsBookmarkParameters(Views);
-			RunHairStrandsBookmark(GraphBuilder, EHairStrandsBookmark::ProcessGuideInterpolation, Parameters);
-			GraphBuilder.Execute();
-		}
+		FHairStrandsBookmarkParameters Parameters = CreateHairStrandsBookmarkParameters(Views);
+		RunHairStrandsBookmark(GraphBuilder, EHairStrandsBookmark::ProcessGuideInterpolation, Parameters);
+		GraphBuilder.Execute();
 	}
 
 	// Notify the FX system that the scene is about to perform visibility checks.
@@ -3187,17 +3165,15 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 		{
 			float EffectivePrimaryResolutionFraction = float(View.ViewRect.Width()) / float(View.GetSecondaryViewRectSize().X);
 
-			bool bIsMobileTAA = IsMobilePlatform(View.GetShaderPlatform()) && !SupportsGen4TAA(View.GetShaderPlatform());
-
 			// Compute number of TAA samples.
 			int32 TemporalAASamples = CVarTemporalAASamplesValue;
 			{
-				if (bIsMobileTAA)
+				if (Scene->GetFeatureLevel() < ERHIFeatureLevel::SM5)
 				{
 					// Only support 2 samples for mobile temporal AA.
 					TemporalAASamples = 2;
 				}
-				else if(bTemporalUpsampling)
+				else if (bTemporalUpsampling)
 				{
 					// When doing TAA upsample with screen percentage < 100%, we need extra temporal samples to have a
 					// constant temporal sample density for final output pixels to avoid output pixel aligned converging issues.
@@ -3227,13 +3203,13 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 
 			// Choose sub pixel sample coordinate in the temporal sequence.
 			float SampleX, SampleY;
-			if (bIsMobileTAA)
+			if (Scene->GetFeatureLevel() < ERHIFeatureLevel::SM5)
 			{
-				float SamplesX[] = { -8.0f / 16.0f, 0.0 / 16.0f };
-				float SamplesY[] = { /* - */ 0.0f / 16.0f, 8.0 / 16.0f };
+				float SamplesX[] = { -8.0f/16.0f, 0.0/16.0f };
+				float SamplesY[] = { /* - */ 0.0f/16.0f, 8.0/16.0f };
 				check(TemporalAASamples == UE_ARRAY_COUNT(SamplesX));
-				SampleX = SamplesX[TemporalSampleIndex];
-				SampleY = SamplesY[TemporalSampleIndex];
+				SampleX = SamplesX[ TemporalSampleIndex ];
+				SampleY = SamplesY[ TemporalSampleIndex ];
 			}
 			else if (View.PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::TemporalUpscale)
 			{
@@ -3361,34 +3337,27 @@ void FSceneRenderer::PreVisibilityFrameSetup(FRHICommandListImmediate& RHICmdLis
 			
 #if RHI_RAYTRACING
 			// Note: 0.18 deg is the minimum angle for avoiding numerical precision issue (which would cause constant invalidation)
-			const bool bIsCameraMove = IsLargeCameraMovement(
-				View,
-				ViewState->PrevFrameViewInfo.ViewMatrices.GetViewMatrix(),
+			const bool bIsThereALargeMomvement= IsLargeCameraMovement(
+				View, ViewState->PrevFrameViewInfo.ViewMatrices.GetViewMatrix(),
 				ViewState->PrevFrameViewInfo.ViewMatrices.GetViewOrigin(),
 				0.18f /*degree*/, 0.1f /*cm*/);
 			const bool bIsProjMatrixDifferent = View.ViewMatrices.GetProjectionNoAAMatrix() != View.ViewState->PrevFrameViewInfo.ViewMatrices.GetProjectionNoAAMatrix();
-			bool bInvalidatePathTracer = false;
-			
-			if (View.bIsOfflineRender)
-			{
-				// In the offline context, we want precise control over when to restart the path tracer's accumulation to allow for motion blur
-				// So we use the camera cut signal only. In particular - we should not use bForceCameraVisibilityReset since this has
-				// interactions with the motion blur post process effect in tiled rendering (see comment below).
-				bInvalidatePathTracer = View.bCameraCut || View.bForcePathTracerReset;
-			}
-			else
-			{
-				// for interactive usage - any movement or scene change should restart the path tracer
-				bInvalidatePathTracer = bResetCamera ||
-					Scene->bPathTracingNeedsInvalidation ||
-					bIsProjMatrixDifferent ||
-					bIsCameraMove ||
-					View.bForcePathTracerReset;
-			}
+			const bool bInvalidatePathTracer = View.RayTracingRenderMode == ERayTracingRenderMode::PathTracing &&
+			(
+				bResetCamera ||
+				Scene->bPathTracingNeedsInvalidation ||
+				View.ViewRect != ViewState->PathTracingRect ||
+				bIsProjMatrixDifferent ||
+				bIsThereALargeMomvement
+			);
 
 			if (bInvalidatePathTracer)
 			{
-				ViewState->PathTracingInvalidate();
+				ViewState->PathTracingIrradianceRT.SafeRelease();
+				ViewState->PathTracingSampleCountRT.SafeRelease();
+				ViewState->VarianceMipTreeDimensions = FIntVector(0);
+				ViewState->PathTracingRect = View.ViewRect;
+				ViewState->TotalRayCount = 0;
 				Scene->bPathTracingNeedsInvalidation = false;
 			}
 #endif // RHI_RAYTRACING
@@ -3677,24 +3646,7 @@ void UpdateReflectionSceneData(FScene* Scene)
 }
 
 #if !UE_BUILD_SHIPPING
-static uint32 GetDrawCountFromPrimitiveSceneInfo(FScene* Scene, const FPrimitiveSceneInfo* PrimitiveSceneInfo)
-{
-	uint32 DrawCount = 0;
-	for (const FCachedMeshDrawCommandInfo& CachedCommand : PrimitiveSceneInfo->StaticMeshCommandInfos)
-	{
-		if (CachedCommand.MeshPass != EMeshPass::BasePass)
-			continue;
-
-		if (CachedCommand.StateBucketId != INDEX_NONE || CachedCommand.CommandIndex >= 0)
-		{
-			DrawCount++;
-		}
-	}
-
-	return DrawCount;
-}
-
-void FSceneRenderer::DumpPrimitives(const FViewCommands& ViewCommands)
+ void FSceneRenderer::DumpPrimitives(const FViewCommands& ViewCommands)
 {
 	if (!bDumpPrimitivesNextFrame)
 	{
@@ -3703,22 +3655,9 @@ void FSceneRenderer::DumpPrimitives(const FViewCommands& ViewCommands)
 
 	bDumpPrimitivesNextFrame = false;
 
-	struct FPrimitiveInfo
-	{
-		FString		Name;
-		uint32		DrawCount;
-
-		bool operator<(const FPrimitiveInfo& other) const
-		{
-			return Name < other.Name;
-		}
-	};
-
-	TArray<FPrimitiveInfo> Primitives;
-	Primitives.Reserve(ViewCommands.MeshCommands[EMeshPass::BasePass].Num() + ViewCommands.DynamicMeshCommandBuildRequests[EMeshPass::BasePass].Num());
-
-	FScopeLock Lock(&Scene->CachedMeshDrawCommandLock[EMeshPass::BasePass]);
-
+	TArray<FString> Names;
+	Names.Reserve(ViewCommands.MeshCommands[EMeshPass::BasePass].Num() + ViewCommands.DynamicMeshCommandBuildRequests[EMeshPass::BasePass].Num());
+	
 	for (const FVisibleMeshDrawCommand& Mesh : ViewCommands.MeshCommands[EMeshPass::BasePass])
 	{
 		int32 PrimitiveId = Mesh.DrawPrimitiveId;
@@ -3727,9 +3666,7 @@ void FSceneRenderer::DumpPrimitives(const FViewCommands& ViewCommands)
 			const FPrimitiveSceneInfo* PrimitiveSceneInfo = Scene->Primitives[PrimitiveId];
 			FString FullName = PrimitiveSceneInfo->ComponentForDebuggingOnly->GetFullName();
 
-			uint32 DrawCount = GetDrawCountFromPrimitiveSceneInfo(Scene, PrimitiveSceneInfo);
-
-			Primitives.Add({ MoveTemp(FullName), DrawCount });
+			Names.Add(MoveTemp(FullName));
 		}
 	}
 
@@ -3738,22 +3675,18 @@ void FSceneRenderer::DumpPrimitives(const FViewCommands& ViewCommands)
 		const FPrimitiveSceneInfo* PrimitiveSceneInfo = StaticMeshBatch->PrimitiveSceneInfo;
 		FString FullName = PrimitiveSceneInfo->ComponentForDebuggingOnly->GetFullName();
 
-		uint32 DrawCount = GetDrawCountFromPrimitiveSceneInfo(Scene, PrimitiveSceneInfo);
-
-		Primitives.Add({ MoveTemp(FullName), DrawCount });
+		Names.Add(MoveTemp(FullName));
 	}
 
-	Primitives.Sort();
+	Names.Sort();
 
 	FDiagnosticTableViewer DrawViewer(*FDiagnosticTableViewer::GetUniqueTemporaryFilePath(TEXT("Primitives")), true);
 	DrawViewer.AddColumn(TEXT("Name"));
-	DrawViewer.AddColumn(TEXT("NumDraws"));
 	DrawViewer.CycleRow();
 
-	for (const FPrimitiveInfo& Primitive : Primitives)
+	for (const FString& FullName : Names)
 	{
-		DrawViewer.AddColumn(*Primitive.Name);
-		DrawViewer.AddColumn(*FString::Printf(TEXT("%d"), Primitive.DrawCount));
+		DrawViewer.AddColumn(*FullName);
 		DrawViewer.CycleRow();
 	}
 }

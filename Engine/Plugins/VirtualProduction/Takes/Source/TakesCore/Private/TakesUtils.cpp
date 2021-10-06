@@ -92,10 +92,9 @@ void SaveAsset(UObject* InObject)
 	UPackage* const Package = InObject->GetOutermost();
 	FString const PackageName = Package->GetName();
 	FString const PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
-
+	
 	double StartTime = FPlatformTime::Seconds();
 
-	UMetaData *MetaData = Package->GetMetaData();
 	UPackage::SavePackage(Package, NULL, RF_Standalone, *PackageFileName, GError, nullptr, false, true, SAVE_NoError);
 
 	double ElapsedTime = FPlatformTime::Seconds() - StartTime;
@@ -126,7 +125,7 @@ void CreateCameraCutTrack(ULevelSequence* LevelSequence, const FGuid& RecordedCa
 	}
 
 	UMovieSceneCameraCutSection* CameraCutSection = Cast<UMovieSceneCameraCutSection>(CameraCutTrack->CreateNewSection());
-	CameraCutSection->SetCameraBindingID(UE::MovieScene::FRelativeObjectBindingID(RecordedCameraGuid, SequenceID));
+	CameraCutSection->SetCameraBindingID(FMovieSceneObjectBindingID(RecordedCameraGuid, SequenceID, EMovieSceneObjectBindingSpace::Local));
 	CameraCutSection->SetRange(InRange);
 	CameraCutTrack->AddSection(*CameraCutSection);
 }

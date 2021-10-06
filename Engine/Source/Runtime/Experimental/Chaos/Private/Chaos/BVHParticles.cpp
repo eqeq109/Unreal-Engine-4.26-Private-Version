@@ -5,65 +5,77 @@
 
 using namespace Chaos;
 
-FBVHParticles::FBVHParticles()
-	: FParticles()
-	, MBVH(new TBoundingVolumeHierarchy<FParticles, TArray<int32>>(*this, CollisionParticlesBVHDepth))
+template<class T, int d>
+TBVHParticles<T,d>::TBVHParticles()
+	: TParticles<T, d>()
+	, MBVH(new TBoundingVolumeHierarchy<TParticles<T, d>, TArray<int32>, T, d>(*this, CollisionParticlesBVHDepth))
 {
 }
 
-FBVHParticles::FBVHParticles(FBVHParticles&& Other)
-	: FParticles(MoveTemp(Other))
-	, MBVH(new TBoundingVolumeHierarchy<FParticles, TArray<int32>>(MoveTemp(*Other.MBVH)))
+template<class T, int d>
+TBVHParticles<T,d>::TBVHParticles(TBVHParticles<T, d>&& Other)
+	: TParticles<T, d>(MoveTemp(Other))
+	, MBVH(new TBoundingVolumeHierarchy<TParticles<T, d>, TArray<int32>, T, d>(MoveTemp(*Other.MBVH)))
 {
 }
 
-FBVHParticles::FBVHParticles(FParticles&& Other)
-	: FParticles(MoveTemp(Other))
-	, MBVH(new TBoundingVolumeHierarchy<FParticles, TArray<int32>>(*this, CollisionParticlesBVHDepth))
+template<class T, int d>
+TBVHParticles<T,d>::TBVHParticles(TParticles<T, d>&& Other)
+	: TParticles<T, d>(MoveTemp(Other))
+	, MBVH(new TBoundingVolumeHierarchy<TParticles<T, d>, TArray<int32>, T, d>(*this, CollisionParticlesBVHDepth))
 {
 }
 
-FBVHParticles::~FBVHParticles()
+template<class T, int d>
+TBVHParticles<T,d>::~TBVHParticles()
 {
     delete MBVH;
 }
 
-FBVHParticles& FBVHParticles::operator=(const FBVHParticles& Other)
+template<class T, int d>
+TBVHParticles<T,d>& TBVHParticles<T,d>::operator=(const TBVHParticles<T, d>& Other)
 {
-	*this = FBVHParticles(Other);
+	*this = TBVHParticles(Other);
 	return *this;
 }
 
-FBVHParticles& FBVHParticles::operator=(FBVHParticles&& Other)
+template<class T, int d>
+TBVHParticles<T,d>& TBVHParticles<T,d>::operator=(TBVHParticles<T, d>&& Other)
 {
 	*MBVH = MoveTemp(*Other.MBVH);
-	FParticles::operator=(static_cast<FParticles&&>(Other));
+	TParticles<T, d>::operator=(static_cast<TParticles<T, d>&&>(Other));
 	return *this;
 }
 
-FBVHParticles::FBVHParticles(const FBVHParticles& Other)
-	: FParticles()
+template<class T, int d>
+TBVHParticles<T,d>::TBVHParticles(const TBVHParticles<T, d>& Other)
+	: TParticles<T, d>()
 {
 	AddParticles(Other.Size());
 	for (int32 i = Other.Size() - 1; 0 <= i; i--)
 	{
 		X(i) = Other.X(i);
 	}
-	MBVH = new TBoundingVolumeHierarchy<FParticles, TArray<int32>>(*this, CollisionParticlesBVHDepth);
+	MBVH = new TBoundingVolumeHierarchy<TParticles<T, d>, TArray<int32>, T, d>(*this, CollisionParticlesBVHDepth);
 }
 
-void FBVHParticles::UpdateAccelerationStructures()
+template<class T, int d>
+void TBVHParticles<T,d>::UpdateAccelerationStructures()
 {
 	MBVH->UpdateHierarchy();
 }
 
-const TArray<int32> FBVHParticles::FindAllIntersections(const FAABB3& Object) const
+template<class T, int d>
+const TArray<int32> TBVHParticles<T,d>::FindAllIntersections(const TAABB<T, d>& Object) const
 {
 	return MBVH->FindAllIntersections(Object);
 }
 
-void FBVHParticles::Serialize(FChaosArchive& Ar)
+template<class T, int d>
+void TBVHParticles<T,d>::Serialize(FChaosArchive& Ar)
 {
-	FParticles::Serialize(Ar);
+	TParticles<T, d>::Serialize(Ar);
 	Ar << *MBVH;
 }
+
+template class Chaos::TBVHParticles<float,3>;

@@ -8,7 +8,6 @@
 
 struct FGraphActionListBuilderBase;
 struct FCustomExpanderData;
-struct FCreateWidgetForActionData;
 
 class SDataprepPalette : public SGraphPalette
 {
@@ -22,7 +21,6 @@ public:
 protected:
 	// SGraphPalette Interface
 	virtual void CollectAllActions(FGraphActionListBuilderBase& OutAllActions) override;
-	virtual TSharedRef<SWidget> OnCreateWidgetForAction(FCreateWidgetForActionData* const InCreateData) override;
 	virtual FReply OnActionDragged(const TArray< TSharedPtr<FEdGraphSchemaAction> >& InActions, const FPointerEvent& MouseEvent) override;
 	// End of SGraphPalette Interface
 
@@ -43,13 +41,7 @@ private:
 
 	FText GetFilterText() const;
 
-	TSharedRef<SWidget> CreateBackground(const TAttribute<FSlateColor>& ColorAndOpacity);
-
 	void OnFilterTextChanged(const FText& InFilterText);
-
-	FText OnGetSectionTitle(int32 InSection);
-
-	FSlateColor OnGetWidgetColor(FLinearColor InDefaultColor, FIsSelected InIsActionSelectedDelegate);
 
 	TSharedRef<SWidget> ConstructAddActionMenu();
 	TSharedPtr<SWidget> OnContextMenuOpening();

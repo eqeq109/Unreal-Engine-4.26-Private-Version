@@ -25,9 +25,9 @@ struct FPreAnimatedGeometryCacheTokenProducer : IMovieScenePreAnimatedTokenProdu
 				bInManualTick = InComponent->GetManualTick();
 			}
 
-			virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params)
+			virtual void RestoreState(UObject& ObjectToRestore, IMovieScenePlayer& Player)
 			{
-				UGeometryCacheComponent* Component = CastChecked<UGeometryCacheComponent>(&Object);
+				UGeometryCacheComponent* Component = CastChecked<UGeometryCacheComponent>(&ObjectToRestore);
 				Component->SetManualTick(bInManualTick);
 				Component->ResetAnimationTime();
 			}

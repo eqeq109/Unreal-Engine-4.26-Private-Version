@@ -8,32 +8,33 @@
 
 namespace Chaos
 {
-class FPerParticlePBDUpdateFromDeltaPosition : public FPerParticleRule
+template<class T, int d>
+class TPerParticlePBDUpdateFromDeltaPosition : public TPerParticleRule<T, d>
 {
   public:
-	  FPerParticlePBDUpdateFromDeltaPosition() {}
-	virtual ~FPerParticlePBDUpdateFromDeltaPosition() {}
+	TPerParticlePBDUpdateFromDeltaPosition() {}
+	virtual ~TPerParticlePBDUpdateFromDeltaPosition() {}
 
 	template<class T_PARTICLES>
-	inline void ApplyHelper(T_PARTICLES& InParticles, const FReal Dt, const int32 Index) const
+	inline void ApplyHelper(T_PARTICLES& InParticles, const T Dt, const int32 Index) const
 	{
 		InParticles.V(Index) = (InParticles.P(Index) - InParticles.X(Index)) / Dt;
 		//InParticles.X(Index) = InParticles.P(Index);
 	}
 
-	inline void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		InParticles.V(Index) = (InParticles.P(Index) - InParticles.X(Index)) / Dt;
 		InParticles.X(Index) = InParticles.P(Index);
 	}
 
-	inline void Apply(TPBDRigidParticles<FReal, 3>& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TPBDRigidParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		ApplyHelper(InParticles, Dt, Index);
-		InParticles.W(Index) = FRotation3::CalculateAngularVelocity(InParticles.R(Index), InParticles.Q(Index), Dt);
+		InParticles.W(Index) = TRotation<T, d>::CalculateAngularVelocity(InParticles.R(Index), InParticles.Q(Index), Dt);
 	}
 
-	inline void Apply(FPBDRigidParticleHandle* Particle, const FReal Dt) const override //-V762
+	inline void Apply(TPBDRigidParticleHandle<T, d>* Particle, const T Dt) const override //-V762
 	{
 #if CHAOS_PARTICLE_ACTORTRANSFORM
 		const FVec3& CenterOfMass = Particle->CenterOfMass();
@@ -46,7 +47,7 @@ class FPerParticlePBDUpdateFromDeltaPosition : public FPerParticleRule
 		Particle->W() = FRotation3::CalculateAngularVelocity(Particle->R(), Particle->Q(), Dt);
 	}
 
-	inline void Apply(TTransientPBDRigidParticleHandle<FReal, 3>& Particle, const FReal Dt) const override //-V762
+	inline void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 	{
 #if CHAOS_PARTICLE_ACTORTRANSFORM
 		const FVec3& CenterOfMass = Particle.CenterOfMass();
@@ -59,7 +60,4 @@ class FPerParticlePBDUpdateFromDeltaPosition : public FPerParticleRule
 		Particle.W() = FRotation3::CalculateAngularVelocity(Particle.R(), Particle.Q(), Dt);
 	}
 };
-
-template<class T, int d>
-using TPerParticlePBDUpdateFromDeltaPosition UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticlePBDUpdateFromDeltaPosition instead") = FPerParticlePBDUpdateFromDeltaPosition;
 }

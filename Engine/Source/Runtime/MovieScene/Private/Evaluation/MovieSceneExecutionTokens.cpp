@@ -32,6 +32,7 @@ void FMovieSceneExecutionTokens::Apply(const FMovieSceneContext& RootContext, IM
 	// Reset track and section keys
 	PersistentDataProxy.SetSectionKey(FMovieSceneEvaluationKey());
 	PersistentDataProxy.SetTrackKey(FMovieSceneEvaluationKey());
+	Player.PreAnimatedState.SetCaptureEntity(FMovieSceneEvaluationKey(), EMovieSceneCompletionMode::KeepState);
 
 	int32 SharedTokenIndex = 0;
 	while (SharedTokenIndex < SortedSharedTokens.Num())
@@ -52,8 +53,7 @@ void FMovieSceneExecutionTokens::Apply(const FMovieSceneContext& RootContext, IM
 	{
 		PersistentDataProxy.SetTrackKey(Entry.Scope.Key.AsTrack());
 		PersistentDataProxy.SetSectionKey(Entry.Scope.Key);
-
-		FScopedPreAnimatedCaptureSource CaptureSource(&Player.PreAnimatedState, Entry.Scope.Key, Entry.Scope.CompletionMode == EMovieSceneCompletionMode::RestoreState);
+		Player.PreAnimatedState.SetCaptureEntity(Entry.Scope.Key, Entry.Scope.CompletionMode);
 
 		{
 			MOVIESCENE_DETAILED_SCOPE_CYCLE_COUNTER(MovieSceneEval_ApplyExecutionToken);
@@ -66,6 +66,7 @@ void FMovieSceneExecutionTokens::Apply(const FMovieSceneContext& RootContext, IM
 	// Reset track and section keys
 	PersistentDataProxy.SetSectionKey(FMovieSceneEvaluationKey());
 	PersistentDataProxy.SetTrackKey(FMovieSceneEvaluationKey());
+	Player.PreAnimatedState.SetCaptureEntity(FMovieSceneEvaluationKey(), EMovieSceneCompletionMode::KeepState);
 
 	while (SharedTokenIndex < SortedSharedTokens.Num())
 	{

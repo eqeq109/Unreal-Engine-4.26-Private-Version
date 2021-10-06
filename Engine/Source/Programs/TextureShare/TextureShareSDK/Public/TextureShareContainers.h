@@ -64,13 +64,3 @@ struct FTextureShareSDKAdditionalData
 
 	//@todo: add more frame data
 };
-
-struct FTextureShareSDKCustomProjectionData
-{
-	// Projection matrix
-	FTextureShareSDKMatrix PrjMatrix;
-
-	FTextureShareSDKVector  ViewLocation;
-	FTextureShareSDKRotator ViewRotation;
-	FTextureShareSDKVector  ViewScale;
-};

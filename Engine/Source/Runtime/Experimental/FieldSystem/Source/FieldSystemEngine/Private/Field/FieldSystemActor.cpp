@@ -16,16 +16,17 @@ AFieldSystemActor::AFieldSystemActor(const FObjectInitializer& ObjectInitializer
 	RootComponent = FieldSystemComponent;
 }
 
+
 void AFieldSystemActor::OnConstruction(const FTransform& Transform)
 {
 	if (UFieldSystemComponent* Component = FieldSystemComponent)
 	{
 		if (UFieldSystem* Asset = FieldSystemComponent->FieldSystem)
 		{
-			const TArray< FFieldSystemCommand >& ConstructionFields = Component->GetConstructionFields();
-			if (Asset->Commands.Num() != ConstructionFields.Num())
+
+			if (Asset->Commands.Num() != Component->BlueprintBufferedCommands.Num())
 			{
-				if (!ConstructionFields.Num())
+				if (!Component->BlueprintBufferedCommands.Num())
 				{
 					Asset->Modify();
 					Asset->Commands.Reset();
@@ -33,7 +34,7 @@ void AFieldSystemActor::OnConstruction(const FTransform& Transform)
 				else
 				{
 					Asset->Modify();
-					Asset->Commands = ConstructionFields;
+					Asset->Commands = Component->BlueprintBufferedCommands;
 				}
 			}
 			else
@@ -41,17 +42,15 @@ void AFieldSystemActor::OnConstruction(const FTransform& Transform)
 				bool bEqual = true;
 				for (int i = 0; i < Asset->Commands.Num() && bEqual; i++)
 				{
-					bEqual &= Asset->Commands[i] == ConstructionFields[i];
+					bEqual &= Asset->Commands[i] == Component->BlueprintBufferedCommands[i];
 				}
 				if (!bEqual)
 				{
 					Asset->Modify();
-					Asset->Commands = ConstructionFields;
+					Asset->Commands = Component->BlueprintBufferedCommands;
 				}
 			}
 		}
-		Component->ConstructionCommands = Component->BufferCommands;
-		Component->BufferCommands.ResetFieldCommands();
 	}
 }
 

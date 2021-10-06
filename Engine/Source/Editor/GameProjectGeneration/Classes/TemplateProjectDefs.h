@@ -36,7 +36,7 @@ struct FTemplateReplacement
 	FString To;
 
 	UPROPERTY()
-	bool bCaseSensitive{false};
+	bool bCaseSensitive;
 };
 
 USTRUCT()
@@ -199,7 +199,7 @@ struct FTemplateCategoryDef
 
 	/** Is this a major top-level category? Major categories are displayed as full rows, eg. the Game category.*/
 	UPROPERTY()
-		bool IsMajorCategory{ false };
+	bool IsMajorCategory;
 };
 
 UCLASS(config=TemplateCategories)

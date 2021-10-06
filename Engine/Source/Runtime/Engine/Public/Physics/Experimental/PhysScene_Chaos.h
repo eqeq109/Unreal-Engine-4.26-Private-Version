@@ -44,12 +44,13 @@ namespace Chaos
 
 	struct FCollisionEventData;
 
-	enum class EEventType : int32;
+	enum EEventType : int32;
 
 	template<typename PayloadType, typename HandlerType>
 	class TRawEventHandler;
 
-	class FAccelerationStructureHandle;
+	template <typename T, int d>
+	class TAccelerationStructureHandle;
 
 	template <typename TPayload, typename T, int d>
 	class ISpatialAcceleration;
@@ -102,7 +103,7 @@ public:
 	 */
 	void AddObject(UPrimitiveComponent* Component, FSkeletalMeshPhysicsProxy* InObject);
 	void AddObject(UPrimitiveComponent* Component, FStaticMeshPhysicsProxy* InObject);
-	void AddObject(UPrimitiveComponent* Component, FSingleParticlePhysicsProxy* InObject);
+	void AddObject(UPrimitiveComponent* Component, FGeometryParticlePhysicsProxy* InObject);
 	void AddObject(UPrimitiveComponent* Component, FGeometryCollectionPhysicsProxy* InObject);
 	
 	void AddToComponentMaps(UPrimitiveComponent* Component, IPhysicsProxyBase* InObject);
@@ -114,9 +115,18 @@ public:
 	 */
 	void RemoveObject(FSkeletalMeshPhysicsProxy* InObject);
 	void RemoveObject(FStaticMeshPhysicsProxy* InObject);
-	void RemoveObject(FSingleParticlePhysicsProxy* InObject);
+	void RemoveObject(FGeometryParticlePhysicsProxy* InObject);
 	void RemoveObject(FGeometryCollectionPhysicsProxy* InObject);
 
+#if XGE_FIXED
+	template<typename PayloadType>
+	void RegisterEvent(const Chaos::EEventType& EventID, TFunction<void(const Chaos::FPBDRigidsSolver* Solver, PayloadType& EventData)> InLambda);
+	void UnregisterEvent(const Chaos::EEventType& EventID);
+
+	template<typename PayloadType, typename HandlerType>
+	void RegisterEventHandler(const Chaos::EEventType& EventID, HandlerType* Handler, typename Chaos::TRawEventHandler<PayloadType, HandlerType>::FHandlerFunction Func);
+	void UnregisterEventHandler(const Chaos::EEventType& EventID, const void* Handler);
+#endif // XGE_FIXED
 	FPhysicsReplication* GetPhysicsReplication();
 	void SetPhysicsReplication(FPhysicsReplication* InPhysicsReplication);
 
@@ -167,7 +177,7 @@ public:
 
 	void AddPendingOnConstraintBreak(FConstraintInstance* ConstraintInstance, int32 SceneType);
 	void AddPendingSleepingEvent(FBodyInstance* BI, ESleepEvent SleepEventType, int32 SceneType);
-	int32 DirtyElementCount(Chaos::ISpatialAccelerationCollection<Chaos::FAccelerationStructureHandle, Chaos::FReal, 3>& Collection);
+	int32 DirtyElementCount(Chaos::ISpatialAccelerationCollection<Chaos::TAccelerationStructureHandle<Chaos::FReal, 3>, Chaos::FReal, 3>& Collection);
 
 	TArray<FCollisionNotifyInfo>& GetPendingCollisionNotifies(int32 SceneType);
 
@@ -251,7 +261,7 @@ private:
 #endif
 
 #if WITH_CHAOS
-	virtual void OnSyncBodies(Chaos::FPhysicsSolverBase* Solver) override;
+	virtual void OnSyncBodies(const int32 SolverSyncTimestamp, Chaos::FPBDRigidDirtyParticlesBufferAccessor& Accessor) override;
 #endif
 
 #if 0
@@ -277,12 +287,12 @@ private:
 	void RemoveSpringConstraint(const FPhysicsConstraintHandle& Constraint);
 
 #if 0
-	void AddForce(const Chaos::FVec3& Force,FPhysicsActorHandle& Handle)
+	void AddForce(const Chaos::TVector<float,3>& Force,FPhysicsActorHandle& Handle)
 	{
 		// #todo : Implement
 	}
 
-	void AddTorque(const Chaos::FVec3& Torque,FPhysicsActorHandle& Handle)
+	void AddTorque(const Chaos::TVector<float,3>& Torque,FPhysicsActorHandle& Handle)
 	{
 		// #todo : Implement
 	}

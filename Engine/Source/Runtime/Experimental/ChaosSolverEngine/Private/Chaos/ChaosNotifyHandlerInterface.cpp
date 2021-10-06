@@ -32,19 +32,3 @@ FHitResult UChaosSolverEngineBlueprintLibrary::ConvertPhysicsCollisionToHitResul
 
 	return Hit;
 }
-
-FChaosPhysicsCollisionInfo::FChaosPhysicsCollisionInfo()
-	: Component(nullptr)
-	, OtherComponent(nullptr)
-	, Location(FVector::ZeroVector)
-	, Normal(FVector::ZeroVector)
-	, AccumulatedImpulse(FVector::ZeroVector)
-	, Velocity(FVector::ZeroVector)
-	, OtherVelocity(FVector::ZeroVector)
-	, AngularVelocity(FVector::ZeroVector)
-	, OtherAngularVelocity(FVector::ZeroVector)
-	, Mass(0.0f)
-	, OtherMass(0.0f)
-{
-
-}

@@ -8,10 +8,12 @@
 
 #include "PathTracingCommon.ush"
 #include "Sensor/PathTracingPinholeCamera.ush"
+#include "Sensor/PathTracingAdaptivePinholeCamera.ush"
 
 void SampleEmitter(
 	uint2 LaunchIndex,
 	inout RandomSequence RandSequence,
+	inout uint SampleIndex,
 	uint SourceEmitterId,
 	uint SensorId,
 	out RayDesc OutRay,
@@ -20,7 +22,14 @@ void SampleEmitter(
 )
 {
 	// Pinhole camera is preferred until adaptive variance reduction is a clear win
-	PinholeCamera_SampleEmitter(LaunchIndex, RandSequence, SourceEmitterId, SensorId, OutRay, OutPixel, OutPdf);
+	if (AdaptiveSamplingData.UseAdaptiveSampling == 1)
+	{
+		AdaptivePinholeCamera_SampleEmitter(LaunchIndex, RandSequence, SampleIndex, SourceEmitterId, SensorId, OutRay, OutPixel, OutPdf);
+	}
+	else
+	{
+		PinholeCamera_SampleEmitter(LaunchIndex, RandSequence, SampleIndex, SourceEmitterId, SensorId, OutRay, OutPixel, OutPdf);
+	}
 }
 
 void PdfEmitter(
@@ -28,5 +37,12 @@ void PdfEmitter(
 	out float OutPdf
 )
 {
-	PinholeCamera_PdfEmitter(Ray, OutPdf);
+	if (AdaptiveSamplingData.UseAdaptiveSampling)
+	{
+		AdaptivePinholeCamera_PdfEmitter(Ray, OutPdf);
+	}
+	else
+	{
+		PinholeCamera_PdfEmitter(Ray, OutPdf);
+	}
 }

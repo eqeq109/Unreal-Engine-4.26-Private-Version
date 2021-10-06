@@ -36,6 +36,7 @@ public class SequencerScripting : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"Kismet",
 				"Slate",
 				"SlateCore",
                 "LevelSequence",

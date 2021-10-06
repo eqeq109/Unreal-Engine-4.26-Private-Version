@@ -64,9 +64,7 @@ FMallocLeakDetection& FMallocLeakDetection::Get()
 }
 
 FMallocLeakDetection::~FMallocLeakDetection()
-{
-	// No need to track allocations anymore, not to mention it will crash if OpenPointers contains anything
-	Get().OpenPointers.Empty();
+{	
 }
 
 
@@ -179,9 +177,6 @@ void FMallocLeakDetection::GetOpenCallstacks(TArray<uint32>& OutCallstacks, SIZE
 	{
 		FScopeLock Lock(&AllocatedPointersCritical);
 
-		// UniqueCallstacks is modified on HashesToAllocRate.Add which will assert
-		bRecursive = true;
-
 		const int kRequiredRateCheckpoints = 3;
 
 		for (const auto& Pair : UniqueCallstacks)
@@ -244,8 +239,6 @@ void FMallocLeakDetection::GetOpenCallstacks(TArray<uint32>& OutCallstacks, SIZE
 			// else sort by Ascending size
 			return Left.Size >= Right.Size;
 		});
-
-		bRecursive = false;
 	}
 }
 
@@ -387,9 +380,6 @@ int32 FMallocLeakDetection::DumpOpenCallstacks(const TCHAR* FileName, const FMal
 
 		TArray<FString> SortedContexts;
 
-		FScopeLock Lock(&AllocatedPointersCritical);
-		bRecursive = true;
-
 		for (const TPair<void*, FCallstackTrack>& Pair : CopyTemp(OpenPointers))
 		{
 			if (Pair.Value.CachedHash == Key)
@@ -400,7 +390,6 @@ int32 FMallocLeakDetection::DumpOpenCallstacks(const TCHAR* FileName, const FMal
 				}
 			}
 		}
-		bRecursive = false;
 
 		if (SortedContexts.Num())
 		{
@@ -502,15 +491,10 @@ void FMallocLeakDetection::Malloc(void* Ptr, SIZE_T Size)
 }
 
 void FMallocLeakDetection::Realloc(void* OldPtr, SIZE_T OldSize, void* NewPtr, SIZE_T NewSize)
-{
-	if (bCaptureAllocs || OpenPointers.Num())
+{	
+	if (bRecursive == false && (bCaptureAllocs || OpenPointers.Num()))
 	{
 		FScopeLock Lock(&AllocatedPointersCritical);
-
-		if (bRecursive)
-		{
-			return;
-		}
 
 		// realloc may return the same pointer, if so skip this
 	

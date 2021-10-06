@@ -90,10 +90,7 @@ namespace Timing_Data_Investigator
 			bool aggregateBool = false;
 			foreach (object value in values)
 			{
-				if (value is bool)
-				{
-					aggregateBool |= (bool)value;
-				}
+				aggregateBool |= (bool)value;
 			}
 
 			VisibilityOptions VisibilityOption = parameter == null ? VisibilityOptions.VisibleOnTrue : (VisibilityOptions)Enum.Parse(typeof(VisibilityOptions), parameter.ToString());

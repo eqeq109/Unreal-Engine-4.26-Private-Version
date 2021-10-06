@@ -157,10 +157,10 @@ struct FPropertyEditorTestInlineEditCondition
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category=Default, meta=(InlineEditConditionToggle))
-	bool InlineEditCondition = false;
+	bool InlineEditCondition;
 
 	UPROPERTY(EditAnywhere, Category=Default, meta=(EditCondition=InlineEditCondition))
-	int32 HasInlineEditCondition = 0;
+	int32 HasInlineEditCondition;
 };
 
 UCLASS(EditInlineNew)
@@ -178,7 +178,7 @@ struct FPropertyEditorTestInstancedStruct
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Instanced, Category=Default)
-	UPropertyEditorTestInstancedObject* Object { nullptr };
+	UPropertyEditorTestInstancedObject* Object;
 };
 
 UCLASS(transient)

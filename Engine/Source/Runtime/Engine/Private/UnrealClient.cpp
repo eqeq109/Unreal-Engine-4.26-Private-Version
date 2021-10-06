@@ -660,7 +660,8 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			}
 		}
 
-		if (GRHISupportsDynamicResolution)
+		ERHIFeatureLevel::Type FeatureLevel = InCanvas->GetFeatureLevel();
+		if (FeatureLevel >= ERHIFeatureLevel::SM5)
 		{
 			float ResolutionFraction = DynamicResolutionStateInfos.ResolutionFractionApproximation;
 			float ScreenPercentage = ResolutionFraction * 100.0f;
@@ -693,11 +694,11 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			}
 			InY += RowHeight;
 		}
-
+		else // Mobile
+		{
 			// Draw calls
 			{
-				// Assume we don't have more than 1 GPU in mobile.
-				int32 NumDrawCalls = GNumDrawCallsRHI[0];
+				int32 NumDrawCalls = GNumDrawCallsRHI;
 				InCanvas->DrawShadowedString(X1, InY, TEXT("Draws:"), Font, bShowUnitTimeGraph ? FColor(100, 100, 255) : FColor::White);
 				InCanvas->DrawShadowedString(X2, InY, *FString::Printf(TEXT("%d"), NumDrawCalls), Font, FColor::Green);
 				InY += RowHeight;
@@ -705,8 +706,7 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			
 			// Primitives
 			{
-				// Assume we don't have more than 1 GPU in mobile.
-				int32 NumPrimitives = GNumPrimitivesDrawnRHI[0];
+				int32 NumPrimitives = GNumPrimitivesDrawnRHI;
 				InCanvas->DrawShadowedString(X1, InY, TEXT("Prims:"), Font, bShowUnitTimeGraph ? FColor(100, 100, 255) : FColor::White);
 				if (NumPrimitives < 10000)
 				{
@@ -721,6 +721,7 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 				InY += RowHeight;
 			}
 		}
+	}
 
 #if !UE_BUILD_SHIPPING
 	// Draw simple unit time graph
@@ -1232,11 +1233,6 @@ bool FViewport::TakeHighResScreenShot()
 
 void FViewport::HighResScreenshot()
 {
-	if (!ViewportClient->GetEngineShowFlags())
-	{
-		return;
-	}
-
 	// We need to cache this as FScreenshotRequest is a global and the filename is
 	// cleared out before we use it below
 	const FString CachedScreenshotName = FScreenshotRequest::GetFilename();
@@ -1384,19 +1380,9 @@ void FViewport::EndRenderFrame(FRHICommandListImmediate& RHICmdList, bool bPrese
 {
 	check( IsInRenderingThread() );
 
-	RHICmdList.EnqueueLambda([CurrentFrameCounter = GFrameCounterRenderThread](FRHICommandListImmediate& InRHICmdList)
-	{
-		GEngine->SetPresentLatencyMarkerStart(CurrentFrameCounter);
-	});
-
 	uint32 StartTime = FPlatformTime::Cycles();
 	RHICmdList.EndDrawingViewport(GetViewportRHI(), bPresent, bLockToVsync);
 	uint32 EndTime = FPlatformTime::Cycles();
-
-	RHICmdList.EnqueueLambda([CurrentFrameCounter = GFrameCounterRenderThread](FRHICommandListImmediate& InRHICmdList)
-	{
-		GEngine->SetPresentLatencyMarkerEnd(CurrentFrameCounter);
-	});
 
 	GRenderThreadIdle[ERenderThreadIdleTypes::WaitingForGPUPresent] += EndTime - StartTime;
 	GRenderThreadNumIdle[ERenderThreadIdleTypes::WaitingForGPUPresent]++;

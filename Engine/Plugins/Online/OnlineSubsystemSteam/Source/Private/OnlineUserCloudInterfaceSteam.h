@@ -15,15 +15,19 @@
 class FOnlineAsyncTaskSteamEnumerateUserFiles : public FOnlineAsyncTaskSteam
 {
 	/** UserId for file enumeration */
-	FUniqueNetIdSteamRef UserId;
+	FUniqueNetIdSteam UserId;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamEnumerateUserFiles() = delete;
+	FOnlineAsyncTaskSteamEnumerateUserFiles() :
+		FOnlineAsyncTaskSteam(NULL, k_uAPICallInvalid),
+		UserId(0)
+	{
+	}
 
 public:
 	FOnlineAsyncTaskSteamEnumerateUserFiles(class FOnlineSubsystemSteam* InSubsystem, const FUniqueNetIdSteam& InUserId) :
 		FOnlineAsyncTaskSteam(InSubsystem, k_uAPICallInvalid),
-		UserId(InUserId.AsShared())
+		UserId(InUserId)
 	{
 	}
 
@@ -52,18 +56,21 @@ class FOnlineAsyncTaskSteamReadUserFile : public FOnlineAsyncTaskSteam
 PACKAGE_SCOPE:
 
 	/** UserId making the request */
-	FUniqueNetIdSteamRef UserId;
+	FUniqueNetIdSteam UserId;
 	/** Filename shared */
 	FString FileName;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamReadUserFile() = delete;
+	FOnlineAsyncTaskSteamReadUserFile() :
+		UserId(0)
+	{
+	}
 
 public:
 
 	FOnlineAsyncTaskSteamReadUserFile(class FOnlineSubsystemSteam* InSubsystem, const FUniqueNetIdSteam& InUserId, const FString& InFileName) :
 		FOnlineAsyncTaskSteam(InSubsystem, k_uAPICallInvalid),
-		UserId(InUserId.AsShared()), 
+		UserId(InUserId), 
 		FileName(InFileName)
 	{
 	}
@@ -95,12 +102,15 @@ PACKAGE_SCOPE:
 	/** Copy of the data to write */
 	TArray<uint8> Contents;
 	/** UserId making the request */
-	FUniqueNetIdSteamRef UserId;
+	FUniqueNetIdSteam UserId;
 	/** File being written */
 	FString FileName;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamWriteUserFile() = delete;
+	FOnlineAsyncTaskSteamWriteUserFile() :
+		UserId(0)
+	{
+	}
 
 	/**
 	 * Write the specified user file to the network platform's file store
@@ -118,7 +128,7 @@ public:
 	FOnlineAsyncTaskSteamWriteUserFile(class FOnlineSubsystemSteam* InSubsystem, const FUniqueNetIdSteam& InUserId, const FString& InFileName, const TArray<uint8>& InContents) :
 		FOnlineAsyncTaskSteam(InSubsystem, k_uAPICallInvalid),
 		Contents(InContents),
-		UserId(InUserId.AsShared()), 
+		UserId(InUserId), 
 		FileName(InFileName)
 	{
 	}
@@ -150,19 +160,25 @@ class FOnlineAsyncTaskSteamDeleteUserFile : public FOnlineAsyncTaskSteam
 	/** Should the local copy of the file be deleted */
 	bool bShouldLocallyDelete;
 	/** UserId making the request */
-	FUniqueNetIdSteamRef UserId;
+	FUniqueNetIdSteam UserId;
 	/** File being deleted */
 	FString FileName;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamDeleteUserFile() = delete;
+	FOnlineAsyncTaskSteamDeleteUserFile() :
+		FOnlineAsyncTaskSteam(NULL, k_uAPICallInvalid),
+		bShouldCloudDelete(false),
+		bShouldLocallyDelete(false),
+		UserId(0)
+	{
+	}
 
 public:
 	FOnlineAsyncTaskSteamDeleteUserFile(class FOnlineSubsystemSteam* InSubsystem, const FUniqueNetIdSteam& InUserId, const FString& InFileName, bool bInShouldCloudDelete, bool bInShouldLocallyDelete) :
 		FOnlineAsyncTaskSteam(InSubsystem, k_uAPICallInvalid),
 		bShouldCloudDelete(bInShouldCloudDelete),
 		bShouldLocallyDelete(bInShouldLocallyDelete),
-		UserId(InUserId.AsShared()),
+		UserId(InUserId), 
 		FileName(InFileName)
 	{
 	}

@@ -26,7 +26,6 @@ namespace UnrealBuildTool
 		[CommandLine("-2015", Value = nameof(ProjectFileFormat.VisualStudio2015))] // + override compiler
 		[CommandLine("-2017", Value = nameof(ProjectFileFormat.VisualStudio2017))] // + override compiler
 		[CommandLine("-2019", Value = nameof(ProjectFileFormat.VisualStudio2019))] // + override compiler
-		[CommandLine("-2022", Value = nameof(ProjectFileFormat.VisualStudio2022))] // + override compiler
 		[CommandLine("-Makefile", Value = nameof(ProjectFileFormat.Make))]
 		[CommandLine("-CMakefile", Value = nameof(ProjectFileFormat.CMake))]
 		[CommandLine("-QMakefile", Value = nameof(ProjectFileFormat.QMake))]
@@ -172,9 +171,6 @@ namespace UnrealBuildTool
 					case ProjectFileFormat.VisualStudio2019:
 						Generator = new VCProjectFileGenerator(ProjectFile, VCProjectFileFormat.VisualStudio2019, Arguments);
 						break;
-					case ProjectFileFormat.VisualStudio2022:
-						Generator = new VCProjectFileGenerator(ProjectFile, VCProjectFileFormat.VisualStudio2022, Arguments);
-						break;
 					case ProjectFileFormat.XCode:
 						Generator = new XcodeProjectFileGenerator(ProjectFile, Arguments);
 						break;
@@ -207,11 +203,7 @@ namespace UnrealBuildTool
 			ProjectFileGenerator.bGenerateProjectFiles = true;
 			foreach(ProjectFileGenerator Generator in Generators)
 			{
-				ProjectFileGenerator.Current = Generator;
-				bool bGenerateSuccess = Generator.GenerateProjectFiles(PlatformProjectGenerators, Arguments.GetRawArray());
-				ProjectFileGenerator.Current = null;
-
-				if (!bGenerateSuccess)
+				if (!Generator.GenerateProjectFiles(PlatformProjectGenerators, Arguments.GetRawArray()))
 				{
 					return (int)CompilationResult.OtherCompilationError;
 				}

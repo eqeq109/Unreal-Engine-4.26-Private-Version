@@ -7,7 +7,6 @@
 #include "RenderGraphResources.h"
 #include "RenderGraphPass.h"
 #include "RenderGraphValidation.h"
-#include "RenderGraphBlackboard.h"
 #include "ShaderParameterMacros.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
@@ -211,12 +210,6 @@ private:
 
 	FRHIAsyncComputeCommandListImmediate& RHICmdListAsyncCompute;
 	FRDGAllocator Allocator;
-
-public:
-	/** The blackboard used to hold common data tied to the graph lifetime. */
-	FRDGBlackboard Blackboard;
-
-private:
 
 	const FRDGEventName BuilderName;
 

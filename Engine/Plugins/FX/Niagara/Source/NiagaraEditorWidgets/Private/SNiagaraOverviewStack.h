@@ -14,7 +14,6 @@ class UNiagaraStackItem;
 class UNiagaraStackViewModel;
 class UNiagaraSystemSelectionViewModel;
 class FNiagaraStackCommandContext;
-class UNiagaraStackItemGroup;
 
 class SNiagaraOverviewStack : public SCompoundWidget
 {
@@ -38,21 +37,11 @@ private:
 
 	void RefreshEntryList();
 
-	void EntryExpansionChanged();
-
-	void EntryStructureChanged(ENiagaraStructureChangedFlags Flags);
+	void EntryStructureChanged();
 
 	TSharedRef<ITableRow> OnGenerateRowForEntry(UNiagaraStackEntry* Item, const TSharedRef<STableViewBase>& OwnerTable);
 
 	EVisibility GetEnabledCheckBoxVisibility(UNiagaraStackItem* Item) const;
-
-	EVisibility GetShouldDebugDrawStatusVisibility(UNiagaraStackItem* Item) const;
-
-	bool IsModuleDebugDrawEnabled(UNiagaraStackItem* Item) const;
-
-	const FSlateBrush* GetDebugIconBrush(UNiagaraStackItem* Item) const;
-
-	FReply ToggleModuleDebugDraw(UNiagaraStackItem* Item);
 
 	void OnSelectionChanged(UNiagaraStackEntry* InNewSelection, ESelectInfo::Type SelectInfo);
 
@@ -69,15 +58,6 @@ private:
 	FReply OnRowAcceptDrop(const FDragDropEvent& InDragDropEvent, EItemDropZone InDropZone, UNiagaraStackEntry* InTargetEntry);
 
 	EVisibility GetIssueIconVisibility() const;
-
-	void OnItemGroupEnabledStateChanged(ECheckBoxState InCheckState, UNiagaraStackItemGroup* Group);
-	ECheckBoxState ItemGroupCheckEnabledStatus(UNiagaraStackItemGroup* Group) const;
-	bool GetItemGroupEnabledCheckboxEnabled(UNiagaraStackItemGroup* Group) const;
-
-	FText GetItemGroupDeleteButtonToolTip(UNiagaraStackItemGroup* Group) const;
-	bool GetItemGroupDeleteButtonIsEnabled(UNiagaraStackItemGroup* Group) const;
-	EVisibility GetItemGroupDeleteButtonVisibility(UNiagaraStackItemGroup* Group) const;
-	FReply OnItemGroupDeleteClicked(UNiagaraStackItemGroup* Group);
 
 private:
 	UNiagaraStackViewModel* StackViewModel;

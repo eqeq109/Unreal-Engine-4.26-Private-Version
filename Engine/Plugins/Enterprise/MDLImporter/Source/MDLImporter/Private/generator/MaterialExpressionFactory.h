@@ -41,7 +41,7 @@ namespace Generator
 	class FMaterialExpressionFactory : public FBaseExpressionFactory
 	{
 	public:
-		explicit FMaterialExpressionFactory(const Mdl::FApiContext& MdlContext);
+		FMaterialExpressionFactory(const Mdl::FApiContext& MdlContext);
 
 		void SetCurrentMaterial(const mi::neuraylib::IMaterial_definition& MDLMaterialDefinition,
 		                        const mi::neuraylib::ICompiled_material&   MDLMaterial,
@@ -61,7 +61,7 @@ namespace Generator
 		void Cleanup(bool bOnlyTemporaries = false);
 
 		// remove redundant material expressions
-		void CleanupMaterialExpressions();
+		void Tidy();
 
 		TArray<MDLImporterLogging::FLogMessage> GetLogMessages();
 
@@ -156,10 +156,9 @@ namespace Generator
 		Temporaries.Empty();
 	}
 
-	inline void FMaterialExpressionFactory::CleanupMaterialExpressions()
+	inline void FMaterialExpressionFactory::Tidy()
 	{
-		ParameterExpressionFactory.CleanupMaterialExpressions();
-		ConstantExpressionFactory.CleanupMaterialExpressions();
+		ParameterExpressionFactory.Tidy();
 
 	}
 

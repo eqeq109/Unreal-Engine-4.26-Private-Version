@@ -64,7 +64,8 @@ void UMoviePipelineInProcessExecutor::Start(const UMoviePipelineExecutorJob* InJ
 				UMoviePipelineGameOverrideSetting* GameOverrideSetting = CastChecked<UMoviePipelineGameOverrideSetting>(Setting);
 				if (GameOverrideSetting->GameModeOverride)
 				{
-					MapOptions = TEXT("?game=") + GameOverrideSetting->GameModeOverride->GetPathName();
+					FString GameModeOverride = FPackageName::GetShortName(*GameOverrideSetting->GameModeOverride->GetPathName());
+					MapOptions = TEXT("?game=") + GameModeOverride;
 				}
 
 			}
@@ -110,7 +111,7 @@ void UMoviePipelineInProcessExecutor::OnMapLoadFinished(UWorld* NewWorld)
 	FCoreDelegates::OnBeginFrame.AddUObject(this, &UMoviePipelineInProcessExecutor::OnTick);
 	
 	// Listen for when the pipeline thinks it has finished.
-	ActiveMoviePipeline->OnMoviePipelineWorkFinished().AddUObject(this, &UMoviePipelineInProcessExecutor::OnMoviePipelineFinished);
+	ActiveMoviePipeline->OnMoviePipelineFinished().AddUObject(this, &UMoviePipelineInProcessExecutor::OnMoviePipelineFinished);
 	FCoreDelegates::OnEnginePreExit.AddUObject(this, &UMoviePipelineInProcessExecutor::OnApplicationQuit);
 
 	// Wait until we actually recieved the right map and created the pipeline before saying that we're actively rendering
@@ -160,7 +161,7 @@ void UMoviePipelineInProcessExecutor::OnApplicationQuit()
 	}
 }
 
-void UMoviePipelineInProcessExecutor::OnMoviePipelineFinished(FMoviePipelineOutputData InOutputData)
+void UMoviePipelineInProcessExecutor::OnMoviePipelineFinished(UMoviePipeline* InMoviePipeline, bool bFatalError)
 {
 	FCoreDelegates::OnBeginFrame.RemoveAll(this);
 	UMoviePipeline* MoviePipeline = ActiveMoviePipeline;
@@ -168,7 +169,7 @@ void UMoviePipelineInProcessExecutor::OnMoviePipelineFinished(FMoviePipelineOutp
 	if (ActiveMoviePipeline)
 	{
 		// Unsubscribe in the event that it gets called twice we don't have issues.
-		ActiveMoviePipeline->OnMoviePipelineWorkFinished().RemoveAll(this);
+		ActiveMoviePipeline->OnMoviePipelineFinished().RemoveAll(this);
 	}
 
 	// Null these out now since OnIndividualPipelineFinished might invoke something that causes a GC
@@ -178,7 +179,7 @@ void UMoviePipelineInProcessExecutor::OnMoviePipelineFinished(FMoviePipelineOutp
 	RestoreState();
 
 	// Now that another frame has passed and we should be OK to start another PIE session, notify our owner.
-	OnIndividualPipelineFinished(InOutputData.Pipeline);
+	OnIndividualPipelineFinished(MoviePipeline);
 }
 
 void UMoviePipelineInProcessExecutor::BackupState()

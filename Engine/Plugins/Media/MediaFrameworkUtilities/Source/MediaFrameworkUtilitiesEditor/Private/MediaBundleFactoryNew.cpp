@@ -3,7 +3,6 @@
 #include "MediaBundleFactoryNew.h"
 
 #include "AssetTypeCategories.h"
-#include "EngineAnalytics.h"
 #include "Engine/Blueprint.h"
 #include "MediaBundle.h"
 
@@ -25,21 +24,10 @@ UMediaBundleFactoryNew::UMediaBundleFactoryNew(const FObjectInitializer& ObjectI
 /* UMediaBundleFactoryNew UFactory interface
  *****************************************************************************/
 
-/**
- * @EventName MediaFramework.CreateNewMediaBundle
- * @Trigger Triggered when a media bundle asset is created.
- * @Type Client
- * @Owner MediaIO Team
- */
 UObject* UMediaBundleFactoryNew::FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
 	UMediaBundle* NewMediaBundle = NewObject<UMediaBundle>(InParent, InClass, InName, Flags);
 	NewMediaBundle->CreateInternalsEditor();
-	
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("MediaFramework.CreateNewMediaBundle"));
-	}
 
 	return NewMediaBundle;
 }

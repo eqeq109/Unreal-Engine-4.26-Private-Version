@@ -22,7 +22,6 @@ struct FRenderTarget2DRWInstanceData_GameThread
 
 	FIntPoint Size = FIntPoint(EForceInit::ForceInitToZero);
 	ETextureRenderTargetFormat Format = RTF_RGBA16f;
-	ENiagaraMipMapGeneration MipMapGeneration = ENiagaraMipMapGeneration::Disabled;
 	
 	UTextureRenderTarget2D* TargetTexture = nullptr;
 #if WITH_EDITORONLY_DATA
@@ -41,18 +40,11 @@ struct FRenderTarget2DRWInstanceData_RenderThread
 	}
 
 	FIntPoint Size = FIntPoint(EForceInit::ForceInitToZero);
-	ENiagaraMipMapGeneration MipMapGeneration = ENiagaraMipMapGeneration::Disabled;
-	bool bWasWrittenTo = false;
-
-	FSamplerStateRHIRef SamplerStateRHI;
-	FTexture2DRHIRef TextureRHI;
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
+	
+	FTextureReferenceRHIRef TextureReferenceRHI;
+	FUnorderedAccessViewRHIRef UAV;
 #if WITH_EDITORONLY_DATA
 	uint32 bPreviewTexture : 1;
-#endif
-#if STATS
-	void UpdateMemoryStats();
-	uint64 MemorySize = 0;
 #endif
 };
 
@@ -62,7 +54,6 @@ struct FNiagaraDataInterfaceProxyRenderTarget2DProxy : public FNiagaraDataInterf
 	virtual void ConsumePerInstanceDataFromGameThread(void* PerInstanceData, const FNiagaraSystemInstanceID& Instance) override {}
 	virtual int32 PerInstanceDataPassedToRenderThreadSize() const override { return 0; }
 
-	virtual void PostStage(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceStageArgs& Context) override;
 	virtual void PostSimulate(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceArgs& Context) override;
 
 	virtual FIntVector GetElementCount(FNiagaraSystemInstanceID SystemInstanceID) const override;
@@ -86,19 +77,14 @@ public:
 	// VM functionality
 	virtual bool CanExecuteOnTarget(ENiagaraSimTarget Target)const override { return true; }
 	virtual void GetFunctions(TArray<FNiagaraFunctionSignature>& OutFunctions) override;
-#if WITH_EDITORONLY_DATA
-	virtual bool UpgradeFunctionCall(FNiagaraFunctionSignature& FunctionSignature) override;
-#endif
 	virtual void GetVMExternalFunction(const FVMExternalFunctionBindingInfo& BindingInfo, void* InstanceData, FVMExternalFunction &OutFunc) override;
 
 	virtual bool Equals(const UNiagaraDataInterface* Other) const override;
 	virtual bool CopyToInternal(UNiagaraDataInterface* Destination) const override;
 
 	// GPU sim functionality
-#if WITH_EDITORONLY_DATA
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-#endif
 
 	virtual void ProvidePerInstanceDataForRenderThread(void* DataForRenderThread, void* PerInstanceData, const FNiagaraSystemInstanceID& SystemInstance) override {}
 	virtual bool InitPerInstanceData(void* PerInstanceData, FNiagaraSystemInstance* SystemInstance) override;
@@ -113,17 +99,11 @@ public:
 	virtual void GetExposedVariables(TArray<FNiagaraVariableBase>& OutVariables) const override;
 	virtual bool GetExposedVariableValue(const FNiagaraVariableBase& InVariable, void* InPerInstanceData, FNiagaraSystemInstance* InSystemInstance, void* OutData) const override;
 
-	virtual bool CanRenderVariablesToCanvas() const { return true; }
-	virtual void GetCanvasVariables(TArray<FNiagaraVariableBase>& OutVariables) const override;
-	virtual bool RenderVariableToCanvas(FNiagaraSystemInstanceID SystemInstanceID, FName VariableName, class FCanvas* Canvas, const FIntRect& DrawRect) const override;
 	//~ UNiagaraDataInterface interface END
-
 	void GetSize(FVectorVMContext& Context); 
 	void SetSize(FVectorVMContext& Context);
 
 	static const FName SetValueFunctionName;
-	static const FName GetValueFunctionName;
-	static const FName SampleValueFunctionName;
 	static const FName SetSizeFunctionName;
 	static const FName GetSizeFunctionName;
 	static const FName LinearToIndexName;
@@ -131,32 +111,19 @@ public:
 	static const FString SizeName;
 	static const FString RWOutputName;
 	static const FString OutputName;
-	static const FString InputName;
 
-	UPROPERTY(EditAnywhere, Category = "Render Target", meta = (EditCondition = "!bInheritUserParameterSettings"))
+	UPROPERTY(EditAnywhere, Category = "Render Target")
 	FIntPoint Size;
 
-	/** Controls if and when we generate mips for the render target. */
-	UPROPERTY(EditAnywhere, Category = "Render Target", meta = (EditCondition = "!bInheritUserParameterSettings"))
-	ENiagaraMipMapGeneration MipMapGeneration = ENiagaraMipMapGeneration::Disabled;
-
 	/** When enabled overrides the format of the render target, otherwise uses the project default setting. */
-	UPROPERTY(EditAnywhere, Category = "Render Target", meta = (EditCondition = "!bInheritUserParameterSettings && bOverrideFormat"))
+	UPROPERTY(EditAnywhere, Category = "Render Target", meta = (EditCondition = "bOverrideFormat"))
 	TEnumAsByte<ETextureRenderTargetFormat> OverrideRenderTargetFormat;
 
-	/**
-	When enabled texture parameters (size / etc) are taken from the user provided render target.
-	If no valid user parameter is set the system will be invalid.
-	Note: The resource will be recreated if UAV access is not available, which will reset the contents.
-	*/
-	UPROPERTY(EditAnywhere, Category = "Render Target")
-	uint8 bInheritUserParameterSettings : 1;
-
-	UPROPERTY(EditAnywhere, Category = "Render Target")
+	UPROPERTY(EditAnywhere, Category = "Render Target", meta=(PinHiddenByDefault, InlineEditConditionToggle))
 	uint8 bOverrideFormat : 1;
 
 #if WITH_EDITORONLY_DATA
-	UPROPERTY(EditAnywhere, Category = "Render Target")
+	UPROPERTY(Transient, EditAnywhere, Category = "Render Target")
 	uint8 bPreviewRenderTarget : 1;
 #endif
 
@@ -165,9 +132,7 @@ public:
 
 protected:
 	static FNiagaraVariableBase ExposedRTVar;
-
-	TMap<FNiagaraSystemInstanceID, FRenderTarget2DRWInstanceData_GameThread*> SystemInstancesToProxyData_GT;
 	
-	UPROPERTY(Transient, DuplicateTransient)
-	TMap<uint64, UTextureRenderTarget2D*> ManagedRenderTargets;
+	UPROPERTY(Transient)
+	TMap< uint64, UTextureRenderTarget2D*> ManagedRenderTargets;
 };

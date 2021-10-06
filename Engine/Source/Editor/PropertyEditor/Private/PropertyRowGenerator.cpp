@@ -220,19 +220,15 @@ TSharedPtr<IDetailTreeNode> FPropertyRowGenerator::FindTreeNode(TSharedPtr<IProp
 	return nullptr;
 }
 
-TArray<TSharedPtr<IDetailTreeNode>> FPropertyRowGenerator::FindTreeNodes(const TArray<TSharedPtr<IPropertyHandle>>& PropertyHandles) const
+TArray<TSharedPtr<IDetailTreeNode>> FPropertyRowGenerator::FindTreeNodes(TArray<TSharedPtr<IPropertyHandle>> PropertyHandles) const
 {
 	TArray<TSharedPtr<IDetailTreeNode>> NodesToCheck;
 	NodesToCheck.Append(RootTreeNodes);
+	TArray<TSharedPtr<FPropertyNode>> PropertyNodesWeAreAfter;
 
-	// Property Node to Array Index mapping
-	TMap<TSharedPtr<FPropertyNode>, int32> PropertyNodesWeAreAfter;
-	for (int32 Index = 0, NumHandle = PropertyHandles.Num(); Index < NumHandle; ++Index)
+	for(TSharedPtr<IPropertyHandle>& Handle: PropertyHandles)
 	{
-		TSharedPtr<FPropertyNode> PropertyNode = StaticCastSharedPtr<FPropertyHandleBase>(PropertyHandles[Index])->GetPropertyNode();
-		// we assume no duplicates in the input param
-		ensure(!PropertyNodesWeAreAfter.Contains(PropertyNode));
-		PropertyNodesWeAreAfter.Add(MoveTemp(PropertyNode), Index);
+		PropertyNodesWeAreAfter.Add(StaticCastSharedPtr<FPropertyHandleBase>(Handle)->GetPropertyNode());
 	}
 	TArray<TSharedPtr<IDetailTreeNode>> Results;
 	Results.AddDefaulted(PropertyHandles.Num());
@@ -248,10 +244,18 @@ TArray<TSharedPtr<IDetailTreeNode>> FPropertyRowGenerator::FindTreeNodes(const T
 
 		if (PropertyNode.IsValid())
 		{
-			if (int32* HandleIndex = PropertyNodesWeAreAfter.Find(PropertyNode))
+			// check if any is one that we're after
+			for (int Idx = 0, NumResults = Results.Num(); Idx < NumResults; ++Idx)
 			{
-				Results[*HandleIndex] = Node;
-				--NumNotFound;
+				if (!Results[Idx].IsValid())
+				{
+					if (UNLIKELY(PropertyNode == PropertyNodesWeAreAfter[Idx]))
+					{
+						Results[Idx] = Node;
+						--NumNotFound;
+						// assume no duplicates and break?
+					}
+				}
 			}
 
 			check(NumNotFound >= 0);
@@ -642,13 +646,8 @@ void FPropertyRowGenerator::UpdateSinglePropertyMap(TSharedPtr<FComplexPropertyN
 }
 
 
-bool FPropertyRowGenerator::ValidatePropertyNodes(const FRootPropertyNodeList& PropertyNodeList)
+bool FPropertyRowGenerator::ValidatePropertyNodes(const FRootPropertyNodeList &PropertyNodeList)
 {
-	if (CustomValidatePropertyNodesFunction.IsBound())
-	{
-		return CustomValidatePropertyNodesFunction.Execute(PropertyNodeList);
-	}
-	
 	bool bFullRefresh = false;
 
 	for (const TSharedPtr<FComplexPropertyNode>& RootPropertyNode : RootPropertyNodes)

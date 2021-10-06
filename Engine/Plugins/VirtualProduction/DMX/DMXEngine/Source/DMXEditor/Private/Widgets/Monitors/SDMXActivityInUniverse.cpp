@@ -41,7 +41,7 @@ void FDMXUniverseMonitorChannelItem::CreateWidget(uint8 InitialValue)
 	
 	Widget =
 		SNew(SDMXChannel)
-		.ChannelID(ChannelID)
+		.ID(ChannelID)
 		.Value(InitialValue);
 }
 
@@ -116,9 +116,19 @@ void SDMXActivityInUniverse::Construct(const FArguments& InArgs)
 	{
 		Channels.Add(MakeShared<FDMXUniverseMonitorChannelItem>(ChannelID));
 	}
-}	
+}
 
-void SDMXActivityInUniverse::VisualizeBuffer(const TArray<uint8, TFixedAllocator<DMX_UNIVERSE_SIZE>>& Values)
+void SDMXActivityInUniverse::VisualizeInputBuffer(const TArray<uint8>& Values)
+{
+	VisualizeBuffer(Values);
+}
+
+void SDMXActivityInUniverse::VisualizeOutputBuffer(const TArray<uint8>& Values)
+{
+	VisualizeBuffer(Values);
+}
+
+void SDMXActivityInUniverse::VisualizeBuffer(const TArray<uint8>& Values)
 {
 	// is NewValue a different value from current one?
 	if (Buffer != Values)

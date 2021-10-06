@@ -10,15 +10,16 @@ namespace GeometryCollectionTest
 using namespace ChaosTest;
 
 
-GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionRoot)
+TYPED_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionRoot)
 {
+	using Traits = TypeParam;
 	FVector GlobalTranslation(10); FQuat GlobalRotation = FQuat::MakeFromEuler(FVector(0));
 	CreationParameters Params; Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic; Params.EnableClustering = false;
 	Params.RootTransform = FTransform(GlobalRotation,GlobalTranslation); Params.NestedTransforms ={FTransform(FVector(10)),FTransform::Identity,FTransform::Identity};
-	FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+	TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 	EXPECT_EQ(Collection->DynamicCollection->Parent[0],1); // is a child of index one
 
-	FFramework UnitTest;
+	TFramework<Traits> UnitTest;
 	UnitTest.AddSimulationObject(Collection);
 	UnitTest.Initialize();
 	UnitTest.Advance();
@@ -42,14 +43,15 @@ GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollect
 }
 
 
-GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionParentNode)
+TYPED_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionParentNode)
 {
+	using Traits = TypeParam;
 	FVector GlobalTranslation(10); FQuat GlobalRotation = FQuat::MakeFromEuler(FVector(0));
 	CreationParameters Params; Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic; Params.EnableClustering = false;
 	Params.RootTransform = FTransform(GlobalRotation,GlobalTranslation); Params.NestedTransforms ={FTransform::Identity,FTransform(FVector(10)),FTransform::Identity};
-	FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+	TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-	FFramework UnitTest;
+	TFramework<Traits> UnitTest;
 	UnitTest.AddSimulationObject(Collection);
 	UnitTest.Initialize();
 	UnitTest.Advance();
@@ -73,14 +75,15 @@ GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollect
 }
 
 
-GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionGeometryNode)
+TYPED_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionGeometryNode)
 {
+	using Traits = TypeParam;
 	FVector GlobalTranslation(10); FQuat GlobalRotation = FQuat::MakeFromEuler(FVector(0));
 	CreationParameters Params; Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic; Params.EnableClustering = false;
 	Params.RootTransform = FTransform(GlobalRotation,GlobalTranslation); Params.NestedTransforms ={FTransform::Identity,FTransform::Identity,FTransform(FVector(10))};
-	FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+	TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-	FFramework UnitTest;
+	TFramework<Traits> UnitTest;
 	UnitTest.AddSimulationObject(Collection);
 	UnitTest.Initialize();
 	UnitTest.Advance();
@@ -104,13 +107,14 @@ GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollect
 }
 
 
-GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionGeometryVertices)
+TYPED_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollectionGeometryVertices)
 {
+	using Traits = TypeParam;
 	FVector GlobalTranslation(10); FQuat GlobalRotation = FQuat::MakeFromEuler(FVector(0));
 	CreationParameters Params; Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic; Params.EnableClustering = false;
 	Params.SimplicialType = ESimplicialType::Chaos_Simplicial_Sphere; Params.ImplicitType = EImplicitTypeEnum::Chaos_Implicit_Sphere;
 	Params.GeomTransform = FTransform(GlobalRotation,GlobalTranslation); Params.NestedTransforms ={FTransform::Identity,FTransform::Identity,FTransform::Identity};
-	FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+	TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 	//
 	// validate the vertices have been moved.  
@@ -127,7 +131,7 @@ GTEST_TEST(AllTraits,GeometryCollection_Initilization_TransformedGeometryCollect
 
 
 
-	FFramework UnitTest;
+	TFramework<Traits> UnitTest;
 	UnitTest.AddSimulationObject(Collection);
 	UnitTest.Initialize();
 	UnitTest.Advance();

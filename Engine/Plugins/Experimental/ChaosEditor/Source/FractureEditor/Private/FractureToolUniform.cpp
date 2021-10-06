@@ -4,16 +4,33 @@
 
 #include "FractureEditorStyle.h"
 #include "FractureEditorCommands.h"
-#include "FractureToolContext.h"
 
 #define LOCTEXT_NAMESPACE "FractureUniform"
+
+void UFractureUniformSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	if (OwnerTool != nullptr)
+	{
+		OwnerTool->PostEditChangeProperty(PropertyChangedEvent);
+	}
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+}
+
+void UFractureUniformSettings::PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent)
+{
+	if (OwnerTool != nullptr)
+	{
+		OwnerTool->PostEditChangeChainProperty(PropertyChangedEvent);
+	}
+	Super::PostEditChangeChainProperty(PropertyChangedEvent);
+}
 
 
 UFractureToolUniform::UFractureToolUniform(const FObjectInitializer& ObjInit) 
 	: Super(ObjInit) 
 {
-	UniformSettings = NewObject<UFractureUniformSettings>(GetTransientPackage(), UFractureUniformSettings::StaticClass());
-	UniformSettings->OwnerTool = this;
+	Settings = NewObject<UFractureUniformSettings>(GetTransientPackage(), UFractureUniformSettings::StaticClass());
+	Settings->OwnerTool = this;
 }
 
 FText UFractureToolUniform::GetDisplayText() const
@@ -40,27 +57,24 @@ void UFractureToolUniform::RegisterUICommand( FFractureEditorCommands* BindingCo
 TArray<UObject*> UFractureToolUniform::GetSettingsObjects() const 
 { 
 	TArray<UObject*> AllSettings; 
-	AllSettings.Add(CutterSettings);
-	AllSettings.Add(UniformSettings);
+	AllSettings.Add(GetMutableDefault<UFractureCommonSettings>());
+	AllSettings.Add(Settings);
 	return AllSettings;
 }
 
-void UFractureToolUniform::GenerateVoronoiSites(const FFractureToolContext& Context, TArray<FVector>& Sites)
+void UFractureToolUniform::GenerateVoronoiSites(const FFractureContext &Context, TArray<FVector>& Sites)
 {
-	FRandomStream RandStream(Context.GetSeed());
+	FRandomStream RandStream(Context.RandomSeed);
 
-	const FVector Extent(Context.GetBounds().Max - Context.GetBounds().Min);
+	const FVector Extent(Context.Bounds.Max - Context.Bounds.Min);
 
-	const int32 SiteCount = RandStream.RandRange(UniformSettings->NumberVoronoiSitesMin, UniformSettings->NumberVoronoiSitesMax);
+	const int32 SiteCount = RandStream.RandRange(Settings->NumberVoronoiSitesMin, Settings->NumberVoronoiSitesMax);
 
 	Sites.Reserve(Sites.Num() + SiteCount);
 	for (int32 ii = 0; ii < SiteCount; ++ii)
 	{
-		Sites.Emplace(Context.GetBounds().Min + FVector(RandStream.FRand(), RandStream.FRand(), RandStream.FRand()) * Extent );
+		Sites.Emplace(Context.Bounds.Min + FVector(RandStream.FRand(), RandStream.FRand(), RandStream.FRand()) * Extent );
 	}
 }
-
-
-
 
 #undef LOCTEXT_NAMESPACE

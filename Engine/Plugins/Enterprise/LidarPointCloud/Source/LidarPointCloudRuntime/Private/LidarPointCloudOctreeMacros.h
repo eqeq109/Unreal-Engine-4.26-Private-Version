@@ -7,8 +7,9 @@
 
 #define IS_VIS_CHECK_REQUIRED (bVisibleOnly && CurrentNode->NumVisiblePoints < CurrentNode->GetNumPoints())
 
-#define NODE_IN_BOX (Box.Intersect(Child->GetBounds()))
-#define NODE_IN_CONVEX_VOLUME (ConvexVolume.IntersectBox(Child->Center, SharedData[Child->Depth].Extent))
+#define NODE_IN_BOX_EXTERN(Octree) (Box.Intersect(Child->GetBounds(Octree)))
+#define NODE_IN_BOX NODE_IN_BOX_EXTERN(this)
+#define NODE_IN_FRUSTUM (Frustum.IntersectBox(Child->Center, SharedData[Child->Depth].Extent))
 
 #define ITERATE_NODES_BODY(Action, NodeTest, Const) \
 {\
@@ -30,7 +31,7 @@
 
 #define POINT_IN_BOX Box.IsInsideOrOn(Point->Location)
 #define POINT_IN_SPHERE (POINT_IN_BOX && FVector::DistSquared(Point->Location, Sphere.Center) <= RadiusSq)
-#define POINT_IN_CONVEX_VOLUME ConvexVolume.IntersectSphere(Point->Location, 0)
+#define POINT_IN_FRUSTUM Frustum.IntersectSphere(Point->Location, 0)
 #define POINT_BY_RAY Ray.Intersects(Point, RadiusSq)
 
 #define PROCESS_BODY(Action, PointTest, Mode) \
@@ -61,7 +62,7 @@
 {\
 	if (!bVisibleOnly || CurrentNode->NumVisiblePoints > 0)\
 	{\
-		const bool bNodeFullyContained = CurrentNode->GetSphereBounds().IsInside(Sphere);\
+		const bool bNodeFullyContained = CurrentNode->GetSphereBounds(Octree).IsInside(Sphere);\
 		PROCESS_BODY(Action, POINT_IN_SPHERE, Mode) \
 	}\
 }
@@ -77,13 +78,13 @@
 }
 #define PROCESS_IN_BOX_BODY(Action, Mode) PROCESS_IN_BOX_BODY_EXTERN(this, Action, Mode)
 
-#define PROCESS_IN_CONVEX_VOLUME_BODY(Action, Mode) \
+#define PROCESS_IN_FRUSTUM_BODY(Action, Mode) \
 {\
 	if (!bVisibleOnly || CurrentNode->NumVisiblePoints > 0)\
 	{\
 		bool bNodeFullyContained;\
-		ConvexVolume.IntersectBox(CurrentNode->Center, SharedData[CurrentNode->Depth].Extent, bNodeFullyContained);\
-		PROCESS_BODY(Action, POINT_IN_CONVEX_VOLUME, Mode) \
+		Frustum.IntersectBox(CurrentNode->Center, SharedData[CurrentNode->Depth].Extent, bNodeFullyContained);\
+		PROCESS_BODY(Action, POINT_IN_FRUSTUM, Mode) \
 	}\
 }
 
@@ -91,7 +92,7 @@
 {\
 	if (!bVisibleOnly || CurrentNode->NumVisiblePoints > 0)\
 	{\
-		if (Ray.Intersects(CurrentNode->GetBounds()))\
+		if (Ray.Intersects(CurrentNode->GetBounds(this)))\
 		{\
 			if (!IS_VIS_CHECK_REQUIRED) { FOR##Mode(Point, CurrentNode) { if (POINT_BY_RAY) { Action } } }\
 			else { FOR##Mode(Point, CurrentNode) { if (Point->bVisible && POINT_BY_RAY) { Action } } }\
@@ -114,7 +115,7 @@
 #define PROCESS_IN_SPHERE(Action) { PROCESS_IN_SPHERE_COMMON(ITERATE_NODES(PROCESS_IN_SPHERE_BODY(Action,), NODE_IN_BOX)) }
 #define PROCESS_IN_SPHERE_EX(Action, NodeAction) { PROCESS_IN_SPHERE_COMMON(ITERATE_NODES({PROCESS_IN_SPHERE_BODY(Action,)} {NodeAction}, NODE_IN_BOX)) }
 #define PROCESS_IN_SPHERE_CONST(Action) { PROCESS_IN_SPHERE_COMMON(ITERATE_NODES_CONST(PROCESS_IN_SPHERE_BODY(Action, _RO), NODE_IN_BOX)) }
-#define PROCESS_IN_SPHERE_EXTERN(Octree, Action) { PROCESS_IN_SPHERE_COMMON(ITERATE_NODES(PROCESS_IN_SPHERE_BODY_EXTERN(Octree, Action,), NODE_IN_BOX)) }
+#define PROCESS_IN_SPHERE_EXTERN(Octree, Action) { PROCESS_IN_SPHERE_COMMON(ITERATE_NODES(PROCESS_IN_SPHERE_BODY_EXTERN(Octree, Action,), NODE_IN_BOX_EXTERN(Octree))) }
 
 
 #define PROCESS_ALL(Action) { ITERATE_NODES(PROCESS_ALL_BODY(Action,), true) }
@@ -124,10 +125,10 @@
 #define PROCESS_IN_BOX(Action) { ITERATE_NODES(PROCESS_IN_BOX_BODY(Action,), NODE_IN_BOX) }
 #define PROCESS_IN_BOX_EX(Action, NodeAction) { ITERATE_NODES({PROCESS_IN_BOX_BODY(Action,)} {NodeAction}, NODE_IN_BOX) }
 #define PROCESS_IN_BOX_CONST(Action) { ITERATE_NODES_CONST(PROCESS_IN_BOX_BODY(Action, _RO), NODE_IN_BOX) }
-#define PROCESS_IN_BOX_EXTERN(Octree, Action) { ITERATE_NODES(PROCESS_IN_BOX_BODY_EXTERN(Octree, Action,), NODE_IN_BOX) }
+#define PROCESS_IN_BOX_EXTERN(Octree, Action) { ITERATE_NODES(PROCESS_IN_BOX_BODY_EXTERN(Octree, Action,), NODE_IN_BOX_EXTERN(Octree)) }
 
-#define PROCESS_IN_CONVEX_VOLUME(Action) { ITERATE_NODES(PROCESS_IN_CONVEX_VOLUME_BODY(Action,), NODE_IN_CONVEX_VOLUME) }
-#define PROCESS_IN_CONVEX_VOLUME_CONST(Action) { ITERATE_NODES_CONST(PROCESS_IN_CONVEX_VOLUME_BODY(Action, _RO), NODE_IN_CONVEX_VOLUME) }
+#define PROCESS_IN_FRUSTUM(Action) { ITERATE_NODES(PROCESS_IN_FRUSTUM_BODY(Action,), NODE_IN_FRUSTUM) }
+#define PROCESS_IN_FRUSTUM_CONST(Action) { ITERATE_NODES_CONST(PROCESS_IN_FRUSTUM_BODY(Action, _RO), NODE_IN_FRUSTUM) }
 
 #define PROCESS_BY_RAY_COMMON(Action)\
 {\

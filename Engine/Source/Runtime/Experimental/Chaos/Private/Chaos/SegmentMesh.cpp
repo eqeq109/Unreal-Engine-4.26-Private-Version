@@ -5,59 +5,71 @@
 
 using namespace Chaos;
 
-FSegmentMesh::FSegmentMesh(TArray<TVec2<int32>>&& Elements)
+template<class T>
+TSegmentMesh<T>::TSegmentMesh(TArray<TVector<int32, 2>>&& Elements)
     : MElements(MoveTemp(Elements))
 {
 	// Check for degenerate edges.
-	for (const TVec2<int32>& edge : MElements)
+	for (const TVector<int32, 2>& edge : MElements)
 	{
 		check(edge[0] != edge[1]);
 	}
 }
 
-FSegmentMesh::~FSegmentMesh()
+template<class T>
+TSegmentMesh<T>::~TSegmentMesh()
 {}
 
-void FSegmentMesh::_ClearAuxStructures()
+template<class T>
+void 
+TSegmentMesh<T>::_ClearAuxStructures()
 {
 	MPointToEdgeMap.Empty();
 	MPointToNeighborsMap.Empty();
 }
 
-void FSegmentMesh::Init(const TArray<TVec2<int32>>& Elements)
+template<class T>
+void 
+TSegmentMesh<T>::Init(const TArray<TVector<int32, 2>>& Elements)
 {
 	_ClearAuxStructures();
 	MElements = Elements;
 	// Check for degenerate edges.
-	for (const TVec2<int32>& edge : MElements)
+	for (const TVector<int32, 2>& edge : MElements)
 	{
 		check(edge[0] != edge[1]);
 	}
 }
 
-void FSegmentMesh::Init(TArray<TVec2<int32>>&& Elements)
+template<class T>
+void
+TSegmentMesh<T>::Init(TArray<TVector<int32, 2>>&& Elements)
 {
 	_ClearAuxStructures();
 	MElements = MoveTempIfPossible(Elements);
 	// Check for degenerate edges.
-	for (const TVec2<int32>& edge : MElements)
+	for (const TVector<int32, 2>& edge : MElements)
 	{
 		check(edge[0] != edge[1]);
 	}
 }
 
-const TMap<int32, TSet<int32>>& FSegmentMesh::GetPointToNeighborsMap() const
+template<class T>
+const TMap<int32, TSet<int32>>&
+TSegmentMesh<T>::GetPointToNeighborsMap() const
 {
 	if (!MPointToNeighborsMap.Num())
 		_UpdatePointToNeighborsMap();
 	return MPointToNeighborsMap;
 }
 
-void FSegmentMesh::_UpdatePointToNeighborsMap() const
+template<class T>
+void 
+TSegmentMesh<T>::_UpdatePointToNeighborsMap() const
 {
 	MPointToNeighborsMap.Reset();
 	MPointToNeighborsMap.Reserve(MElements.Num() * 2);
-	for (const TVec2<int32>& edge : MElements)
+	for (const TVector<int32, 2>& edge : MElements)
 	{
 		MPointToNeighborsMap.FindOrAdd(edge[0]).Add(edge[1]);
 		MPointToNeighborsMap.FindOrAdd(edge[1]).Add(edge[0]);
@@ -69,34 +81,40 @@ void FSegmentMesh::_UpdatePointToNeighborsMap() const
 	}
 }
 
-const TMap<int32, TArray<int32>>& FSegmentMesh::GetPointToEdges() const
+template<class T>
+const TMap<int32, TArray<int32>>&
+TSegmentMesh<T>::GetPointToEdges() const
 {
 	if (!MPointToEdgeMap.Num())
 		_UpdatePointToEdgesMap();
 	return MPointToEdgeMap;
 }
 
-void FSegmentMesh::_UpdatePointToEdgesMap() const
+template<class T>
+void 
+TSegmentMesh<T>::_UpdatePointToEdgesMap() const
 {
 	MPointToEdgeMap.Reset();
 	MPointToEdgeMap.Reserve(MElements.Num() * 2);
 	for (int32 i = 0; i < MElements.Num(); i++)
 	{
-		const TVec2<int32>& edge = MElements[i];
+		const TVector<int32, 2>& edge = MElements[i];
 		MPointToEdgeMap.FindOrAdd(edge[0]).Add(i);
 		MPointToEdgeMap.FindOrAdd(edge[1]).Add(i);
 	}
 }
 
-TArray<FReal> FSegmentMesh::GetEdgeLengths(const TParticles<FReal, 3>& InParticles, const bool lengthSquared) const
+template<class T>
+TArray<T>
+TSegmentMesh<T>::GetEdgeLengths(const TParticles<T, 3>& InParticles, const bool lengthSquared) const
 {
-	TArray<FReal> lengths;
+	TArray<T> lengths;
 	lengths.AddUninitialized(MElements.Num());
 	if (lengthSquared)
 	{
 		for (int32 i = 0; i < MElements.Num(); i++)
 		{
-			const TVec2<int32>& edge = MElements[i];
+			const TVector<int32, 2>& edge = MElements[i];
 			lengths[i] = (InParticles.X(edge[0]) - InParticles.X(edge[1])).SizeSquared();
 		}
 	}
@@ -104,9 +122,11 @@ TArray<FReal> FSegmentMesh::GetEdgeLengths(const TParticles<FReal, 3>& InParticl
 	{
 		for (int32 i = 0; i < MElements.Num(); i++)
 		{
-			const TVec2<int32>& edge = MElements[i];
+			const TVector<int32, 2>& edge = MElements[i];
 			lengths[i] = (InParticles.X(edge[0]) - InParticles.X(edge[1])).Size();
 		}
 	}
 	return lengths;
 }
+
+template class Chaos::TSegmentMesh<float>;

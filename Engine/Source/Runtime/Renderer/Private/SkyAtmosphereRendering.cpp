@@ -142,11 +142,6 @@ static TAutoConsoleVariable<int32> CVarSkyAtmosphereAerialPerspectiveApplyOnOpaq
 
 ////////////////////////////////////////////////////////////////////////// Transmittance LUT
 
-static TAutoConsoleVariable<int32> CVarSkyAtmosphereTransmittanceLUT(
-	TEXT("r.SkyAtmosphere.TransmittanceLUT"), 1,
-	TEXT("Enable the generation of the sky transmittance.\n"),
-	ECVF_RenderThreadSafe | ECVF_Scalability);
-
 static TAutoConsoleVariable<float> CVarSkyAtmosphereTransmittanceLUTSampleCount(
 	TEXT("r.SkyAtmosphere.TransmittanceLUT.SampleCount"), 10.0f,
 	TEXT("The sample count used to evaluate transmittance."),
@@ -336,7 +331,7 @@ void GetSkyAtmosphereLightsUniformBuffers(
 
 bool ShouldRenderSkyAtmosphere(const FScene* Scene, const FEngineShowFlags& EngineShowFlags)
 {
-	if (Scene && Scene->HasSkyAtmosphere() && EngineShowFlags.Atmosphere && EngineShowFlags.Lighting)
+	if (Scene && Scene->HasSkyAtmosphere() && EngineShowFlags.Atmosphere)
 	{
 		EShaderPlatform ShaderPlatform = Scene->GetShaderPlatform();
 		const FSkyAtmosphereRenderSceneInfo* SkyAtmosphere = Scene->GetSkyAtmosphereSceneInfo();
@@ -1082,20 +1077,13 @@ void InitSkyAtmosphereForScene(FRHICommandListImmediate& RHICmdList, FScene* Sce
 		//
 		// Initialise per scene/atmosphere resources
 		//
-		if (CVarSkyAtmosphereTransmittanceLUT.GetValueOnAnyThread() > 0)
-		{
-			const bool TranstmittanceLUTUseSmallFormat = CVarSkyAtmosphereTransmittanceLUTUseSmallFormat.GetValueOnRenderThread() > 0;
+		const bool TranstmittanceLUTUseSmallFormat = CVarSkyAtmosphereTransmittanceLUTUseSmallFormat.GetValueOnRenderThread() > 0;
 
-			TRefCountPtr<IPooledRenderTarget>& TransmittanceLutTexture = SkyInfo.GetTransmittanceLutTexture();
-			Desc = FPooledRenderTargetDesc::Create2DDesc(
-				FIntPoint(TransmittanceLutWidth, TransmittanceLutHeight),
-				TranstmittanceLUTUseSmallFormat ? TextureLUTSmallFormat : TextureLUTFormat, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
-			GRenderTargetPool.FindFreeElement(RHICmdList, Desc, TransmittanceLutTexture, TEXT("TransmittanceLutTexture"), ERenderTargetTransience::Transient);
-		}
-		else
-		{
-			SkyInfo.GetTransmittanceLutTexture() = GSystemTextures.WhiteDummy;
-		}
+		TRefCountPtr<IPooledRenderTarget>& TransmittanceLutTexture = SkyInfo.GetTransmittanceLutTexture();
+		Desc = FPooledRenderTargetDesc::Create2DDesc(
+			FIntPoint(TransmittanceLutWidth, TransmittanceLutHeight),
+			TranstmittanceLUTUseSmallFormat ? TextureLUTSmallFormat : TextureLUTFormat, FClearValueBinding::None, TexCreate_HideInVisualizeTexture, TexCreate_ShaderResource | TexCreate_UAV, false);
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, TransmittanceLutTexture, TEXT("TransmittanceLutTexture"), ERenderTargetTransience::Transient);
 
 		TRefCountPtr<IPooledRenderTarget>& MultiScatteredLuminanceLutTexture = SkyInfo.GetMultiScatteredLuminanceLutTexture();
 		Desc = FPooledRenderTargetDesc::Create2DDesc(
@@ -1236,26 +1224,24 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 	SkyInfo.GetInternalCommonParametersUniformBuffer() = TUniformBufferRef<FSkyAtmosphereInternalCommonParameters>::CreateUniformBufferImmediate(InternalCommonParameters, UniformBuffer_SingleFrame);
 
 	FRDGTextureRef TransmittanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetTransmittanceLutTexture());
+	FRDGTextureUAVRef TransmittanceLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(TransmittanceLut, 0));
 	FRDGTextureRef MultiScatteredLuminanceLut = GraphBuilder.RegisterExternalTexture(SkyInfo.GetMultiScatteredLuminanceLutTexture());
 	FRDGTextureUAVRef MultiScatteredLuminanceLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(MultiScatteredLuminanceLut, 0));
 
 	// Transmittance LUT
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-	if (CVarSkyAtmosphereTransmittanceLUT.GetValueOnRenderThread() > 0)
 	{
 		TShaderMapRef<FRenderTransmittanceLutCS> ComputeShader(GlobalShaderMap);
 
 		FRenderTransmittanceLutCS::FParameters * PassParameters = GraphBuilder.AllocParameters<FRenderTransmittanceLutCS::FParameters>();
 		PassParameters->Atmosphere = Scene->GetSkyAtmosphereSceneInfo()->GetAtmosphereUniformBuffer();
 		PassParameters->SkyAtmosphere = SkyInfo.GetInternalCommonParametersUniformBuffer();
-		PassParameters->TransmittanceLutUAV = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(TransmittanceLut, 0));
+		PassParameters->TransmittanceLutUAV = TransmittanceLutUAV;
 
 		FIntVector TextureSize = TransmittanceLut->Desc.GetSize();
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderTransmittanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("TransmittanceLut"), ComputeShader, PassParameters, NumGroups);
-
-		ConvertToUntrackedExternalTexture(GraphBuilder, TransmittanceLut, SkyInfo.GetTransmittanceLutTexture(), ERHIAccess::SRVMask);
 	}
 
 	// Multi-Scattering LUT
@@ -1277,8 +1263,6 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		TextureSize.Z = 1;
 		const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderMultiScatteredLuminanceLutCS::GroupSize);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("MultiScatteringLut"), ComputeShader, PassParameters, NumGroups);
-
-		ConvertToUntrackedExternalTexture(GraphBuilder, MultiScatteredLuminanceLut, SkyInfo.GetMultiScatteredLuminanceLutTexture(), ERHIAccess::SRVMask);
 	}
 
 	// Distant Sky Light LUT
@@ -1423,7 +1407,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderSkyViewLutCS::GroupSize);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RealTimeCaptureSkyViewLut"), ComputeShader, PassParameters, NumGroups);
 
-			ConvertToUntrackedExternalTexture(GraphBuilder, RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, ERHIAccess::SRVMask);
+			ConvertToExternalTexture(GraphBuilder, RealTimeReflectionCaptureSkyAtmosphereViewLutTexture, Scene->RealTimeReflectionCaptureSkyAtmosphereViewLutTexture);
 		}
 		else
 		{
@@ -1476,7 +1460,7 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 			const FIntVector NumGroups = FIntVector::DivideAndRoundUp(TextureSize, FRenderCameraAerialPerspectiveVolumeCS::GroupSize);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("RealTimeCaptureCamera360VolumeLut"), ComputeShader, PassParameters, NumGroups);
 
-			ConvertToUntrackedExternalTexture(GraphBuilder, RealTimeReflectionCaptureCamera360APLutTexture, Scene->RealTimeReflectionCaptureCamera360APLutTexture, ERHIAccess::SRVMask);
+			ConvertToExternalTexture(GraphBuilder, RealTimeReflectionCaptureCamera360APLutTexture, Scene->RealTimeReflectionCaptureCamera360APLutTexture);
 		}
 		else
 		{
@@ -1593,6 +1577,8 @@ void FSceneRenderer::RenderSkyAtmosphereLookUpTables(FRDGBuilder& GraphBuilder)
 		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereViewLutTexture, View.SkyAtmosphereViewLutTexture, ERHIAccess::SRVMask);
 		ConvertToUntrackedExternalTexture(GraphBuilder, SkyAtmosphereCameraAerialPerspectiveVolume, View.SkyAtmosphereCameraAerialPerspectiveVolume, ERHIAccess::SRVMask);
 	}
+
+	ConvertToUntrackedExternalTexture(GraphBuilder, TransmittanceLut, SkyInfo.GetTransmittanceLutTexture(), ERHIAccess::SRVMask);
 
 	// TODO have RDG execute those above passes with compute overlap similarly to using AutomaticCacheFlushAfterComputeShader(true);
 }
@@ -1887,7 +1873,7 @@ void FSceneRenderer::RenderSkyAtmosphereEditorNotifications(FRDGBuilder& GraphBu
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		FViewInfo& View = Views[ViewIndex];
-		if (View.bSceneHasSkyMaterial && View.Family->EngineShowFlags.Atmosphere && View.Family->EngineShowFlags.Lighting)
+		if (View.bSceneHasSkyMaterial && View.Family->EngineShowFlags.Atmosphere)
 		{
 			RenderSkyAtmosphereEditorHudPS::FPermutationDomain PermutationVector;
 			TShaderMapRef<RenderSkyAtmosphereEditorHudPS> PixelShader(View.ShaderMap, PermutationVector);

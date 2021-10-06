@@ -214,7 +214,7 @@ public:
 		Time that the comparison was performed
 	*/
 	UPROPERTY()
-	FDateTime CreationTime;
+	FDateTime CreationTime = FDateTime::Now();
 
 	/*
 		Platform that the incoming image was generated on
@@ -306,8 +306,7 @@ public:
 	static constexpr int32 CurrentVersion = 2;
 
 	FImageComparisonResult()
-		: CreationTime(FDateTime::Now())
-		, MaxLocalDifference(0.0f)
+		: MaxLocalDifference(0.0f)
 		, GlobalDifference(0.0f)
 		, ErrorMessage()
 		, Version(CurrentVersion)
@@ -315,8 +314,7 @@ public:
 	}
 
 	FImageComparisonResult(const FText& Error)
-		: CreationTime(FDateTime::Now())
-		, MaxLocalDifference(0.0f)
+		: MaxLocalDifference(0.0f)
 		, GlobalDifference(0.0f)
 		, ErrorMessage(Error)
 		, Version(CurrentVersion)

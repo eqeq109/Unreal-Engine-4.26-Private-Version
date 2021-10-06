@@ -170,11 +170,7 @@ void FConcertServerSession::HandleDiscoverAndJoinSessionEvent(const FConcertMess
 		return;
 	}
 
-	// This should not trigger, it would mean that the server discovery mechanism, allowed a mismatched protocol version
-	check(Message->ConcertProtocolVersion == EConcertMessageVersion::LatestVersion);
-
 	FConcertSession_JoinSessionResultEvent JoinReply;
-	JoinReply.ConcertProtocolVersion = EConcertMessageVersion::LatestVersion;
 	JoinReply.SessionServerEndpointId = SessionInfo.ServerEndpointId;
 
 	if (SessionClients.Contains(Context.SenderConcertEndpointId))

@@ -398,7 +398,7 @@ namespace ReferenceInfoUtils
 		USelection* ActorSelection = GEditor->GetSelectedActors();
 
 		// Mark all objects so we don't get into an endless recursion
-		for (FThreadSafeObjectIterator It; It; ++It)
+		for (FObjectIterator It; It; ++It)
 		{
 			// Skip the level, world, and any packages that should be ignored
 			if (ShouldSearchForAssets(*It, IgnoreClasses, IgnorePackages, bShowDefault))

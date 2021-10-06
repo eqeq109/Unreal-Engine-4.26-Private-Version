@@ -5,7 +5,6 @@
 #include "HeadMountedDisplayTypes.h"
 #include "Editor.h"
 #include "GameFramework/GameModeBase.h"
-#include "HAL/PlatformApplicationMisc.h"
 
 void UEditorEngine::StartPlayInNewProcessSession(FRequestPlaySessionParams& InRequestParams)
 {
@@ -97,9 +96,9 @@ void UEditorEngine::LaunchNewProcess(const FRequestPlaySessionParams& InParams, 
 
 	// Construct parms:
 	//	-Override GameUserSettings.ini
+	//	-Force no steam
 	//	-Allow saving of config files (since we are giving them an override INI)
-	//	-Force the OSS (Steam is the only thing that implements this right now) to use passthrough sockets instead of connecting to the platform session int.
-	CommandLine += FString::Printf(TEXT(" GameUserSettingsINI=\"%s\" -MultiprocessSaveConfig -forcepassthrough"), *GameUserSettingsOverride);
+	CommandLine += FString::Printf(TEXT(" GameUserSettingsINI=\"%s\" -MultiprocessSaveConfig -MultiprocessOSS"), *GameUserSettingsOverride);
 
 	if (bIsDedicatedServer)
 	{
@@ -234,10 +233,6 @@ void UEditorEngine::LaunchNewProcess(const FRequestPlaySessionParams& InParams, 
 
 	if (!bIsDedicatedServer)
 	{
-		// Get desktop metrics
-		FDisplayMetrics DisplayMetrics;
-		FSlateApplication::Get().GetCachedDisplayMetrics(DisplayMetrics);
-
 		// We don't use GetWindowSizeAndPositionForInstanceIndex here because that is for PIE windows and uses a separate system for saving window positions,
 		// so we'll just respect the settings object for viewport size. If you're in standlone (non multiplayer) we respect viewport resolution, while
 		// networked modes respect the multiplayer version.
@@ -255,15 +250,14 @@ void UEditorEngine::LaunchNewProcess(const FRequestPlaySessionParams& InParams, 
 		// If not center window nor NewWindowPosition is FIntPoint::NoneValue (-1,-1)
 		if (!InParams.EditorPlaySettings->CenterNewWindow && InParams.EditorPlaySettings->NewWindowPosition != FIntPoint::NoneValue)
 		{
-			FIntPoint WindowPosition = InParams.EditorPlaySettings->NewWindowPosition;
-			
-			WindowPosition.X += FMath::Max(InInstanceNum - 1, 0) * WindowSize.X;
-			WindowPosition.Y += SWindowDefs::DefaultTitleBarSize * FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(0, 0);
-
 			// If they don't want to center the new window, we add a specific location. This will get saved to user settings
 			// via SAVEWINPOS and not end up reflected in our PlayInEditor settings.
-			CommandLine += FString::Printf(TEXT(" -WinX=%d -WinY=%d SAVEWINPOS=1"), WindowPosition.X, WindowPosition.Y);
+			CommandLine += FString::Printf(TEXT(" -WinX=%d -WinY=%d SAVEWINPOS=1"), InParams.EditorPlaySettings->NewWindowPosition.X, InParams.EditorPlaySettings->NewWindowPosition.Y);
 		}
+
+		// Get desktop metrics
+		FDisplayMetrics DisplayMetrics;
+		FSlateApplication::Get().GetCachedDisplayMetrics(DisplayMetrics);
 
 		// If the user didn't specify a resolution in the settings, default to full resolution.
 		if (WindowSize.X <= 0)

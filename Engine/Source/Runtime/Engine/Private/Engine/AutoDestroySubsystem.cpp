@@ -19,8 +19,6 @@ void UAutoDestroySubsystem::Deinitialize()
 		}
 	}
 	ActorsToPoll.Empty();
-
-	Super::Deinitialize();
 }
 
 bool UAutoDestroySubsystem::RegisterActor(AActor* ActorToRegister)
@@ -88,9 +86,16 @@ ETickableTickType UAutoDestroySubsystem::GetTickableTickType() const
 
 void UAutoDestroySubsystem::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+	// Only tick if we know that the outer world is not being destroyed
+	// otherwise we will be added to the StaticTickables list with a dangling 
+	// world pointer (UE-96602)
+	UObject* Outer = GetOuter();
+	if (!Outer || Outer->HasAnyFlags(RF_BeginDestroyed))
+	{
+		return;
+	}
 
-	UWorld* MyWorld = GetWorld();
+	UWorld* MyWorld = Cast<UWorld>(Outer);
 	
 	if (MyWorld && ActorsToPoll.Num())
 	{

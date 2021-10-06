@@ -11,7 +11,7 @@
 #include "UObject/WeakObjectPtr.h"
 
 class FDisplayClusterConfiguratorDetailCustomization;
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 class IDetailCategoryBuilder;
 class IPropertyHandle;
 class SDisplayClusterConfigurationSearchableComboBox;
@@ -23,17 +23,17 @@ class UDisplayClusterConfigurationInput;
 class UDisplayClusterConfigurationScene;
 class UDisplayClusterConfigurationSceneComponent;
 class UDisplayClusterConfigurationSceneComponentMesh;
-class UDisplayClusterConfigurationClusterNode;
 class UDisplayClusterConfigurationViewport;
 class UDisplayClusterConfigurationSceneComponentMesh;
-class UDisplayClusterScreenComponent;
-class ADisplayClusterRootActor;
 
 template<typename NumericType>
 class SSpinBox;
 
-template<typename OptionType>
-class SComboBox;
+#define CONSTRUCT_CUSTOMIZATION( ChildClass, ParentClass ) \
+	typedef ParentClass Super;\
+	ChildClass(TWeakPtr<FDisplayClusterConfiguratorToolkit> InToolkitPtr) \
+		: ParentClass(InToolkitPtr) \
+		{}
 
 /**
  * Base UCLASS Detail Customization
@@ -42,29 +42,28 @@ class FDisplayClusterConfiguratorDetailCustomization
 	: public IDetailCustomization
 {
 public:
+	FDisplayClusterConfiguratorDetailCustomization(TWeakPtr<FDisplayClusterConfiguratorToolkit> InToolkitPtr);
+
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
 	/** End IDetailCustomization interface */
 
-	ADisplayClusterRootActor* GetRootActor() const;
-	UDisplayClusterConfigurationData* GetConfigData() const;
-
 public:
 	template<typename TDetailCustomizationType>
-	static TSharedRef<IDetailCustomization> MakeInstance()
+	static TSharedRef<IDetailCustomization> MakeInstance(TWeakPtr<FDisplayClusterConfiguratorToolkit> InToolkitPtr)
 	{
-		return MakeShared<TDetailCustomizationType>();
+		return MakeShared<TDetailCustomizationType>(InToolkitPtr);
 	}
 
 protected:
 	void AddCustomInfoRow(IDetailCategoryBuilder* InCategory, TAttribute<FText> NameContentAttribute, TAttribute<FText> ValueContentAttribute);
 
-	/** True while the details is customizing a blueprint editor menu. */
-	bool IsRunningForBlueprintEditor() const { return ToolkitPtr.IsValid(); }
-
 protected:
-	TWeakPtr<FDisplayClusterConfiguratorBlueprintEditor> ToolkitPtr = nullptr;
-	TWeakObjectPtr<ADisplayClusterRootActor> RootActorPtr;
+	TWeakPtr<FDisplayClusterConfiguratorToolkit> ToolkitPtr;
+
+	IDetailLayoutBuilder* LayoutBuilder;
+
+	IDetailCategoryBuilder* NDisplayCategory;
 };
 
 /**
@@ -74,11 +73,28 @@ class FDisplayClusterConfiguratorDataDetailCustomization final
 	: public FDisplayClusterConfiguratorDetailCustomization
 {
 public:
-	using Super = FDisplayClusterConfiguratorDetailCustomization;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorDataDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
 
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
 	/** End IDetailCustomization interface */
+};
+
+/**
+ * Scene Detail Customization
+ */
+class FDisplayClusterConfiguratorSceneDetailCustomization final
+	: public FDisplayClusterConfiguratorDetailCustomization
+{
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
+
+	/** IDetailCustomization interface */
+	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
+	/** End IDetailCustomization interface */
+
+private:
+	TWeakObjectPtr<UDisplayClusterConfigurationScene> ConfigurationScenePtr;
 };
 
 /**
@@ -88,21 +104,18 @@ class FDisplayClusterConfiguratorClusterDetailCustomization final
 	: public FDisplayClusterConfiguratorDetailCustomization
 {
 public:
-	using Super = FDisplayClusterConfiguratorDetailCustomization;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorClusterDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
 
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
 	/** End IDetailCustomization interface */
-
-protected:
-	TSharedPtr<IPropertyHandle> ClusterNodesHandle;
 };
 
 class FDisplayClusterConfiguratorViewportDetailCustomization final
 	: public FDisplayClusterConfiguratorDetailCustomization
 {
 public:
-	using Super = FDisplayClusterConfiguratorDetailCustomization;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorViewportDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
 
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
@@ -110,77 +123,135 @@ public:
 
 private:
 	void ResetCameraOptions();
-	TSharedRef<SWidget> CreateCustomCameraWidget();
+
+	void AddCameraRow();
+
 	TSharedRef<SWidget> MakeCameraOptionComboWidget(TSharedPtr<FString> InItem);
+
 	void OnCameraSelected(TSharedPtr<FString> InCamera, ESelectInfo::Type SelectInfo);
+
 	FText GetSelectedCameraText() const;
 
 private:
 	TArray< TSharedPtr< FString > >	CameraOptions;
+
 	TSharedPtr<IPropertyHandle> CameraHandle;
+
 	TSharedPtr<FString>	NoneOption;
+
 	TWeakObjectPtr<UDisplayClusterConfigurationViewport> ConfigurationViewportPtr;
+
 	TWeakObjectPtr<UDisplayClusterConfigurationData> ConfigurationDataPtr;
+
 	TSharedPtr<SDisplayClusterConfigurationSearchableComboBox> CameraComboBox;
 };
 
-struct FDisplayClusterConfiguratorAspectRatioPresetSize
+/**
+ * Input Detail Customization
+ */
+class FDisplayClusterConfiguratorInputDetailCustomization final
+	: public FDisplayClusterConfiguratorDetailCustomization
 {
 public:
-	FText DisplayName;
-	FVector2D Size;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorInputDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
 
-	FDisplayClusterConfiguratorAspectRatioPresetSize() :
-		DisplayName(FText::GetEmpty()),
-		Size(FVector2D::ZeroVector)
-	{ }
+	/** IDetailCustomization interface */
+	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
+	/** End IDetailCustomization interface */
 
-	FDisplayClusterConfiguratorAspectRatioPresetSize(FText InDisplayName, FVector2D InSize) :
-		DisplayName(InDisplayName),
-		Size(InSize)
-	{ }
+private:
+	TWeakObjectPtr<UDisplayClusterConfigurationInput> ConfigurationInputPtr;
+};
 
-	bool operator==(const FDisplayClusterConfiguratorAspectRatioPresetSize& Other) const
-	{
-		return (DisplayName.EqualTo(Other.DisplayName)) && (Size == Other.Size);
-	}
-
-	double GetAspectRatio() const { return (double)Size.X / (double)Size.Y; }
-
+/**
+ * Base Scene Component Detail Customization
+ */
+class FDisplayClusterConfiguratorSceneComponentDetailCustomization
+	: public FDisplayClusterConfiguratorDetailCustomization
+{
 public:
-	static const TArray<FDisplayClusterConfiguratorAspectRatioPresetSize> CommonPresets;
-	static const int32 DefaultPreset;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneComponentDetailCustomization, FDisplayClusterConfiguratorDetailCustomization)
+
+	/** IDetailCustomization interface */
+	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
+	/** End IDetailCustomization interface */
+
+	virtual void ResetTrackerIdOptions();
+
+protected:
+
+	TSharedRef<SWidget> MakeTrackerIdOptionComboWidget(TSharedPtr<FString> InItem);
+
+	void OnTrackerIdSelected(TSharedPtr<FString> ITrackerId, ESelectInfo::Type SelectInfo);
+
+	void AddTrackerIdRow();
+
+	FText GetSelectedTrackerIdText() const;
+
+	EVisibility GetLocationAndRotationVisibility() const;
+
+protected:
+	TWeakObjectPtr<UDisplayClusterConfigurationSceneComponent> SceneComponenPtr;
+
+	TArray< TSharedPtr< FString > >	TrackerIdOptions;
+
+	TSharedPtr<FString>	NoneOption;
+
+	TSharedPtr<IPropertyHandle> TrackerIdHandle;
+
+	TSharedPtr<SDisplayClusterConfigurationSearchableComboBox> TrackerIdComboBox;
+};
+
+/**
+ * Xform Component Detail Customization
+ */
+class FDisplayClusterConfiguratorSceneComponentXformDetailCustomization final
+	: public FDisplayClusterConfiguratorSceneComponentDetailCustomization
+{
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneComponentXformDetailCustomization, FDisplayClusterConfiguratorSceneComponentDetailCustomization)
 };
 
 /**
  * Screen Component Detail Customization
  */
-class FDisplayClusterConfiguratorScreenDetailCustomization final
-	: public IDetailCustomization
+class FDisplayClusterConfiguratorSceneComponentScreenDetailCustomization final
+	: public FDisplayClusterConfiguratorSceneComponentDetailCustomization
 {
 public:
-	static TSharedRef<IDetailCustomization> MakeInstance()
-	{
-		return MakeShared<FDisplayClusterConfiguratorScreenDetailCustomization>();
-	}
-	
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneComponentScreenDetailCustomization, FDisplayClusterConfiguratorSceneComponentDetailCustomization)
+};
+
+/**
+ * Camera Component Detail Customization
+ */
+class FDisplayClusterConfiguratorSceneComponentCameraDetailCustomization final
+	: public FDisplayClusterConfiguratorSceneComponentDetailCustomization
+{
 public:
-	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneComponentCameraDetailCustomization, FDisplayClusterConfiguratorSceneComponentDetailCustomization)
+};
 
-protected:
-	FText GetPresetsComboBoxSelectedText() const;
-	FText GetPresetDisplayText(const TSharedPtr<FDisplayClusterConfiguratorAspectRatioPresetSize>& Preset) const;
-	FText GetSelectedPresetDisplayText(const TSharedPtr<FDisplayClusterConfiguratorAspectRatioPresetSize>& Preset) const;
-	void OnSelectedPresetChanged(TSharedPtr<FDisplayClusterConfiguratorAspectRatioPresetSize> SelectedPreset, ESelectInfo::Type SelectionType);
-	void GetAspectRatioAndSetDefaultValueForPreset(const FDisplayClusterConfiguratorAspectRatioPresetSize& Preset, FVector2D* OutAspectRatio = nullptr);
+/**
+ * Mesh Component Detail Customization
+ */
+class FDisplayClusterConfiguratorSceneComponentMeshDetailCustomization final
+	: public FDisplayClusterConfiguratorSceneComponentDetailCustomization
+{
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorSceneComponentMeshDetailCustomization, FDisplayClusterConfiguratorSceneComponentDetailCustomization)
 
-	void OnSizePropertyChanged();
+	/** IDetailCustomization interface */
+	virtual void CustomizeDetails(IDetailLayoutBuilder& InLayoutBuilder) override;
+	/** End IDetailCustomization interface */
+
 private:
-	UDisplayClusterScreenComponent* ScreenComponentPtr = nullptr;
-	TArray<TSharedPtr<FDisplayClusterConfiguratorAspectRatioPresetSize>> PresetItems;
-	TSharedPtr<SComboBox<TSharedPtr<FDisplayClusterConfiguratorAspectRatioPresetSize>>> PresetsComboBox;
-	TSharedPtr<IPropertyHandle> SizeHandlePtr;
-	bool bIsCustomAspectRatio = false;
+	void OnAssetValueChanged();
+
+private:
+	TWeakObjectPtr<UDisplayClusterConfigurationSceneComponentMesh> SceneComponentMeshPtr;
+
+	TSharedPtr<IPropertyHandle> AssetHandle;
 };
 
 /**
@@ -190,29 +261,23 @@ class FDisplayClusterConfiguratorTypeCustomization
 	: public IPropertyTypeCustomization
 {
 public:
-	FDisplayClusterConfiguratorTypeCustomization() : EditingObject(nullptr)
+	FDisplayClusterConfiguratorTypeCustomization(TWeakPtr<FDisplayClusterConfiguratorToolkit> InToolkitPtr)
+		: ToolkitPtr(InToolkitPtr)
 	{}
 
 	//~ IPropertyTypeCustomization interface begin
-	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
+	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override {}
 	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> InPropertyHandle, IDetailChildrenBuilder& InChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils) override {}
 	//~ IPropertyTypeCustomization interface end
 
 	template<typename TTypeCustomizationType>
-	static TSharedRef<IPropertyTypeCustomization> MakeInstance()
+	static TSharedRef<IPropertyTypeCustomization> MakeInstance(TWeakPtr<FDisplayClusterConfiguratorToolkit> InToolkitPtr)
 	{
-		return MakeShared<TTypeCustomizationType>();
+		return MakeShared<TTypeCustomizationType>(InToolkitPtr);
 	}
 
 protected:
-	void RefreshBlueprint();
-	void ModifyBlueprint();
-	ADisplayClusterRootActor* FindRootActor() const;
-
-protected:
-	UObject* EditingObject;
-	TWeakPtr<IPropertyUtilities> PropertyUtilities;
-	bool bMultipleObjectsSelected = false;
+	TWeakPtr<FDisplayClusterConfiguratorToolkit> ToolkitPtr;
 };
 
 /**
@@ -221,6 +286,9 @@ protected:
 class FDisplayClusterConfiguratorClusterSyncTypeCustomization final
 	: public FDisplayClusterConfiguratorTypeCustomization
 {
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorClusterSyncTypeCustomization, FDisplayClusterConfiguratorTypeCustomization)
+
 protected:
 	//~ IPropertyTypeCustomization interface begin
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
@@ -229,6 +297,7 @@ protected:
 
 private:
 	TSharedPtr<IPropertyHandle> RenderSyncPolicyHandle;
+
 	TSharedPtr<IPropertyHandle> InputSyncPolicyHandle;
 
 };
@@ -239,6 +308,9 @@ private:
 class FDisplayClusterConfiguratorPolymorphicEntityCustomization
 	: public FDisplayClusterConfiguratorTypeCustomization
 {
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorPolymorphicEntityCustomization, FDisplayClusterConfiguratorTypeCustomization)
+
 protected:
 	//~ IPropertyTypeCustomization interface begin
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
@@ -247,10 +319,10 @@ protected:
 
 protected:
 	TSharedPtr<IPropertyHandle> TypeHandle;
+
 	TSharedPtr<IPropertyHandle> ParametersHandle;
-	TSharedPtr<IPropertyHandle> IsCustomHandle;
-	
-	IDetailChildrenBuilder* ChildBuilder = nullptr;
+
+	IDetailChildrenBuilder* ChildBuilder;
 };
 
 /**
@@ -259,6 +331,9 @@ protected:
 class FDisplayClusterConfiguratorRenderSyncPolicyCustomization final
 	: public FDisplayClusterConfiguratorPolymorphicEntityCustomization
 {
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorRenderSyncPolicyCustomization, FDisplayClusterConfiguratorPolymorphicEntityCustomization)
+
 protected:
 	//~ IPropertyTypeCustomization interface begin
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
@@ -288,12 +363,9 @@ private:
 
 	bool IsCustomTypeInConfig() const;
 
-	int32 GetPolicyTypeIndex(const FString& Type) const;
-
 	void OnTextCommittedInCustomPolicyText(const FText& InValue, ETextCommit::Type CommitType);
-	
-	void AddToParameterMap(const FString& Key, const FString& Value);
-	void RemoveFromParameterMap(const FString& Key);
+
+
 private:
 	TSharedPtr<FString>	NvidiaOption;
 
@@ -309,13 +381,13 @@ private:
 
 	TSharedPtr<SSpinBox<int32>> SwapBarrierSpinBox;
 
-	int32 SwapGroupValue = 0;
+	int32 SwapGroupValue;
 
-	int32 SwapBarrierValue = 0;
+	int32 SwapBarrierValue;
 
 	TSharedPtr<SEditableTextBox> CustomPolicyRow;
 
-	bool bIsCustomPolicy = false;
+	bool bIsCustomPolicy;
 
 	FString CustomPolicy;
 
@@ -331,6 +403,9 @@ private:
 class FDisplayClusterConfiguratorInputSyncPolicyCustomization final
 	: public FDisplayClusterConfiguratorPolymorphicEntityCustomization
 {
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorInputSyncPolicyCustomization, FDisplayClusterConfiguratorPolymorphicEntityCustomization)
+
 protected:
 	//~ IPropertyTypeCustomization interface begin
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
@@ -356,9 +431,15 @@ private:
 	TSharedPtr<SDisplayClusterConfigurationSearchableComboBox> InputSyncPolicyComboBox;
 };
 
-class FDisplayClusterConfiguratorExternalImageTypeCustomization final
-	: public FDisplayClusterConfiguratorTypeCustomization
+/**
+ * Projection Type Customization
+ */
+class FDisplayClusterConfiguratorProjectionCustomization final
+	: public FDisplayClusterConfiguratorPolymorphicEntityCustomization
 {
+public:
+	CONSTRUCT_CUSTOMIZATION(FDisplayClusterConfiguratorProjectionCustomization, FDisplayClusterConfiguratorPolymorphicEntityCustomization)
+
 protected:
 	//~ IPropertyTypeCustomization interface begin
 	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> InPropertyHandle, FDetailWidgetRow& InHeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
@@ -366,144 +447,40 @@ protected:
 	//~ IPropertyTypeCustomization interface end
 
 private:
-	TWeakObjectPtr<UDisplayClusterConfigurationClusterNode> ClusterNodePtr;
-	TSharedPtr<IPropertyHandle> ImagePathHandle;
-};
+	EVisibility GetCustomRowsVisibility() const;
 
+	void ResetProjectionPolicyOptions();
 
-/**
- * Component Ref Type Customization (Prevents struct from expanding)
- */
-class FDisplayClusterConfiguratorComponentRefCustomization final
-	: public FDisplayClusterConfiguratorTypeCustomization
-{
-protected:
-	//~ IPropertyTypeCustomization interface begin
-	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	//~ IPropertyTypeCustomization interface end
-};
+	void AddProjectionPolicyRow();
 
-/**
- * Viewport or Cluster Node Array Selection
- */
-class FDisplayClusterConfiguratorNodeSelection : public TSharedFromThis<FDisplayClusterConfiguratorNodeSelection>
-{
-public:
-	static const FName NAME_ElementToolTip;
+	void AddCustomPolicyRow();
 
-	enum EOperationMode
-	{
-		Viewports,
-		ClusterNodes
-	};
+	TSharedRef<SWidget> MakeProjectionPolicyOptionComboWidget(TSharedPtr<FString> InItem);
 
-	FDisplayClusterConfiguratorNodeSelection(EOperationMode InMode, ADisplayClusterRootActor* InRootActor, FDisplayClusterConfiguratorBlueprintEditor* InToolkitPtr);
+	void OnProjectionPolicySelected(TSharedPtr<FString> InPolicy, ESelectInfo::Type SelectInfo);
 
-	~FDisplayClusterConfiguratorNodeSelection()
-	{
-		OptionsComboBox.Reset();
-		Options.Reset();
-	}
+	FText GetSelectedProjectionPolicyText() const;
 
-	ADisplayClusterRootActor* GetRootActor() const;
-	UDisplayClusterConfigurationData* GetConfigData() const;
+	FText GetCustomPolicyText() const;
 
-	void CreateArrayBuilder(const TSharedRef<IPropertyHandle>& InPropertyHandle, IDetailChildrenBuilder& InChildBuilder);
+	bool IsCustomTypeInConfig() const;
 
-	FDisplayClusterConfiguratorNodeSelection& IsEnabled(const TAttribute<bool>& InIsEnabled)
-	{
-		IsEnabledAttr = InIsEnabled;
-		return *this;
-	}
-
-	static EOperationMode GetOperationModeFromProperty(FProperty* Property);
-
-protected:
-	void GenerateSelectionWidget(TSharedRef<IPropertyHandle> PropertyHandle, int32 ArrayIndex, IDetailChildrenBuilder& ChildrenBuilder);
-	void ResetOptions();
-	TSharedRef<SWidget> MakeOptionComboWidget(TSharedPtr<FString> InItem);
-	void OnOptionSelected(TSharedPtr<FString> InValue, ESelectInfo::Type SelectInfo, TSharedRef<IPropertyHandle> InPropertyHandle);
-	FText GetSelectedOptionText(TSharedRef<IPropertyHandle> InPropertyHandle) const;
+	void OnTextCommittedInCustomPolicyText(const FText& InValue, ETextCommit::Type CommitType);
 
 private:
-	TAttribute<bool> IsEnabledAttr;
+	TSharedPtr<FString>	CustomOption;
 
-	TSharedPtr<SDisplayClusterConfigurationSearchableComboBox> OptionsComboBox;
-	TArray<TSharedPtr<FString>> Options;
+	TWeakObjectPtr<UDisplayClusterConfigurationViewport> ConfigurationViewportPtr;
 
-	TWeakPtr<FDisplayClusterConfiguratorBlueprintEditor> ToolkitPtr = nullptr;
-	TWeakObjectPtr<ADisplayClusterRootActor> RootActorPtr;
+	TArray< TSharedPtr< FString > >	ProjectionPolicyOptions;
 
-	EOperationMode OperationMode = ClusterNodes;
+	TSharedPtr<SDisplayClusterConfigurationSearchableComboBox> ProjectionPolicyComboBox;
+
+	TSharedPtr<SEditableTextBox> CustomPolicyRow;
+
+	bool bIsCustomPolicy;
+
+	FString CustomPolicy;
 };
-
-/**
-* OCIO Profiles
-*/
-class FDisplayClusterConfiguratorOCIOProfileCustomization final
-	: public FDisplayClusterConfiguratorTypeCustomization
-{
-public:
-	virtual ~FDisplayClusterConfiguratorOCIOProfileCustomization() override
-	{
-		NodeSelection.Reset();
-	}
-	
-protected:
-	//~ IPropertyTypeCustomization interface begin
-	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	//~ IPropertyTypeCustomization interface end
-
-private:
-	TSharedPtr<FDisplayClusterConfiguratorNodeSelection> NodeSelection;
-	FDisplayClusterConfiguratorNodeSelection::EOperationMode Mode = FDisplayClusterConfiguratorNodeSelection::EOperationMode::Viewports;
-};
-
-
-/**
-* Per viewport Color Grading 
-*/
-class FDisplayClusterConfiguratorPerViewportColorGradingCustomization final
-	: public FDisplayClusterConfiguratorTypeCustomization
-{
-public:
-	virtual ~FDisplayClusterConfiguratorPerViewportColorGradingCustomization() override
-	{
-		NodeSelection.Reset();
-	}
-
-protected:
-	//~ IPropertyTypeCustomization interface begin
-	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	//~ IPropertyTypeCustomization interface end
-
-private:
-	TSharedPtr<FDisplayClusterConfiguratorNodeSelection> NodeSelection;
-};
-
-/**
-* Per Node Color Grading
-*/
-class FDisplayClusterConfiguratorPerNodeColorGradingCustomization final
-	: public FDisplayClusterConfiguratorTypeCustomization
-{
-public:
-	virtual ~FDisplayClusterConfiguratorPerNodeColorGradingCustomization() override
-	{
-		NodeSelection.Reset();
-	}
-
-protected:
-	//~ IPropertyTypeCustomization interface begin
-	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils) override;
-	//~ IPropertyTypeCustomization interface end
-
-private:
-	TSharedPtr<FDisplayClusterConfiguratorNodeSelection> NodeSelection;
-};
-
 
 #undef CONSTRUCT_CUSTOMIZATION

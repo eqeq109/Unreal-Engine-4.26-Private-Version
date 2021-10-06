@@ -112,6 +112,8 @@ struct FMaterialCachedParameterEntry
 	UPROPERTY()
 	TArray<FGuid> ExpressionGuids; // editor-only?
 
+	UPROPERTY()
+	TArray<bool> Overrides;
 };
 
 USTRUCT()
@@ -119,20 +121,17 @@ struct FStaticComponentMaskValue
 {
 	GENERATED_USTRUCT_BODY();
 
-	FStaticComponentMaskValue() : R(false), G(false), B(false), A(false) {}
-	FStaticComponentMaskValue(bool InR, bool InG, bool InB, bool InA) : R(InR), G(InG), B(InB), A(InA) {}
-
 	UPROPERTY()
-	bool R = false;
+	bool R;
 	
 	UPROPERTY()
-	bool G = false;
+	bool G;
 
 	UPROPERTY()
-	bool B = false;
+	bool B;
 
 	UPROPERTY()
-	bool A = false;
+	bool A; 
 };
 
 USTRUCT()
@@ -148,8 +147,10 @@ struct FMaterialCachedParameters
 	inline int32 GetNumParameters(EMaterialParameterType Type) const { return GetParameterTypeEntry(Type).ParameterInfos.Num(); }
 	inline const FName& GetParameterName(EMaterialParameterType Type, int32 Index) const { return GetParameterTypeEntry(Type).ParameterInfos[Index].Name; }
 
+	int32 FindParameterIndex(EMaterialParameterType Type, const FHashedMaterialParameterInfo& HashedParameterInfo, bool bOveriddenOnly) const;
 	int32 FindParameterIndex(EMaterialParameterType Type, const FHashedMaterialParameterInfo& HashedParameterInfo) const;
-	const FGuid& GetExpressionGuid(EMaterialParameterType Type, int32 Index) const;
+	bool IsParameterValid(EMaterialParameterType Type, int32 Index, bool bOveriddenOnly) const;
+	bool IsDefaultParameterValid(EMaterialParameterType Type, int32 Index, bool bOveriddenOnly, bool bCheckOwnedGlobalOverrides) const;
 	void GetAllParameterInfoOfType(EMaterialParameterType Type, bool bEmptyOutput, TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds) const;
 	void GetAllGlobalParameterInfoOfType(EMaterialParameterType Type, bool bEmptyOutput, TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds) const;
 	void Reset();
@@ -207,8 +208,9 @@ struct FMaterialCachedParameters
 
 struct FMaterialCachedExpressionContext
 {
-	FMaterialCachedExpressionContext() : bUpdateFunctionExpressions(true) {}
+	explicit FMaterialCachedExpressionContext(UMaterialInterface* InParent = nullptr) : Parent(InParent), bUpdateFunctionExpressions(true) {}
 
+	UMaterialInterface* Parent;
 	bool bUpdateFunctionExpressions;
 };
 
@@ -216,11 +218,6 @@ USTRUCT()
 struct FMaterialCachedExpressionData
 {
 	GENERATED_USTRUCT_BODY()
-
-	FMaterialCachedExpressionData()
-		: bHasRuntimeVirtualTextureOutput(false)
-		, bHasSceneColor(false)
-	{}
 
 #if WITH_EDITOR
 	/** Returns 'false' if update is incomplete, due to missing expression data (stripped from non-editor build) */

@@ -4,7 +4,7 @@
 
 #include "Interfaces/Views/TreeViews/IDisplayClusterConfiguratorTreeBuilder.h"
 
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 class IDisplayClusterConfiguratorTreeItem;
 class IDisplayClusterConfiguratorViewTree;
 
@@ -14,13 +14,20 @@ class FDisplayClusterConfiguratorTreeBuilder
 	: public IDisplayClusterConfiguratorTreeBuilder
 {
 public:
-	FDisplayClusterConfiguratorTreeBuilder(const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit);
+	FDisplayClusterConfiguratorTreeBuilder(const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit);
 
 	//~ Begin IDisplayClusterConfiguratorTreeBuilder interface
-	virtual void Initialize(const TSharedRef<IDisplayClusterConfiguratorViewTree>& InConfiguratorTree) override;
+	virtual void Initialize(const TSharedRef<IDisplayClusterConfiguratorViewTree>& InConfiguratorTree, FOnFilterConfiguratorTreeItem InOnFilterTreeItem) override;
+	virtual void Filter(const FDisplayClusterConfiguratorTreeFilterArgs& InArgs, const TArray<TSharedPtr<IDisplayClusterConfiguratorTreeItem>>& InItems, TArray<TSharedPtr<IDisplayClusterConfiguratorTreeItem>>& OutFilteredItems) override;
+	virtual EDisplayClusterConfiguratorTreeFilterResult FilterItem(const FDisplayClusterConfiguratorTreeFilterArgs& InArgs, const TSharedPtr<IDisplayClusterConfiguratorTreeItem>& InItem) override;
+	virtual EDisplayClusterConfiguratorTreeFilterResult FilterRecursive(const FDisplayClusterConfiguratorTreeFilterArgs& InArgs, const TSharedPtr<IDisplayClusterConfiguratorTreeItem>& InItem, TArray<TSharedPtr<IDisplayClusterConfiguratorTreeItem>>& OutFilteredItems) override;
 	//~ End IDisplayClusterConfiguratorTreeBuilder interface
 
 protected:
 	TWeakPtr<IDisplayClusterConfiguratorViewTree> ConfiguratorTreePtr;
-	TWeakPtr<FDisplayClusterConfiguratorBlueprintEditor> ToolkitPtr;
+
+	/** Delegate used for filtering */
+	FOnFilterConfiguratorTreeItem OnFilterTreeItem;
+
+	TWeakPtr<FDisplayClusterConfiguratorToolkit> ToolkitPtr;
 };

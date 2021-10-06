@@ -153,7 +153,7 @@ namespace AnimationEditorUtils
 		if (Skeleton == nullptr)
 		{
 			SkeletalMesh = CastChecked<USkeletalMesh>(SkeletonOrSkeletalMesh);
-			Skeleton = SkeletalMesh->GetSkeleton();
+			Skeleton = SkeletalMesh->Skeleton;
 		}
 
 		if (Skeleton)
@@ -210,7 +210,7 @@ namespace AnimationEditorUtils
 			if (Skeleton == nullptr)
 			{
 				SkeletalMesh = CastChecked<USkeletalMesh>(SkeletonsOrSkeletalMeshes[0].Get());
-				Skeleton = SkeletalMesh->GetSkeleton();
+				Skeleton = SkeletalMesh->Skeleton;
 			}
 
 			if(Skeleton)

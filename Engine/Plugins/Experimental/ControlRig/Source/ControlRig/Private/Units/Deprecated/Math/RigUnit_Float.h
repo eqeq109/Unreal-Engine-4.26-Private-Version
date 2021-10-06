@@ -13,13 +13,13 @@ struct FRigUnit_BinaryFloatOp : public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta=(Input))
-	float Argument0 = 0.f;
+	float Argument0;
 
 	UPROPERTY(meta=(Input))
-	float Argument1 = 0.f;
+	float Argument1;
 
 	UPROPERTY(meta=(Output))
-	float Result = 0.f;
+	float Result;
 };
 
 USTRUCT(meta=(DisplayName="Multiply", Category="Math|Float", Keywords="*", Deprecated="4.23.0"))
@@ -65,16 +65,16 @@ struct FRigUnit_Clamp_Float: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	float Value = 0.f;
+	float Value;
 
 	UPROPERTY(meta = (Input))
-	float Min = 0.f;
+	float Min;
 
 	UPROPERTY(meta = (Input))
-	float Max = 0.f;
+	float Max;
 
 	UPROPERTY(meta = (Output))
-	float Result = 0.f;
+	float Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -87,22 +87,22 @@ struct FRigUnit_MapRange_Float: public FRigUnit
 	GENERATED_BODY()
 
 	UPROPERTY(meta = (Input))
-	float Value = 0.f;
+	float Value;
 
 	UPROPERTY(meta = (Input))
-	float MinIn = 0.f;
+	float MinIn;
 
 	UPROPERTY(meta = (Input))
-	float MaxIn = 0.f;
+	float MaxIn;
 
 	UPROPERTY(meta = (Input))
-	float MinOut = 0.f;
+	float MinOut;
 
 	UPROPERTY(meta = (Input))
-	float MaxOut = 0.f;
+	float MaxOut;
 
 	UPROPERTY(meta = (Output))
-	float Result = 0.f;
+	float Result;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;

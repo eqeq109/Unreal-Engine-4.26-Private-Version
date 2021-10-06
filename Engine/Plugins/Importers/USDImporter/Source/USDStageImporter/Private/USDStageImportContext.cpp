@@ -2,11 +2,10 @@
 
 #include "USDStageImportContext.h"
 
-#include "USDAssetCache.h"
 #include "USDLog.h"
 #include "USDMemory.h"
-#include "USDOptionsWindow.h"
 #include "USDStageImportOptions.h"
+#include "USDStageImportOptionsWindow.h"
 
 #include "Dialogs/DlgPickPath.h"
 #include "Editor.h"
@@ -17,13 +16,11 @@
 
 FUsdStageImportContext::FUsdStageImportContext()
 {
-	World = nullptr;
 	ImportOptions = NewObject< UUsdStageImportOptions >();
 	bReadFromStageCache = false;
 	bStageWasOriginallyOpen = false;
 	SceneActor = nullptr;
-	ImportedAsset = nullptr;
-	AssetCache = nullptr;
+	ImportedPackage = nullptr;
 	OriginalMetersPerUnit = 0.01f;
 }
 
@@ -32,16 +29,14 @@ bool FUsdStageImportContext::Init(const FString& InName, const FString& InFilePa
 	ObjectName = InName;
 	FilePath = InFilePath;
 	bIsAutomated = bInIsAutomated;
-	ImportObjectFlags = InFlags | RF_Transactional;
+	ImportObjectFlags = InFlags | RF_Public | RF_Standalone | RF_Transactional;
 	World = GEditor->GetEditorWorldContext().World();
-	PackagePath = InInitialPackagePath;
-
-	if ( !PackagePath.EndsWith( TEXT("/") ) )
-	{
-		PackagePath.Append( TEXT("/") );
-	}
+	PackagePath = TEXT("/Game/"); // Trailing '/' is needed to set the default path
 
 	FPaths::NormalizeFilename(FilePath);
+
+	AssetsCache.Empty();
+	PrimPathsToAssets.Empty();
 
 	if(!bIsAutomated)
 	{
@@ -57,16 +52,13 @@ bool FUsdStageImportContext::Init(const FString& InName, const FString& InFilePa
 			{
 				return false;
 			}
-			// e.g. "/Game/MyFolder/layername/"
-			// We inject the package path here because this is what the automated import task upstream code will do. This way the importer
-			// can always expect to receive /ContentPath/layername/
-			PackagePath = FString::Printf( TEXT( "%s/%s/" ), *PickContentPathDlg->GetPath().ToString(), *InName );
+			PackagePath = PickContentPathDlg->GetPath().ToString() + "/";
 		}
 
 		ImportOptions->EnableActorImport( bAllowActorImport );
 
 		// Show dialog for import options
-		bool bProceedWithImport = SUsdOptionsWindow::ShowOptions( *ImportOptions );
+		bool bProceedWithImport = SUsdOptionsWindow::ShowImportOptions(*ImportOptions);
 		if (!bProceedWithImport)
 		{
 			return false;

@@ -163,7 +163,7 @@ void FActorPickerTrackEditor::ShowActorSubMenu(FMenuBuilder& MenuBuilder, TArray
 
 void FActorPickerTrackEditor::ActorPicked(AActor* ParentActor, TArray<FGuid> ObjectGuids, UMovieSceneSection* Section)
 {
-	ActorPickerIDPicked(FActorPickerID(ParentActor, UE::MovieScene::FFixedObjectBindingID()), ObjectGuids, Section);
+	ActorPickerIDPicked(FActorPickerID(ParentActor, FMovieSceneObjectBindingID()), ObjectGuids, Section);
 }
 
 
@@ -176,15 +176,21 @@ void FActorPickerTrackEditor::ExistingBindingPicked(FMovieSceneObjectBindingID E
 	if (ExistingBindingID.IsValid())
 	{
 		// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-		SequenceID = ExistingBindingID.ResolveSequenceID(SequenceID, *SequencerPtr);
+		FMovieSceneObjectBindingID RootBindingID = ExistingBindingID.ResolveLocalToRoot(SequenceID, *SequencerPtr);
+		SequenceID = RootBindingID.GetSequenceID();
 	}
 
-	for (TWeakObjectPtr<> RuntimeObject : SequencerPtr->FindBoundObjects(ExistingBindingID.GetGuid(), SequenceID))
+	TArrayView<TWeakObjectPtr<UObject>> RuntimeObjects = SequencerPtr->FindBoundObjects(ExistingBindingID.GetGuid(), SequenceID);
+	for (auto RuntimeObject : RuntimeObjects)
 	{
-		if (AActor* Actor = Cast<AActor>(RuntimeObject.Get()))
+		if (RuntimeObject.IsValid())
 		{
-			ActorPickerIDPicked(FActorPickerID(Actor, ExistingBindingID), ObjectBindings, Section);
-			return;
+			AActor* Actor = Cast<AActor>(RuntimeObject.Get());
+			if (Actor)
+			{
+				ActorPickerIDPicked(FActorPickerID(Actor, ExistingBindingID), ObjectBindings, Section);
+				return;
+			}
 		}
 	}
 

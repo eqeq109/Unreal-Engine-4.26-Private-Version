@@ -41,10 +41,8 @@ public:
 	void SampleNoiseField(FVectorVMContext& Context);
 
 	// GPU sim functionality
-#if WITH_EDITORONLY_DATA
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-#endif
 
 protected:
 	virtual bool CopyToInternal(UNiagaraDataInterface* Destination) const override;

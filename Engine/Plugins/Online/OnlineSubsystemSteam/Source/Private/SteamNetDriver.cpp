@@ -7,7 +7,6 @@
 #include "OnlineSubsystemSteamPrivate.h"
 #include "SocketsSteam.h"
 #include "SteamNetConnection.h"
-#include "Misc/CommandLine.h"
 
 USteamNetDriver::USteamNetDriver(const FObjectInitializer& ObjectInitializer) :
 	Super(ObjectInitializer),
@@ -103,7 +102,7 @@ bool USteamNetDriver::InitConnect(FNetworkNotify* InNotify, const FURL& ConnectU
 bool USteamNetDriver::InitListen(FNetworkNotify* InNotify, FURL& ListenURL, bool bReuseAddressAndPort, FString& Error)
 {
 	ISocketSubsystem* SteamSockets = ISocketSubsystem::Get(STEAM_SUBSYSTEM);
-	if (SteamSockets && !ListenURL.HasOption(TEXT("bIsLanMatch")) && !FParse::Param(FCommandLine::Get(), TEXT("forcepassthrough")))
+	if (SteamSockets && !ListenURL.HasOption(TEXT("bIsLanMatch")))
 	{
 		FName SocketTypeName = IsRunningDedicatedServer() ? FName(TEXT("SteamServerSocket")) : FName(TEXT("SteamClientSocket"));
 		SetSocketAndLocalAddress(SteamSockets->CreateSocket(SocketTypeName, TEXT("Unreal server (Steam)"), FNetworkProtocolTypes::Steam));
@@ -133,7 +132,7 @@ void USteamNetDriver::Shutdown()
 
 bool USteamNetDriver::IsNetResourceValid()
 {
-	bool bIsValidSteamSocket = !bIsPassthrough && (GetSocket() != nullptr) && ((FSocketSteam*)GetSocket())->LocalSteamId->IsValid();
+	bool bIsValidSteamSocket = !bIsPassthrough && (GetSocket() != nullptr) && ((FSocketSteam*)GetSocket())->LocalSteamId.IsValid();
 	bool bIsValidPassthroughSocket = bIsPassthrough && UIpNetDriver::IsNetResourceValid();
 	return bIsValidSteamSocket || bIsValidPassthroughSocket;
 }

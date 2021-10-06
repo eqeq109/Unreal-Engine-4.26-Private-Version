@@ -1,38 +1,45 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+#ifdef CAD_INTERFACE // #ueent_wip if WITH_CORETECH
+
 #include "CTSession.h"
 #include "CADData.h"
 
+
+// If attached with a debugger, errors from CT assigned to a Checked_IO_ERROR will break.
+#define BREAK_ON_CT_USAGE_ERROR 0
+
 namespace CADLibrary
 {
-	TWeakPtr<FCTSession> FCTSession::SharedSession;
+	TWeakPtr<CTSession> CTSession::SharedSession;
 
-	void FCTSession::ClearData()
+	void CTSession::ClearData()
 	{
-		CTKIO_UnloadModel();
+		CheckedCTError Result = CTKIO_UnloadModel();
 
 		// recreate the Main Object
-		CTKIO_CreateModel(MainObjectId);
+		Result = CTKIO_CreateModel(MainObjectId);
 	}
 
-	bool FCTSession::SaveBrep(const FString& FilePath)
+	CheckedCTError CTSession::SaveBrep(const FString& FilePath)
 	{
-		return CTKIO_SaveFile({ MainObjectId }, *FilePath, L"Ct");
+		CT_LIST_IO ObjectList;
+		ObjectList.PushBack(MainObjectId);
+		return CTKIO_SaveFile(ObjectList, *FilePath, L"Ct");
 	}
 
-	bool FCTSession::TopoFixes(double SewingToleranceFactor)
+	CheckedCTError CTSession::TopoFixes(double SewingToleranceFactor)
 	{
-		return CADLibrary::CTKIO_Repair(MainObjectId, ImportParams.StitchingTechnique, SewingToleranceFactor);
+		return CADLibrary::Repair(MainObjectId, ImportParams.StitchingTechnique, SewingToleranceFactor);
 	}
 
-	void FCTSession::SetSceneUnit(double InMetricUnit)
+	void CheckedCTError::Validate()
 	{
-		ImportParams.MetricUnit = InMetricUnit;
-		CTKIO_ChangeUnit(InMetricUnit);
+		static bool breakOnError = BREAK_ON_CT_USAGE_ERROR;
+		ensure(!breakOnError || bool(*this));
 	}
 
-
-	void FCTSession::SetImportParameters(float ChordTolerance, float MaxEdgeLength, float NormalTolerance, CADLibrary::EStitchingTechnique StitchingTechnique, bool bScaleUVMap)
+	void CTSession::SetImportParameters(float ChordTolerance, float MaxEdgeLength, float NormalTolerance, CADLibrary::EStitchingTechnique StitchingTechnique, bool bScaleUVMap)
 	{
 		ImportParams.ChordTolerance = ChordTolerance;
 		ImportParams.MaxEdgeLength = MaxEdgeLength;
@@ -40,8 +47,14 @@ namespace CADLibrary
 		ImportParams.StitchingTechnique = StitchingTechnique;
 		ImportParams.bScaleUVMap = bScaleUVMap;
 
-		CTKIO_ChangeTesselationParameters(ImportParams.ChordTolerance, ImportParams.MaxEdgeLength, ImportParams.MaxNormalAngle);
+		CT_TESS_DATA_TYPE VertexType = CT_TESS_DOUBLE;
+		CT_TESS_DATA_TYPE NormalType = CT_TESS_FLOAT;
+		CT_TESS_DATA_TYPE UVType = CT_TESS_DOUBLE;
+		static CT_LOGICAL bHighQuality = CT_TRUE;
+		CTKIO_ChangeTesselationParameters(ImportParams.ChordTolerance, ImportParams.MaxEdgeLength, ImportParams.MaxNormalAngle, bHighQuality, VertexType, NormalType, UVType);
 	}
 
 } // namespace CADLibrary
+
+#endif // CAD_INTERFACE
 

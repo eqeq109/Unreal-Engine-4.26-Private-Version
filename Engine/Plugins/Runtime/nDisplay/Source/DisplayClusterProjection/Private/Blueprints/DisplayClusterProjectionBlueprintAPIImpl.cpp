@@ -11,28 +11,40 @@
 
 #include "Camera/CameraComponent.h"
 
-#include "IDisplayCluster.h"
-#include "Render/IDisplayClusterRenderManager.h"
-#include "Render/Viewport/IDisplayClusterViewportManager.h"
-#include "Render/Viewport/IDisplayClusterViewport.h"
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Policy: CAMERA
 //////////////////////////////////////////////////////////////////////////////////////////////
 void UDisplayClusterProjectionBlueprintAPIImpl::CameraPolicySetCamera(const FString& ViewportId, UCameraComponent* NewCamera, float FOVMultiplier)
 {
-	IDisplayClusterRenderManager* RenderManager = IDisplayCluster::Get().GetRenderMgr();
-	if (RenderManager && RenderManager->GetViewportManager())
-	{
-		IDisplayClusterViewport* Viewport = RenderManager->GetViewportManager()->FindViewport(ViewportId);
-		if (Viewport != nullptr)
-		{
-			// @todo: Add extra settings latter to BP call if required
-			FDisplayClusterProjectionCameraPolicySettings Settings;
-			Settings.FOVMultiplier = FOVMultiplier;
+	check(NewCamera);
+	check(FOVMultiplier >= 0.1f);
 
-			IDisplayClusterProjection::Get().CameraPolicySetCamera(Viewport->GetProjectionPolicy(), NewCamera, Settings);
+	IDisplayClusterProjection& Module = IDisplayClusterProjection::Get();
+	
+	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory = Module.GetProjectionFactory(DisplayClusterProjectionStrings::projection::Camera);
+	if (Factory.IsValid())
+	{
+		TSharedPtr<FDisplayClusterProjectionCameraPolicyFactory> CameraFactory = StaticCastSharedPtr<FDisplayClusterProjectionCameraPolicyFactory>(Factory);
+		if (CameraFactory.IsValid())
+		{
+			TSharedPtr<IDisplayClusterProjectionPolicy> PolicyInstance = CameraFactory->GetPolicyInstance(ViewportId);
+			if (PolicyInstance.IsValid())
+			{
+				TSharedPtr<FDisplayClusterProjectionCameraPolicy> CameraPolicyInstance = StaticCastSharedPtr<FDisplayClusterProjectionCameraPolicy>(PolicyInstance);
+				if (CameraPolicyInstance)
+				{
+					CameraPolicyInstance->SetCamera(NewCamera, FOVMultiplier);
+				}
+			}
 		}
 	}
+
 }
 
+void UDisplayClusterProjectionBlueprintAPIImpl::AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
+{
+	IDisplayClusterProjection& Module = IDisplayClusterProjection::Get();
+	Module.AssignWarpMeshToViewport(ViewportId, MeshComponent, OriginComponent);
+}

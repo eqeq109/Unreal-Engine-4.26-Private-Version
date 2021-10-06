@@ -12,10 +12,9 @@
 
 class FCompositeFontCache;
 class FFreeTypeAdvanceCache;
-class FFreeTypeCacheDirectory;
 class FFreeTypeFace;
 class FFreeTypeGlyphCache;
-class FFreeTypeKerningCache;
+class FFreeTypeKerningPairCache;
 class FFreeTypeLibrary;
 class FShapedGlyphFaceData;
 class FSlateFontCache;
@@ -455,8 +454,6 @@ struct SLATECORE_API FCharacterEntry
 	uint32 GlyphIndex = 0;
 	/** The raw font data this character was rendered with */
 	const FFontData* FontData = nullptr;
-	/** The kerning cache that this entry uses */
-	TSharedPtr<FFreeTypeKerningCache> KerningCache;
 	/** Scale that was applied when rendering this character */
 	float FontScale = 0.0f;
 	/** Any additional scale that should be applied when rendering this glyph */
@@ -560,8 +557,6 @@ private:
 		FShapedGlyphEntry ShapedGlyphEntry;
 		/** Font data this character was rendered with */
 		const FFontData* FontData = nullptr;
-		/** Kerning cache that this character uses */
-		TSharedPtr<FFreeTypeKerningCache> KerningCache;
 		/** The fallback level this character represents */
 		EFontFallback FallbackLevel = EFontFallback::FF_Max;
 		/** Does this character have kerning? */
@@ -872,8 +867,14 @@ private:
 	/** FreeType library instance (owned by this font cache) */
 	TUniquePtr<FFreeTypeLibrary> FTLibrary;
 
-	/** FreeType low-level cache directory (owned by this font cache) */
-	TUniquePtr<FFreeTypeCacheDirectory> FTCacheDirectory;
+	/** FreeType low-level glyph cache (owned by this font cache) */
+	TUniquePtr<FFreeTypeGlyphCache> FTGlyphCache;
+
+	/** FreeType low-level advance cache (owned by this font cache) */
+	TUniquePtr<FFreeTypeAdvanceCache> FTAdvanceCache;
+
+	/** FreeType low-level kerning pair cache (owned by this font cache) */
+	TUniquePtr<FFreeTypeKerningPairCache> FTKerningPairCache;
 
 	/** High-level composite font cache (owned by this font cache) */
 	TUniquePtr<FCompositeFontCache> CompositeFontCache;

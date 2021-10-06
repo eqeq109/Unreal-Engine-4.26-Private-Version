@@ -47,7 +47,7 @@ namespace DataprepActionAsset
 	typedef TFunction<void(const UDataprepActionAsset* /* ActionAsset */, bool /* bWorldChanged */, bool /* bAssetChanged */, const TArray< TWeakObjectPtr<UObject> >& /* NewAssets */)> FActionsContextChangedFunc;
 }
 
-UCLASS()
+UCLASS(Experimental)
 class DATAPREPCORE_API UDataprepActionStep : public UObject
 {
 	GENERATED_BODY()
@@ -67,11 +67,6 @@ public:
 	bool bIsEnabled;
 
 	UDataprepParameterizableObject* GetStepObject()
-	{
-		return StepObject;
-	}
-
-	const UDataprepParameterizableObject* GetStepObject() const
 	{
 		return StepObject;
 	}
@@ -173,32 +168,12 @@ struct FDataprepActionContext
 	DataprepActionAsset::FActionsContextChangedFunc ContextChangedCallback;
 };
 
-// Persists graphical state of the node associated with this action asset
-UCLASS()
-class UDataprepActionAppearance : public UObject
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY()
-	bool bIsExpanded;
-
-	UPROPERTY()
-	FVector2D NodeSize;
-
-	UPROPERTY()
-	int32 GroupId;
-
-	UPROPERTY()
-	bool bGroupIsEnabled;
-};
-
 class UDataprepActionAsset;
 DECLARE_EVENT(UDataprepActionAsset, FOnStepsOrderChanged);
 DECLARE_EVENT_OneParam(UDataprepActionAsset, FOnStepAboutToBeRemoved, UDataprepParameterizableObject* /** The step object */ );
 DECLARE_EVENT_TwoParams(UDataprepParameterizableObject, FOnStepWasEdited, UDataprepParameterizableObject* /** The step object of the step (The object edited might be a subobject of it) */, struct FPropertyChangedChainEvent&)
 
-UCLASS()
+UCLASS(Experimental)
 class DATAPREPCORE_API UDataprepActionAsset : public UObject
 {
 	GENERATED_BODY()
@@ -326,18 +301,16 @@ public:
 	/**
 	 * Remove a step from the action
 	 * @param Index The index of the step to remove
-	 * @param bDiscardParametrization If true, remove parameterization associated with action steps
 	 * @return True if a step was removed
 	 */
-	bool RemoveStep(int32 Index, bool bDiscardParametrization = true);
+	bool RemoveStep(int32 Index);
 
 	/**
 	 * Remove an array of steps from the action
 	 * @param Indices Array of step indices to remove
-	 * @param bDiscardParametrization If true, remove parameterization associated with action steps
 	 * @return True if at least one step has been removed
 	 */
-	bool RemoveSteps(const TArray<int32>& Indices, bool bDiscardParametrization = true);
+	bool RemoveSteps(const TArray<int32>& Indices);
 
 	/**
 	 * Allow an observer to be notified when the steps order changed that also include adding and removing steps
@@ -357,16 +330,12 @@ public:
 	 */
 	FOnStepWasEdited& GetOnStepWasEdited();
 
-	/**
-	 * @return The appearance information associated with this action asset
-	 */
-	UDataprepActionAppearance* GetAppearance();
-
 	UPROPERTY(Transient)
 	bool bExecutionInterrupted;
 
 	UPROPERTY()
 	bool bIsEnabled;
+
 
 	/** Getter and Setter on the UI text of the action */
 	const TCHAR* GetLabel() const { return *Label; }
@@ -458,15 +427,9 @@ private:
 	/** Add an asset to the execution context */
 	void AddAssetToContext( UObject* NewAsset, const TCHAR* DesiredName );
 
-	/** Creates a copy af action step, including its parameterization */
-	UDataprepActionStep* DuplicateStep(const UDataprepActionStep* InActionStep);
-
 	/** Array of operations and/or filters constituting this action */
 	UPROPERTY()
 	TArray<UDataprepActionStep*> Steps;
-
-	UPROPERTY()
-	UDataprepActionAppearance* Appearance;
 
 	/** Broadcasts any change to the stack of steps */
 	FOnStepsOrderChanged OnStepsOrderChanged;

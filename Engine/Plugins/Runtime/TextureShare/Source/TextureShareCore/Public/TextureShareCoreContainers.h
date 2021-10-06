@@ -23,14 +23,3 @@ public:
 
 	//@todo: add more frame data
 };
-
-// Custom render
-struct FTextureShareCustomProjectionData
-{
-	// Projection matrix
-	FMatrix PrjMatrix;
-
-	FVector  ViewLocation;
-	FRotator ViewRotation;
-	FVector  ViewScale;
-};

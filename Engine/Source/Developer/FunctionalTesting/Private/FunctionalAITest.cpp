@@ -11,7 +11,7 @@
 #include "NavMesh/RecastNavMesh.h"
 #include "NavigationOctree.h"
 
-AFunctionalAITestBase::AFunctionalAITestBase( const FObjectInitializer& ObjectInitializer )
+AFunctionalAITest::AFunctionalAITest( const FObjectInitializer& ObjectInitializer )
 	: Super(ObjectInitializer)
 	, CurrentSpawnSetIndex(INDEX_NONE)
 	, bSingleSetRun(false)
@@ -21,39 +21,43 @@ AFunctionalAITestBase::AFunctionalAITestBase( const FObjectInitializer& ObjectIn
 	bDebugNavMeshOnTimeout = false;
 }
 
-bool AFunctionalAITestBase::IsOneOfSpawnedPawns(AActor* Actor)
+bool AFunctionalAITest::IsOneOfSpawnedPawns(AActor* Actor)
 {
 	APawn* Pawn = Cast<APawn>(Actor);
 	return Pawn != NULL && SpawnedPawns.Contains(Pawn);
 }
 
-void AFunctionalAITestBase::BeginPlay()
+void AFunctionalAITest::BeginPlay()
 {
 	// do a post-load step and remove all disabled spawn sets
-	RemoveSpawnSetIfPredicate([&](FAITestSpawnSetBase& SpawnSet) {
+	for(int32 Index = SpawnSets.Num()-1; Index >= 0; --Index)
+	{
+		FAITestSpawnSet& SpawnSet = SpawnSets[Index];
 		if (SpawnSet.bEnabled == false)
 		{
-			UE_LOG(LogFunctionalTest, Log, TEXT("Removing disabled spawn set \'%s\'."), *SpawnSet.Name.ToString());
-			return true;
+			UE_LOG(LogFunctionalTest, Log, TEXT("Removing disabled spawn set \'%s\'."), *SpawnSets[Index].Name.ToString());
+			SpawnSets.RemoveAt(Index, 1, false);
 		}
-		return false;
-	});
-
-	// update all spawn info that doesn't have spawn location set, and set spawn set name
-	ForEachSpawnSet([&](FAITestSpawnSetBase& SpawnSet) {
-		SpawnSet.ForEachSpawnInfo([&](FAITestSpawnInfoBase& SpawnInfo) {
-			SpawnInfo.SpawnSetName = SpawnSet.Name;
-			if (SpawnInfo.SpawnLocation == NULL)
+		else
+		{
+			// update all spawn info that doesn't have spawn location set, and set spawn set name
+			for (int32 SpawnIndex = 0; SpawnIndex < SpawnSet.SpawnInfoContainer.Num(); ++SpawnIndex)
 			{
-				SpawnInfo.SpawnLocation = SpawnSet.FallbackSpawnLocation ? SpawnSet.FallbackSpawnLocation : this;
+				FAITestSpawnInfo& SpawnInfo = SpawnSet.SpawnInfoContainer[SpawnIndex];
+				SpawnInfo.SpawnSetName = SpawnSet.Name;
+				if (SpawnInfo.SpawnLocation == NULL)
+				{
+					SpawnInfo.SpawnLocation = SpawnSet.FallbackSpawnLocation ? SpawnSet.FallbackSpawnLocation : this;
+				}
 			}
-		});
-	});
+		}
+	}
+	SpawnSets.Shrink();
 
 	Super::BeginPlay();
 }
 
-bool AFunctionalAITestBase::RunTest(const TArray<FString>& Params)
+bool AFunctionalAITest::RunTest(const TArray<FString>& Params)
 {
 	KillOffSpawnedPawns();
 	ClearPendingDelayedSpawns();
@@ -70,7 +74,7 @@ bool AFunctionalAITestBase::RunTest(const TArray<FString>& Params)
 		++CurrentSpawnSetIndex;
 	}
 
-	if (!IsValidSpawnSetIndex(CurrentSpawnSetIndex))
+	if (!SpawnSets.IsValidIndex(CurrentSpawnSetIndex))
 	{
 		return false;
 	}
@@ -78,18 +82,18 @@ bool AFunctionalAITestBase::RunTest(const TArray<FString>& Params)
 	return Super::RunTest(Params);
 }
 
-void AFunctionalAITestBase::StartTest()
+void AFunctionalAITest::StartTest()
 {
 	Super::StartTest();
 	StartSpawning();
 }
 
-bool AFunctionalAITestBase::IsReady_Implementation()
+bool AFunctionalAITest::IsReady_Implementation()
 {
 	return Super::IsReady_Implementation() && IsNavMeshReady();
 }
 
-void AFunctionalAITestBase::OnTimeout()
+void AFunctionalAITest::OnTimeout()
 {
 	// tracking for FORT-42587, FORT-42994
 	// - log pending navmesh rebuilds / dirty areas
@@ -136,16 +140,15 @@ void AFunctionalAITestBase::OnTimeout()
 	Super::OnTimeout();
 }
 
-void AFunctionalAITestBase::StartSpawning()
+void AFunctionalAITest::StartSpawning()
 {
 	if (bWaitForNavMesh && !IsNavMeshReady())
 	{
-		GetWorldTimerManager().SetTimer(NavmeshDelayTimer, this, &AFunctionalAITestBase::StartSpawning, 0.5f, false);
+		GetWorldTimerManager().SetTimer(NavmeshDelayTimer, this, &AFunctionalAITest::StartSpawning, 0.5f, false);
 		return;
 	}
 
-	FAITestSpawnSetBase* SpawnSet = GetSpawnSet(CurrentSpawnSetIndex);
-	if (!SpawnSet)
+	if (!SpawnSets.IsValidIndex(CurrentSpawnSetIndex))
 	{
 		FinishTest(EFunctionalTestResult::Failed, FString::Printf(TEXT("Unable to use spawn set: %d"), CurrentSpawnSetIndex));
 		return;
@@ -153,19 +156,26 @@ void AFunctionalAITestBase::StartSpawning()
 
 	UWorld* World = GetWorld();
 	check(World);
+	const FAITestSpawnSet& SpawnSet = SpawnSets[CurrentSpawnSetIndex];
+
 	bool bSuccessfullySpawnedAll = true;
 
 	// NOTE: even if some pawns fail to spawn we don't stop spawning to find all spawns that will fails.
 	// all spawned pawns get filled off in case of failure.
-	CurrentSpawnSetName = SpawnSet->Name.ToString();
+	CurrentSpawnSetName = SpawnSet.Name.ToString();
 
-	int32 SpawnInfoIndex = 0;
-	SpawnSet->ForEachSpawnInfo([&](FAITestSpawnInfoBase& SpawnInfo) {
+	for (int32 SpawnIndex = 0; SpawnIndex < SpawnSet.SpawnInfoContainer.Num(); ++SpawnIndex)
+	{
+		const FAITestSpawnInfo& SpawnInfo = SpawnSet.SpawnInfoContainer[SpawnIndex];
 		if (SpawnInfo.IsValid())
 		{
 			if (SpawnInfo.PreSpawnDelay > 0)
 			{
-				PendingDelayedSpawns.Add(FPendingDelayedSpawn(CurrentSpawnSetIndex, SpawnInfoIndex, SpawnInfo.NumberToSpawn, SpawnInfo.PreSpawnDelay));
+				FPendingDelayedSpawn PendingSpawnInfo(SpawnInfo);
+				PendingSpawnInfo.TimeToNextSpawn = SpawnInfo.PreSpawnDelay;
+				PendingSpawnInfo.NumberToSpawnLeft = SpawnInfo.NumberToSpawn;
+
+				PendingDelayedSpawns.Add(PendingSpawnInfo);
 			}
 			else if (SpawnInfo.SpawnDelay == 0.0)
 			{
@@ -179,22 +189,21 @@ void AFunctionalAITestBase::StartSpawning()
 				bSuccessfullySpawnedAll &= SpawnInfo.Spawn(this);
 				if (SpawnInfo.NumberToSpawn > 1)
 				{
-					PendingDelayedSpawns.Add(FPendingDelayedSpawn(CurrentSpawnSetIndex, SpawnInfoIndex, SpawnInfo.NumberToSpawn - 1, SpawnInfo.SpawnDelay));
+					PendingDelayedSpawns.Add(SpawnInfo);
 				}
 			}
 		}
 		else
 		{
 			const FString SpawnFailureMessage = FString::Printf(TEXT("Spawn set \'%s\' contains invalid entry at index %d")
-				, *SpawnSet->Name.ToString()
-				, SpawnInfoIndex);
+				, *SpawnSet.Name.ToString()
+				, SpawnIndex);
 
 			UE_LOG(LogFunctionalTest, Warning, TEXT("%s"), *SpawnFailureMessage);
 
 			bSuccessfullySpawnedAll = false;
 		}
-		++SpawnInfoIndex;
-	});
+	}
 
 	if (bSuccessfullySpawnedAll == false)
 	{
@@ -202,7 +211,7 @@ void AFunctionalAITestBase::StartSpawning()
 		
 		// wait a bit if it's in the middle of StartTest call
 		FTimerHandle DummyHandle;
-		World->GetTimerManager().SetTimer(DummyHandle, this, &AFunctionalAITestBase::OnSpawningFailure, 0.1f, false);
+		World->GetTimerManager().SetTimer(DummyHandle, this, &AFunctionalAITest::OnSpawningFailure, 0.1f, false);
 	}		
 	else
 	{
@@ -213,33 +222,35 @@ void AFunctionalAITestBase::StartSpawning()
 	}
 }
 
-void AFunctionalAITestBase::OnSpawningFailure()
+void AFunctionalAITest::OnSpawningFailure()
 {
 	FinishTest(EFunctionalTestResult::Failed, TEXT("Unable to spawn AI"));
 }
 
-bool AFunctionalAITestBase::WantsToRunAgain() const
+bool AFunctionalAITest::WantsToRunAgain() const
 {
-	return bSingleSetRun == false && IsValidSpawnSetIndex(CurrentSpawnSetIndex + 1);
+	return bSingleSetRun == false && CurrentSpawnSetIndex + 1 < SpawnSets.Num();
 }
 
-void AFunctionalAITestBase::GatherRelevantActors(TArray<AActor*>& OutActors) const
+void AFunctionalAITest::GatherRelevantActors(TArray<AActor*>& OutActors) const
 {
 	Super::GatherRelevantActors(OutActors);
 
-	ForEachSpawnSet([&OutActors](const FAITestSpawnSetBase& SpawnSet) {
+	for (auto SpawnSet : SpawnSets)
+	{
 		if (SpawnSet.FallbackSpawnLocation)
 		{
 			OutActors.AddUnique(SpawnSet.FallbackSpawnLocation);
 		}
 
-		SpawnSet.ForEachSpawnInfo([&OutActors](const FAITestSpawnInfoBase& SpawnInfo) {
+		for (auto SpawnInfo : SpawnSet.SpawnInfoContainer)
+		{
 			if (SpawnInfo.SpawnLocation)
 			{
 				OutActors.AddUnique(SpawnInfo.SpawnLocation);
 			}
-		});
-	});
+		}
+	}
 
 	for (auto Pawn : SpawnedPawns)
 	{
@@ -250,7 +261,7 @@ void AFunctionalAITestBase::GatherRelevantActors(TArray<AActor*>& OutActors) con
 	}
 }
 
-void AFunctionalAITestBase::CleanUp()
+void AFunctionalAITest::CleanUp()
 {
 	Super::CleanUp();
 	CurrentSpawnSetIndex = INDEX_NONE;
@@ -259,7 +270,7 @@ void AFunctionalAITestBase::CleanUp()
 	ClearPendingDelayedSpawns();
 }
 
-FString AFunctionalAITestBase::GetAdditionalTestFinishedMessage(EFunctionalTestResult TestResult) const
+FString AFunctionalAITest::GetAdditionalTestFinishedMessage(EFunctionalTestResult TestResult) const
 {
 	FString ResultStr;
 
@@ -284,14 +295,14 @@ FString AFunctionalAITestBase::GetAdditionalTestFinishedMessage(EFunctionalTestR
 	return ResultStr;
 }
 
-FString AFunctionalAITestBase::GetReproString() const
+FString AFunctionalAITest::GetReproString() const
 {
 	return FString::Printf(TEXT("%s%s%d"), *(GetFName().ToString())
 		, FFunctionalTesting::ReproStringParamsSeparator
 		, CurrentSpawnSetIndex);
 }
 
-void AFunctionalAITestBase::KillOffSpawnedPawns()
+void AFunctionalAITest::KillOffSpawnedPawns()
 {
 	for (int32 PawnIndex = 0; PawnIndex < SpawnedPawns.Num(); ++PawnIndex)
 	{
@@ -304,13 +315,13 @@ void AFunctionalAITestBase::KillOffSpawnedPawns()
 	SpawnedPawns.Reset();
 }
 
-void AFunctionalAITestBase::ClearPendingDelayedSpawns()
+void AFunctionalAITest::ClearPendingDelayedSpawns()
 {
 	SetActorTickEnabled(false);
 	PendingDelayedSpawns.Reset();
 }
 
-void AFunctionalAITestBase::Tick(float DeltaSeconds)
+void AFunctionalAITest::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
@@ -320,18 +331,18 @@ void AFunctionalAITestBase::Tick(float DeltaSeconds)
 	}
 }
 
-void AFunctionalAITestBase::AddSpawnedPawn(APawn& SpawnedPawn)
+void AFunctionalAITest::AddSpawnedPawn(APawn& SpawnedPawn)
 {
 	SpawnedPawns.Add(&SpawnedPawn);
 	OnAISpawned.Broadcast(Cast<AAIController>(SpawnedPawn.GetController()), &SpawnedPawn);
 }
 
-FVector AFunctionalAITestBase::GetRandomizedLocation(const FVector& Location) const
+FVector AFunctionalAITest::GetRandomizedLocation(const FVector& Location) const
 {
 	return Location + FVector(RandomNumbersStream.FRandRange(-SpawnLocationRandomizationRange, SpawnLocationRandomizationRange), RandomNumbersStream.FRandRange(-SpawnLocationRandomizationRange, SpawnLocationRandomizationRange), 0);
 }
 
-bool AFunctionalAITestBase::IsNavMeshReady() const
+bool AFunctionalAITest::IsNavMeshReady() const
 {
 	UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 	if (NavSys && NavSys->NavDataSet.Num() > 0 && !NavSys->IsNavigationBuildInProgress())
@@ -342,27 +353,10 @@ bool AFunctionalAITestBase::IsNavMeshReady() const
 	return false;
 }
 
-const FAITestSpawnInfoBase* AFunctionalAITestBase::GetSpawnInfo(const int32 SpawnSetIndex, const int32 SpawnInfoIndex) const
-{
-	const FAITestSpawnSetBase* SpawnSet = GetSpawnSet(SpawnSetIndex);
-	return SpawnSet ? SpawnSet->GetSpawnInfo(SpawnInfoIndex) : nullptr;
-}
-
-FAITestSpawnInfoBase* AFunctionalAITestBase::GetSpawnInfo(const int32 SpawnSetIndex, const int32 SpawnInfoIndex)
-{
-	FAITestSpawnSetBase* SpawnSet = GetSpawnSet(SpawnSetIndex);
-	return SpawnSet ? SpawnSet->GetSpawnInfo(SpawnInfoIndex) : nullptr;
-}
-
-bool AFunctionalAITestBase::Spawn(const int32 SpawnSetIndex, const int32 SpawnInfoIndex)
-{
-	const FAITestSpawnInfoBase* SpawnInfo = GetSpawnInfo(SpawnSetIndex, SpawnInfoIndex);
-	return SpawnInfo ? SpawnInfo->Spawn(this) : false;
-}
 //----------------------------------------------------------------------//
 // FAITestSpawnInfo
 //----------------------------------------------------------------------//
-bool FAITestSpawnInfo::Spawn(AFunctionalAITestBase* AITest) const
+bool FAITestSpawnInfo::Spawn(AFunctionalAITest* AITest) const
 {
 	check(AITest);
 
@@ -412,9 +406,18 @@ bool FAITestSpawnInfo::Spawn(AFunctionalAITestBase* AITest) const
 //----------------------------------------------------------------------//
 // 
 //----------------------------------------------------------------------//
-void FPendingDelayedSpawn::Tick(float TimeDelta, AFunctionalAITestBase* AITest)
+
+FPendingDelayedSpawn::FPendingDelayedSpawn(const FAITestSpawnInfo& Source)
+	: NumberToSpawnLeft(0), bFinished(false)
 {
-	if (bFinished || !AITest)
+	*((FAITestSpawnInfo*)this) = Source;
+	TimeToNextSpawn = Source.SpawnDelay;
+	NumberToSpawnLeft = Source.NumberToSpawn - 1;
+}
+
+void FPendingDelayedSpawn::Tick(float TimeDelta, AFunctionalAITest* AITest)
+{
+	if (bFinished)
 	{
 		return;
 	}
@@ -422,112 +425,9 @@ void FPendingDelayedSpawn::Tick(float TimeDelta, AFunctionalAITestBase* AITest)
 	TimeToNextSpawn -= TimeDelta;
 
 	if (TimeToNextSpawn <= 0)
-	{	
-		AITest->Spawn(SpawnSetIndex, SpawnInfoIndex);
-
-		if (--NumberToSpawnLeft <= 0)
-		{
-			bFinished = true;
-		}
-		else if (const FAITestSpawnInfoBase* SpawnInfo = AITest->GetSpawnInfo(SpawnSetIndex, SpawnInfoIndex))
-		{
-			TimeToNextSpawn = SpawnInfo->SpawnDelay;
-		}
-	}
-}
-
-const FAITestSpawnInfoBase* FAITestSpawnSet::GetSpawnInfo(const int32 SpawnInfoIndex) const
-{
-	if (SpawnInfoContainer.IsValidIndex(SpawnInfoIndex))
 	{
-		return &SpawnInfoContainer[SpawnInfoIndex];
+		Spawn(AITest);
+		TimeToNextSpawn = SpawnDelay;
+		bFinished = (--NumberToSpawnLeft <= 0);
 	}
-	return nullptr;
-}
-
-FAITestSpawnInfoBase* FAITestSpawnSet::GetSpawnInfo(const int32 SpawnInfoIndex)
-{
-	if (SpawnInfoContainer.IsValidIndex(SpawnInfoIndex))
-	{
-		return &SpawnInfoContainer[SpawnInfoIndex];
-	}
-	return nullptr;
-}
-
-bool FAITestSpawnSet::IsValidSpawnInfoIndex(const int32 Index) const
-{
-	return SpawnInfoContainer.IsValidIndex(Index);
-}
-
-void FAITestSpawnSet::ForEachSpawnInfo(TFunctionRef<void(FAITestSpawnInfoBase&)> Predicate)
-{
-	for (FAITestSpawnInfo& SpawnInfo : SpawnInfoContainer)
-	{
-		Predicate(SpawnInfo);
-	}
-}
-
-void FAITestSpawnSet::ForEachSpawnInfo(TFunctionRef<void(const FAITestSpawnInfoBase&)> Predicate) const
-{
-	for (const FAITestSpawnInfo& SpawnInfo : SpawnInfoContainer)
-	{
-		Predicate(SpawnInfo);
-	}
-}
-
-void AFunctionalAITest::ForEachSpawnSet(TFunctionRef<void(const FAITestSpawnSetBase&)> Predicate) const
-{
-	for (int32 Index = 0; Index < SpawnSets.Num(); ++Index)
-	{
-		Predicate(SpawnSets[Index]);
-	}
-}
-
-void AFunctionalAITest::ForEachSpawnSet(TFunctionRef<void(FAITestSpawnSetBase&)> Predicate)
-{
-	for (int32 Index = 0; Index < SpawnSets.Num(); ++Index)
-	{
-		Predicate(SpawnSets[Index]);
-	}
-}
-
-void AFunctionalAITest::RemoveSpawnSetIfPredicate(TFunctionRef<bool(FAITestSpawnSetBase&)> Predicate)
-{
-	bool bRemovedEntry = false;
-	for (int32 Index = SpawnSets.Num() - 1; Index >= 0; --Index)
-	{
-		if (Predicate(SpawnSets[Index]))
-		{
-			SpawnSets.RemoveAt(Index, 1, false);
-			bRemovedEntry = true;
-		}
-	}
-
-	if (bRemovedEntry)
-	{
-		SpawnSets.Shrink();
-	}
-}
-
-const FAITestSpawnSetBase* AFunctionalAITest::GetSpawnSet(const int32 SpawnSetIndex) const
-{
-	if (SpawnSets.IsValidIndex(SpawnSetIndex))
-	{
-		return &SpawnSets[SpawnSetIndex];
-	}
-	return nullptr;
-}
-
-FAITestSpawnSetBase* AFunctionalAITest::GetSpawnSet(const int32 SpawnSetIndex)
-{
-	if (SpawnSets.IsValidIndex(SpawnSetIndex))
-	{
-		return &SpawnSets[SpawnSetIndex];
-	}
-	return nullptr;
-}
-
-bool AFunctionalAITest::IsValidSpawnSetIndex(const int32 Index) const
-{
-	return SpawnSets.IsValidIndex(Index);
 }

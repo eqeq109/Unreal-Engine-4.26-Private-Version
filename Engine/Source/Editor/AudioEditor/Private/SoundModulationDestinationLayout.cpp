@@ -31,7 +31,7 @@ namespace ModDestinationLayoutUtils
 			if (UWorld* World = GEditor->GetEditorWorldContext().World())
 			{
 				FAudioDeviceHandle AudioDeviceHandle = World->GetAudioDevice();
-				if (AudioDeviceHandle.IsValid() && AudioDeviceHandle->IsModulationPluginEnabled())
+				if (AudioDeviceHandle->IsModulationPluginEnabled())
 				{
 					return AudioDeviceHandle->ModulationInterface.Get();
 				}

@@ -68,7 +68,6 @@ struct CORE_API FWindowsPlatformMisc
 
 	static void SetUTF8Output();
 	static void LocalPrint(const TCHAR *Message);
-	static void RequestExitWithStatus(bool Force, uint8 ReturnCode);
 	static void RequestExit(bool Force);
 	static const TCHAR* GetSystemErrorMessage(TCHAR* OutBuffer, int32 BufferCount, int32 Error);
 	static void CreateGuid(struct FGuid& Result);

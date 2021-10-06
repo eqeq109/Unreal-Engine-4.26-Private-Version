@@ -24,8 +24,8 @@ public:
 	float GetViewMaxOutput() const;
 	void SetOutputViewRange(float InViewMinOutput, float InViewMaxOutput);
 
-	bool GetIsGradientVisible() const;
-	void SetIsGradientVisible(bool bInIsGradientVisible);
+	bool GetAreCurvesVisible() const;
+	void SetAreCurvesVisible(bool bInAreCurvesVisible);
 
 	float GetTimelineLength() const;
 
@@ -37,7 +37,7 @@ private:
 	float ViewMaxInput;
 	float ViewMinOutput;
 	float ViewMaxOutput;
-	bool bIsGradientVisible;
+	bool bAreCurvesVisible;
 	bool bNeedsInitializeView;
 	float Height;
 };
@@ -55,8 +55,8 @@ private:
 		virtual TSharedRef<SWidget> CreateSystemOverview(TSharedRef<FNiagaraSystemViewModel> SystemViewModel) const override;
 		virtual TSharedRef<SWidget> CreateStackIssueIcon(UNiagaraStackViewModel& StackViewModel, UNiagaraStackEntry& StackEntry) const override;
 		virtual TSharedRef<SWidget> CreateScriptScratchPad(UNiagaraScratchPadViewModel& ScriptScratchPadViewModel) const override;
-		virtual TSharedRef<SWidget> CreateCurveOverview(TSharedRef<FNiagaraSystemViewModel> SystemViewModel) const override;
 		virtual FLinearColor GetColorForExecutionCategory(FName ExecutionCategory) const override;
+		virtual FLinearColor GetColorForParameterScope(ENiagaraParameterScope ParameterScope) const override;
 	};
 
 public:
@@ -64,9 +64,7 @@ public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
 
-	static FNiagaraEditorWidgetsModule& Get();
-
-	TSharedRef<FNiagaraStackCurveEditorOptions> GetOrCreateStackCurveEditorOptionsForObject(UObject* Object, float DefaultHeight);
+	TSharedRef<FNiagaraStackCurveEditorOptions> GetOrCreateStackCurveEditorOptionsForObject(UObject* Object, bool bDefaultAreCurvesVisible, float DefaultHeight);
 
 private:
 	void ReinitializeStyle();

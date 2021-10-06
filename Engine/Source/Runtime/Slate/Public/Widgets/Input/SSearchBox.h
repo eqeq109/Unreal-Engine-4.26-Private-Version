@@ -17,7 +17,8 @@
 class FActiveTimerHandle;
 
 /** A text box that is used for searching. Meant to be as easy to use as possible with as few options as possible. */
-class SLATE_API SSearchBox : public SEditableTextBox
+class SLATE_API SSearchBox
+	: public SEditableTextBox
 {
 
 public:
@@ -49,8 +50,7 @@ public:
 		, _OnTextCommitted()
 		, _OnSearch()
 		, _SelectAllTextWhenFocused( true )
-		, _DelayChangeNotificationsWhileTyping( true )
-		, _DelayChangeNotificationsWhileTypingSeconds(0.25f)
+		, _DelayChangeNotificationsWhileTyping( false )
 	{ }
 
 		/** Style used to draw this search box */
@@ -85,9 +85,6 @@ public:
 
 		/** Whether the SearchBox should delay notifying listeners of text changed events until the user is done typing */
 		SLATE_ATTRIBUTE( bool, DelayChangeNotificationsWhileTyping )
-
-		/** If we're delaying change notifications how many seconds should we wait? */
-		SLATE_ATTRIBUTE( float, DelayChangeNotificationsWhileTypingSeconds )
 
 		/** Callback delegate to have first chance handling of the OnKeyDown event */
 		SLATE_EVENT(FOnKeyDown, OnKeyDownHandler)
@@ -136,6 +133,9 @@ private:
 	FSlateFontInfo GetWidgetFont() const;
 
 private:
+	/** The amount of time to delay filtering after the user types */
+	static const double FilterDelayAfterTyping;
+
 	/** Handle to the active trigger text changed timer */
 	TWeakPtr<FActiveTimerHandle> ActiveTimerHandle;
 
@@ -150,9 +150,6 @@ private:
 
 	/** Whether the SearchBox should delay notifying listeners of text changed events until the user is done typing */
 	TAttribute< bool > DelayChangeNotificationsWhileTyping;
-
-	/** If we're delaying change notifications how many seconds should we wait? */
-	TAttribute< float > DelayChangeNotificationsWhileTypingSeconds;
 
 	/** Fonts that specify how to render search text when inactive, and active */
 	FSlateFontInfo ActiveFont, InactiveFont;

@@ -8,8 +8,9 @@
 #include "RHIResources.h"
 #include "RHICommandList.h"
 
-class IDisplayClusterViewportManager;
-class IDisplayClusterViewportProxy;
+class FDisplayClusterRenderViewport;
+class FViewport;
+
 
 /**
  * nDisplay post-process interface
@@ -17,7 +18,8 @@ class IDisplayClusterViewportProxy;
 class IDisplayClusterPostProcess
 {
 public:
-	virtual ~IDisplayClusterPostProcess() = default;
+	virtual ~IDisplayClusterPostProcess() = 0
+	{ }
 
 public:
 	/**
@@ -30,112 +32,167 @@ public:
 	{ }
 
 	/**
-	* Return postprocess name
+	* Game thread call. Postprocess initialization
+	*
+	* @param Parameters - Configuration parameters
 	*/
-	virtual const FString& GetId() const = 0;
-
-	/**
-	* Return postprocess order
-	*/
-	virtual int32 GetOrder() const = 0;
-
-	/**
-	* Return postprocess type
-	*/
-	virtual const FString GetTypeId() const = 0;
-
-	/**
-	* Return postprocess configuration
-	*/
-	virtual const TMap<FString, FString>& GetParameters() const = 0;
-
-	/**
-	* Update postprocess internal data from game thread
-	*/
-	virtual void Tick()
+	virtual void InitializePostProcess(const TMap<FString, FString>& Parameters)
 	{ }
 
 	/**
-	* Check postprocess settings changes
+	* Called every time the main viewport changed
 	*
-	* @param InConfigurationProjectionPolicy - new settings
-	*
-	* @return - True if found changes
+	* @param MainViewport
+	* @param RenderViewports
 	*/
-	virtual bool IsConfigurationChanged(const struct FDisplayClusterConfigurationPostprocess* InConfigurationPostprocess) const = 0;
-
-	/**
-	* Called each time a new game level starts
-	*
-	*/
-	virtual bool HandleStartScene(IDisplayClusterViewportManager* InViewportManager) = 0;
-
-	/**
-	* Called when current level is going to be closed (i.e. before loading a new map)
-	*
-	*/
-	virtual void HandleEndScene(IDisplayClusterViewportManager* InViewportManager) = 0;
+	virtual void PerformUpdateViewport(const FViewport& MainViewport, const TArray<FDisplayClusterRenderViewport>& RenderViewports)
+	{ }
 
 	/**
 	* Returns if an interface implementation processes each view region before warp&blend
-	* the corresponded function will be called once per viewport
+	*
+	* @example - A stereo device with 2 viewports renders 4 different regions so the corresponded function will be called 4 times (2 eyes * 2 viewports)
+	* @example - A monoscopic device with 3 viewports renders 3 different regions so the corresponded function will be called 3 times (1 eye * 3 viewports)
 	*
 	* @return - true if required
 	*/
-	virtual bool IsPostProcessViewBeforeWarpBlendRequired() const
+	virtual bool IsPostProcessViewBeforeWarpBlendRequired()
 	{ return false; }
 
 	/**
 	* PP operation on a view region before warp&blend (if available for the current projection policy)
-	* the corresponded function will be called once per viewport
 	*
 	* @param RHICmdList - RHI command list
-	* @param ViewportProxy - viewport proxy interface
+	* @param SrcTexture - Source texture
+	* @param ViewRect   - View region of the texture
 	*/
-	virtual void PerformPostProcessViewBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
+	virtual void PerformPostProcessViewBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewRect) const
 	{ }
 
 	/**
 	* Returns if an interface implementation processes each view region after warp&blend
-	* the corresponded function will be called once per viewport
+	*
+	* @example - A stereo device with 2 viewports renders 4 different regions so the corresponded function will be called 4 times (2 eyes * 2 viewports)
+	* @example - A monoscopic device with 3 viewports renders 3 different regions so the corresponded function will be called 3 times (1 eye * 3 viewports)
 	*
 	* @return - true if required
 	*/
-	virtual bool IsPostProcessViewAfterWarpBlendRequired() const
+	virtual bool IsPostProcessViewAfterWarpBlendRequired()
 	{ return false; }
 
 	/**
 	* PP operation on a view region after warp&blend (if available for the current projection policy)
-	* the corresponded function will be called once per viewport
 	*
 	* @param RHICmdList - RHI command list
-	* @param ViewportProxy - viewport proxy interface
+	* @param SrcTexture - Source texture
+	* @param ViewRect   - View region of the texture
 	*/
-	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
+	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewRect) const
 	{ }
 
 	/**
-	* Returns if an interface implementation processes output frames after warp&blend
+	* Returns if an interface implementation processes output frames separately before warp&blend (2 frames for stereo, 1 frame for monoscopic)
+	*
+	* @example - A stereo device with 3 viewports will call the corresponded function twice (1 frame for 3 regions of left eye and 1 frame for 3 regions of right eye)
+	* @example - A monoscopic device with 2 viewports will call the corresponded function once
+	*
+	* @param FramesAmount - Amount of frames on a render target (1 for mono, 2 for stereo...)
 	*
 	* @return - true if required
 	*/
-	virtual bool IsPostProcessFrameAfterWarpBlendRequired() const
+	virtual bool IsPostProcessFrameBeforeWarpBlendRequired(uint32 FramesAmount)
 	{ return false; }
 
 	/**
-	* Request additional frame targetable resource from viewport manager
+	* PP operation on a frame region before warp&blend
 	*
-	* @return - true if resource required
+	* @param RHICmdList - RHI command list
+	* @param SrcTexture - Source texture
+	* @param ViewRect   - Frame region of the texture
 	*/
-	virtual bool ShouldUseAdditionalFrameTargetableResource() const
+	virtual void PerformPostProcessFrameBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& FrameRect) const
+	{ }
+
+	/**
+	* Returns if an interface implementation processes output frames separately after warp&blend (2 frames for stereo, 1 frame for monoscopic)
+	*
+	* @example - A stereo device with 3 viewports will call the corresponded function twice (1 frame for 3 regions of left eye and 1 frame for 3 regions of right eye)
+	* @example - A monoscopic device with 2 viewports will call the corresponded function once
+	*
+	* @param FramesAmount - Amount of frames on a render target (1 for mono, 2 for stereo...)
+	*
+	* @return - true if required
+	*/
+	virtual bool IsPostProcessFrameAfterWarpBlendRequired(uint32 FramesAmount)
 	{ return false; }
 
 	/**
 	* PP operation on a frame region after warp&blend
 	*
 	* @param RHICmdList - RHI command list
-	* @param FrameTargets - Frame textures array (1 for mono, 2 for stereo)
+	* @param SrcTexture - Source texture
+	* @param ViewRect   - Frame region of the texture
 	*/
-	virtual void PerformPostProcessFrameAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const TArray<FRHITexture2D*>* InFrameTargets = nullptr, const TArray<FRHITexture2D*>* InAdditionalFrameTargets = nullptr) const
+	virtual void PerformPostProcessFrameAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& FrameRect) const
+	{ }
+
+	/**
+	* Returns if an interface implementation processes the final render target with all views before warp&blend
+	*
+	* @example - A stereo device typically requires 2 time bigger (at least) render target than the viewport size. This function allows to perform a PP operation to the whole render target.
+	*
+	* @return - true if required
+	*/
+	virtual bool IsPostProcessRenderTargetBeforeWarpBlendRequired()
+	{ return false; }
+
+	/**
+	* PP operation on a render target before warp&blend
+	*
+	* @param RHICmdList - RHI command list
+	* @param SrcTexture - Source texture
+	*/
+	UE_DEPRECATED(4.26, "Please use PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread with an extended argument list.")
+	virtual void PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture) const
+	{ }
+
+	/**
+	* PP operation on a render target before warp&blend
+	*
+	* @param RHICmdList - RHI command list
+	* @param SrcTexture - Source texture
+	* @param RenderViewports - Viewports data
+	*/
+	virtual void PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const TArray<FDisplayClusterRenderViewport>& RenderViewports) const
+	{ }
+
+	/**
+	* Returns if an interface implementation processes the final render target with all views after warp&blend
+	*
+	* @example - A stereo device typically requires 2 time bigger (at least) render target than the viewport size. This function allows to perform a PP operation to the whole render target.
+	*
+	* @return - true if required
+	*/
+	virtual bool IsPostProcessRenderTargetAfterWarpBlendRequired()
+	{ return false; }
+
+	/**
+	* PP operation on a render target after warp&blend
+	*
+	* @param RHICmdList - RHI command list
+	* @param SrcTexture - Source texture
+	*/
+	UE_DEPRECATED(4.26, "Please use PerformPostProcessRenderTargetAfterWarpBlend_RenderThread with extended argument list.")
+	virtual void PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture) const
+	{ }
+
+	/**
+	* PP operation on a render target after warp&blend
+	*
+	* @param RHICmdList - RHI command list
+	* @param SrcTexture - Source texture
+	* @param RenderViewports - Viewports data
+	*/
+	virtual void PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const TArray<FDisplayClusterRenderViewport>& RenderViewports) const
 	{ }
 };

@@ -19,15 +19,13 @@ FDMXEntityReference::FDMXEntityReference(UDMXEntity* InEntity)
 	SetEntity(InEntity);
 }
 
-void FDMXEntityReference::SetEntity(UDMXEntity* NewEntity)
+void FDMXEntityReference::SetEntity(const UDMXEntity* NewEntity)
 {
-	if (NewEntity)
+	if (NewEntity != nullptr)
 	{
 		DMXLibrary = NewEntity->GetParentLibrary();
 		EntityId = NewEntity->GetID();
 		EntityType = NewEntity->GetClass();
-		
-		CachedEntity = NewEntity;
 	}
 	else if (EntityId.IsValid())
 	{
@@ -42,11 +40,7 @@ void FDMXEntityReference::InvalidateId()
 
 UDMXEntity* FDMXEntityReference::GetEntity() const
 {
-	if (CachedEntity.IsValid())
-	{
-		return CachedEntity.Get();
-	}
-	else if (DMXLibrary && EntityId.IsValid())
+	if (DMXLibrary != nullptr && EntityId.IsValid())
 	{
 		if (UDMXEntity* Entity = DMXLibrary->FindEntity(EntityId))
 		{

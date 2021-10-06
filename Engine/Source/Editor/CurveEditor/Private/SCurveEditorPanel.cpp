@@ -198,7 +198,6 @@ void SCurveEditorPanel::Construct(const FArguments& InArgs, TSharedRef<FCurveEdi
 
 						SAssignNew(CurveViewsContainer, SCurveEditorViewContainer, InCurveEditor)
 						.ExternalTimeSliderController(InArgs._ExternalTimeSliderController)
-						.MinimumPanelHeight(InArgs._MinimumViewPanelHeight)
 					]
 				]
 
@@ -891,13 +890,6 @@ TSharedRef<SWidget> SCurveEditorPanel::MakeCurveEditorCurveViewOptionsMenu()
 	MenuBuilder.AddMenuSeparator();
 	MenuBuilder.AddMenuEntry(FCurveEditorCommands::Get().ToggleAutoFrameCurveEditor);
 	MenuBuilder.AddMenuEntry(FCurveEditorCommands::Get().ToggleShowCurveEditorCurveToolTips);
-
-	MenuBuilder.BeginSection("Organize", LOCTEXT("CurveEditorMenuOrganizeHeader", "Organize"));
-	{
-		MenuBuilder.AddMenuEntry(FCurveEditorCommands::Get().ToggleExpandCollapseNodes);
-		MenuBuilder.AddMenuEntry(FCurveEditorCommands::Get().ToggleExpandCollapseNodesAndDescendants);
-	}
-	MenuBuilder.EndSection();
 
 	return MenuBuilder.MakeWidget();
 }

@@ -168,10 +168,7 @@ struct TField<InIndex, InOffset, Trace::AnsiString>
 		if (Length < 0)
 		{
 			Length = 0;
-			if (String)
-			{
-				for (const TCHAR* c = String; *c; ++c, ++Length);
-			}
+			for (const TCHAR* c = String; *c; ++c, ++Length);
 		}
 
 		Private::Field_WriteStringAnsi(Index, String, Length);
@@ -181,7 +178,7 @@ struct TField<InIndex, InOffset, Trace::AnsiString>
 	{
 		if (Length < 0)
 		{
-			Length = String ? int32(strlen(String)) : 0;
+			Length = int32(strlen(String));
 		}
 
 		if (Length)

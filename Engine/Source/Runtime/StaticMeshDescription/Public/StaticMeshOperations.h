@@ -154,14 +154,9 @@ public:
 
 	static void BuildWeldedVertexIDRemap(const FMeshDescription& MeshDescription, const float WeldingThreshold, TMap<FVertexID, FVertexID>& OutVertexIDRemap);
 
-	/** Computes the SHA hash of all the attributes values in the MeshDescription.
-	 * @param bSkipTransientAttributes     If param is true, do not include transient attributes in the hash computation.
-	 */
-	static FSHAHash ComputeSHAHash(const FMeshDescription& MeshDescription, bool bSkipTransientAttributes = false);
+	/** Computes the SHA hash of all the attributes values in the MeshDescription. */
+	static FSHAHash ComputeSHAHash(const FMeshDescription& MeshDescription);
 
 	/** Flip the facing for a set of input polygons. */
 	static void FlipPolygons(FMeshDescription& MeshDescription);
-
-	/** Transforms the MeshDescription data using the provided transform. */
-	static void ApplyTransform(FMeshDescription& MeshDescription, const FTransform& Transform);
 };

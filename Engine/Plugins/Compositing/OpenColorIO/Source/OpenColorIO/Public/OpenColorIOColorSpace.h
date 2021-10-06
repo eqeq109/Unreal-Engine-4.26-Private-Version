@@ -32,7 +32,7 @@ public:
 	FString ColorSpaceName;
 
 	/** The index of the ColorSpace in the config */
-	UPROPERTY(VisibleAnywhere, Category=ColorSpace)
+	UPROPERTY()
 	int32 ColorSpaceIndex;
 
 	/** 

@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Real.h"
 #include "Chaos/Array.h"
 #include "Chaos/ArrayND.h"
 #include "Chaos/BoundingVolumeUtilities.h"
@@ -111,7 +110,7 @@ FArchive& operator<<(FArchive& Ar, TBVPayloadInfo<T, d>& Info)
 	return Ar;
 }
 
-template<typename InPayloadType, typename T = FReal, int d = 3>
+template<typename InPayloadType, typename T, int d>
 class TBoundingVolume final : public ISpatialAcceleration<InPayloadType, T,d>
 {
   public:
@@ -206,16 +205,6 @@ public:
 		Overlap(Intersection, Collector);
 
 		return Results;
-	}
-
-	virtual void Reset() override
-	{
-		MGlobalPayloads.Reset();
-		MGrid.Reset();
-		MElements.Reset();
-		MDirtyElements.Reset();
-		MPayloadInfo.Reset();
-		bIsEmpty = true;
 	}
 
 	virtual void RemoveElement(const TPayloadType& Payload) override
@@ -1270,11 +1259,11 @@ private:
 };
 
 #if PLATFORM_MAC || PLATFORM_LINUX
-    extern template class CHAOS_API TBoundingVolume<int32,FReal,3>;
-    extern template class CHAOS_API TBoundingVolume<FAccelerationStructureHandle, FReal,3>;
+    extern template class CHAOS_API TBoundingVolume<int32,float,3>;
+    extern template class CHAOS_API TBoundingVolume<TAccelerationStructureHandle<float,3>,float,3>;
 #else
-    extern template class TBoundingVolume<int32,FReal,3>;
-    extern template class TBoundingVolume<FAccelerationStructureHandle, FReal,3>;
+    extern template class TBoundingVolume<int32,float,3>;
+    extern template class TBoundingVolume<TAccelerationStructureHandle<float,3>,float,3>;
 #endif
 
 template<typename TPayloadType, class T, int d>

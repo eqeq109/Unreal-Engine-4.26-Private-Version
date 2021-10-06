@@ -177,9 +177,7 @@ protected:
 	/** requests registration of a given actor as a perception data source for specified sense */
 	void RegisterSource(FAISenseID SenseID, AActor& SourceActor);
 
-	/** iterates over all pawns and registeres them as a source for sense indicated by SenseID. Note that this will 
-	 *  be performed only for senses that request that (see UAISense.bAutoRegisterAllPawnsAsSources).*/
-	virtual void RegisterAllPawnsAsSourcesForSense(FAISenseID SenseID);
+	void RegisterAllPawnsAsSourcesForSense(FAISenseID SenseID);
 
 	enum EDelayedStimulusSorting 
 	{

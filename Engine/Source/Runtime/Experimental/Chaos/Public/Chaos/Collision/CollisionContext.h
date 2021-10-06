@@ -15,6 +15,8 @@ namespace Chaos
 			: bFilteringEnabled(true)
 			, bDeferUpdate(true)
 			, bAllowManifolds(false)
+			, bUseIncrementalManifold(false)
+			, bUseOneShotManifolds(false)
 		{
 		}
 
@@ -26,7 +28,10 @@ namespace Chaos
 		// which could be undesirable in some cases (destruction?).
 		bool bDeferUpdate;
 
-		// Whether to use manifolds where supported [default: false]
+		// Whether to use manifolds wheer supported [default: false]
+		// @todo(chaos): remove legacy manifold system
 		bool bAllowManifolds;
+		bool bUseIncrementalManifold;
+		bool bUseOneShotManifolds;
 	};
 }

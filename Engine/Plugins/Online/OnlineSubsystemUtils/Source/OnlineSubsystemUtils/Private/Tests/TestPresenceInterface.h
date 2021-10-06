@@ -80,7 +80,7 @@ private:
 	TArray<TSharedRef<FOnlineFriend> > FriendsCache;
 
 	/** Current user */
-	FUniqueNetIdPtr CurrentUser;
+	TSharedPtr<const FUniqueNetId> CurrentUser;
 
 	/** Statuses */
 	EPresenceTestStatus RequiredFlags;

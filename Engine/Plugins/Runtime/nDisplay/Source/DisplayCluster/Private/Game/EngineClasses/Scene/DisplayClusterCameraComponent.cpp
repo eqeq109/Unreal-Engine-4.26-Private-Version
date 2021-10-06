@@ -1,9 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DisplayClusterCameraComponent.h"
-#include "Components/BillboardComponent.h"
 
-#include "Engine/Texture2D.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/Material.h"
 #include "UObject/ConstructorHelpers.h"
 
 #include "DisplayClusterConfigurationTypes.h"
@@ -11,88 +12,70 @@
 
 UDisplayClusterCameraComponent::UDisplayClusterCameraComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-#if WITH_EDITOR
-	, bEnableGizmo(true)
-	, BaseGizmoScale(0.5f, 0.5f, 0.5f)
-	, GizmoScaleMultiplier(1.f)
-#endif
-	, InterpupillaryDistance(6.4f)
+	, InterpupillaryDistance(0.064f)
 	, bSwapEyes(false)
 	, StereoOffset(EDisplayClusterEyeStereoOffset::None)
 {
+	// Children of UDisplayClusterSceneComponent must always Tick to be able to process VRPN tracking
+	PrimaryComponentTick.bCanEverTick = true;
+
 #if WITH_EDITOR
 	if (GIsEditor)
 	{
-		ConstructorHelpers::FObjectFinderOptional<UTexture2D> SpriteTextureObject = TEXT("/nDisplay/Icons/S_nDisplayViewOrigin");
-		SpriteTexture = SpriteTextureObject.Get();
-	}
-#endif
-}
-
-#if WITH_EDITOR
-void UDisplayClusterCameraComponent::SetVisualizationScale(float Scale)
-{
-	GizmoScaleMultiplier = Scale;
-	RefreshVisualRepresentation();
-}
-
-void UDisplayClusterCameraComponent::SetVisualizationEnabled(bool bEnabled)
-{
-	bEnableGizmo = bEnabled;
-	RefreshVisualRepresentation();
-}
-#endif
-
-void UDisplayClusterCameraComponent::OnRegister()
-{
-#if WITH_EDITOR
-	if (GIsEditor && !IsRunningCommandlet())
-	{
-		if (SpriteComponent == nullptr)
+		// Create visual mesh component as a child
+		VisCameraComponent = CreateDefaultSubobject<UStaticMeshComponent>(FName(*(GetName() + FString("_impl"))));
+		if (VisCameraComponent)
 		{
-			SpriteComponent = NewObject<UBillboardComponent>(this, NAME_None, RF_Transactional | RF_TextExportTransient);
-			if (SpriteComponent)
-			{
-				SpriteComponent->SetupAttachment(this);
-				SpriteComponent->SetIsVisualizationComponent(true);
-				SpriteComponent->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
-				SpriteComponent->SetMobility(EComponentMobility::Movable);
-				SpriteComponent->Sprite = SpriteTexture;
-				SpriteComponent->SpriteInfo.Category = TEXT("NDisplayViewOrigin");
-				SpriteComponent->SpriteInfo.DisplayName = NSLOCTEXT("DisplayClusterCameraComponent", "NDisplayViewOriginSpriteInfo", "nDisplay View Origin");
-				SpriteComponent->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-				SpriteComponent->bHiddenInGame = true;
-				SpriteComponent->bIsScreenSizeScaled = true;
-				SpriteComponent->CastShadow = false;
-				SpriteComponent->CreationMethod = CreationMethod;
-				SpriteComponent->RegisterComponentWithWorld(GetWorld());
-			}
+			static ConstructorHelpers::FObjectFinder<UStaticMesh> ScreenMesh(TEXT("/Engine/EditorMeshes/Camera/SM_CineCam"));
+
+			VisCameraComponent->SetFlags(EObjectFlags::RF_DuplicateTransient | RF_Transient | RF_TextExportTransient);
+			VisCameraComponent->AttachToComponent(this, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+			VisCameraComponent->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator(0.f, 90.f, 0.f));
+			VisCameraComponent->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.5f));
+			VisCameraComponent->SetStaticMesh(ScreenMesh.Object);
+			VisCameraComponent->SetMobility(EComponentMobility::Movable);
+			VisCameraComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			VisCameraComponent->SetVisibility(true);
 		}
 	}
-
-	RefreshVisualRepresentation();
 #endif
+}
 
-	Super::OnRegister();
+void UDisplayClusterCameraComponent::ApplyConfigurationData()
+{
+	Super::ApplyConfigurationData();
+
+	const UDisplayClusterConfigurationSceneComponentCamera* CfgCamera = Cast<UDisplayClusterConfigurationSceneComponentCamera>(GetConfigParameters());
+	if (CfgCamera)
+	{
+		InterpupillaryDistance = CfgCamera->InterpupillaryDistance;
+		bSwapEyes = CfgCamera->bSwapEyes;
+
+		switch (CfgCamera->StereoOffset)
+		{
+		case EDisplayClusterConfigurationEyeStereoOffset::Left:
+			StereoOffset = EDisplayClusterEyeStereoOffset::Left;
+			break;
+
+		case EDisplayClusterConfigurationEyeStereoOffset::None:
+			StereoOffset = EDisplayClusterEyeStereoOffset::None;
+			break;
+
+		case EDisplayClusterConfigurationEyeStereoOffset::Right:
+			StereoOffset = EDisplayClusterEyeStereoOffset::Right;
+			break;
+
+		default:
+			StereoOffset = EDisplayClusterEyeStereoOffset::None;
+			break;
+		}
+	}
 }
 
 #if WITH_EDITOR
-void UDisplayClusterCameraComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+void UDisplayClusterCameraComponent::SetNodeSelection(bool bSelect)
 {
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	RefreshVisualRepresentation();
-}
-
-void UDisplayClusterCameraComponent::RefreshVisualRepresentation()
-{
-	// Update the viz component
-	if (SpriteComponent)
-	{
-		SpriteComponent->SetVisibility(bEnableGizmo);
-		SpriteComponent->SetWorldScale3D(BaseGizmoScale * GizmoScaleMultiplier);
-		// The sprite components don't get updated in real time without forcing render state dirty
-		SpriteComponent->MarkRenderStateDirty();
-	}
+	VisCameraComponent->bDisplayVertexColors = bSelect;
+	VisCameraComponent->PushSelectionToProxy();
 }
 #endif

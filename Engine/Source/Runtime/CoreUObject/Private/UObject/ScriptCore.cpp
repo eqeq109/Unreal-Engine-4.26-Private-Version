@@ -51,22 +51,6 @@ static FAutoConsoleVariableRef CVarVerboseScriptStats(
 	ECVF_Default
 );
 
-static int32 GShortScriptWarnings = 0;
-static FAutoConsoleVariableRef CVarShortScriptWarnings(
-	TEXT("bp.ShortScriptWarnings"),
-	GShortScriptWarnings,
-	TEXT("Shorten the blueprint exception logs.\n"),
-	ECVF_Default
-);
-
-static int32 GScriptRecurseLimit = 120;
-static FAutoConsoleVariableRef CVarScriptRecurseLimit(
-	TEXT("bp.ScriptRecurseLimit"),
-	GScriptRecurseLimit,
-	TEXT("Sets the number of recursions before script is considered in an infinite loop.\n"),
-	ECVF_Default
-);
-
 #if PER_FUNCTION_SCRIPT_STATS
 static int32 GMaxFunctionStatDepth = -1;
 static FAutoConsoleVariableRef CVarMaxFunctionStatDepth(
@@ -94,6 +78,12 @@ COREUOBJECT_API FNativeFuncPtr GCasts[CST_Max];
 COREUOBJECT_API int32 GCastDuplicate=0;
 
 COREUOBJECT_API int32 GMaximumScriptLoopIterations = 1000000;
+
+#if !PLATFORM_DESKTOP
+	#define RECURSE_LIMIT 120
+#else
+	#define RECURSE_LIMIT 250
+#endif
 
 #if DO_BLUEPRINT_GUARD
 
@@ -183,7 +173,7 @@ void FBlueprintCoreDelegates::ThrowScriptException(const UObject* ActiveObject, 
 	{
 #if DO_BLUEPRINT_GUARD
 		// If nothing is bound, show warnings so something is left in the log.
-		if (bShouldLogWarning && (OnScriptException.IsBound() == false) && !GShortScriptWarnings)
+		if (bShouldLogWarning && (OnScriptException.IsBound() == false))
 		{
 			UE_LOG(LogScript, Warning, TEXT("%s"), *StackFrame.GetStackTrace());
 		}
@@ -465,7 +455,7 @@ static bool ShowKismetScriptStackOnWarnings()
 	return ShowScriptStackForScriptWarning;
 }
 
-FString FFrame::GetScriptCallstack(bool bReturnEmpty)
+FString FFrame::GetScriptCallstack()
 {
 	FString ScriptStack;
 
@@ -478,15 +468,12 @@ FString FFrame::GetScriptCallstack(bool bReturnEmpty)
 			ScriptStack += TEXT("\t") + BlueprintExceptionTracker.ScriptStack[i]->GetStackDescription() + TEXT("\n");
 		}
 	}
-	else if (!bReturnEmpty)
+	else
 	{
 		ScriptStack += TEXT("\t[Empty] (FFrame::GetScriptCallstack() called from native code)");
 	}
 #else
-	if (!bReturnEmpty)
-	{
-		ScriptStack = TEXT("Unable to display Script Callstack. Compile with DO_BLUEPRINT_GUARD=1");
-	}
+	ScriptStack = TEXT("Unable to display Script Callstack. Compile with DO_BLUEPRINT_GUARD=1");
 #endif
 
 	return ScriptStack;
@@ -585,27 +572,14 @@ void FFrame::Serialize( const TCHAR* V, ELogVerbosity::Type Verbosity, const cla
 	else
 	{
 #if DO_BLUEPRINT_GUARD
-		if (GShortScriptWarnings)
-		{
-			UE_LOG(LogScript, Warning,
-				TEXT("%s Object(%s)  %s:%04X"),
-				V,
-				*Object->GetName(),
-				*Node->GetName(),
-				Code - Node->Script.GetData()
-			);
-		}
-		else
-		{
-			UE_LOG(LogScript, Warning,
-				TEXT("%s\r\n\t%s\r\n\t%s:%04X%s"),
-				V,
-				*Object->GetFullName(),
-				*Node->GetFullName(),
-				Code - Node->Script.GetData(),
-				ShowKismetScriptStackOnWarnings() ? *(FString(TEXT("\r\n")) + GetStackTrace()) : TEXT("")
-			);
-		}
+		UE_LOG(LogScript, Warning,
+			TEXT("%s\r\n\t%s\r\n\t%s:%04X%s"),
+			V,
+			*Object->GetFullName(),
+			*Node->GetFullName(),
+			Code - Node->Script.GetData(),
+			ShowKismetScriptStackOnWarnings() ? *(FString(TEXT("\r\n")) + GetStackTrace()) : TEXT("")
+		);
 #endif
 	}
 }
@@ -1066,7 +1040,7 @@ void ProcessLocalScriptFunction(UObject* Context, FFrame& Stack, RESULT_DECL)
 		ClearReturnValue(ReturnProp, RESULT_PARAM);
 		return;
 	}
-	else if (++BpET.Recurse == GScriptRecurseLimit)
+	else if (++BpET.Recurse == RECURSE_LIMIT)
 	{
 		// If we have a return property, return a zeroed value in it, to try and save execution as much as possible
 		FProperty* ReturnProp = (Function)->GetReturnProperty();
@@ -1077,7 +1051,7 @@ void ProcessLocalScriptFunction(UObject* Context, FFrame& Stack, RESULT_DECL)
 			EBlueprintExceptionType::InfiniteLoop, 
 			FText::Format(
 				LOCTEXT("InfiniteLoop", "Infinite script recursion ({0} calls) detected - see log for stack trace"), 
-				FText::AsNumber(GScriptRecurseLimit)
+				FText::AsNumber(RECURSE_LIMIT)
 			)
 		);
 		FBlueprintCoreDelegates::ThrowScriptException(Context, Stack, InfiniteRecursionExceptionInfo);

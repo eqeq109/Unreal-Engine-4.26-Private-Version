@@ -28,17 +28,9 @@ class VIRTUALHEIGHTFIELDMESH_API UHeightfieldMinMaxTexture : public UObject
 public:
 	GENERATED_UCLASS_BODY()
 
-	/** The Height MinMax texture. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Texture, meta = (DisplayName = "Height MinMax Texture"))
-	class UTexture2D* Texture = nullptr;
-
-	/** A LodBias texture derived from the Height MinMax texture*/
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Texture, meta = (DisplayName = "LodBias Texture"))
-	class UTexture2D* LodBiasTexture = nullptr;
-
-	/** A LodBias MinMax texture derived from the LodBias texture*/
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Texture, meta = (DisplayName = "LodBias MinMax Texture"))
-	class UTexture2D* LodBiasMinMaxTexture = nullptr;
+	/** The UTexture object. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Texture)
+	class UTexture2D* Texture;
 
 protected:
 	/** The number of mip levels to clone for CPU access. */
@@ -59,16 +51,12 @@ public:
 	TArray<int32> TextureDataMips;
 
 #if WITH_EDITOR
-	/** Creates a new UTexture2D and stores it in the contained Texture. */
+	/** Creates a new UVirtualTexture2D and stores it in the contained Texture. */
 	void BuildTexture(FHeightfieldMinMaxTextureBuildDesc const& InBuildDesc);
 #endif
  
 protected:
 #if WITH_EDITOR
-	/** Rebuild the contents of Texture using the passed in build description. */
-	void RebuildMinMaxTexture(FHeightfieldMinMaxTextureBuildDesc const& InBuildDesc);
-	/** Rebuild the contents of LodBiasTexture from the MinMaxTexture. */
-	void RebuildLodBiasTexture(FHeightfieldMinMaxTextureBuildDesc const& InBuildDesc);
 	/** Rebuild the contents of TextureData for the specified number of CPU mip levels. */
 	void RebuildCPUTextureData();
 

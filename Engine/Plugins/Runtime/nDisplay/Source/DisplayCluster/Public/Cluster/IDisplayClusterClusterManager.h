@@ -7,12 +7,19 @@
 #include "UObject/ScriptInterface.h"
 #include "DisplayClusterEnums.h"
 
+// Deprecated
+struct FDisplayClusterClusterEvent;
+class IDisplayClusterClusterEventListener;
+
 struct FDisplayClusterClusterEventJson;
 struct FDisplayClusterClusterEventBinary;
 class IDisplayClusterClusterEventJsonListener;
 class IDisplayClusterClusterEventBinaryListener;
 class IDisplayClusterClusterSyncObject;
-class IDisplayClusterClusterEventListener;
+
+// Deprecated
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnClusterEvent, const FDisplayClusterClusterEvent& /* Event */);
+typedef FOnClusterEvent::FDelegate FOnClusterEventListener;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnClusterEventJson, const FDisplayClusterClusterEventJson& /* Event */);
 typedef FOnClusterEventJson::FDelegate FOnClusterEventJsonListener;
@@ -27,24 +34,32 @@ typedef FOnClusterEventBinary::FDelegate FOnClusterEventBinaryListener;
 class IDisplayClusterClusterManager
 {
 public:
-	virtual ~IDisplayClusterClusterManager() = default;
+	virtual ~IDisplayClusterClusterManager() = 0
+	{ }
 
-public:
-	/** Returns true if current node has master role. */
+	/** Returns true if current node is master. */
 	virtual bool IsMaster() const = 0;
-	/** Returns true if current node has slave role. */
+	/** Returns true if current node is slave. */
 	virtual bool IsSlave()  const = 0;
-	/** Returns true if current node has backup role. */
-	virtual bool IsBackup() const = 0;
-	/** Returns cluster node role. */
-	virtual EDisplayClusterNodeRole GetClusterRole() const = 0;
+
+	/** Returns true if current operation mode is standalone. */
+	UE_DEPRECATED(4.26, "This feature is no longer supported.")
+	virtual bool IsStandalone() const
+	{
+		return false;
+	}
+
+	/** Returns true if current operation mode is cluster. */
+	UE_DEPRECATED(4.26, "This feature is no longer supported.")
+	virtual bool IsCluster() const
+	{
+		return false;
+	}
 
 	/** Returns current cluster node ID. */
 	virtual FString GetNodeId() const = 0;
 	/** Returns amount of cluster nodes in the cluster. */
 	virtual uint32 GetNodesAmount() const = 0;
-	/** Returns IDs of available cluster nodes. */
-	virtual void GetNodeIds(TArray<FString>& OutNodeIds) const = 0;
 
 
 	/** Registers object to synchronize. */
@@ -53,7 +68,7 @@ public:
 	virtual void UnregisterSyncObject(IDisplayClusterClusterSyncObject* SyncObj) = 0;
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// Cluster events
+	// JSON cluster events
 	//////////////////////////////////////////////////////////////////////////////////////////////
 
 	/** Registers cluster event listener. */
@@ -74,15 +89,14 @@ public:
 	/** Unregisters binary cluster event listener. */
 	virtual void RemoveClusterEventBinaryListener(const FOnClusterEventBinaryListener& Listener) = 0;
 
+	/** Emits cluster event. */
+	UE_DEPRECATED(4.26, "This function is deprecated. Please use EmitClusterEventJson.")
+	virtual void EmitClusterEvent(const FDisplayClusterClusterEvent& Event, bool bMasterOnly)
+	{ }
+
 	/** Emits JSON cluster event. */
 	virtual void EmitClusterEventJson(const FDisplayClusterClusterEventJson& Event, bool bMasterOnly) = 0;
 
 	/** Emits binary cluster event. */
 	virtual void EmitClusterEventBinary(const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly) = 0;
-
-	/** Sends JSON cluster event to a specific target (outside of the cluster). */
-	virtual void SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventJson& Event, bool bMasterOnly) = 0;
-
-	/** Sends binary cluster event to a specific target (outside of the cluster). */
-	virtual void SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly) = 0;
 };

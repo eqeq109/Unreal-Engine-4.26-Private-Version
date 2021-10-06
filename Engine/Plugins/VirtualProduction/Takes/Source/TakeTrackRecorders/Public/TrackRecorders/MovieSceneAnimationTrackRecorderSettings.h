@@ -22,8 +22,6 @@ public:
 	{
 	}
 
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-
 	/** Name of the recorded animation track. */
 	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Animation Recorder Settings")
 	FText AnimationTrackName;

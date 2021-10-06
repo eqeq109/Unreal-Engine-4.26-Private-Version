@@ -37,11 +37,6 @@ struct FCameraFilmbackSettings
 			&& (SensorHeight == Other.SensorHeight);
 	}
 
-	bool operator!=(const FCameraFilmbackSettings& Other) const
-	{
-		return !operator==(Other);
-	}
-
 	FCameraFilmbackSettings()
 		: SensorWidth(24.89f)
 		, SensorHeight(18.67f)
@@ -85,27 +80,27 @@ struct FCameraLensSettings
 
 	/** Minimum focal length for this lens */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm, ClampMin = "0.001"))
-	float MinFocalLength = 0.f;
+	float MinFocalLength;
 
 	/** Maximum focal length for this lens */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm, ClampMin = "0.001"))
-	float MaxFocalLength = 0.f;
+	float MaxFocalLength;
 
 	/** Minimum aperture for this lens (e.g. 2.8 for an f/2.8 lens) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens")
-	float MinFStop = 0.f;
+	float MinFStop;
 
 	/** Maximum aperture for this lens (e.g. 2.8 for an f/2.8 lens) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens")
-	float MaxFStop = 0.f;
+	float MaxFStop;
 
 	/** Shortest distance this lens can focus on. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm))
-	float MinimumFocusDistance = 0.f;
+	float MinimumFocusDistance;
 
 	/** Number of blades of diaphragm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ClampMin = "4", ClampMax = "16"))
-	int32 DiaphragmBladeCount = 0;
+	int32 DiaphragmBladeCount;
 
 	bool operator==(const FCameraLensSettings& Other) const
 	{
@@ -332,9 +327,6 @@ public:
 	void UpdateDebugFocusPlane();
 #endif
 
-	/** Returns the world to meters scale for the current UWorld */
-	float GetWorldToMetersScale() const;
-
 protected:
 
 	/** Most recent calculated focus distance. Used for interpolation. */
@@ -415,6 +407,7 @@ protected:
 
 private:
 	float GetDesiredFocusDistance(const FVector& InLocation) const;
+	float GetWorldToMetersScale() const;
 	void SetLensPresetByNameInternal(const FString& InPresetName);
 	void SetFilmbackPresetByNameInternal(const FString& InPresetName, FCameraFilmbackSettings& InOutFilmbackSettings);
 

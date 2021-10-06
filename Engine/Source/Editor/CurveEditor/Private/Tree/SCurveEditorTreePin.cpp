@@ -37,12 +37,7 @@ FReply SCurveEditorTreePin::TogglePinned()
 	{
 		if (IsPinnedRecursive(TreeItemID, CurveEditor.Get()))
 		{
-			TArray<FCurveEditorTreeItemID> UnpinnedItems;
-			UnpinRecursive(TreeItemID, CurveEditor.Get(), UnpinnedItems);
-			if (UnpinnedItems.Num() > 0)
-			{
-				CurveEditor->RemoveFromTreeSelection(UnpinnedItems);
-			}
+			UnpinRecursive(TreeItemID, CurveEditor.Get());
 		}
 		else
 		{
@@ -69,7 +64,7 @@ void SCurveEditorTreePin::PinRecursive(FCurveEditorTreeItemID InTreeItem, FCurve
 	}
 }
 
-void SCurveEditorTreePin::UnpinRecursive(FCurveEditorTreeItemID InTreeItem, FCurveEditor* CurveEditor, TArray<FCurveEditorTreeItemID>& OutUnpinnedItems) const
+void SCurveEditorTreePin::UnpinRecursive(FCurveEditorTreeItemID InTreeItem, FCurveEditor* CurveEditor) const
 {
 	const bool bIsSelected = CurveEditor->GetTreeSelectionState(InTreeItem) == ECurveEditorTreeSelectionState::Explicit;
 
@@ -88,10 +83,9 @@ void SCurveEditorTreePin::UnpinRecursive(FCurveEditorTreeItemID InTreeItem, FCur
 			}
 		}
 
-		OutUnpinnedItems.Add(InTreeItem);
 		for (FCurveEditorTreeItemID Child : Item->GetChildren())
 		{
-			UnpinRecursive(Child, CurveEditor, OutUnpinnedItems);
+			UnpinRecursive(Child, CurveEditor);
 		}
 	}
 }

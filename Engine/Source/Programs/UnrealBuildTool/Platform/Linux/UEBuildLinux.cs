@@ -542,8 +542,6 @@ namespace UnrealBuildTool
 				);
 			}
 
-			CompileEnvironment.Definitions.Add("UINT64_T_IS_UNSIGNED_LONG=1");
-
 			// link with Linux libraries.
 			LinkEnvironment.SystemLibraries.Add("pthread");
 
@@ -646,7 +644,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// This is the SDK version we support
 		/// </summary>
-		static string ExpectedSDKVersion = "v19_clang-11.0.1-centos7";	// now unified for all the architectures
+		static string ExpectedSDKVersion = "v17_clang-10.0.1-centos7";	// now unified for all the architectures
 
 		/// <summary>
 		/// Platform name (embeds architecture for now)
@@ -675,11 +673,6 @@ namespace UnrealBuildTool
 		protected override bool PlatformSupportsAutoSDKs()
 		{
 			return true;
-		}
-
-		protected override bool DoesHookRequireAdmin(SDKHookType Hook)
-		{
-			return false;
 		}
 
 		/// <summary>

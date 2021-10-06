@@ -161,11 +161,6 @@ struct FNDIStaticMesh_InstanceData
 	/** Cached ComponentToWorld from previous tick. */
 	FMatrix PrevTransform;
 
-	/** Cached Rotation. */
-	FQuat Rotation;
-	/** Cached Previous Rotation. */
-	FQuat PrevRotation;
-
 	/** Time separating Transform and PrevTransform. */
 	float DeltaSeconds;
 
@@ -229,7 +224,7 @@ struct FNDIStaticMesh_InstanceData
 	{
 		UStaticMesh* Mesh = StaticMesh.Get();
 		check(Mesh); // sanity - should have been checked for GC earlier
-		return Mesh->GetRenderData()->GetCurrentFirstLOD(MinLOD);
+		return Mesh->RenderData->GetCurrentFirstLOD(MinLOD);
 	}
 };
 
@@ -257,7 +252,7 @@ public:
 #if WITH_EDITORONLY_DATA
 	/** Mesh used to sample from when not overridden by a source actor from the scene. Only available in editor for previewing. This is removed in cooked builds. */
 	UPROPERTY(EditAnywhere, Category = "Mesh")
-	TSoftObjectPtr<UStaticMesh> PreviewMesh;
+	UStaticMesh* PreviewMesh;
 #endif
 
 	/** Mesh used to sample from when not overridden by a source actor from the scene. This mesh is NOT removed from cooked builds. */
@@ -317,10 +312,8 @@ public:
 		TArray<FNiagaraDataInterfaceFeedback>& OutWarnings, TArray<FNiagaraDataInterfaceFeedback>& OutInfo) override;
 #endif
 
-#if WITH_EDITORONLY_DATA
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-#endif
 
 	virtual void ProvidePerInstanceDataForRenderThread(void* DataForRenderThread, void* PerInstanceData, const FNiagaraSystemInstanceID& SystemInstance) override;
 
@@ -471,8 +464,6 @@ struct FNiagaraStaticMeshData
 	bool bIsGpuUniformlyDistributedSampling;
 	FMatrix Transform;
 	FMatrix PrevTransform;
-	FQuat Rotation;
-	FQuat PrevRotation;
 	float DeltaSeconds;
 };
 
@@ -481,8 +472,6 @@ struct FNiagaraPassedInstanceDataForRT
 	bool bIsGpuUniformlyDistributedSampling;
 	FMatrix Transform;
 	FMatrix PrevTransform;
-	FQuat Rotation;
-	FQuat PrevRotation;
 	float DeltaSeconds;
 };
 

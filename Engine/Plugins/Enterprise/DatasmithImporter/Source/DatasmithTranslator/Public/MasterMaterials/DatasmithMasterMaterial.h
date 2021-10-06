@@ -5,21 +5,18 @@
 #include "Containers/UnrealString.h"
 
 struct FSoftObjectPath;
-class UMaterialInterface;
+class UMaterial;
 
-/**
- * Represents a material that exposes named parameters for override purpose.
- * Note that this can be a Material or a MaterialInstance.
- */
 class DATASMITHTRANSLATOR_API FDatasmithMasterMaterial
 {
 public:
 	FDatasmithMasterMaterial();
+	explicit FDatasmithMasterMaterial( UMaterial* InMaterial );
 
-	void FromMaterial( UMaterialInterface* InMaterial );
+	void FromMaterial( UMaterial* InMaterial );
 	void FromSoftObjectPath( const FSoftObjectPath& InObjectPath );
 
-	UMaterialInterface* GetMaterial() const { return Material; }
+	UMaterial* GetMaterial() const { return Material; }
 
 	bool IsValid() const { return Material != nullptr; }
 
@@ -28,8 +25,9 @@ public:
 	TSet< FString > TextureParams;
 #if WITH_EDITORONLY_DATA
 	TSet< FString > BoolParams;
-#endif
+#endif	
 
 private:
-	UMaterialInterface* Material;
+	UMaterial* Material;
+
 };

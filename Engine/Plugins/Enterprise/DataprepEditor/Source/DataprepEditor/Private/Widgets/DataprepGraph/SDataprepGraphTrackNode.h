@@ -21,7 +21,6 @@
 #include "Widgets/SWidget.h"
 
 class FGraphNodeFactory;
-class SDataprepGraphBaseActionNode;
 class SDataprepGraphActionNode;
 class SDataprepGraphEditor;
 class SDataprepGraphTrackNode;
@@ -36,7 +35,7 @@ class FDragDropActionNode : public FDragDropOperation
 public:
 	DRAG_DROP_OPERATOR_TYPE(FDragDropActionNode, FDragDropOperation)
 
-	static TSharedRef<FDragDropActionNode> New(const TSharedRef<SDataprepGraphTrackNode>& InTrackNodePtr, const TSharedRef<SDataprepGraphBaseActionNode>& InDraggedNode);
+	static TSharedRef<FDragDropActionNode> New(const TSharedRef<SDataprepGraphTrackNode>& InTrackNodePtr, const TSharedRef<SDataprepGraphActionNode>& InDraggedNode);
 
 	virtual ~FDragDropActionNode() {}
 
@@ -78,7 +77,7 @@ public:
 		return false;
 	}
 	virtual void SetOwner(const TSharedRef<SGraphPanel>& OwnerPanel) override;
-	virtual void MoveTo( const FVector2D& NewPosition, FNodeSet& NodeFilter, bool bMarkDirty = true ) override;
+	virtual void MoveTo( const FVector2D& NewPosition, FNodeSet& NodeFilter ) override;
 	virtual const FSlateBrush* GetShadowBrush(bool bSelected) const override;
 	virtual FReply OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent ) override;
 	virtual bool ShouldAllowCulling() const override { return false; }
@@ -95,7 +94,7 @@ public:
 	void OnControlKeyChanged(bool bControlKeyDown);
 
 	/** Initiates the horizontal drag of an action node */
-	void OnStartNodeDrag(const TSharedRef<SDataprepGraphBaseActionNode>& ActionNode);
+	void OnStartNodeDrag(const TSharedRef<SDataprepGraphActionNode>& ActionNode);
 
 	/**
 	 * Terminates the horizontal drag of an action node
@@ -107,7 +106,7 @@ public:
 	 * Updates the position of other action nodes based on the position of the incoming node
 	 * @return True if the action node was actually dragged
 	 */
-	bool OnNodeDragged( TSharedPtr<SDataprepGraphBaseActionNode>& ActionNodePtr, const FVector2D& DragScreenSpacePosition, const FVector2D& ScreenSpaceDelta);
+	bool OnNodeDragged( TSharedPtr<SDataprepGraphActionNode>& ActionNodePtr, const FVector2D& DragScreenSpacePosition, const FVector2D& ScreenSpaceDelta);
 
 	/** Update the execution order of the actions and call ReArrangeActionNodes */
 	void OnActionsOrderChanged();
@@ -128,16 +127,10 @@ public:
 	void RequestViewportPan(const FVector2D& ScreenSpacePosition);
 
 	/** Helper to set the position of the graph nodes registered to the graph panel */
-	void UpdateProxyNode(TSharedRef<SDataprepGraphBaseActionNode> ActioNodePtr, const FVector2D& ScreenSpacePosition);
+	void UpdateProxyNode(TSharedRef<SDataprepGraphActionNode> ActioNodePtr, const FVector2D& ScreenSpacePosition);
 
 	/** Miscellaneous values used in the display */
 	static FVector2D TrackAnchor;
-
-	/** Get action from node index, taking into account grouping */
-	int32 GetActionIndex(int32 NodeIndex) const;
-
-	/** Get the number of actions from node index. Group nodes can have more than 1 action */
-	int32 GetNumActions(int32 NodeIndex) const;
 
 private:
 	FVector2D ComputePanAmount(const FVector2D& ScreenSpacePosition, float MaxPanSpeed = 200.f);
@@ -147,7 +140,7 @@ private:
 	TSharedPtr<SDataprepGraphTrackWidget> TrackWidgetPtr;
 
 	/** Array of action node's widgets */
-	TArray<TSharedPtr<SDataprepGraphBaseActionNode>> ActionNodes;
+	TArray<TSharedPtr<SDataprepGraphActionNode>> ActionNodes;
 
 	/** Weak pointer to the Dataprep asset holding the displayed actions */
 	TWeakObjectPtr<UDataprepAsset> DataprepAssetPtr;
@@ -186,7 +179,7 @@ private:
 	bool bCursorLeftOnRight;
 
 	/** Array of strong pointers to the UEdGraphNodes created for the Dataprep asset's actions */
-	TArray<TStrongObjectPtr<UEdGraphNode>> EdGraphActionNodes;
+	TArray<TStrongObjectPtr<UDataprepGraphActionNode>> EdGraphActionNodes;
 
 	TSharedPtr<FGraphNodeFactory> NodeFactory;
 

@@ -4,7 +4,7 @@
 
 #include "AbcObject.h"
 
-class ALEMBICLIBRARY_API FAbcTransform : public IAbcObject
+class FAbcTransform : public IAbcObject
 {
 public:
 	FAbcTransform(const Alembic::AbcGeom::IXform& InTransform, const FAbcFile* InFile, IAbcObject* InParent = nullptr);

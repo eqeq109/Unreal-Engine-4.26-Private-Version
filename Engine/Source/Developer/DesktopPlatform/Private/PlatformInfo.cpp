@@ -14,7 +14,7 @@ namespace PlatformInfo
 {
 	TArray<FName> AllPlatformGroupNames;
 	TArray<FName> AllVanillaPlatformNames;
-	TArray<FPreviewPlatformMenuItem> PreviewPlatformMenuItems;
+	TMap<FName, FPreviewPlatformMenuItem> PreviewPlatformMenuItems;
 
 namespace
 {
@@ -25,7 +25,7 @@ TArray<FPlatformInfo> AllPlatformInfoArray;
 // @todo platplug: Figure out why this is compiled on target devices
 #if WITH_EDITOR || IS_PROGRAM
 
-static void BuildPlatformInfo(const FName& InPlatformInfoName, const FName& InTargetPlatformName, const FText& InDisplayName, const EBuildTargetType InPlatformType, const EPlatformFlags::Flags InPlatformFlags, const FPlatformIconPaths& InIconPaths, const FString& InUATCommandLine, const FString& InAutoSDKPath, EPlatformSDKStatus InStatus, const FString& InTutorial, bool InEnabled, FString InBinaryFolderName, FString InIniPlatformName, bool InUsesHostCompiler, bool InUATClosesAfterLaunch, bool InIsConfidential, const FName& InUBTTargetId, const FName& InPlatformGroupName, const FName& InPlatformSubMenu, bool InTargetPlatformCanUseCrashReporter)
+void BuildPlatformInfo(const FName& InPlatformInfoName, const FName& InTargetPlatformName, const FText& InDisplayName, const EBuildTargetType InPlatformType, const EPlatformFlags::Flags InPlatformFlags, const FPlatformIconPaths& InIconPaths, const FString& InUATCommandLine, const FString& InAutoSDKPath, EPlatformSDKStatus InStatus, const FString& InTutorial, bool InEnabled, FString InBinaryFolderName, FString InIniPlatformName, bool InUsesHostCompiler, bool InUATClosesAfterLaunch, bool InIsConfidential, const FName& InUBTTargetId, const FName& InPlatformGroupName, const FName& InPlatformSubMenu, bool InTargetPlatformCanUseCrashReporter)
 {
 	FPlatformInfo& PlatformInfo = AllPlatformInfoArray.Emplace_GetRef();
 
@@ -87,7 +87,7 @@ static void BuildPlatformInfo(const FName& InPlatformInfoName, const FName& InTa
 }
 
 
-static void BuildHardcodedPlatforms()
+void BuildHardcodedPlatforms()
 {
 	// PlatformInfoName									TargetPlatformName			DisplayName														PlatformType			PlatformFlags					IconPaths																																		UATCommandLine										AutoSDKPath			SDKStatus						SDKTutorial																								bEnabledForUse										BinaryFolderName	IniPlatformName		FbUsesHostCompiler		bUATClosesAfterLaunch	bIsConfidential	UBTTargetId (match UBT's UnrealTargetPlatform enum)		PlatformSubMenu		bTargetPlatformCanUseCrashReporter
 	BuildPlatformInfo(TEXT("AllDesktop"),				TEXT("AllDesktop"),			LOCTEXT("DesktopTargetPlatDisplay", "Desktop (Win+Mac+Linux)"),	EBuildTargetType::Game,	EPlatformFlags::None,			FPlatformIconPaths(TEXT("Launcher/Desktop/Platform_Desktop_24x"), TEXT("Launcher/Desktop/Platform_Desktop_128x")),					TEXT(""),											TEXT(""),			EPlatformSDKStatus::Unknown,	TEXT(""),																								PLATFORM_WINDOWS /* see note below */,						TEXT(""),			TEXT(""),			false,					true,					false,			TEXT("AllDesktop"),	TEXT("Desktop"),	TEXT(""),	true);
@@ -95,7 +95,7 @@ static void BuildHardcodedPlatforms()
 }
 
 // Gets a string from a section, or empty string if it didn't exist
-static inline FString GetSectionString(const FConfigSection& Section, FName Key)
+FString GetSectionString(const FConfigSection& Section, FName Key)
 {
 	// look for a value prefixed with host:
 	FName HostKey = *FString::Printf(TEXT("%s:%s"), ANSI_TO_TCHAR(FPlatformProperties::IniPlatformName()), *Key.ToString());
@@ -104,12 +104,12 @@ static inline FString GetSectionString(const FConfigSection& Section, FName Key)
 }
 
 // Gets a bool from a section, or false if it didn't exist
-static inline bool GetSectionBool(const FConfigSection& Section, FName Key)
+bool GetSectionBool(const FConfigSection& Section, FName Key)
 {
 	return FCString::ToBool(*GetSectionString(Section, Key));
 }
 
-static inline EPlatformFlags::Flags ConvertPlatformFlags(const FString& String)
+EPlatformFlags::Flags ConvertPlatformFlags(const FString& String)
 {
 	if (String == TEXT("") || String == TEXT("None")) { return EPlatformFlags::None; }
 	if (String == TEXT("CookFlavor")) { return EPlatformFlags::CookFlavor; }
@@ -142,7 +142,7 @@ namespace EPlatformSection
 	const FName PlatformSubMenu = FName(TEXT("PlatformSubMenu"));
 }
 
-static void ParseDataDrivenPlatformInfo(const TCHAR* Name, const FConfigSection& Section)
+void ParseDataDrivenPlatformInfo(const TCHAR* Name, const FConfigSection& Section)
 {
 	FName TargetPlatformName = *GetSectionString(Section, EPlatformSection::TargetPlatformName);
 	FString DisplayName = GetSectionString(Section, EPlatformSection::DisplayName);
@@ -181,7 +181,7 @@ static void ParseDataDrivenPlatformInfo(const TCHAR* Name, const FConfigSection&
 		AutoSDKPath, PlatformInfo::EPlatformSDKStatus::Unknown, TutorialPath, bIsEnabled, BinariesDirectoryName, IniPlatformName, bUsesHostCompiler, bUATClosesAfterLaunch, bIsConfidential, UBTTargetID, PlatformGroupName, PlatformSubMenu, bTargetPlatformCanUseCrashReporter);
 }
 
-static void ParseDataDrivenPreviewPlatform(const TCHAR* Name, const FConfigSection& Section)
+void ParseDataDrivenPreviewPlatform(const TCHAR* Name, const FConfigSection& Section)
 {
 	// Early-out if enabled cvar is specified and not set
 	TArray<FString> Tokens;
@@ -204,7 +204,7 @@ static void ParseDataDrivenPreviewPlatform(const TCHAR* Name, const FConfigSecti
 	FName PlatformName = *GetSectionString(Section, FName("PlatformName"));
 	checkf(PlatformName != NAME_None, TEXT("DataDrivenPlatformInfo section [PreviewPlatform %s] must specify a PlatformName"), Name);
 
-	FPreviewPlatformMenuItem Item;
+	FPreviewPlatformMenuItem& Item = PreviewPlatformMenuItems.FindOrAdd(PlatformName);
 	Item.PlatformName = PlatformName;
 	Item.ShaderFormat = *GetSectionString(Section, FName("ShaderFormat"));
 	checkf(Item.ShaderFormat != NAME_None, TEXT("DataDrivenPlatformInfo section [PreviewPlatform %s] must specify a ShaderFormat"), Name);
@@ -216,7 +216,6 @@ static void ParseDataDrivenPreviewPlatform(const TCHAR* Name, const FConfigSecti
 	FTextStringHelper::ReadFromBuffer(*GetSectionString(Section, FName("MenuText")), Item.MenuText);
 	FTextStringHelper::ReadFromBuffer(*GetSectionString(Section, FName("MenuTooltip")), Item.MenuTooltip);
 	FTextStringHelper::ReadFromBuffer(*GetSectionString(Section, FName("IconText")), Item.IconText);
-	PreviewPlatformMenuItems.Add(Item);
 }
 
 void LoadDataDrivenPlatforms()
@@ -386,7 +385,7 @@ const TArray<FName>& GetAllVanillaPlatformNames()
 	return PlatformInfo::AllVanillaPlatformNames;
 }
 
-const TArray<PlatformInfo::FPreviewPlatformMenuItem>& GetPreviewPlatformMenuItems()
+const TMap<FName, FPreviewPlatformMenuItem>& GetPreviewPlatformMenuItems()
 {
 	return PlatformInfo::PreviewPlatformMenuItems;
 }

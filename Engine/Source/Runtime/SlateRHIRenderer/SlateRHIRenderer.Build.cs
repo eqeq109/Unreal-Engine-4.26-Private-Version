@@ -19,8 +19,7 @@ public class SlateRHIRenderer : ModuleRules
                 "RHI",
                 "RenderCore",
 				"Renderer",
-                "ImageWrapper",
-				"HeadMountedDisplay"
+                "ImageWrapper"
 			}
 		);
 	}

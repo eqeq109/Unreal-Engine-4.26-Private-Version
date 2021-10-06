@@ -43,8 +43,7 @@ void USoundControlBusMix::BeginDestroy()
 
 	if (UWorld* World = GetWorld())
 	{
-		FAudioDeviceHandle AudioDevice = World->GetAudioDevice();
-		if (AudioDevice.IsValid())
+		if (FAudioDeviceHandle AudioDevice = World->GetAudioDevice())
 		{
 			if (AudioDevice->IsModulationPluginEnabled())
 			{

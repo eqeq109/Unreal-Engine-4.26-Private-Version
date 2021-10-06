@@ -89,16 +89,16 @@ void MovieSceneHelpers::SortConsecutiveSections(TArray<UMovieSceneSection*>& Sec
 	);
 }
 
-bool MovieSceneHelpers::FixupConsecutiveSections(TArray<UMovieSceneSection*>& Sections, UMovieSceneSection& Section, bool bDelete, bool bCleanUp)
+void MovieSceneHelpers::FixupConsecutiveSections(TArray<UMovieSceneSection*>& Sections, UMovieSceneSection& Section, bool bDelete)
 {
 	// Find the previous section and extend it to take the place of the section being deleted
 	int32 SectionIndex = INDEX_NONE;
 
-	const TRange<FFrameNumber> SectionRange = Section.GetRange();
+	TRange<FFrameNumber> SectionRange = Section.GetRange();
 
 	if (SectionRange.HasLowerBound() && SectionRange.HasUpperBound() && SectionRange.GetLowerBoundValue() >= SectionRange.GetUpperBoundValue())
 	{
-		return false;
+		return;
 	}
 
 	if (Sections.Find(&Section, SectionIndex))
@@ -107,26 +107,22 @@ bool MovieSceneHelpers::FixupConsecutiveSections(TArray<UMovieSceneSection*>& Se
 		if( Sections.IsValidIndex( PrevSectionIndex ) )
 		{
 			// Extend the previous section
-			UMovieSceneSection* PrevSection = Sections[PrevSectionIndex];
-
-			PrevSection->Modify();
-
 			if (bDelete)
 			{
 				TRangeBound<FFrameNumber> NewEndFrame = SectionRange.GetUpperBound();
 
-				if (!PrevSection->HasStartFrame() || NewEndFrame.GetValue() > PrevSection->GetInclusiveStartFrame())
+				if (!Sections[PrevSectionIndex]->HasStartFrame() || NewEndFrame.GetValue() > Sections[PrevSectionIndex]->GetInclusiveStartFrame())
 				{
-					PrevSection->SetEndFrame(NewEndFrame);
+					Sections[PrevSectionIndex]->SetEndFrame(NewEndFrame);
 				}
 			}
 			else
 			{
 				TRangeBound<FFrameNumber> NewEndFrame = TRangeBound<FFrameNumber>::FlipInclusion(SectionRange.GetLowerBound());
 
-				if (!PrevSection->HasStartFrame() || NewEndFrame.GetValue() > PrevSection->GetInclusiveStartFrame())
+				if (!Sections[PrevSectionIndex]->HasStartFrame() || NewEndFrame.GetValue() > Sections[PrevSectionIndex]->GetInclusiveStartFrame())
 				{
-					PrevSection->SetEndFrame(NewEndFrame);
+					Sections[PrevSectionIndex]->SetEndFrame(NewEndFrame);
 				}
 			}
 		}
@@ -137,45 +133,20 @@ bool MovieSceneHelpers::FixupConsecutiveSections(TArray<UMovieSceneSection*>& Se
 			if(Sections.IsValidIndex(NextSectionIndex))
 			{
 				// Shift the next CameraCut's start time so that it starts when the new CameraCut ends
-				UMovieSceneSection* NextSection = Sections[NextSectionIndex];
-
-				NextSection->Modify();
-
 				TRangeBound<FFrameNumber> NewStartFrame = TRangeBound<FFrameNumber>::FlipInclusion(SectionRange.GetUpperBound());
 
-				if (!NextSection->HasEndFrame() || NewStartFrame.GetValue() < NextSection->GetExclusiveEndFrame())
+				if (!Sections[NextSectionIndex]->HasEndFrame() || NewStartFrame.GetValue() < Sections[NextSectionIndex]->GetExclusiveEndFrame())
 				{
-					NextSection->SetStartFrame(NewStartFrame);
+					Sections[NextSectionIndex]->SetStartFrame(NewStartFrame);
 				}
 			}
 		}
 	}
 
-	bool bCleanUpDone = false;
-	if (bCleanUp)
-	{
-		const TArray<UMovieSceneSection*> OverlappedSections = Sections.FilterByPredicate([&Section, SectionRange](const UMovieSceneSection* Cur)
-				{
-					if (Cur != &Section)
-					{
-						const TRange<FFrameNumber> CurRange = Cur->GetRange();
-						return SectionRange.Contains(CurRange);
-					}
-					return false;
-				});
-		for (UMovieSceneSection* OverlappedSection : OverlappedSections)
-		{
-			Sections.Remove(OverlappedSection);
-		}
-		bCleanUpDone = (OverlappedSections.Num() > 0);
-	}
-
 	SortConsecutiveSections(Sections);
-
-	return bCleanUpDone;
 }
 
-bool MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSection*>& Sections, UMovieSceneSection& Section, bool bDelete, bool bCleanUp)
+void MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSection*>& Sections, UMovieSceneSection& Section, bool bDelete)
 {
 	int32 SectionIndex = INDEX_NONE;
 
@@ -183,7 +154,7 @@ bool MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSecti
 
 	if (SectionRange.HasLowerBound() && SectionRange.HasUpperBound() && SectionRange.GetLowerBoundValue() >= SectionRange.GetUpperBoundValue())
 	{
-		return false;
+		return;
 	}
 
 	if (Sections.Find(&Section, SectionIndex))
@@ -193,49 +164,34 @@ bool MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSecti
 		if (Sections.IsValidIndex(PrevSectionIndex))
 		{
 			UMovieSceneSection* PrevSection = Sections[PrevSectionIndex];
-
-			PrevSection->Modify();
-
-			if (bDelete)
+			if (PrevSection->GetRowIndex() == Section.GetRowIndex())
 			{
-				TRangeBound<FFrameNumber> NewEndFrame = SectionRange.GetUpperBound();
+				PrevSection->Modify();
 
-				if (!PrevSection->HasStartFrame() || NewEndFrame.GetValue() > PrevSection->GetInclusiveStartFrame())
+				if (bDelete)
 				{
-					// The current section was deleted... extend the previous section to fill the gap.
-					PrevSection->SetEndFrame(NewEndFrame);
-				}
-			}
-			else
-			{
-				const FFrameNumber GapOrOverlap = SectionRange.GetLowerBoundValue() - PrevSection->GetRange().GetUpperBoundValue();
-				if (GapOrOverlap > 0)
-				{
-					// If we made a gap: adjust the previous section's end time so that it ends wherever the current section's ease-in ends.
-					TRangeBound<FFrameNumber> NewEndFrame = TRangeBound<FFrameNumber>::Exclusive(SectionRange.GetLowerBoundValue() + Section.Easing.GetEaseInDuration());
-
+					TRangeBound<FFrameNumber> NewEndFrame = SectionRange.GetUpperBound();
+					
 					if (!PrevSection->HasStartFrame() || NewEndFrame.GetValue() > PrevSection->GetInclusiveStartFrame())
 					{
-						// It's a gap!
+						// The current section was deleted... extend the previous section to fill the gap.
 						PrevSection->SetEndFrame(NewEndFrame);
 					}
 				}
 				else
 				{
-					// If we created an overlap: calls to UMovieSceneTrack::UpdateEasing will set the easing curves correctly based on overlaps.
-					// However, we need to fixup some easing where overlaps don't occur, such as the very first ease-in and the very last ease-out.
-					// Don't overlap so far that our ease-out, or the previous section's ease-in, get overlapped. Clamp these easing durations instead.
-					if (Section.HasEndFrame() && PrevSection->HasEndFrame())
+					// If we made a gap: adjust the previous section's end time so that it ends wherever the current section's ease-in ends.
+					// If we created an overlap: calls to UMovieSceneTrack::UpdateEasing have already set the easing curves correctly based on overlaps.
+					const FFrameNumber GapOrOverlap = SectionRange.GetLowerBoundValue() - PrevSection->GetRange().GetUpperBoundValue();
+					if (GapOrOverlap > 0)
 					{
-						const FFrameNumber MaxEaseOutDuration = Section.GetExclusiveEndFrame() - PrevSection->GetExclusiveEndFrame();
-						Section.Easing.AutoEaseOutDuration = FMath::Min(FMath::Max(0, MaxEaseOutDuration.Value), Section.Easing.AutoEaseOutDuration);
-						Section.Easing.ManualEaseOutDuration = FMath::Min(FMath::Max(0, MaxEaseOutDuration.Value), Section.Easing.ManualEaseOutDuration);
-					}
-					if (Section.HasStartFrame() && PrevSection->HasStartFrame())
-					{
-						const FFrameNumber MaxPrevSectionEaseInDuration = Section.GetInclusiveStartFrame() - PrevSection->GetInclusiveStartFrame();
-						PrevSection->Easing.AutoEaseInDuration = FMath::Min(FMath::Max(0, MaxPrevSectionEaseInDuration.Value), PrevSection->Easing.AutoEaseInDuration);
-						PrevSection->Easing.ManualEaseInDuration = FMath::Min(FMath::Max(0, MaxPrevSectionEaseInDuration.Value), PrevSection->Easing.ManualEaseInDuration);
+						TRangeBound<FFrameNumber> NewEndFrame = TRangeBound<FFrameNumber>::Exclusive(SectionRange.GetLowerBoundValue() + Section.Easing.GetEaseInDuration());
+
+						if (!PrevSection->HasStartFrame() || NewEndFrame.GetValue() > PrevSection->GetInclusiveStartFrame())
+						{
+							// It's a gap!
+							PrevSection->SetEndFrame(NewEndFrame);
+						}
 					}
 				}
 			}
@@ -256,37 +212,22 @@ bool MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSecti
 			if (Sections.IsValidIndex(NextSectionIndex))
 			{
 				UMovieSceneSection* NextSection = Sections[NextSectionIndex];
-
-				NextSection->Modify();
-
-				const FFrameNumber GapOrOverlap = NextSection->GetRange().GetLowerBoundValue() - SectionRange.GetUpperBoundValue();
-				if (GapOrOverlap > 0)
+				if (NextSection->GetRowIndex() == Section.GetRowIndex())
 				{
+					NextSection->Modify();
+
 					// If we made a gap: adjust the next section's start time so that it lines up with the current section's end.
-					TRangeBound<FFrameNumber> NewStartFrame = TRangeBound<FFrameNumber>::Inclusive(SectionRange.GetUpperBoundValue() - NextSection->Easing.GetEaseInDuration());
+					// If we created an overlap: adjust the next section's ease-in so it ends where the current section ends.
+					const FFrameNumber GapOrOverlap = NextSection->GetRange().GetLowerBoundValue() - SectionRange.GetUpperBoundValue();
+					if (GapOrOverlap > 0)
+					{
+						TRangeBound<FFrameNumber> NewStartFrame = TRangeBound<FFrameNumber>::Inclusive(SectionRange.GetUpperBoundValue() - NextSection->Easing.GetEaseInDuration());
 
-					if (!NextSection->HasEndFrame() || NewStartFrame.GetValue() < NextSection->GetExclusiveEndFrame())
-					{
-						// It's a gap!
-						NextSection->SetStartFrame(NewStartFrame);
-					}
-				}
-				else
-				{
-					// If we created an overlap: calls to UMovieSceneTrack::UpdateEasing will set the easing curves correctly based on overlaps.
-					// However, we need to fixup some easing where overlaps don't occur, such as the very first ease-in and the very last ease-out.
-					// Don't overlap so far that our ease-in, or the next section's ease-out, get overlapped. Clamp these easing durations instead.
-					if (Section.HasStartFrame() && NextSection->HasStartFrame())
-					{
-						const FFrameNumber MaxEaseInDuration = NextSection->GetInclusiveStartFrame() - Section.GetInclusiveStartFrame();
-						Section.Easing.AutoEaseInDuration = FMath::Min(FMath::Max(0, MaxEaseInDuration.Value), Section.Easing.AutoEaseInDuration);
-						Section.Easing.ManualEaseInDuration = FMath::Min(FMath::Max(0, MaxEaseInDuration.Value), Section.Easing.ManualEaseInDuration);
-					}
-					if (Section.HasEndFrame() && NextSection->HasEndFrame())
-					{
-						const FFrameNumber MaxNextSectionEaseOutDuration = NextSection->GetExclusiveEndFrame() - Section.GetExclusiveEndFrame();
-						NextSection->Easing.AutoEaseOutDuration = FMath::Min(FMath::Max(0, MaxNextSectionEaseOutDuration.Value), NextSection->Easing.AutoEaseOutDuration);
-						NextSection->Easing.ManualEaseOutDuration = FMath::Min(FMath::Max(0, MaxNextSectionEaseOutDuration.Value), NextSection->Easing.ManualEaseOutDuration);
+						if (!NextSection->HasEndFrame() || NewStartFrame.GetValue() < NextSection->GetExclusiveEndFrame())
+						{
+							// It's a gap!
+							NextSection->SetStartFrame(NewStartFrame);
+						}
 					}
 				}
 			}
@@ -298,28 +239,7 @@ bool MovieSceneHelpers::FixupConsecutiveBlendingSections(TArray<UMovieSceneSecti
 		}
 	}
 
-	bool bCleanUpDone = false;
-	if (bCleanUp)
-	{
-		const TArray<UMovieSceneSection*> OverlappedSections = Sections.FilterByPredicate([&Section, SectionRange](const UMovieSceneSection* Cur)
-				{
-					if (Cur != &Section)
-					{
-						const TRange<FFrameNumber> CurRange = Cur->GetRange();
-						return SectionRange.Contains(CurRange);
-					}
-					return false;
-				});
-		for (UMovieSceneSection* OverlappedSection : OverlappedSections)
-		{
-			Sections.Remove(OverlappedSection);
-		}
-		bCleanUpDone = (OverlappedSections.Num() > 0);
-	}
-
 	SortConsecutiveSections(Sections);
-
-	return bCleanUpDone;
 }
 
 
@@ -384,6 +304,20 @@ UCameraComponent* MovieSceneHelpers::CameraComponentFromActor(const AActor* InAc
 	for (UCameraComponent* CameraComponent : CameraComponents)
 	{
 		return CameraComponent;
+	}
+
+	// now see if any actors are attached to us, directly or indirectly, that have an active camera component we might want to use
+	// we will just return the first one.
+	// #note: assumption here that attachment cannot be circular
+	TArray<AActor*> AttachedActors;
+	InActor->GetAttachedActors(AttachedActors);
+	for (AActor* AttachedActor : AttachedActors)
+	{
+		UCameraComponent* const Comp = CameraComponentFromActor(AttachedActor);
+		if (Comp)
+		{
+			return Comp;
+		}
 	}
 
 	return nullptr;
@@ -480,36 +414,6 @@ FString MovieSceneHelpers::MakeUniqueSpawnableName(UMovieScene* MovieScene, cons
 	return NewName;
 }
 
-UObject* MovieSceneHelpers::MakeSpawnableTemplateFromInstance(UObject& InSourceObject, UMovieScene* InMovieScene, FName InName)
-{
-	UObject* NewInstance = NewObject<UObject>(InMovieScene, InSourceObject.GetClass(), InName);
-
-	UEngine::FCopyPropertiesForUnrelatedObjectsParams CopyParams;
-	CopyParams.bNotifyObjectReplacement = false;
-	CopyParams.bPreserveRootComponent = false;
-	UEngine::CopyPropertiesForUnrelatedObjects(&InSourceObject, NewInstance, CopyParams);
-
-	AActor* Actor = CastChecked<AActor>(NewInstance);
-	if (Actor->GetAttachParentActor() != nullptr)
-	{
-		// We don't support spawnables and attachments right now
-		// @todo: map to attach track?
-		Actor->DetachFromActor(FDetachmentTransformRules(FAttachmentTransformRules(EAttachmentRule::KeepRelative, false), false));
-	}
-
-	// The spawnable source object was created with RF_Transient. The object generated from that needs its 
-	// component flags cleared of RF_Transient so that the template object can be saved to the level sequence.
-	for (UActorComponent* Component : Actor->GetComponents())
-	{
-		if (Component)
-		{
-			Component->ClearFlags(RF_Transient);
-		}
-	}
-
-	return NewInstance;
-}
-
 FTrackInstancePropertyBindings::FTrackInstancePropertyBindings( FName InPropertyName, const FString& InPropertyPath )
 	: PropertyPath( InPropertyPath )
 	, PropertyName( InPropertyName )
@@ -558,61 +462,7 @@ FPropertyAndIndex FindPropertyAndArrayIndex(UStruct* InStruct, const FString& Pr
 	return PropertyAndIndex;
 }
 
-
-FProperty* FTrackInstancePropertyBindings::FindPropertyRecursive(UStruct* InStruct, TArray<FString>& InPropertyNames, uint32 Index)
-{
-	FProperty* Property = FindPropertyAndArrayIndex(InStruct, *InPropertyNames[Index]).Property;
-	if (!Property)
-	{
-		return nullptr;
-	}
-
-	/* Recursive property types */
-	if (Property->IsA(FArrayProperty::StaticClass()))
-	{
-		FArrayProperty* ArrayProp = CastFieldChecked<FArrayProperty>(Property);
-
-		FStructProperty* InnerStructProp = CastField<FStructProperty>(ArrayProp->Inner);
-		if (InnerStructProp && InPropertyNames.IsValidIndex(Index + 1))
-		{
-			return FindPropertyRecursive(InnerStructProp->Struct, InPropertyNames, Index + 1);
-		}
-		else
-		{
-			Property = ArrayProp->Inner;
-		}
-	}
-	else if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
-	{
-		if( InPropertyNames.IsValidIndex(Index+1) )
-		{
-			return FindPropertyRecursive(StructProp->Struct, InPropertyNames, Index+1);
-		}
-		else
-		{
-			check( StructProp->GetName() == InPropertyNames[Index] );
-		}
-	}
-
-	return Property;
-}
-
-FProperty* FTrackInstancePropertyBindings::FindProperty(const UObject* Object, const FString& InPropertyPath)
-{
-	check(Object);
-
-	TArray<FString> PropertyNames;
-	InPropertyPath.ParseIntoArray(PropertyNames, TEXT("."), true);
-
-	if (PropertyNames.Num() > 0)
-	{
-		return FindPropertyRecursive(Object->GetClass(), PropertyNames, 0);
-	}
-
-	return nullptr;
-}
-
-FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings::FindPropertyAddressRecursive( void* BasePointer, UStruct* InStruct, TArray<FString>& InPropertyNames, uint32 Index )
+FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings::FindPropertyRecursive( void* BasePointer, UStruct* InStruct, TArray<FString>& InPropertyNames, uint32 Index )
 {
 	FPropertyAndIndex PropertyAndIndex = FindPropertyAndArrayIndex(InStruct, *InPropertyNames[Index]);
 	
@@ -630,7 +480,7 @@ FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings:
 				FStructProperty* InnerStructProp = CastField<FStructProperty>(ArrayProp->Inner);
 				if (InnerStructProp && InPropertyNames.IsValidIndex(Index + 1))
 				{
-					return FindPropertyAddressRecursive(ArrayHelper.GetRawPtr(PropertyAndIndex.ArrayIndex), InnerStructProp->Struct, InPropertyNames, Index + 1);
+					return FindPropertyRecursive(ArrayHelper.GetRawPtr(PropertyAndIndex.ArrayIndex), InnerStructProp->Struct, InPropertyNames, Index + 1);
 				}
 				else
 				{
@@ -652,7 +502,7 @@ FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings:
 		if( InPropertyNames.IsValidIndex(Index+1) )
 		{
 			void* StructContainer = StructProp->ContainerPtrToValuePtr<void>(BasePointer);
-			return FindPropertyAddressRecursive( StructContainer, StructProp->Struct, InPropertyNames, Index+1 );
+			return FindPropertyRecursive( StructContainer, StructProp->Struct, InPropertyNames, Index+1 );
 		}
 		else
 		{
@@ -670,7 +520,7 @@ FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings:
 }
 
 
-FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings::FindPropertyAddress( const UObject& InObject, const FString& InPropertyPath )
+FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings::FindProperty( const UObject& InObject, const FString& InPropertyPath )
 {
 	TArray<FString> PropertyNames;
 
@@ -678,7 +528,7 @@ FTrackInstancePropertyBindings::FPropertyAddress FTrackInstancePropertyBindings:
 
 	if(IsValid(&InObject) && PropertyNames.Num() > 0)
 	{
-		return FindPropertyAddressRecursive( (void*)&InObject, InObject.GetClass(), PropertyNames, 0 );
+		return FindPropertyRecursive( (void*)&InObject, InObject.GetClass(), PropertyNames, 0 );
 	}
 	else
 	{
@@ -720,7 +570,7 @@ void FTrackInstancePropertyBindings::CacheBinding(const UObject& Object)
 {
 	FPropertyAndFunction PropAndFunction;
 	{
-		PropAndFunction.PropertyAddress = FindPropertyAddress(Object, PropertyPath);
+		PropAndFunction.PropertyAddress = FindProperty(Object, PropertyPath);
 
 		UFunction* SetterFunction = Object.FindFunction(FunctionName);
 		if (SetterFunction && SetterFunction->NumParms >= 1)
@@ -746,7 +596,7 @@ FProperty* FTrackInstancePropertyBindings::GetProperty(const UObject& Object) co
 		return Property;
 	}
 
-	return FindPropertyAddress(Object, PropertyPath).GetProperty();
+	return FindProperty(Object, PropertyPath).GetProperty();
 }
 
 int64 FTrackInstancePropertyBindings::GetCurrentValueForEnum(const UObject& Object)

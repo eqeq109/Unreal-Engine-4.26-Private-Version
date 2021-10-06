@@ -34,7 +34,11 @@ bool UMovieScene3DAttachTrack::SupportsType(TSubclassOf<UMovieSceneSection> Sect
 
 UMovieSceneSection* UMovieScene3DAttachTrack::CreateNewSection()
 {
-	return NewObject<UMovieScene3DAttachSection>(this, NAME_None, RF_Transactional);
+	UMovieScene3DAttachSection* NewSection = NewObject<UMovieScene3DAttachSection>(this, NAME_None, RF_Transactional);
+
+	ConstraintSections.Add(NewSection);
+
+	return NewSection;
 }
 
 #if WITH_EDITORONLY_DATA

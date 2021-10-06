@@ -13,11 +13,11 @@ struct MAGICLEAPHANDMESHING_API FMagicLeapHandMeshBlock
 
 	/** The number of indices in index buffer. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HandMeshing|MagicLeap")
-	int32 IndexCount = 0;
+	int32 IndexCount;
 
 	/** The number of vertices in vertex buffer. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HandMeshing|MagicLeap")
-	int32 VertexCount = 0;
+	int32 VertexCount;
 
 	/** Pointer to the vertex buffer. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HandMeshing|MagicLeap")
@@ -36,11 +36,11 @@ struct MAGICLEAPHANDMESHING_API FMagicLeapHandMesh
 
 	/** Version of this structure. */
 	UPROPERTY()
-	int32 Version = 0;
+	int32 Version;
 
 	/** Number of meshes available in data */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HandMeshing|MagicLeap")
-	int32 DataCount = 0;
+	int32 DataCount;
 
 	/** The mesh data */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HandMeshing|MagicLeap")

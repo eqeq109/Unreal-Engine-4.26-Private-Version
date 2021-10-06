@@ -44,9 +44,6 @@ public:
 	/** quads on the stitch loop are planar-projected and scaled by this amount */
 	float UVScaleFactor = 1.0f;
 
-	/** If true, skip closed components */
-	bool bSkipClosedComponents = false;
-
 
 	//
 	// Outputs

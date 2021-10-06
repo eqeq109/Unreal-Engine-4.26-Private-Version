@@ -7,7 +7,6 @@
 #include "MovieSceneTimeHelpers.h"
 #include "Evaluation/MovieScenePlayback.h"
 #include "EntitySystem/MovieSceneEntitySystemLinker.h"
-#include "Animation/UMGSequenceTickManager.h"
 
 extern TAutoConsoleVariable<bool> CVarUserWidgetUseParallelAnimation;
 
@@ -42,14 +41,6 @@ UMovieSceneEntitySystemLinker* UUMGSequencePlayer::ConstructEntitySystemLinker()
 	UUserWidget* Widget = UserWidget.Get();
 	if (ensure(Widget) && !EnumHasAnyFlags(Animation->GetFlags(), EMovieSceneSequenceFlags::BlockingEvaluation))
 	{
-		if (!ensure(Widget->AnimationTickManager))
-		{
-			// @todo: There should be no possible way that the animation tick manager is null here, but there is a very low-rate
-			// crash caused by it being null that is very hard to track down, so patching with a band-aid for now.
-			Widget->AnimationTickManager = UUMGSequenceTickManager::Get(Widget);
-			Widget->AnimationTickManager->AddWidget(Widget);
-		}
-
 		return Widget->AnimationTickManager->GetLinker();
 	}
 
@@ -190,12 +181,12 @@ void UUMGSequencePlayer::Tick(float DeltaTime)
 
 void UUMGSequencePlayer::PlayInternal(double StartAtTime, double EndAtTime, int32 InNumLoopsToPlay, EUMGSequencePlayMode::Type InPlayMode, float InPlaybackSpeed, bool bInRestoreState)
 {
-	RootTemplateInstance.Initialize(*Animation, *this, nullptr);
-
 	if (bInRestoreState)
 	{
-		RootTemplateInstance.EnableGlobalPreAnimatedStateCapture();
+		PreAnimatedState.EnableGlobalCapture();
 	}
+
+	RootTemplateInstance.Initialize(*Animation, *this, nullptr);
 
 	bRestoreState = bInRestoreState;
 	PlaybackSpeed = FMath::Abs(InPlaybackSpeed);
@@ -443,7 +434,7 @@ void UUMGSequencePlayer::ApplyLatentActions()
 		UUMGSequenceTickManager* TickManager = Widget ? Widget->AnimationTickManager : nullptr;
 		if (TickManager)
 		{
-			TickManager->RunLatentActions();
+			TickManager->RunLatentActions(this, RootTemplateInstance.GetEntitySystemRunner());
 		}
 	}
 	else

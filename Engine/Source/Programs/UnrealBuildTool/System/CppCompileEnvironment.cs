@@ -172,11 +172,6 @@ namespace UnrealBuildTool
 		public bool bBuildLocallyWithSNDBS = false;
 
 		/// <summary>
-		/// Whether to retain frame pointers
-		/// </summary>
-		public bool bRetainFramePointers = true;
-
-		/// <summary>
 		/// Enable exception handling
 		/// </summary>
 		public bool bEnableExceptions = false;
@@ -185,16 +180,6 @@ namespace UnrealBuildTool
 		/// Enable objective C exception handling
 		/// </summary>
 		public bool bEnableObjCExceptions = false;
-
-		/// <summary>
-		/// How to treat any warnings in the code
-		/// </summary>
-		public WarningLevel DefaultWarningLevel = WarningLevel.Warning;
-
-		/// <summary>
-		/// Whether to warn about deprecated variables
-		/// </summary>
-		public WarningLevel DeprecationWarningLevel = WarningLevel.Warning;
 
 		/// <summary>
 		/// Whether to warn about the use of shadow variables
@@ -418,11 +403,8 @@ namespace UnrealBuildTool
 			MinSourceFilesForUnityBuildOverride = Other.MinSourceFilesForUnityBuildOverride;
 			MinFilesUsingPrecompiledHeaderOverride = Other.MinFilesUsingPrecompiledHeaderOverride;
 			bBuildLocallyWithSNDBS = Other.bBuildLocallyWithSNDBS;
-			bRetainFramePointers = Other.bRetainFramePointers;
 			bEnableExceptions = Other.bEnableExceptions;
 			bEnableObjCExceptions = Other.bEnableObjCExceptions;
-			DefaultWarningLevel = Other.DefaultWarningLevel;
-			DeprecationWarningLevel = Other.DeprecationWarningLevel;
 			ShadowVariableWarningLevel = Other.ShadowVariableWarningLevel;
 			UnsafeTypeCastWarningLevel = Other.UnsafeTypeCastWarningLevel;
 			bUndefinedIdentifierWarningsAsErrors = Other.bUndefinedIdentifierWarningsAsErrors;

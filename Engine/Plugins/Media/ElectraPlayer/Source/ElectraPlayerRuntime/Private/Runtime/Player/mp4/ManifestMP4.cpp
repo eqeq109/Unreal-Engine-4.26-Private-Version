@@ -15,11 +15,8 @@
 #include "Player/mp4/ManifestMP4.h"
 
 
-#define ERRCODE_MANIFEST_MP4_STARTSEGMENT_NOT_FOUND		1
+#define ERRCODE_MANIFEST_MP4_STARTSEGMENT_NOT_FOUND						1
 
-
-DECLARE_CYCLE_STAT(TEXT("FPlayPeriodMP4::FindSegment"), STAT_ElectraPlayer_MP4_FindSegment, STATGROUP_ElectraPlayer);
-DECLARE_CYCLE_STAT(TEXT("FPlayPeriodMP4::GetSegmentInformation"), STAT_ElectraPlayer_MP4_GetSegmentInformation, STATGROUP_ElectraPlayer);
 
 namespace Electra
 {
@@ -92,16 +89,71 @@ IManifest::EType FManifestMP4Internal::GetPresentationType() const
 
 //-----------------------------------------------------------------------------
 /**
- * Returns track metadata.
+ * Returns the media timeline object for this asset.
+ *
+ * @return
+ */
+TSharedPtrTS<IPlaybackAssetTimeline> FManifestMP4Internal::GetTimeline() const
+{
+	// Since an mp4 file is fixed and will not change the timeline is fixed.
+	// That's why we are inheriting from IPlaybackAssetTimeline and return ourselves.
+	TSharedPtrTS<const FManifestMP4Internal> This = SharedThis(this);
+	return StaticCastSharedPtr<IPlaybackAssetTimeline>(ConstCastSharedPtr<FManifestMP4Internal>(This));
+}
+
+
+//-----------------------------------------------------------------------------
+/**
+ * Returns the starting bitrate.
+ *
+ * This is merely informational and not strictly required.
+ * If fetching of the moov box provided us with the total size of the mp4 file
+ * we will use that divided by the duration.
+ *
+ * @return
+ */
+int64 FManifestMP4Internal::GetDefaultStartingBitrate() const
+{
+	FTimeValue dur = GetDuration();
+	if (ConnectionInfo.ContentLength > 0 && dur.IsValid() && dur > FTimeValue::GetZero())
+	{
+		return (int64)( ConnectionInfo.ContentLength * 8 / dur.GetAsSeconds() );
+	}
+	return 0;
+}
+
+
+//-----------------------------------------------------------------------------
+/**
+ * Returns stream metadata.
  *
  * @param OutMetadata
  * @param StreamType
  */
-void FManifestMP4Internal::GetTrackMetadata(TArray<FTrackMetadata>& OutMetadata, EStreamType StreamType) const
+void FManifestMP4Internal::GetStreamMetadata(TArray<FStreamMetadata>& OutMetadata, EStreamType StreamType) const
 {
 	if (MediaAsset.IsValid())
 	{
-		MediaAsset->GetMetaData(OutMetadata, StreamType);
+		for(int32 i=0, iMax = MediaAsset->GetNumberOfAdaptationSets(StreamType); i<iMax; ++i)
+		{
+			TSharedPtrTS<IPlaybackAssetAdaptationSet> AdaptSet = MediaAsset->GetAdaptationSetByTypeAndIndex(StreamType, i);
+			if (AdaptSet.IsValid())
+			{
+				for(int32 j=0, jMax=AdaptSet->GetNumberOfRepresentations(); j<jMax; ++j)
+				{
+					TSharedPtrTS<FRepresentationMP4> Repr = StaticCastSharedPtr<FRepresentationMP4>(AdaptSet->GetRepresentationByIndex(j));
+					if (Repr.IsValid())
+					{
+						FStreamMetadata& meta = OutMetadata.AddDefaulted_GetRef();
+						meta.CodecInformation = Repr->GetCodecInformation();
+						LexFromString(meta.StreamUniqueID, *Repr->GetUniqueIdentifier());
+						meta.PlaylistID 	  = Repr->GetCDN();
+						meta.Bandwidth  	  = Repr->GetBitrate();
+						meta.LanguageCode     = AdaptSet->GetLanguage();
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -120,19 +172,13 @@ FTimeValue FManifestMP4Internal::GetMinBufferTime() const
 }
 
 
-void FManifestMP4Internal::UpdateDynamicRefetchCounter()
-{
-	// No-op.
-}
-
-
 //-----------------------------------------------------------------------------
 /**
  * Creates an instance of a stream reader to stream from the mp4 file.
  *
  * @return
  */
-IStreamReader* FManifestMP4Internal::CreateStreamReaderHandler()
+IStreamReader *FManifestMP4Internal::CreateStreamReaderHandler()
 {
 	return new FStreamReaderMP4;
 }
@@ -155,12 +201,6 @@ IManifest::FResult FManifestMP4Internal::FindPlayPeriod(TSharedPtrTS<IPlayPeriod
 	return IManifest::FResult(IManifest::FResult::EType::Found);
 }
 
-IManifest::FResult FManifestMP4Internal::FindNextPlayPeriod(TSharedPtrTS<IPlayPeriod>& OutPlayPeriod, TSharedPtrTS<const IStreamSegment> CurrentSegment)
-{
-	// There is no following period.
-	return IManifest::FResult(IManifest::FResult::EType::PastEOS);
-}
-
 
 
 
@@ -173,7 +213,7 @@ IManifest::FResult FManifestMP4Internal::FindNextPlayPeriod(TSharedPtrTS<IPlayPe
  */
 FManifestMP4Internal::FPlayPeriodMP4::FPlayPeriodMP4(TSharedPtrTS<FManifestMP4Internal::FTimelineAssetMP4> InMediaAsset)
 	: MediaAsset(InMediaAsset)
-	, CurrentReadyState(IManifest::IPlayPeriod::EReadyState::NotLoaded)
+	, bIsReady(false)
 {
 }
 
@@ -191,32 +231,13 @@ FManifestMP4Internal::FPlayPeriodMP4::~FPlayPeriodMP4()
 /**
  * Sets stream playback preferences for this playback period.
  *
- * @param ForStreamType
- * @param StreamAttributes
+ * @param InPreferences
  */
-void FManifestMP4Internal::FPlayPeriodMP4::SetStreamPreferences(EStreamType ForStreamType, const FStreamSelectionAttributes& StreamAttributes)
+void FManifestMP4Internal::FPlayPeriodMP4::SetStreamPreferences(const FStreamPreferences& InPreferences)
 {
-	if (ForStreamType == EStreamType::Audio)
-	{
-		AudioPreferences = StreamAttributes;
-	}
+	Preferences = InPreferences;
 }
 
-
-//-----------------------------------------------------------------------------
-/**
- * Returns the starting bitrate.
- *
- * This is merely informational and not strictly required.
- * If fetching of the moov box provided us with the total size of the mp4 file
- * we will use that divided by the duration.
- *
- * @return
- */
-int64 FManifestMP4Internal::FPlayPeriodMP4::GetDefaultStartingBitrate() const
-{
-	return 2000000;
-}
 
 //-----------------------------------------------------------------------------
 /**
@@ -226,169 +247,23 @@ int64 FManifestMP4Internal::FPlayPeriodMP4::GetDefaultStartingBitrate() const
  */
 IManifest::IPlayPeriod::EReadyState FManifestMP4Internal::FPlayPeriodMP4::GetReadyState()
 {
-	return CurrentReadyState;
+	return bIsReady ? IManifest::IPlayPeriod::EReadyState::IsReady : IManifest::IPlayPeriod::EReadyState::NotReady;
 }
 
-
-void FManifestMP4Internal::FPlayPeriodMP4::Load()
-{
-	CurrentReadyState = IManifest::IPlayPeriod::EReadyState::Loaded;
-}
 
 //-----------------------------------------------------------------------------
 /**
  * Prepares the playback period for playback.
  * With an mp4 file we are actually always ready for playback, but we say we're not
  * one time to get here with any possible options.
+ *
+ * @param InOptions
  */
-void FManifestMP4Internal::FPlayPeriodMP4::PrepareForPlay()
+void FManifestMP4Internal::FPlayPeriodMP4::PrepareForPlay(const FParamDict& InOptions)
 {
-	SelectedVideoMetadata.Reset();
-	SelectedAudioMetadata.Reset();
-	SelectedSubtitleMetadata.Reset();
-	VideoBufferSourceInfo.Reset();
-	AudioBufferSourceInfo.Reset();
-	SubtitleBufferSourceInfo.Reset();
-	SelectInitialStream(EStreamType::Video);
-	SelectInitialStream(EStreamType::Audio);
-	SelectInitialStream(EStreamType::Subtitle);
-	CurrentReadyState = IManifest::IPlayPeriod::EReadyState::IsReady;
+	Options = InOptions;
+	bIsReady = true;
 }
-
-
-TSharedPtrTS<FBufferSourceInfo> FManifestMP4Internal::FPlayPeriodMP4::GetSelectedStreamBufferSourceInfo(EStreamType StreamType)
-{
-	return StreamType == EStreamType::Video ? VideoBufferSourceInfo :
-		   StreamType == EStreamType::Audio ? AudioBufferSourceInfo :
-		   StreamType == EStreamType::Subtitle ? SubtitleBufferSourceInfo : nullptr;
-}
-
-FString FManifestMP4Internal::FPlayPeriodMP4::GetSelectedAdaptationSetID(EStreamType StreamType)
-{
-	switch(StreamType)
-	{
-		case EStreamType::Video:
-			return SelectedVideoMetadata.IsValid() ? SelectedVideoMetadata->ID : FString();
-		case EStreamType::Audio:
-			return SelectedAudioMetadata.IsValid() ? SelectedAudioMetadata->ID : FString();
-		case EStreamType::Subtitle:
-			return SelectedSubtitleMetadata.IsValid() ? SelectedSubtitleMetadata->ID : FString();
-		default:
-			return FString();
-	}
-}
-
-
-IManifest::IPlayPeriod::ETrackChangeResult FManifestMP4Internal::FPlayPeriodMP4::ChangeTrackStreamPreference(EStreamType StreamType, const FStreamSelectionAttributes& StreamAttributes)
-{
-	TSharedPtrTS<FTrackMetadata> Metadata = SelectMetadataForAttributes(StreamType, StreamAttributes);
-	if (Metadata.IsValid())
-	{
-		if (StreamType == EStreamType::Video)
-		{
-			if (!(SelectedVideoMetadata.IsValid() && Metadata->Equals(*SelectedVideoMetadata)))
-			{
-				SelectedVideoMetadata = Metadata;
-				MakeBufferSourceInfoFromMetadata(StreamType, VideoBufferSourceInfo, SelectedVideoMetadata);
-				return IManifest::IPlayPeriod::ETrackChangeResult::Changed;
-			}
-		}
-		else if (StreamType == EStreamType::Audio)
-		{
-			if (!(SelectedAudioMetadata.IsValid() && Metadata->Equals(*SelectedAudioMetadata)))
-			{
-				SelectedAudioMetadata = Metadata;
-				MakeBufferSourceInfoFromMetadata(StreamType, AudioBufferSourceInfo, SelectedAudioMetadata);
-				return IManifest::IPlayPeriod::ETrackChangeResult::Changed;
-			}
-		}
-		else if (StreamType == EStreamType::Subtitle)
-		{
-			if (!(SelectedSubtitleMetadata.IsValid() && Metadata->Equals(*SelectedSubtitleMetadata)))
-			{
-				SelectedSubtitleMetadata = Metadata;
-				MakeBufferSourceInfoFromMetadata(StreamType, SubtitleBufferSourceInfo, SelectedSubtitleMetadata);
-				return IManifest::IPlayPeriod::ETrackChangeResult::Changed;
-			}
-		}
-	}
-	return IManifest::IPlayPeriod::ETrackChangeResult::NotChanged;
-}
-
-void FManifestMP4Internal::FPlayPeriodMP4::SelectInitialStream(EStreamType StreamType)
-{
-	if (StreamType == EStreamType::Video)
-	{
-		SelectedVideoMetadata = SelectMetadataForAttributes(StreamType, VideoPreferences);
-		MakeBufferSourceInfoFromMetadata(StreamType, VideoBufferSourceInfo, SelectedVideoMetadata);
-	}
-	else if (StreamType == EStreamType::Audio)
-	{
-		SelectedAudioMetadata = SelectMetadataForAttributes(StreamType, AudioPreferences);
-		MakeBufferSourceInfoFromMetadata(StreamType, AudioBufferSourceInfo, SelectedAudioMetadata);
-	}
-	else if (StreamType == EStreamType::Subtitle)
-	{
-		SelectedSubtitleMetadata = SelectMetadataForAttributes(StreamType, SubtitlePreferences);
-		MakeBufferSourceInfoFromMetadata(StreamType, SubtitleBufferSourceInfo, SelectedSubtitleMetadata);
-	}
-}
-
-TSharedPtrTS<FTrackMetadata> FManifestMP4Internal::FPlayPeriodMP4::SelectMetadataForAttributes(EStreamType StreamType, const FStreamSelectionAttributes& InAttributes)
-{
-	TSharedPtrTS<FTimelineAssetMP4> Asset = MediaAsset.Pin();
-	if (Asset.IsValid())
-	{
-		TArray<FTrackMetadata> Metadata;
-		Asset->GetMetaData(Metadata, StreamType);
-		// Is there a fixed index to be used?
-		if (InAttributes.OverrideIndex.IsSet() && InAttributes.OverrideIndex.GetValue() < Metadata.Num())
-		{
-			// Use this.
-			return MakeSharedTS<FTrackMetadata>(Metadata[InAttributes.OverrideIndex.GetValue()]);
-		}
-		if (Metadata.Num())
-		{
-			// We do not look at the 'kind' here, only the language.
-			// Set the first track as default in case we do not find the one we're looking for.
-			if (InAttributes.Language_ISO639.IsSet())
-			{
-				for(auto &Meta : Metadata)
-				{
-					if (Meta.Language.Equals(InAttributes.Language_ISO639.GetValue()))
-					{
-						return MakeSharedTS<FTrackMetadata>(Meta);
-					}
-				}
-			}
-			return MakeSharedTS<FTrackMetadata>(Metadata[0]);
-		}
-	}
-	return nullptr;
-}
-
-void FManifestMP4Internal::FPlayPeriodMP4::MakeBufferSourceInfoFromMetadata(EStreamType StreamType, TSharedPtrTS<FBufferSourceInfo>& OutBufferSourceInfo, TSharedPtrTS<FTrackMetadata> InMetadata)
-{
-	if (InMetadata.IsValid())
-	{
-		OutBufferSourceInfo = MakeSharedTS<FBufferSourceInfo>();
-		OutBufferSourceInfo->Kind = InMetadata->Kind;
-		OutBufferSourceInfo->Language = InMetadata->Language;
-		TSharedPtrTS<FTimelineAssetMP4> Asset = MediaAsset.Pin();
-		OutBufferSourceInfo->PeriodAdaptationSetID = Asset->GetUniqueIdentifier() + TEXT(".") + InMetadata->ID;
-		TArray<FTrackMetadata> Metadata;
-		Asset->GetMetaData(Metadata, StreamType);
-		for(int32 i=0; i<Metadata.Num(); ++i)
-		{
-			if (Metadata[i].Equals(*InMetadata))
-			{
-				OutBufferSourceInfo->HardIndex = i;
-				break;
-			}
-		}
-	}
-}
-
 
 
 //-----------------------------------------------------------------------------
@@ -409,12 +284,13 @@ TSharedPtrTS<ITimelineMediaAsset> FManifestMP4Internal::FPlayPeriodMP4::GetMedia
 /**
  * Selects a particular stream (== internal track ID) for playback.
  *
- * @param AdaptationSetID
- * @param RepresentationID
+ * @param AdaptationSet
+ * @param Representation
+ * @param PreferredCDN
  */
-void FManifestMP4Internal::FPlayPeriodMP4::SelectStream(const FString& AdaptationSetID, const FString& RepresentationID)
+void FManifestMP4Internal::FPlayPeriodMP4::SelectStream(const TSharedPtrTS<IPlaybackAssetAdaptationSet>& AdaptationSet, const TSharedPtrTS<IPlaybackAssetRepresentation>& Representation, const FString& PreferredCDN)
 {
-	// Presently this method is only called by the ABR to switch between quality levels.
+	// Presently this method is only called by the ABR to switch between quality levels or CDNs.
 	// Since a single mp4 doesn't have different quality levels (technically it could, but we are concerning ourselves only with different bitrates and that doesn't apply since we are streaming
 	// the single file sequentially and selecting a different stream would not save any bandwidth so we don't bother) we ignore this for now.
 
@@ -437,17 +313,6 @@ IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetStartingSegment(TSha
 {
 	TSharedPtrTS<FTimelineAssetMP4> ma = MediaAsset.Pin();
 	return ma.IsValid() ? ma->GetStartingSegment(OutSegment, StartPosition, SearchType, -1) : IManifest::FResult(IManifest::FResult::EType::NotFound);
-}
-
-//-----------------------------------------------------------------------------
-/**
- * Same as GetStartingSegment() except this is for a specific stream (video, audio, ...) only.
- * To be used when a track (language) change is made and a new segment is needed at the current playback position.
- */
-IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetContinuationSegment(TSharedPtrTS<IStreamSegment>& OutSegment, EStreamType StreamType, const FPlayerLoopState& LoopState, const FPlayStartPosition& StartPosition, ESearchType SearchType)
-{
-	// Not supported
-	return IManifest::FResult(IManifest::FResult::EType::NotFound);
 }
 
 
@@ -473,30 +338,18 @@ IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetLoopingSegment(TShar
 
 //-----------------------------------------------------------------------------
 /**
- * Called by the ABR to increase the delay in fetching the next segment in case the segment returned a 404 when fetched at
- * the announced availability time. This may reduce 404's on the next segment fetches.
- *
- * @param IncreaseAmount
- */
-void FManifestMP4Internal::FPlayPeriodMP4::IncreaseSegmentFetchDelay(const FTimeValue& IncreaseAmount)
-{
-	// No-op.
-}
-
-
-//-----------------------------------------------------------------------------
-/**
  * Creates the next segment request.
  *
  * @param OutSegment
  * @param CurrentSegment
+ * @param InOptions
  *
  * @return
  */
-IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetNextSegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment)
+IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetNextSegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FParamDict& InOptions)
 {
 	TSharedPtrTS<FTimelineAssetMP4> ma = MediaAsset.Pin();
-	return ma.IsValid() ? ma->GetNextSegment(OutSegment, CurrentSegment) : IManifest::FResult(IManifest::FResult::EType::NotFound);
+	return ma.IsValid() ? ma->GetNextSegment(OutSegment, CurrentSegment, InOptions) : IManifest::FResult(IManifest::FResult::EType::NotFound);
 }
 
 
@@ -506,14 +359,14 @@ IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetNextSegment(TSharedP
  *
  * @param OutSegment
  * @param CurrentSegment
- * @param bReplaceWithFillerData
+ * @param InOptions
  *
  * @return
  */
-IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetRetrySegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, bool bReplaceWithFillerData)
+IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetRetrySegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FParamDict& InOptions)
 {
 	TSharedPtrTS<FTimelineAssetMP4> ma = MediaAsset.Pin();
-	return ma.IsValid() ? ma->GetRetrySegment(OutSegment, CurrentSegment, bReplaceWithFillerData) : IManifest::FResult(IManifest::FResult::EType::NotFound);
+	return ma.IsValid() ? ma->GetRetrySegment(OutSegment, CurrentSegment, InOptions) : IManifest::FResult(IManifest::FResult::EType::NotFound);
 }
 
 
@@ -528,12 +381,12 @@ IManifest::FResult FManifestMP4Internal::FPlayPeriodMP4::GetRetrySegment(TShared
  * @param AdaptationSet
  * @param Representation
  */
-void FManifestMP4Internal::FPlayPeriodMP4::GetSegmentInformation(TArray<FSegmentInformation>& OutSegmentInformation, FTimeValue& OutAverageSegmentDuration, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FTimeValue& LookAheadTime, const FString& AdaptationSetID, const FString& RepresentationID)
+void FManifestMP4Internal::FPlayPeriodMP4::GetSegmentInformation(TArray<FSegmentInformation>& OutSegmentInformation, FTimeValue& OutAverageSegmentDuration, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FTimeValue& LookAheadTime, const TSharedPtrTS<IPlaybackAssetAdaptationSet>& AdaptationSet, const TSharedPtrTS<IPlaybackAssetRepresentation>& Representation)
 {
 	TSharedPtrTS<FTimelineAssetMP4> ma = MediaAsset.Pin();
 	if (ma.IsValid())
 	{
-		ma->GetSegmentInformation(OutSegmentInformation, OutAverageSegmentDuration, CurrentSegment, LookAheadTime, AdaptationSetID, RepresentationID);
+		ma->GetSegmentInformation(OutSegmentInformation, OutAverageSegmentDuration, CurrentSegment, LookAheadTime, AdaptationSet, Representation);
 	}
 }
 
@@ -672,9 +525,6 @@ void FManifestMP4Internal::FTimelineAssetMP4::LimitSegmentDownloadSize(TSharedPt
 
 IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetStartingSegment(TSharedPtrTS<IStreamSegment>& OutSegment, const FPlayStartPosition& StartPosition, ESearchType SearchType, int64 AtAbsoluteFilePos)
 {
-	SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_FindSegment);
-	CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_FindSegment);
-
 // TODO: If there is a SIDX box we will look in there.
 
 	// Look at the actual tracks. If there is video search there first for a keyframe/IDR frame.
@@ -927,7 +777,7 @@ IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetStartingSegment(T
 					   .SetMessage(FString::Printf(TEXT("Could not find start segment for time %lld, no valid tracks"), (long long int)StartPosition.Time.GetAsHNS())));
 }
 
-IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetNextSegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment)
+IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetNextSegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FParamDict& Options)
 {
 	const FStreamSegmentRequestMP4* Request = static_cast<const FStreamSegmentRequestMP4*>(CurrentSegment.Get());
 	if (Request)
@@ -950,7 +800,7 @@ IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetNextSegment(TShar
 	return IManifest::FResult(IManifest::FResult::EType::PastEOS);
 }
 
-IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetRetrySegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, bool bReplaceWithFillerData)
+IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetRetrySegment(TSharedPtrTS<IStreamSegment>& OutSegment, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FParamDict& Options)
 {
 	const FStreamSegmentRequestMP4* Request = static_cast<const FStreamSegmentRequestMP4*>(CurrentSegment.Get());
 	if (Request)
@@ -995,11 +845,8 @@ IManifest::FResult FManifestMP4Internal::FTimelineAssetMP4::GetLoopingSegment(TS
 }
 
 
-void FManifestMP4Internal::FTimelineAssetMP4::GetSegmentInformation(TArray<IManifest::IPlayPeriod::FSegmentInformation>& OutSegmentInformation, FTimeValue& OutAverageSegmentDuration, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FTimeValue& LookAheadTime, const FString& AdaptationSetID, const FString& RepresentationID)
+void FManifestMP4Internal::FTimelineAssetMP4::GetSegmentInformation(TArray<IManifest::IPlayPeriod::FSegmentInformation>& OutSegmentInformation, FTimeValue& OutAverageSegmentDuration, TSharedPtrTS<const IStreamSegment> CurrentSegment, const FTimeValue& LookAheadTime, const TSharedPtrTS<IPlaybackAssetAdaptationSet>& AdaptationSet, const TSharedPtrTS<IPlaybackAssetRepresentation>& Representation)
 {
-	SCOPE_CYCLE_COUNTER(STAT_ElectraPlayer_MP4_GetSegmentInformation);
-	CSV_SCOPED_TIMING_STAT(ElectraPlayer, MP4_GetSegmentInformation);
-
 	// This is not expected to be called. And if it does we return a dummy entry.
 	OutAverageSegmentDuration.SetFromSeconds(60.0);
 	OutSegmentInformation.Empty();
@@ -1008,7 +855,7 @@ void FManifestMP4Internal::FTimelineAssetMP4::GetSegmentInformation(TArray<IMani
 	si.Duration.SetFromSeconds(60.0);
 }
 
-TSharedPtrTS<IParserISO14496_12> FManifestMP4Internal::FTimelineAssetMP4::GetMoovBoxParser()
+TSharedPtrTS<IParserISO14496_12>	FManifestMP4Internal::FTimelineAssetMP4::GetMoovBoxParser()
 {
 	return MoovBoxParser;
 }
@@ -1023,7 +870,7 @@ FErrorDetail FManifestMP4Internal::FAdaptationSetMP4::CreateFrom(const IParserIS
 	if (err.IsOK())
 	{
 		CodecRFC6381	 = Representation->GetCodecInformation().GetCodecSpecifierRFC6381();
-		UniqueIdentifier = Representation->GetUniqueIdentifier();
+		UniqueIdentifier = FString("adaptation.") + Representation->GetUniqueIdentifier();
 		Language		 = InTrack->GetLanguage();
 	}
 	return err;
@@ -1037,11 +884,13 @@ FErrorDetail FManifestMP4Internal::FRepresentationMP4::CreateFrom(const IParserI
 	CodecSpecificData    = InTrack->GetCodecSpecificData();
 	CodecSpecificDataRAW = InTrack->GetCodecSpecificDataRAW();
 
+	// Since we are dealing with a track inside a multiplexed file there is no choice for CDNs.
+	// We set the URL as the CDN.
+	CDN = URL;
+
 	// The unique identifier will be the track ID inside the mp4.
 	// NOTE: This *MUST* be just a number since it gets parsed back out from a string into a number later! Do *NOT* prepend/append any string literals!!
 	UniqueIdentifier = LexToString(InTrack->GetID());
-
-	Name = InTrack->GetNameFromHandler();
 
 	// Get bitrate from the average or max bitrate as stored in the track. If not stored it will be 0.
 	Bitrate = InTrack->GetBitrateInfo().AvgBitrate ? InTrack->GetBitrateInfo().AvgBitrate : InTrack->GetBitrateInfo().MaxBitrate;

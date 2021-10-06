@@ -11,7 +11,7 @@ FDatasmithMasterMaterial::FDatasmithMasterMaterial()
 {
 }
 
-void FDatasmithMasterMaterial::FromMaterial( UMaterialInterface* InMaterial )
+void FDatasmithMasterMaterial::FromMaterial( UMaterial* InMaterial )
 {
 	if ( InMaterial )
 	{
@@ -53,5 +53,5 @@ void FDatasmithMasterMaterial::FromMaterial( UMaterialInterface* InMaterial )
 
 void FDatasmithMasterMaterial::FromSoftObjectPath( const FSoftObjectPath& InObjectPath)
 {
-	FromMaterial( Cast< UMaterialInterface >(InObjectPath.TryLoad() ) );
+	FromMaterial( Cast< UMaterial >(InObjectPath.TryLoad() ) );
 }

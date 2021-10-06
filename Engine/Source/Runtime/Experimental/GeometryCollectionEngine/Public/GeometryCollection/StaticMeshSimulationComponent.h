@@ -21,7 +21,6 @@ class FChaosPhysicsMaterial;
 /**
 *	UStaticMeshSimulationComponent
 */
-class UE_DEPRECATED(4.27, "UStaticMeshSimulationComponent is deprecated.") UStaticMeshSimulationComponent;
 UCLASS(ClassGroup = Physics, Experimental, meta = (BlueprintSpawnableComponent))
 class GEOMETRYCOLLECTIONENGINE_API UStaticMeshSimulationComponent : public UActorComponent, public IChaosNotifyHandlerInterface
 {

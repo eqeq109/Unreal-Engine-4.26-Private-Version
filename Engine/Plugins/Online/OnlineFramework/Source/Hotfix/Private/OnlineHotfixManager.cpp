@@ -197,11 +197,6 @@ UOnlineHotfixManager* UOnlineHotfixManager::Get(UWorld* World)
 			HotfixManager = NewObject<UOnlineHotfixManager>(GetTransientPackage(), HotfixManagerClass);
 			OnlineSub->SetNamedInterface(NAME_HotfixManager, HotfixManager);
 		}
-
-		if (World)
-		{
-			HotfixManager->OwnerWorld = World;
-		}
 		return HotfixManager;
 	}
 	return nullptr;
@@ -732,15 +727,15 @@ bool UOnlineHotfixManager::WantsHotfixProcessing(const FCloudFileHeader& FileHea
 
 			if (bWantsPlatformHotfix)
 			{
-				UE_LOG(LogHotfixManager, Log, TEXT("Using platform hotfix %s"), *FileHeader.FileName);
+				UE_LOG(LogHotfixManager, Verbose, TEXT("Using platform hotfix %s"), *FileHeader.FileName);
 			}
 			else if (bWantsServerHotfix)
 			{
-				UE_LOG(LogHotfixManager, Log, TEXT("Using server hotfix %s"), *FileHeader.FileName);
+				UE_LOG(LogHotfixManager, Verbose, TEXT("Using server hotfix %s"), *FileHeader.FileName);
 			}
 			else if (bWantsDefaultHotfix)
 			{
-				UE_LOG(LogHotfixManager, Log, TEXT("Using default hotfix %s"), *FileHeader.FileName);
+				UE_LOG(LogHotfixManager, Verbose, TEXT("Using default hotfix %s"), *FileHeader.FileName);
 			}
 
 			return bWantsPlatformHotfix || bWantsServerHotfix || bWantsDefaultHotfix;
@@ -769,7 +764,7 @@ bool UOnlineHotfixManager::ApplyHotfixProcessing(const FCloudFileHeader& FileHea
 		TArray<uint8> FileData;
 		if (OnlineTitleFile->GetFileContents(FileHeader.DLName, FileData))
 		{
-			UE_LOG(LogHotfixManager, Log, TEXT("Applying hotfix %s"), *FileHeader.FileName);
+			UE_LOG(LogHotfixManager, Verbose, TEXT("Applying hotfix %s"), *FileHeader.FileName);
 
 			if (PreProcessDownloadedFileData(FileData))
 			{
@@ -1449,7 +1444,7 @@ void UOnlineHotfixManager::PatchAssetsFromIniFiles()
 						bool bAddAssetToHotfixedList = false;
 
 						// Find or load the asset
-						UObject* Asset = FPackageName::IsValidLongPackageName(AssetPath, true) ? StaticLoadObject(AssetClass, nullptr, *AssetPath) : nullptr;
+						UObject* Asset = StaticLoadObject(AssetClass, nullptr, *AssetPath);
 						if (Asset != nullptr)
 						{
 							const FString RowUpdate(TEXT("RowUpdate"));
@@ -1595,7 +1590,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 								NumProp->SetIntPropertyValue(RowData, NewPropertyValue);
 								OnHotfixTableValueInt64(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 								bWasDataTableChanged = true;
-								UE_LOG(LogHotfixManager, Log, TEXT("Data table %s row %s updated column %s from %i to %i."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
+								UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %i to %i."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
 							}
 							// Float
 							else
@@ -1605,7 +1600,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 								NumProp->SetFloatingPointPropertyValue(RowData, NewPropertyValue);
 								OnHotfixTableValueDouble(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 								bWasDataTableChanged = true;
-								UE_LOG(LogHotfixManager, Log, TEXT("Data table %s row %s updated column %s from %.2f to %.2f."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
+								UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %.2f to %.2f."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
 							}
 						}
 						// Not a number.
@@ -1623,7 +1618,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						StrProp->SetPropertyValue(RowData, NewPropertyValue);
 						OnHotfixTableValueString(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
-						UE_LOG(LogHotfixManager, Log, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue, *NewPropertyValue);
+						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue, *NewPropertyValue);
 					}
 					// FName property
 					else if (NameProp)
@@ -1633,7 +1628,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						NameProp->SetPropertyValue(RowData, NewPropertyValue);
 						OnHotfixTableValueName(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
-						UE_LOG(LogHotfixManager, Log, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue.ToString(), *NewPropertyValue.ToString());
+						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue.ToString(), *NewPropertyValue.ToString());
 					}
 					// Soft Object property
 					else if (SoftObjProp)
@@ -1643,7 +1638,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						SoftObjProp->SetObjectPropertyValue(RowData, NewPropertyValue);
 						OnHotfixTableValueObject(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
-						UE_LOG(LogHotfixManager, Log, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue->GetFullName(), *NewPropertyValue->GetFullName());
+						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue->GetFullName(), *NewPropertyValue->GetFullName());
 					}
 					// Not an expected property.
 					else
@@ -1715,11 +1710,11 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 
 						if (bWasExistingKey)
 						{
-							UE_LOG(LogHotfixManager, Log, TEXT("Curve table %s row %s updated column %s from %.2f to %.2f."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
+							UE_LOG(LogHotfixManager, Verbose, TEXT("Curve table %s row %s updated column %s from %.2f to %.2f."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
 						}
 						else
 						{
-							UE_LOG(LogHotfixManager, Log, TEXT("Curve table %s row %s added column %s with value %.2f."), *AssetPath, *RowName, *ColumnName, NewPropertyValue);
+							UE_LOG(LogHotfixManager, Verbose, TEXT("Curve table %s row %s added column %s with value %.2f."), *AssetPath, *RowName, *ColumnName, NewPropertyValue);
 						}
 					}
 					else
@@ -1767,7 +1762,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 					CurveFloat->FloatCurve.SetKeyValue(Key, NewPropertyValue);
 					OnHotfixTableValueFloat(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 
-					UE_LOG(LogHotfixManager, Log, TEXT("Curve float %s updated column %s from %.2f to %.2f."), *AssetPath, *ColumnName, OldPropertyValue, NewPropertyValue);
+					UE_LOG(LogHotfixManager, Verbose, TEXT("Curve float %s updated column %s from %.2f to %.2f."), *AssetPath, *ColumnName, OldPropertyValue, NewPropertyValue);
 				}
 				else
 				{
@@ -1812,22 +1807,17 @@ void UOnlineHotfixManager::HotfixTableUpdate(UObject* Asset, const FString& Asse
 	if (CurveTable != nullptr)
 	{
 		ProblemStrings.Append(CurveTable->CreateTableFromJSONString(JsonData));
-		UE_LOG(LogHotfixManager, Log, TEXT("Curve table %s updated."), *AssetPath);
+		UE_LOG(LogHotfixManager, Verbose, TEXT("Curve table %s updated."), *AssetPath);
 	}
 	else if (DataTable != nullptr)
 	{
 		ProblemStrings.Append(DataTable->CreateTableFromJSONString(JsonData));
-		UE_LOG(LogHotfixManager, Log, TEXT("Data table %s updated."), *AssetPath);
+		UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s updated."), *AssetPath);
 	}
 	else
 	{
 		ProblemStrings.Add(TEXT("We can't do a table update on this asset (for example, Curve Float cannot be table updated)."));
 	}
-}
-
-UWorld* UOnlineHotfixManager::GetWorld() const
-{
-	return OwnerWorld.IsValid() ? OwnerWorld.Get() : nullptr;
 }
 
 struct FHotfixManagerExec :

@@ -243,7 +243,6 @@ public:
 
 #if RHI_RAYTRACING
 	bool bRequireRecreatingRayTracingGeometry;
-	bool bSupportRayTracing;
 #endif
 
 #if WITH_EDITORONLY_DATA

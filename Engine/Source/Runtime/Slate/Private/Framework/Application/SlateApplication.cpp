@@ -758,9 +758,6 @@ FSlateApplication::FSlateApplication()
 	FModuleManager::Get().LoadModule(TEXT("Settings"));
 #endif
 
-	// If we are embedded inside another app then we never need to be "active"
-	bAppIsActive = !GUELibraryOverrideSettings.bIsEmbedded;
-
 	SetupPhysicalSensitivities();
 
 	if (GConfig)
@@ -799,7 +796,6 @@ FSlateApplication::FSlateApplication()
 	{
 		CVarGlobalInvalidation->SetOnChangedCallback(FConsoleVariableDelegate::CreateLambda([this](IConsoleVariable* Variable)
 		{
-			UE_TRACE_SLATE_BOOKMARK(TEXT("GlobalInvalidationChanged"));
 			OnGlobalInvalidationToggledEvent.Broadcast(GSlateEnableGlobalInvalidation);
 		}));
 	}
@@ -952,14 +948,6 @@ void FSlateApplication::UsePlatformCursorForCursorUser(bool bUsePlatformCursor)
 				SlateUser->OverrideCursor(bUsePlatformCursor ? PlatformApplication->Cursor : MakeShared<FFauxSlateCursor>());
 			}
 		}
-	}
-}
-
-void FSlateApplication::SetPlatformCursorVisibility(bool bNewVisibility)
-{
-	if (PlatformApplication && PlatformApplication->Cursor)
-	{
-		PlatformApplication->Cursor->SetType(bNewVisibility ? EMouseCursor::Default : EMouseCursor::None);
 	}
 }
 
@@ -1148,7 +1136,6 @@ static void PrepassWindowAndChildren( TSharedRef<SWindow> WindowToPrepass )
 		FScopedSwitchWorldHack SwitchWorld(WindowToPrepass);
 		
 		{
-			WindowToPrepass->ProcessWindowInvalidation();
 			WindowToPrepass->SlatePrepass(FSlateApplication::Get().GetApplicationScale() * WindowToPrepass->GetNativeWindow()->GetDPIScaleFactor());
 		}
 
@@ -1157,10 +1144,7 @@ static void PrepassWindowAndChildren( TSharedRef<SWindow> WindowToPrepass )
 			WindowToPrepass->Resize(WindowToPrepass->GetDesiredSizeDesktopPixels());
 		}
 
-		// Note: Iterate over copy since num children can change during resize above.
-		FMemMark Mark(FMemStack::Get());
-		TArray<TSharedRef<SWindow>, TMemStackAllocator<>> ChildWindows(WindowToPrepass->GetChildWindows());
-		for (const TSharedRef<SWindow>& ChildWindow : ChildWindows)
+		for ( const TSharedRef<SWindow>& ChildWindow : WindowToPrepass->GetChildWindows() )
 		{
 			PrepassWindowAndChildren(ChildWindow);
 		}
@@ -6339,11 +6323,6 @@ bool FSlateApplication::OnApplicationActivationChanged( const bool IsActive )
 
 void FSlateApplication::ProcessApplicationActivationEvent(bool InAppActivated)
 {
-	if (GUELibraryOverrideSettings.bIsEmbedded)
-	{
-		return;
-	}
-
 	const bool UserSwitchedAway = bAppIsActive && !InAppActivated;
 
 	bAppIsActive = InAppActivated;

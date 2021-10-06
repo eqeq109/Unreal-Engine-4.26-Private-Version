@@ -23,12 +23,8 @@ namespace Audio
 
 		virtual void CancelCustom() override;
 
-		virtual bool RequiresAudioDevice() const override { return true; }
-
-		virtual FName GetCommandName() const override;
-
 	private:
-		TSharedPtr<FQuartzClock> OwningClockPtr{ nullptr };
+		FQuartzClock* OwningClockPtr{ nullptr };
 
 		int32 SourceID{ -1 };
 
@@ -52,11 +48,9 @@ namespace Audio
 
 		virtual bool IsClockAltering() override { return true; }
 
-		virtual FName GetCommandName() const override;
-
 	private:
 		FQuartzClockTickRate TickRate;
-		TSharedPtr<FQuartzClock> OwningClockPtr{ nullptr };
+		FQuartzClock* OwningClockPtr{ nullptr };
 
 	}; // class FQuantizedTickRateChange 
 
@@ -73,32 +67,9 @@ namespace Audio
 
 		virtual bool IsClockAltering() override { return false; }
 
-		virtual FName GetCommandName() const override;
-
 	private:
-		TSharedPtr<FQuartzClock> OwningClockPtr{ nullptr };
+		FQuartzClock* OwningClockPtr{ nullptr };
 
 	}; // class FQuantizedTransportReset 
-
-
-		// QuartzQuantizedCommand that starts a second clock on a sample-accurate boundary
-	class AUDIOMIXER_API FQuantizedOtherClockStart : public IQuartzQuantizedCommand
-	{
-	public:
-		virtual TSharedPtr<IQuartzQuantizedCommand> GetDeepCopyOfDerivedObject() const override;
-
-		virtual void OnQueuedCustom(const FQuartzQuantizedCommandInitInfo& InCommandInitInfo) override;
-
-		virtual void OnFinalCallbackCustom(int32 InNumFramesLeft) override;
-
-		virtual bool IsClockAltering() override { return true; }
-
-		virtual FName GetCommandName() const override;
-
-	private:
-		TSharedPtr<FQuartzClock> OwningClockPtr{ nullptr };
-		FName NameOfClockToStart;
-
-	}; // class FQuantizedOtherClockStart 
 
 } // namespace Audio

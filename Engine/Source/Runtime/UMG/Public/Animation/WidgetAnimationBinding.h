@@ -28,7 +28,7 @@ struct FWidgetAnimationBinding
 	FGuid AnimationGuid;
 
 	UPROPERTY()
-	bool bIsRootWidget = false;
+	bool bIsRootWidget;
 
 public:
 

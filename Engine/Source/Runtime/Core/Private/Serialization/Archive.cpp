@@ -395,11 +395,6 @@ void FArchive::PopSerializedProperty(class FProperty* InProperty, const bool bIs
 	}
 }
 
-bool FArchive::IsUsingEventDrivenLoader() const
-{
-	return GEventDrivenLoaderEnabled;
-}
-
 #if WITH_EDITORONLY_DATA
 bool FArchiveState::IsEditorOnlyPropertyOnTheStack() const
 {

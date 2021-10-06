@@ -37,10 +37,8 @@ class AIMODULE_API UEnvQueryGenerator_Composite : public UEnvQueryGenerator
 	UPROPERTY(EditDefaultsOnly, Category = Generator, AdvancedDisplay)
 	TSubclassOf<UEnvQueryItemType> ForcedItemType;
 
-	void VerifyItemTypes();
-
-protected:
 	virtual void GenerateItems(FEnvQueryInstance& QueryInstance) const override;
 	virtual FText GetDescriptionTitle() const override;
-	virtual bool IsValidGenerator() const override;
+
+	void VerifyItemTypes();
 };

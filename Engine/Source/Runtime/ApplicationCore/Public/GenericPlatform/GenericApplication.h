@@ -315,7 +315,7 @@ struct FPlatformRect
 	int32 Right;
 	int32 Bottom;
 
-	FPlatformRect() : Left(0), Top(0), Right(0), Bottom(0) {}
+	FPlatformRect() {}
 	FPlatformRect(int32 InLeft, int32 InTop, int32 InRight, int32 InBottom) : Left(InLeft), Top(InTop), Right(InRight), Bottom(InBottom) {}
 
 	bool operator==(const FPlatformRect& Other) const
@@ -332,12 +332,12 @@ struct FMonitorInfo
 {
 	FString Name;
 	FString ID;
-	int32 NativeWidth = 0;
-	int32 NativeHeight = 0;
+	int32 NativeWidth;
+	int32 NativeHeight;
 	FIntPoint MaxResolution = FIntPoint(ForceInitToZero);
 	FPlatformRect DisplayRect;
 	FPlatformRect WorkArea;
-	bool bIsPrimary = false;
+	bool bIsPrimary;
 	int32 DPI = 0;
 };
 

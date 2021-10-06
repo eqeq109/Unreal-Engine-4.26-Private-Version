@@ -45,7 +45,6 @@ public:
 	}
 };
 
-typedef TTuple<TUniquePtr<MovieRenderPipeline::IVideoCodecWriter>, TPromise<bool>> FMoviePipelineCodecWriter;
 /**
 * A base class for video codec outputs for the Movie Pipeline system. To simplify encoder implementations
 * this handles multi-threading for you and will call all of the encoding functions on a dedicated thread.
@@ -66,7 +65,6 @@ protected:
 	virtual bool HasFinishedProcessingImpl() override;
 	virtual void BeginFinalizeImpl() override;
 	virtual void FinalizeImpl() override;
-	virtual void OnShotFinishedImpl(const UMoviePipelineExecutorShot* InShot, const bool bFlushToDisk) override;
 #if WITH_EDITOR
 	virtual FText GetFooterText(UMoviePipelineExecutorJob* InJob) const override;
 #endif
@@ -74,8 +72,8 @@ protected:
 
 	// UMoviePipelineVideoOutputBase Interface
 	virtual TUniquePtr<MovieRenderPipeline::IVideoCodecWriter> Initialize_GameThread(const FString& InFileName, FIntPoint InResolution, EImagePixelType InPixelType, ERGBFormat InPixelFormat, uint8 InBitDepth, uint8 InNumChannels)  PURE_VIRTUAL(UMoviePipelineVideoOutputBase::Initialize_GameThread, return nullptr; );
-	virtual bool Initialize_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::Initialize_EncodeThread, return true;);
-	virtual void WriteFrame_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter, FImagePixelData* InPixelData, TArray<MoviePipeline::FCompositePassInfo>&& InCompositePasses) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::WriteFrame_EncodeThread);
+	virtual void Initialize_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::Initialize_EncodeThread);
+	virtual void WriteFrame_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter, FImagePixelData* InPixelData) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::WriteFrame_EncodeThread);
 	virtual void BeginFinalize_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::BeginFinalize_EncodeThread);
 	virtual void Finalize_EncodeThread(MovieRenderPipeline::IVideoCodecWriter* InWriter) PURE_VIRTUAL(UMoviePipelineVideoOutputBase::Finalize_EncodeThread);
 	virtual const TCHAR* GetFilenameExtension() const PURE_VIRTUAL(UMoviePipelineVideoOutputBase::GetFilenameExtension, return TEXT(""););
@@ -83,7 +81,7 @@ protected:
 	// ~UMoviePipelineVideoOutputBase Interface
 
 private:
-	TArray<FMoviePipelineCodecWriter> AllWriters;
+	TArray<TUniquePtr<MovieRenderPipeline::IVideoCodecWriter>> AllWriters;
 
 	FGraphEventArray OutstandingTasks;
 };

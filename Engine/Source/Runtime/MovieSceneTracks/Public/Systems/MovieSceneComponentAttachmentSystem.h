@@ -67,8 +67,8 @@ private:
 	virtual void OnRun(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents) override final;
 
 	//~ IMovieScenePreAnimatedStateSystemInterface interface
-	virtual void SavePreAnimatedState(const FPreAnimationParameters& InParameters) override;
-	virtual void RestorePreAnimatedState(const FPreAnimationParameters& InParameters) override;
+	virtual void SaveGlobalPreAnimatedState(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents) override;
+	virtual void RestorePreAnimatedState(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents) override;
 
 	void TagGarbage(UMovieSceneEntitySystemLinker*);
 

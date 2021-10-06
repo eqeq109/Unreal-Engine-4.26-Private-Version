@@ -435,18 +435,8 @@ void FKConvexElem::GetPlanes(TArray<FPlane>& Planes) const
 			Planes.Add(Plane);
 		}
 	}
-#elif WITH_CHAOS
-	using FChaosPlane = Chaos::TPlaneConcrete<float, 3>;
-	if(Chaos::FConvex* RawConvex = ChaosConvex.Get())
-	{
-		const int32 NumPlanes = RawConvex->NumPlanes();
-		for(int32 i = 0; i < NumPlanes; ++i)
-		{
-			const FChaosPlane& Plane = RawConvex->GetPlane(i);
-
-			Planes.Add({Plane.X(), Plane.Normal()});
-		}
-	}
+#else
+	CHAOS_ENSURE(false); // TODO Implement in Chaos
 #endif
 }
 
@@ -566,7 +556,7 @@ void FKConvexElem::UpdateElemBox()
 	}
 }
 
-bool FKConvexElem::HullFromPlanes(const TArray<FPlane>& InPlanes, const TArray<FVector>& SnapVerts, float InSnapDistance)
+bool FKConvexElem::HullFromPlanes(const TArray<FPlane>& InPlanes, const TArray<FVector>& SnapVerts)
 {
 	// Start by clearing this convex.
 	Reset();
@@ -627,7 +617,7 @@ bool FKConvexElem::HullFromPlanes(const TArray<FPlane>& InPlanes, const TArray<F
 				}
 
 				// If we have found a suitably close vertex, use that
-				if( NearestVert != INDEX_NONE && NearestDistSqr < InSnapDistance)
+				if( NearestVert != INDEX_NONE && NearestDistSqr < LOCAL_EPS )
 				{
 					const FVector localVert = SnapVerts[NearestVert];
 					Remap[j] = AddVertexIfNotPresent(VertexData, localVert);

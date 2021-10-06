@@ -11,7 +11,7 @@
 	"MarketplaceURL": "",
 	"SupportURL": "",
 	"CanContainContent": false,
-	"IsBetaVersion": false,
+	"IsBetaVersion": true,
 	"Modules": [
 		{
 			"Name": "DMXProtocol",
@@ -21,21 +21,11 @@
 		{
 			"Name": "DMXProtocolArtNet",
 			"Type": "Runtime",
-			"LoadingPhase": "PreDefault"
+			"LoadingPhase": "Default"
 		},
 		{
 			"Name": "DMXProtocolSACN",
 			"Type": "Runtime",
-			"LoadingPhase": "PreDefault"
-		},
-		{
-			"Name": "DMXProtocolEditor",
-			"Type": "Editor",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "DMXProtocolBlueprintGraph",
-			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
 		}
 	]

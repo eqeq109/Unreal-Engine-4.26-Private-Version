@@ -56,10 +56,6 @@ public:
 
 	void AddEntryToSelectionByDisplayedObjectDeferred(const UObject* InObjects);
 
-	void AddEntriesToSelectionByDisplayedObjectKeysDeferred(const TArray<FObjectKey>& InObjectKeys);
-
-	void AddEntryToSelectionByDisplayedObjectKeyDeferred(const FObjectKey& InObjectKey);
-
 	bool Refresh();
 
 	void RefreshDeferred();

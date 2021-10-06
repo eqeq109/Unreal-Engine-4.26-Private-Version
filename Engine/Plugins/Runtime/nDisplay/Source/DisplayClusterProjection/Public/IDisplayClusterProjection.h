@@ -17,7 +17,8 @@ public:
 	static constexpr auto ModuleName = TEXT("DisplayClusterProjection");
 
 public:
-	virtual ~IDisplayClusterProjection() = default;
+	virtual ~IDisplayClusterProjection()
+	{ }
 
 public:
 	/**
@@ -66,13 +67,5 @@ public:
 	*
 	* @return - true if the mesh linked and ready to warp
 	*/
-	UE_DEPRECATED(4.26, "use config reference")
-	virtual bool AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
-	{ return false; }
-
-	/**
-	* Set camera policy camera
-	*
-	*/
-	virtual bool CameraPolicySetCamera(const TSharedPtr<class IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe>& InPolicy, class UCameraComponent* const NewCamera, const struct FDisplayClusterProjectionCameraPolicySettings& CamersSettings) = 0;
+	virtual bool AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent) = 0;
 };

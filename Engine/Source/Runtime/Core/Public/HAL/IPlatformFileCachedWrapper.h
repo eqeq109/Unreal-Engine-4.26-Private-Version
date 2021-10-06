@@ -188,11 +188,6 @@ public:
 		return false;
 	}
 
-	virtual void ShrinkBuffers() override
-	{
-		FileHandle->ShrinkBuffers();
-	}
-
 private:
 
 	static const uint32 BufferCacheSize = 64 * 1024; // Seems to be the magic number for best perf

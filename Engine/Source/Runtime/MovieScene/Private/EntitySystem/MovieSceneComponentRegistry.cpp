@@ -19,7 +19,6 @@ FComponentTypeID FComponentRegistry::NewTag(const TCHAR* const DebugName, ECompo
 	NewTypeInfo.bIsTriviallyDestructable = 1;
 	NewTypeInfo.bIsTriviallyCopyAssignable = 1;
 	NewTypeInfo.bIsPreserved = EnumHasAnyFlags(Flags, EComponentTypeFlags::Preserved);
-	NewTypeInfo.bIsCopiedToOutput = EnumHasAnyFlags(Flags, EComponentTypeFlags::CopyToOutput);
 	NewTypeInfo.bIsMigratedToOutput = EnumHasAnyFlags(Flags, EComponentTypeFlags::MigrateToOutput);
 
 #if UE_MOVIESCENE_ENTITY_DEBUG
@@ -42,7 +41,6 @@ FComponentTypeID FComponentRegistry::NewComponentTypeInternal(FComponentTypeInfo
 	check(ComponentTypes.Num() < MaximumNumComponentsSupported-1);
 
 	const bool bAddToPreservationMask = TypeInfo.bIsPreserved;
-	const bool bAddToCopyMask         = TypeInfo.bIsCopiedToOutput;
 	const bool bAddToMigrationMask    = TypeInfo.bIsMigratedToOutput;
 	const bool bIsTag                 = TypeInfo.IsTag();
 
@@ -56,15 +54,9 @@ FComponentTypeID FComponentRegistry::NewComponentTypeInternal(FComponentTypeInfo
 		PreservationMask.Set(NewComponentType);
 	}
 
-	if (bAddToCopyMask)
-	{
-		CopyAndMigrationMask.Set(NewComponentType);
-	}
-
 	if (bAddToMigrationMask)
 	{
 		MigrationMask.Set(NewComponentType);
-		CopyAndMigrationMask.Set(NewComponentType);
 	}
 
 	if (!bIsTag)

@@ -4,126 +4,151 @@
 #include "AudioCapturer.h"
 #include "VideoCapturer.h"
 #include "PlayerSession.h"
-#include "VideoEncoderFactory.h"
+#include "Codecs/VideoEncoder.h"
+#include "WebRtcLogging.h"
 #include "PixelStreamerDelegates.h"
-#include "PixelStreamingEncoderFactory.h"
-#include "PixelStreamingSettings.h"
-#include "WebRTCLogging.h"
-#include "WebSocketsModule.h"
-#include "PixelStreamingAudioDeviceModule.h"
-#include "PixelStreamingAudioSink.h"
 
+#include "Modules/ModuleManager.h"
+#include "WebSocketsModule.h"
+#include "HAL/Thread.h"
+#include "Misc/ScopeLock.h"
 
 DEFINE_LOG_CATEGORY(PixelStreamer);
 
+extern TAutoConsoleVariable<int32> CVarPixelStreamingEncoderMaxBitrate;
 
 bool FStreamer::CheckPlatformCompatibility()
 {
-	return AVEncoder::FVideoEncoderFactory::Get().HasEncoderForCodec(AVEncoder::ECodecType::H264);
+	return AVEncoder::FVideoEncoderFactory::FindFactory(TEXT("h264")) ? true : false;
 }
 
-FStreamer::FStreamer(const FString& InSignallingServerUrl, const FString& InStreamerId)
-	: SignallingServerUrl(InSignallingServerUrl), StreamerId(InStreamerId)
+FStreamer::FStreamer(const FString& InSignallingServerUrl):
+	SignallingServerUrl(InSignallingServerUrl)
 {
-	RedirectWebRtcLogsToUnreal(rtc::LoggingSeverity::LS_VERBOSE);
+	RedirectWebRtcLogsToUE4(rtc::LoggingSeverity::LS_VERBOSE);
 
 	FModuleManager::LoadModuleChecked<IModuleInterface>(TEXT("AVEncoder"));
 
 	// required for communication with Signalling Server and must be called in the game thread, while it's used in signalling thread
 	FModuleManager::LoadModuleChecked<FWebSocketsModule>("WebSockets");
 
-	StartWebRtcSignallingThread();
-	ConnectToSignallingServer();
+	FParse::Value(FCommandLine::Get(), TEXT("WebRtcPlanB"), *reinterpret_cast<uint8*>(&bPlanB));
+
+	AVEncoder::FVideoEncoderFactory* UEVideoEncoderFactory = AVEncoder::FVideoEncoderFactory::FindFactory(TEXT("h264"));
+	if (!UEVideoEncoderFactory)
+	{
+		UE_LOG(PixelStreamer, Fatal, TEXT("No video encoder found"));
+	}
+
+	HWEncoderDetails.InitialMaxFPS = GEngine->GetMaxFPS();
+	if (HWEncoderDetails.InitialMaxFPS == 0)
+	{
+		check(IsInGameThread());
+		HWEncoderDetails.InitialMaxFPS = 60;
+		GEngine->SetMaxFPS(HWEncoderDetails.InitialMaxFPS);
+	}
+
+	HWEncoderDetails.Encoder = UEVideoEncoderFactory->CreateEncoder(TEXT("h264"));
+	if (!HWEncoderDetails.Encoder)
+	{
+		UE_LOG(PixelStreamer, Fatal, TEXT("Could not create video encoder"));
+	}
+
+	AVEncoder::FVideoEncoderConfig Cfg;
+	Cfg.Width = 1920;
+	Cfg.Height = 1080;
+	Cfg.Framerate = 60;
+	Cfg.MaxBitrate = CVarPixelStreamingEncoderMaxBitrate.GetValueOnAnyThread();
+	Cfg.Bitrate = FMath::Min((uint32)1000000, Cfg.MaxBitrate);
+	Cfg.Preset = AVEncoder::FVideoEncoderConfig::EPreset::LowLatency;
+	if (!HWEncoderDetails.Encoder->Initialize(Cfg))
+	{
+		UE_LOG(PixelStreamer, Fatal, TEXT("Could not initialize video encoder"));
+	}
+
+	VideoEncoderFactoryStrong = std::make_unique<FVideoEncoderFactory>(HWEncoderDetails);
+
+	// #HACK: Keep a pointer to the Video encoder factory, so we can use it to figure out the
+	// FPlayerSession <-> FVideoEncoder relationship later on
+	VideoEncoderFactory = VideoEncoderFactoryStrong.get();
+
+	// only now that VideoCapturer is created we can create signalling thread
+	WebRtcSignallingThread = MakeUnique<FThread>(TEXT("PixelStreamer WebRTC signalling thread"), [this]() { WebRtcSignallingThreadFunc(); });
 }
 
 FStreamer::~FStreamer()
 {
-	DeleteAllPlayerSessions();
-	PeerConnectionFactory = nullptr;
-	WebRtcSignallingThread->Stop();
-	rtc::CleanupSSL();
+	// stop WebRtc WndProc thread
+	PostThreadMessage(WebRtcSignallingThreadId, WM_QUIT, 0, 0);
+	WebRtcSignallingThread->Join();
+	HWEncoderDetails.Encoder->Shutdown();
 }
 
-void FStreamer::StartWebRtcSignallingThread()
+void FStreamer::WebRtcSignallingThreadFunc()
 {
 	// initialisation of WebRTC stuff and things that depends on it should happen in WebRTC signalling thread
 
-	// Create our own WebRTC thread for signalling
-	WebRtcSignallingThread = MakeUnique<rtc::Thread>(rtc::SocketServer::CreateDefault());
-	WebRtcSignallingThread->SetName("WebRtcSignallingThread", nullptr);
-	WebRtcSignallingThread->Start();
+	WebRtcSignallingThreadId = GetCurrentThreadId();
+
+	// init WebRTC networking and inter-thread communication
+	rtc::EnsureWinsockInit();
+	rtc::Win32SocketServer SocketServer;
+	rtc::Win32Thread W32Thread(&SocketServer);
+	rtc::ThreadManager::Instance()->SetCurrentThread(&W32Thread);
 
 	rtc::InitializeSSL();
 
+	// WebRTC assumes threads within which PeerConnectionFactory is created is the signalling thread
+
 	PeerConnectionConfig = {};
 
-	auto videoEncoderFactory = std::make_unique<FPixelStreamingVideoEncoderFactory>();
-	VideoEncoderFactory = videoEncoderFactory.get();
-
-	bool bUseLegacyAudioDeviceModule = PixelStreamingSettings::CVarPixelStreamingWebRTCUseLegacyAudioDevice.GetValueOnAnyThread();
-	rtc::scoped_refptr<webrtc::AudioDeviceModule> AudioDeviceModule;
-	if(bUseLegacyAudioDeviceModule)
-	{
-		AudioDeviceModule = new rtc::RefCountedObject<FAudioCapturer>();
-	}
-	else
-	{
-		AudioDeviceModule = new rtc::RefCountedObject<FPixelStreamingAudioDeviceModule>();
-	}
-
 	PeerConnectionFactory = webrtc::CreatePeerConnectionFactory(
-		nullptr, // network_thread
-		nullptr, // worker_thread
-		WebRtcSignallingThread.Get(), // signal_thread
-		AudioDeviceModule, // audio device manager
+		nullptr,
+		nullptr,
+		nullptr,
+		new rtc::RefCountedObject<FAudioCapturer>(),
 		webrtc::CreateAudioEncoderFactory<webrtc::AudioEncoderOpus>(),
 		webrtc::CreateAudioDecoderFactory<webrtc::AudioDecoderOpus>(),
-		std::move(videoEncoderFactory),
+		std::move(VideoEncoderFactoryStrong),
 		std::make_unique<webrtc::InternalDecoderFactory>(),
-		nullptr, // audio_mixer
-		this->SetupAudioProcessingModule()); // audio_processing
+		nullptr,
+		nullptr);
 	check(PeerConnectionFactory);
-}
 
-webrtc::AudioProcessing* FStreamer::SetupAudioProcessingModule()
-{
-	webrtc::AudioProcessing* AudioProcessingModule = webrtc::AudioProcessingBuilder().Create();
-	webrtc::AudioProcessing::Config Config;
-	
-	// Enabled multi channel audio capture/render
-	Config.pipeline.multi_channel_capture = true;
-	Config.pipeline.multi_channel_render = true;
-	Config.pipeline.maximum_internal_processing_rate = 48000;
-	
-	// Turn off all other audio processing effects in UE's WebRTC. We want to stream audio from UE as pure as possible.
-	Config.pre_amplifier.enabled = false;
-	Config.high_pass_filter.enabled = false;
-	Config.echo_canceller.enabled = false;
-	Config.noise_suppression.enabled = false;
-	Config.transient_suppression.enabled = false;
-	Config.voice_detection.enabled = false;
-	Config.gain_controller1.enabled = false;
-	Config.gain_controller2.enabled = false;
-	Config.residual_echo_detector.enabled = false;
-	Config.level_estimation.enabled = false;
-	
-	// Apply the config.
-	AudioProcessingModule->ApplyConfig(Config);
+	// now that everything is ready
+	ConnectToSignallingServer();
 
-	return AudioProcessingModule;
+	// WebRTC window messaging loop
+	MSG Msg;
+	BOOL Gm;
+	while ((Gm = ::GetMessageW(&Msg, NULL, 0, 0)) != 0 && Gm != -1)
+	{
+		::TranslateMessage(&Msg);
+		::DispatchMessage(&Msg);
+	}
+
+	// WebRTC stuff created in this thread should be deleted here
+	DeleteAllPlayerSessions();
+	PeerConnectionFactory = nullptr;
+
+	rtc::CleanupSSL();
+
+	UE_LOG(PixelStreamer, Log, TEXT("Exiting WebRTC WndProc thread"));
 }
 
 void FStreamer::ConnectToSignallingServer()
 {
-	SignallingServerConnection = MakeUnique<FSignallingServerConnection>(SignallingServerUrl, *this, StreamerId);
+	SignallingServerConnection = MakeUnique<FSignallingServerConnection>(SignallingServerUrl, *this);
 }
 
 void FStreamer::OnFrameBufferReady(const FTexture2DRHIRef& FrameBuffer)
 {
-	if (bStreamingStarted && VideoSource)
+	if (bStreamingStarted)
 	{
-		VideoSource->OnFrameReady(FrameBuffer);
+		VideoCapturer->OnFrameReady(FrameBuffer);
 	}
+
+	SendVideoEncoderQP();
 }
 
 void FStreamer::OnConfig(const webrtc::PeerConnectionInterface::RTCConfiguration& Config)
@@ -137,29 +162,22 @@ void FStreamer::OnOffer(FPlayerId PlayerId, TUniquePtr<webrtc::SessionDescriptio
 	AddStreams(PlayerId);
 
 	FPlayerSession* Player = GetPlayerSession(PlayerId);
-	checkf(Player, TEXT("just created player %s not found"), *PlayerId);
+	checkf(Player, TEXT("just created player %d not found"), PlayerId);
 
 	Player->OnOffer(MoveTemp(Sdp));
-
-	{
-		FScopeLock PlayersLock(&PlayersCS);
-		for (auto&& PlayerEntry : Players)
-		{
-			PlayerEntry.Value->SendKeyFrame();
-		}
-	}
 }
 
 void FStreamer::OnRemoteIceCandidate(FPlayerId PlayerId, TUniquePtr<webrtc::IceCandidateInterface> Candidate)
 {
 	FPlayerSession* Player = GetPlayerSession(PlayerId);
-	checkf(Player, TEXT("player %s not found"), *PlayerId);
+	checkf(Player, TEXT("player %u not found"), PlayerId);
+
 	Player->OnRemoteIceCandidate(MoveTemp(Candidate));
 }
 
 void FStreamer::OnPlayerDisconnected(FPlayerId PlayerId)
 {
-	UE_LOG(PixelStreamer, Log, TEXT("player %s disconnected"), *PlayerId);
+	UE_LOG(PixelStreamer, Log, TEXT("player %d disconnected"), PlayerId);
 	DeletePlayerSession(PlayerId);
 }
 
@@ -169,53 +187,18 @@ void FStreamer::OnSignallingServerDisconnected()
 	ConnectToSignallingServer();
 }
 
-int FStreamer::GetNumPlayers() const
-{
-	return this->Players.Num();
-}
-
-void FStreamer::GetPlayerSessions(TArray<FPlayerSession*>& OutPlayerSessions)
-{
-	FScopeLock PlayersLock(&PlayersCS);
-	for (auto& Entry : Players)
-	{
-		TUniquePtr<FPlayerSession>& Session = Entry.Value;
-		if(Session.IsValid())
-		{
-			OutPlayerSessions.Add(Session.Get());
-		}
-	}
-}
-
 FPlayerSession* FStreamer::GetPlayerSession(FPlayerId PlayerId)
 {
-	TUniquePtr<FPlayerSession>* Player = Players.Find(PlayerId);
+	auto* Player = Players.Find(PlayerId);
 	return Player ? Player->Get() : nullptr;
-}
-
-FPlayerSession* FStreamer::GetUnlistenedPlayerSession()
-{
-	FScopeLock PlayersLock(&PlayersCS);
-	for (auto& Entry : Players)
-	{
-		TUniquePtr<FPlayerSession>& Session = Entry.Value;
-		FPixelStreamingAudioSink& AudioSink = Session->GetAudioSink();
-		if(!AudioSink.HasAudioConsumers())
-		{
-			return Session.Get();
-		}
-	}
-	return nullptr;
 }
 
 void FStreamer::DeleteAllPlayerSessions()
 {
+	FScopeLock PlayersLock(&PlayersCS);
+	while (Players.Num() > 0)
 	{
-		FScopeLock PlayersLock(&PlayersCS);
-		while (Players.Num() > 0)
-		{
-			DeletePlayerSession(Players.CreateIterator().Key());
-		}
+		DeletePlayerSession(Players.CreateIterator().Key());
 	}
 }
 
@@ -223,10 +206,15 @@ void FStreamer::CreatePlayerSession(FPlayerId PlayerId)
 {
 	check(PeerConnectionFactory);
 
-	// With unified plan, we get several calls to OnOffer, which in turn calls
-	// this several times.
-	// Therefore, we only try to create the player if not created already
+	if (bPlanB)
 	{
+		verifyf(!Players.Find(PlayerId), TEXT("player %u already exists"), PlayerId);
+	}
+	else
+	{
+		// With unified plan, we get several calls to OnOffer, which in turn calls
+		// this several times.
+		// Therefore, we only try to create the player if not created already
 		FScopeLock PlayersLock(&PlayersCS);
 		if (Players.Find(PlayerId))
 		{
@@ -234,31 +222,19 @@ void FStreamer::CreatePlayerSession(FPlayerId PlayerId)
 		}
 	}
 
-	UE_LOG(PixelStreamer, Log, TEXT("Creating player session for PlayerId=%s"), *PlayerId);
-	
+	webrtc::FakeConstraints Constraints;
+	Constraints.AddOptional(webrtc::MediaConstraintsInterface::kEnableDtlsSrtp, "true");
+
 	// this is called from WebRTC signalling thread, the only thread were `Players` map is modified, so no need to lock it
 	bool bOriginalQualityController = Players.Num() == 0; // first player controls quality by default
 	TUniquePtr<FPlayerSession> Session = MakeUnique<FPlayerSession>(*this, PlayerId, bOriginalQualityController);
 	rtc::scoped_refptr<webrtc::PeerConnectionInterface> PeerConnection = PeerConnectionFactory->CreatePeerConnection(PeerConnectionConfig, webrtc::PeerConnectionDependencies{ Session.Get() });
 	check(PeerConnection);
-
-	// Setup suggested bitrate settings on the Peer Connection based on our CVars
-	webrtc::BitrateSettings BitrateSettings;
-	BitrateSettings.min_bitrate_bps = PixelStreamingSettings::CVarPixelStreamingWebRTCMinBitrate.GetValueOnAnyThread();
-	BitrateSettings.max_bitrate_bps = PixelStreamingSettings::CVarPixelStreamingWebRTCMaxBitrate.GetValueOnAnyThread();
-	BitrateSettings.start_bitrate_bps = PixelStreamingSettings::CVarPixelStreamingWebRTCStartBitrate.GetValueOnAnyThread();
-	PeerConnection->SetBitrate(BitrateSettings);
-
 	Session->SetPeerConnection(PeerConnection);
 
 	{
 		FScopeLock PlayersLock(&PlayersCS);
 		Players.Add(PlayerId) = MoveTemp(Session);
-	}
-
-	if (UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates())
-	{
-		Delegates->OnNewConnection.Broadcast(PlayerId, bOriginalQualityController);
 	}
 }
 
@@ -267,7 +243,7 @@ void FStreamer::DeletePlayerSession(FPlayerId PlayerId)
 	FPlayerSession* Player = GetPlayerSession(PlayerId);
 	if (!Player)
 	{
-		UE_LOG(PixelStreamer, VeryVerbose, TEXT("failed to delete player %s: not found"), *PlayerId);
+		UE_LOG(PixelStreamer, VeryVerbose, TEXT("failed to delete player %d: not found"), PlayerId);
 		return;
 	}
 
@@ -277,22 +253,27 @@ void FStreamer::DeletePlayerSession(FPlayerId PlayerId)
 		FScopeLock PlayersLock(&PlayersCS);
 		Players.Remove(PlayerId);
 	}
-
-	UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates();
-	if (Delegates)
-	{
-		Delegates->OnClosedConnection.Broadcast(PlayerId, bWasQualityController);
-	}
-
 	// this is called from WebRTC signalling thread, the only thread were `Players` map is modified, so no need to lock it
 	if (Players.Num() == 0)
 	{
 		bStreamingStarted = false;
+		if (!bPlanB)
+		{
+			AudioTrack = nullptr;
+			VideoTrack = nullptr;
+		}
+		else
+		{
+			Streams.Empty();
+		}
 
 		// Inform the application-specific blueprint that nobody is viewing or
 		// interacting with the app. This is an opportunity to reset the app.
+		UPixelStreamerDelegates* Delegates = UPixelStreamerDelegates::GetPixelStreamerDelegates();
 		if (Delegates)
+		{
 			Delegates->OnAllConnectionsClosed.Broadcast();
+		}
 	}
 	else if (bWasQualityController)
 	{
@@ -306,140 +287,104 @@ void FStreamer::DeletePlayerSession(FPlayerId PlayerId)
 
 void FStreamer::AddStreams(FPlayerId PlayerId)
 {
-
-	bool bSyncVideoAndAudio = !PixelStreamingSettings::CVarPixelStreamingWebRTCDisableAudioSync.GetValueOnAnyThread();
-	
-	FString const AudioStreamId = bSyncVideoAndAudio ? TEXT("pixelstreaming_av_stream_id") : TEXT("pixelstreaming_audio_stream_id");
-	FString const VideoStreamId = bSyncVideoAndAudio ? TEXT("pixelstreaming_av_stream_id") : TEXT("pixelstreaming_video_stream_id");
-	FString const AudioTrackLabel = TEXT("pixelstreaming_audio_track_label");
-	FString const VideoTrackLabel = TEXT("pixelstreaming_video_track_label");
+	const FString StreamId = TEXT("stream_id");
+	const char AudioLabel[] = "audio_label";
+	const char VideoLabel[] = "video_label";
 
 	FPlayerSession* Session = GetPlayerSession(PlayerId);
 	check(Session);
 
-	if (!Session->GetPeerConnection().GetSenders().empty())
+	if (bPlanB)
 	{
-		return;  // Already added tracks
-	}
+		rtc::scoped_refptr<webrtc::MediaStreamInterface> Stream;
 
-	// Use PeerConnection's transceiver API to add create audio/video tracks will correct directionality.
-	// These tracks are only thin wrappers around the underlying sources (the sources are shared among all peer's tracks).
-	// As per the WebRTC source: "The same source can be used by multiple VideoTracks."
-	this->SetupVideoTrack(Session, VideoStreamId, VideoTrackLabel);
-	this->SetupAudioTrack(Session, AudioStreamId, AudioTrackLabel);
-
-}
-
-void FStreamer::SetupVideoTrack(FPlayerSession* Session, FString const VideoStreamId, FString const VideoTrackLabel)
-{
-	// Create one and only one VideoCapturer for Pixel Streaming.
-	// Video capturuer is actually a "VideoSource" in WebRTC terminology.
-	if (!VideoSource)
-	{
-		VideoSource = new FVideoCapturer();
-	}
-
-	// Create video track
-	rtc::scoped_refptr<webrtc::VideoTrackInterface> VideoTrack = PeerConnectionFactory->CreateVideoTrack(TCHAR_TO_UTF8(*VideoTrackLabel), VideoSource);
-
-	// Add the track
-	webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpSenderInterface>> Result = Session->GetPeerConnection().AddTrack(VideoTrack, { TCHAR_TO_UTF8(*VideoStreamId) });
-
-	if (Result.ok())
-	{
-		// Set some content hints based on degradation prefs, WebRTC uses these internally.
-		webrtc::DegradationPreference DegradationPref = PixelStreamingSettings::GetDegradationPreference();
-		switch (DegradationPref)
+		if (auto* StreamPtr = Streams.Find(StreamId))
 		{
-		case webrtc::DegradationPreference::MAINTAIN_FRAMERATE:
-			VideoTrack->set_content_hint(webrtc::VideoTrackInterface::ContentHint::kFluid);
-			break;
-		case webrtc::DegradationPreference::MAINTAIN_RESOLUTION:
-			VideoTrack->set_content_hint(webrtc::VideoTrackInterface::ContentHint::kDetailed);
-			break;
-		default:
-			break;
+			Stream = *StreamPtr;
 		}
+		else
+		{
+			Stream = PeerConnectionFactory->CreateLocalMediaStream(TCHAR_TO_ANSI(*StreamId));
+
+			rtc::scoped_refptr<webrtc::AudioTrackInterface> AudioTrackLocal(
+				PeerConnectionFactory->CreateAudioTrack(AudioLabel, PeerConnectionFactory->CreateAudioSource(cricket::AudioOptions{})));
+
+			Stream->AddTrack(AudioTrackLocal);
+
+			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(HWEncoderDetails);
+			VideoCapturer = VideoCapturerStrong.get();
+			rtc::scoped_refptr<webrtc::VideoTrackInterface> VideoTrackLocal(PeerConnectionFactory->CreateVideoTrack(
+				VideoLabel, PeerConnectionFactory->CreateVideoSource(std::move(VideoCapturerStrong))));
+
+			Stream->AddTrack(VideoTrackLocal);
+
+			Streams[StreamId] = Stream;
+		}
+
+		verifyf(Session->GetPeerConnection().AddStream(Stream), TEXT("Failed to add stream for player %u"), PlayerId);
 	}
 	else
 	{
-		UE_LOG(PixelStreamer, Error, TEXT("Failed to add Video transceiver to PeerConnection of player %s. Msg=%s"), *Session->GetPlayerId(), TCHAR_TO_UTF8(Result.error().message()));
-	}
-
-}
-
-void FStreamer::SetupAudioTrack(FPlayerSession* Session, FString const AudioStreamId, FString const AudioTrackLabel)
-{
-	bool bTransmitUEAudio = !PixelStreamingSettings::CVarPixelStreamingWebRTCDisableTransmitAudio.GetValueOnAnyThread();
-	bool bReceiveBrowserAudio = !PixelStreamingSettings::CVarPixelStreamingWebRTCDisableReceiveAudio.GetValueOnAnyThread();
-
-	// Create one and only one audio source for Pixel Streaming.
-	if (!AudioSource && bTransmitUEAudio)
-	{
-		// Setup audio source options, we turn off many of the "nice" audio settings that
-		// would traditionally be used in a conference call because the audio source we are 
-		// transmitting is UE application audio (not some unknown microphone).
-		this->AudioSourceOptions.echo_cancellation 							= false;
-		this->AudioSourceOptions.auto_gain_control 							= false;
-		this->AudioSourceOptions.noise_suppression 							= false;
-		this->AudioSourceOptions.highpass_filter 							= false;
-		this->AudioSourceOptions.stereo_swapping 							= false;
-		this->AudioSourceOptions.audio_jitter_buffer_max_packets 			= 1000;
-		this->AudioSourceOptions.audio_jitter_buffer_fast_accelerate 		= false;
-		this->AudioSourceOptions.audio_jitter_buffer_min_delay_ms 			= 0;
-		this->AudioSourceOptions.audio_jitter_buffer_enable_rtx_handling 	= false;
-		this->AudioSourceOptions.typing_detection 							= false;
-		this->AudioSourceOptions.experimental_agc							= false;
-		this->AudioSourceOptions.experimental_ns 							= false;
-		this->AudioSourceOptions.residual_echo_detector						= false;
-		// Create audio source
-		AudioSource = PeerConnectionFactory->CreateAudioSource(this->AudioSourceOptions);
-	}
-
-	// Add the audio track to the audio transceiver's sender if we are transmitting audio
-	if(bTransmitUEAudio)
-	{
-
-		rtc::scoped_refptr<webrtc::AudioTrackInterface> AudioTrack =  PeerConnectionFactory->CreateAudioTrack(TCHAR_TO_UTF8(*AudioTrackLabel), AudioSource);
-
-		// Add the track
-		webrtc::RTCErrorOr<rtc::scoped_refptr<webrtc::RtpSenderInterface>> Result = Session->GetPeerConnection().AddTrack(AudioTrack, { TCHAR_TO_UTF8(*AudioStreamId) });
-
-		if(!Result.ok())
+		if (!Session->GetPeerConnection().GetSenders().empty())
 		{
-			UE_LOG(PixelStreamer, Error, TEXT("Failed to add audio track to PeerConnection of player %s. Msg=%s"), *Session->GetPlayerId(), TCHAR_TO_UTF8(Result.error().message()));
+			return;  // Already added tracks
+		}
+
+		if (!AudioTrack)
+		{
+			AudioTrack =
+				PeerConnectionFactory->CreateAudioTrack(AudioLabel, PeerConnectionFactory->CreateAudioSource(cricket::AudioOptions{}));
+		}
+
+		if (!VideoTrack)
+		{
+			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(HWEncoderDetails);
+			VideoCapturer = VideoCapturerStrong.get();
+			VideoTrack = PeerConnectionFactory->CreateVideoTrack(
+				VideoLabel, PeerConnectionFactory->CreateVideoSource(std::move(VideoCapturerStrong)));
+		}
+
+		auto Res = Session->GetPeerConnection().AddTrack(AudioTrack, { TCHAR_TO_ANSI(*StreamId) });
+		if (!Res.ok())
+		{
+			UE_LOG(PixelStreamer, Error, TEXT("Failed to add AudioTrack to PeerConnection of player %u. Msg=%s"), Session->GetPlayerId(), ANSI_TO_TCHAR(Res.error().message()));
+		}
+
+		Res = Session->GetPeerConnection().AddTrack(VideoTrack, { TCHAR_TO_ANSI(*StreamId) });
+		if (!Res.ok())
+		{
+			UE_LOG(PixelStreamer, Error, TEXT("Failed to add VideoTrack to PeerConnection of player %u. Msg=%s"), Session->GetPlayerId(), ANSI_TO_TCHAR(Res.error().message()));
 		}
 	}
 }
 
 void FStreamer::OnQualityOwnership(FPlayerId PlayerId)
 {
-	checkf(GetPlayerSession(PlayerId), TEXT("player %s not found"), *PlayerId);
+	checkf(GetPlayerSession(PlayerId), TEXT("player %d not found"), PlayerId);
+
+	FScopeLock PlayersLock(&PlayersCS);
+	for (auto&& PlayerEntry : Players)
 	{
-		FScopeLock PlayersLock(&PlayersCS);
-		for (auto&& PlayerEntry : Players)
-		{
-			FPlayerSession& Player = *PlayerEntry.Value;
-			Player.SetQualityController(Player.GetPlayerId() == PlayerId ? true : false);
-		}
+		FPlayerSession& Player = *PlayerEntry.Value;
+		Player.SetQualityController(Player.GetPlayerId() == PlayerId ? true : false);
 	}
 }
 
 void FStreamer::SendPlayerMessage(PixelStreamingProtocol::EToPlayerMsg Type, const FString& Descriptor)
 {
-	UE_LOG(PixelStreamer, Log, TEXT("SendPlayerMessage: %d - %s"), static_cast<int32>(Type), *Descriptor);
+	UE_LOG(PixelStreamer, Verbose, TEXT("SendPlayerMessage: %d - %s"), static_cast<int32>(Type), *Descriptor);
+
+	FScopeLock PlayersLock(&PlayersCS);
+	for (auto&& PlayerEntry : Players)
 	{
-		FScopeLock PlayersLock(&PlayersCS);
-		for (auto&& PlayerEntry : Players)
-		{
-			PlayerEntry.Value->SendMessage(Type, Descriptor);
-		}
+		PlayerEntry.Value->SendMessage(Type, Descriptor);
 	}
 }
 
 void FStreamer::SendFreezeFrame(const TArray64<uint8>& JpegBytes)
 {
 	UE_LOG(PixelStreamer, Log, TEXT("Sending freeze frame to players: %d bytes"), JpegBytes.Num());
+
 	{
 		FScopeLock PlayersLock(&PlayersCS);
 		for (auto&& PlayerEntry : Players)
@@ -447,7 +392,6 @@ void FStreamer::SendFreezeFrame(const TArray64<uint8>& JpegBytes)
 			PlayerEntry.Value->SendFreezeFrame(JpegBytes);
 		}
 	}
-	
 
 	CachedJpegBytes = JpegBytes;
 }
@@ -456,7 +400,7 @@ void FStreamer::SendCachedFreezeFrameTo(FPlayerSession& Player)
 {
 	if (CachedJpegBytes.Num() > 0)
 	{
-		UE_LOG(PixelStreamer, Log, TEXT("Sending cached freeze frame to player %s: %d bytes"), *Player.GetPlayerId(), CachedJpegBytes.Num());
+		UE_LOG(PixelStreamer, Log, TEXT("Sending cached freeze frame to player %d: %d bytes"), Player.GetPlayerId(), CachedJpegBytes.Num());
 		Player.SendFreezeFrame(CachedJpegBytes);
 	}
 }
@@ -472,6 +416,21 @@ void FStreamer::SendUnfreezeFrame()
 			PlayerEntry.Value->SendUnfreezeFrame();
 		}
 	}
-	
+
 	CachedJpegBytes.Empty();
+}
+
+void FStreamer::SendVideoEncoderQP()
+{
+	if (HWEncoderDetails.LastAvgQP != FHWEncoderDetails::InvalidQP)
+	{
+		VideoEncoderAvgQP.Update(HWEncoderDetails.LastAvgQP);
+	}
+
+	double Now = FPlatformTime::Seconds();
+	if (Now - LastVideoEncoderQPReportTime > 1)
+	{
+		SendPlayerMessage(PixelStreamingProtocol::EToPlayerMsg::VideoEncoderAvgQP, FString::Printf(TEXT("%.0f"), VideoEncoderAvgQP.Get()));
+		LastVideoEncoderQPReportTime = Now;
+	}
 }

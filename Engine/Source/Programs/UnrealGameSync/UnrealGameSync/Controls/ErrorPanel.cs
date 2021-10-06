@@ -54,10 +54,6 @@ namespace UnrealGameSync
 		{
 		}
 
-		public void UpdateSettings()
-		{
-		}
-
 		public Color? TintColor
 		{
 			get { return null; }

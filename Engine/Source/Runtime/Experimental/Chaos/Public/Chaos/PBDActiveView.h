@@ -19,6 +19,9 @@ namespace Chaos
 		// Return all items, including those not in the view.
 		TItemsType& GetItems() const { return Items; }
 
+		//// Return the total number of items in the view.
+		//int32 GetSize() const { return Size; }
+
 		// Add a new active (or inactive) range at the end of the list, and return its offset.
 		int32 AddRange(int32 NumItems, bool bActivate = true);
 
@@ -31,17 +34,13 @@ namespace Chaos
 		// Execute the specified function on all active items.
 		void SequentialFor(TFunctionRef<void(TItemsType&, int32)> Function) const;
 
-		// Execute the specified function in parallel, on all items for each active range (sequential range, parallel items). Set MinParallelSize to run sequential on the smaller ranges.
+		// Execute the specified function in parallel on all active items. Set MinParallelSize to run sequential on the smaller ranges.
 		void ParallelFor(TFunctionRef<void(TItemsType&, int32)> Function, int32 MinParallelSize = TNumericLimits<int32>::Max()) const;
+		void ParallelFor(TFunctionRef<void(TItemsType&, int32)> Function, bool bParallelRange, int32 MinParallelSize = TNumericLimits<int32>::Max()) const;
 
-		// Execute the specified function in nested parallel for loops, on all items for each active range (parallel range, parallel items). Set MinParallelSize to run sequential on the smaller ranges.
-		void ParallelFor(TFunctionRef<void(TItemsType&, int32)> Function, bool bForceSingleThreadedRange, int32 MinParallelSize = TNumericLimits<int32>::Max()) const;
-
-		// Execute the specified function in sequence for all active range. Callee responsible for inner loop.
+		// Execute the specified function on all active items. Callee responsible for inner loop.
 		void RangeFor(TFunctionRef<void(TItemsType&, int32, int32)> Function) const;
-
-		// Execute the specified function in parallel for all active ranges. Callee responsible for inner loop.
-		void RangeFor(TFunctionRef<void(TItemsType&, int32, int32)> Function, bool bForceSingleThreadedRange) const;
+		void RangeFor(TFunctionRef<void(TItemsType&, int32, int32)> Function, bool bParallelRange) const;
 
 		// Remove all ranges above the current given size.
 		void Reset(int32 Offset = 0);
@@ -49,11 +48,11 @@ namespace Chaos
 		// Return whether there is any active range in the view.
 		bool HasActiveRange() const;
 
-		// Return a list of pair (offset, range) of all active ranges.
-		TArray<TVector<int32, 2>, TInlineAllocator<8>> GetActiveRanges() const;
-
 		// Return internal ranges.
 		TConstArrayView<int32> GetRanges() const { return Ranges;  }
+
+		// Return a list of pair (offset, range) of all active ranges.
+		TArray<TVector<int32, 2>, TInlineAllocator<8>> GetActiveRanges() const;
 
 	private:
 		TItemsType& Items;

@@ -4,7 +4,6 @@
 
 #include "FractureEditorStyle.h"
 #include "FractureEditorCommands.h"
-#include "FractureToolContext.h"
 
 #include "AutoClusterFracture.h"
 
@@ -16,26 +15,25 @@
 UFractureToolAutoCluster::UFractureToolAutoCluster(const FObjectInitializer& ObjInit)
   : Super(ObjInit) 
 {
-	AutoClusterSettings = NewObject<UFractureAutoClusterSettings>(GetTransientPackage(), UFractureAutoClusterSettings::StaticClass());
-	AutoClusterSettings->OwnerTool = this;
+	Settings = NewObject<UFractureAutoClusterSettings>(GetTransientPackage(), UFractureAutoClusterSettings::StaticClass());
 }
 
 
 // UFractureTool Interface
 FText UFractureToolAutoCluster::GetDisplayText() const
 {
-	return FText(NSLOCTEXT("FractureAutoCluster", "FractureToolAutoCluster", "Auto")); 
+	return FText(NSLOCTEXT("Fracture", "FractureToolAutoCluster", "Auto")); 
 }
 
 
 FText UFractureToolAutoCluster::GetTooltipText() const
 {
-	return FText(NSLOCTEXT("FractureAutoCluster", "FractureToolAutoClusterToolTip", "Automatically group together pieces of a fractured mesh (based on your settings) and assign them within the Geometry Collection.")); 
+	return FText(NSLOCTEXT("Fracture", "FractureToolAutoClusterToolTip", "Automatically group together pieces of a fractured mesh (based on your settings) and assign them within the Geometry Collection.")); 
 }
 
 FText UFractureToolAutoCluster::GetApplyText() const 
 { 
-	return FText(NSLOCTEXT("FractureAutoCluster", "ExecuteAutoCluster", "Auto Cluster")); 
+	return FText(NSLOCTEXT("Fracture", "ExecuteAutoCluster", "Auto Cluster")); 
 }
 
 FSlateIcon UFractureToolAutoCluster::GetToolIcon() const
@@ -47,7 +45,7 @@ FSlateIcon UFractureToolAutoCluster::GetToolIcon() const
 TArray<UObject*> UFractureToolAutoCluster::GetSettingsObjects() const 
 {
 	TArray<UObject*> AllSettings; 
-	AllSettings.Add(AutoClusterSettings);
+	AllSettings.Add(Settings);
 	return AllSettings;
 }
 
@@ -57,26 +55,20 @@ void UFractureToolAutoCluster::RegisterUICommand( FFractureEditorCommands* Bindi
 	BindingContext->AutoCluster = UICommandInfo;
 }
 
-void UFractureToolAutoCluster::Execute(TWeakPtr<FFractureEditorModeToolkit> InToolkit)
+void UFractureToolAutoCluster::ExecuteFracture(const FFractureContext& FractureContext)
 {
-	if (InToolkit.IsValid())
+	if (UGeometryCollectionComponent* GeometryCollectionComponent = Cast<UGeometryCollectionComponent>(FractureContext.OriginalPrimitiveComponent))
 	{
-		FFractureEditorModeToolkit* Toolkit = InToolkit.Pin().Get();
+		FScopedColorEdit EditBoneColor = GeometryCollectionComponent->EditBoneSelection();
+		int32 CurrentLevelView = EditBoneColor.GetViewLevel();
 
-		TArray<FFractureToolContext> Contexts = GetFractureToolContexts();
+		UAutoClusterFractureCommand::ClusterChildBonesOfASingleMesh(GeometryCollectionComponent, Settings->AutoClusterMode, Settings->SiteCount);
 
-		for (FFractureToolContext& Context : Contexts)
-		{
-			Context.ConvertSelectionToClusterNodes();
-
-			UAutoClusterFractureCommand::ClusterChildBonesOfASingleMesh(Context.GetGeometryCollectionComponent(), AutoClusterSettings->AutoClusterMode, AutoClusterSettings->SiteCount);
-
-			Refresh(Context, Toolkit);
-		}
-
-		SetOutlinerComponents(Contexts, Toolkit);
+		EditBoneColor.ResetBoneSelection();
+		EditBoneColor.SetLevelViewMode(0);
+		EditBoneColor.SetLevelViewMode(CurrentLevelView);
 	}
 }
-	
+
 #undef LOCTEXT_NAMESPACE
 

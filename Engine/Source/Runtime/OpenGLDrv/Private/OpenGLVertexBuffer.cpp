@@ -209,6 +209,14 @@ void* FOpenGLDynamicRHI::LockVertexBuffer_BottomOfPipe(FRHICommandListImmediate&
 
 	VERIFY_GL_SCOPE();
 	FOpenGLVertexBuffer* VertexBuffer = ResourceCast(VertexBufferRHI);
+	if( !(FOpenGL::SupportsVertexAttribBinding() && OpenGLConsoleVariables::bUseVAB) && VertexBuffer->GetUsage() & BUF_ZeroStride )
+	{
+		check( Offset + Size <= VertexBuffer->GetSize() );
+		// We assume we are only using the first elements from the VB, so we can later on read this memory and create an expanded version of this zero stride buffer
+		check(Offset == 0);
+		return (void*)( (uint8*)VertexBuffer->GetZeroStrideBuffer() + Offset );
+	}
+	else
 	{
 		if (VertexBuffer->IsDynamic() && LockMode == EResourceLockMode::RLM_WriteOnly)
 		{
@@ -228,9 +236,12 @@ void FOpenGLDynamicRHI::UnlockVertexBuffer_BottomOfPipe(FRHICommandListImmediate
 	RHITHREAD_GLCOMMAND_PROLOGUE();
 	VERIFY_GL_SCOPE();
 	FOpenGLVertexBuffer* VertexBuffer = ResourceCast(VertexBufferRHI);
-	if (!RetireAllocation(VertexBuffer))
+	if( (FOpenGL::SupportsVertexAttribBinding() && OpenGLConsoleVariables::bUseVAB) || !( VertexBuffer->GetUsage() & BUF_ZeroStride ) )
 	{
-		VertexBuffer->Unlock();
+		if (!RetireAllocation(VertexBuffer))
+		{
+			VertexBuffer->Unlock();
+		}
 	}
 	RHITHREAD_GLCOMMAND_EPILOGUE();
 }

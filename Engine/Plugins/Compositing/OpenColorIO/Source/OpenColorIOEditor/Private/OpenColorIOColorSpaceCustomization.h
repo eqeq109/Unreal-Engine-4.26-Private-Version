@@ -12,7 +12,7 @@
 
 
 /**
- * Implements a details view customization for the FOpenColorIOConfiguration
+ * Implements a details view customization for the FOpenColorIOConfigurationCustomization
  */
 class FOpenColorIOColorSpaceCustomization : public IPropertyTypeCustomization
 {

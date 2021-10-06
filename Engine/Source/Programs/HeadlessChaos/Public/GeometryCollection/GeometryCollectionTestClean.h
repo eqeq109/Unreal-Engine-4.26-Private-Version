@@ -5,13 +5,18 @@
 
 namespace GeometryCollectionTest
 {	
+	template<class T>
 	void  TestDeleteCoincidentVertices();
 
+	template<class T>
 	void  TestDeleteCoincidentVertices2();
 
+	template<class T>
 	void  TestDeleteZeroAreaFaces();
 
+	template<class T>
 	void  TestDeleteHiddenFaces();
 
+	template<class T>
 	void  TestFillHoles();
 }

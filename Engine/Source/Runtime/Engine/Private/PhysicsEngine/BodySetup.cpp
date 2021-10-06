@@ -52,7 +52,6 @@
 	#include "Experimental/ChaosDerivedData.h"
 	#include "Physics/Experimental/ChaosDerivedDataReader.h"
 	#include "Chaos/CollisionConvexMesh.h"
-	#include "Experimental/ChaosCooking.h"
 #endif
 
 /** Enable to verify that the cooked data matches the source data as we cook it */
@@ -596,10 +595,11 @@ void UBodySetup::CreatePhysicsMeshesAsync(FOnAsyncPhysicsCookFinished OnAsyncPhy
 {
 	check(IsInGameThread());
 
+#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 	// Don't start another cook cycle if one's already in progress
 	check(CurrentCookHelper == nullptr);
+#endif
 
-	// Only perform this check for PhysX as the cooking module is optional
 #if WITH_PHYSX_COOKING && PHYSICS_INTERFACE_PHYSX
 	if (IsRuntime(this) && !IsRuntimeCookingEnabled())
 	{
@@ -633,21 +633,7 @@ void UBodySetup::CreatePhysicsMeshesAsync(FOnAsyncPhysicsCookFinished OnAsyncPhy
 	{
 		FinishCreatePhysicsMeshesAsync(nullptr, OnAsyncPhysicsCookFinished);
 	}
-#else
-	FAsyncCookHelper* NewCookHelper = new FAsyncCookHelper(this);
-	if(NewCookHelper->HasWork())
-	{
-		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(FSimpleDelegateGraphTask::FDelegate::CreateRaw(NewCookHelper, &FAsyncCookHelper::CookAsync,
-															 /*FinishDelegate=*/FSimpleDelegateGraphTask::FDelegate::CreateUObject(this, &UBodySetup::FinishCreatePhysicsMeshesAsync, NewCookHelper, OnAsyncPhysicsCookFinished)),
-															 GET_STATID(STAT_PhysXCooking), nullptr, ENamedThreads::AnyThread);
-		CurrentCookHelper = NewCookHelper;
-	}
-	else
-	{
-		delete NewCookHelper;
-		FinishCreatePhysicsMeshesAsync(nullptr, OnAsyncPhysicsCookFinished);
-	}
-#endif // WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
+#endif // WITH_PHYSX
 }
 
 void UBodySetup::AbortPhysicsMeshAsyncCreation()
@@ -660,7 +646,8 @@ void UBodySetup::AbortPhysicsMeshAsyncCreation()
 #endif
 }
 
-void UBodySetup::FinishCreatePhysicsMeshesAsync(FAsyncCookHelper* AsyncPhysicsCookHelper, FOnAsyncPhysicsCookFinished OnAsyncPhysicsCookFinished)
+#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
+void UBodySetup::FinishCreatePhysicsMeshesAsync(FPhysXCookHelper* AsyncPhysicsCookHelper, FOnAsyncPhysicsCookFinished OnAsyncPhysicsCookFinished)
 {
 	// Ensure we haven't gotten multiple cooks going
 	// Then clear it
@@ -671,13 +658,8 @@ void UBodySetup::FinishCreatePhysicsMeshesAsync(FAsyncCookHelper* AsyncPhysicsCo
 
 	if(AsyncPhysicsCookHelper)
 	{
-#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 		FinishCreatingPhysicsMeshes_PhysX(AsyncPhysicsCookHelper->OutNonMirroredConvexMeshes, AsyncPhysicsCookHelper->OutMirroredConvexMeshes, AsyncPhysicsCookHelper->OutTriangleMeshes);
 		UVInfo = AsyncPhysicsCookHelper->OutUVInfo;
-#elif WITH_CHAOS
-		FinishCreatingPhysicsMeshes_Chaos(*AsyncPhysicsCookHelper);
-		UVInfo = AsyncPhysicsCookHelper->UVInfo;
-#endif // WITH_PHYSX
 		delete AsyncPhysicsCookHelper;
 
 	}
@@ -689,6 +671,7 @@ void UBodySetup::FinishCreatePhysicsMeshesAsync(FAsyncCookHelper* AsyncPhysicsCo
 
 	OnAsyncPhysicsCookFinished.ExecuteIfBound(bSuccess);
 }
+#endif // WITH_PHYSX
 
 #if WITH_CHAOS
 bool UBodySetup::ProcessFormatData_Chaos(FByteBulkData* FormatData)
@@ -707,86 +690,53 @@ bool UBodySetup::ProcessFormatData_Chaos(FByteBulkData* FormatData)
 
 bool UBodySetup::RuntimeCookPhysics_Chaos()
 {
-	Chaos::FCookHelper Cooker(this);
-	Cooker.Cook();
-	FinishCreatingPhysicsMeshes_Chaos(Cooker);
-
 	return true;
-	
 }
 
 void UBodySetup::FinishCreatingPhysicsMeshes_Chaos(FChaosDerivedDataReader<float, 3>& InReader)
 {
-	FinishCreatingPhysicsMeshes_Chaos(InReader.ConvexImplicitObjects, InReader.TrimeshImplicitObjects, InReader.UVInfo, InReader.FaceRemap);
-}
-
-void UBodySetup::FinishCreatingPhysicsMeshes_Chaos(Chaos::FCookHelper& InHelper)
-{
-	TArray<TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe>> SharedSimpleImplicits;
-	TArray<TSharedPtr<Chaos::FTriangleMeshImplicitObject, ESPMode::ThreadSafe>> SharedComplexImplicits;
-
-	// The cooker will prepare unique implicits, body setup requires shared implicits, we do the conversion / promotion to shared
-	// here and then the contents are moved into the body setup storage as part of FinishCreatingPhysicsMeshes
-	for(TUniquePtr<Chaos::FImplicitObject>& Simple : InHelper.SimpleImplicits)
-	{
-		SharedSimpleImplicits.Add(MakeShared<Chaos::FConvex, ESPMode::ThreadSafe>(MoveTemp(Simple.Release()->GetObjectChecked<Chaos::FConvex>())));
-	}
-
-	for(TUniquePtr<Chaos::FTriangleMeshImplicitObject>& Complex : InHelper.ComplexImplicits)
-	{
-		SharedComplexImplicits.Emplace(Complex.Release());
-	}
-
-	InHelper.SimpleImplicits.Reset();
-	InHelper.ComplexImplicits.Reset();
-
-	FinishCreatingPhysicsMeshes_Chaos(SharedSimpleImplicits, SharedComplexImplicits, InHelper.UVInfo, InHelper.FaceRemap);
-}
-
-void UBodySetup::FinishCreatingPhysicsMeshes_Chaos(TArray<TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe>>& ConvexImplicits, TArray<TSharedPtr<Chaos::FTriangleMeshImplicitObject, ESPMode::ThreadSafe>>& TrimeshImplicits, FBodySetupUVInfo& InUvInfo, TArray<int32>& InFaceRemap)
-{
 	ClearPhysicsMeshes();
 
 	const FString FullName = GetFullName();
-	if(GetCollisionTraceFlag() != CTF_UseComplexAsSimple)
+	if (GetCollisionTraceFlag() != CTF_UseComplexAsSimple)
 	{
-		for(int32 ElementIndex = 0; ElementIndex < AggGeom.ConvexElems.Num(); ElementIndex++)
+		for (int32 ElementIndex = 0; ElementIndex < AggGeom.ConvexElems.Num(); ElementIndex++)
 		{
 			FKConvexElem& ConvexElem = AggGeom.ConvexElems[ElementIndex];
 
-			if(CHAOS_ENSURE((ElementIndex < ConvexImplicits.Num())
-			   && ConvexImplicits[ElementIndex]->IsValidGeometry()))
+			if (CHAOS_ENSURE( (ElementIndex < InReader.ConvexImplicitObjects.Num())
+				&& InReader.ConvexImplicitObjects[ElementIndex]->IsValidGeometry()))
 			{
-				ConvexElem.SetChaosConvexMesh(MoveTemp(ConvexImplicits[ElementIndex]));
+				ConvexElem.SetChaosConvexMesh(MoveTemp(InReader.ConvexImplicitObjects[ElementIndex]));
 
 #if TRACK_CHAOS_GEOMETRY
-				ConvexElem.GetChaosConvexMesh()->Track(Chaos::MakeSerializable(ConvexElem.GetChaosConvexMesh()), FullName);
+				ConvexElem.GetChaosConvexMesh()->Track(Chaos::MakeSerializable(ConvexElem.GetChaosConvexMesh()),FullName);
 #endif
 
-				if(ConvexElem.GetChaosConvexMesh()->IsPerformanceWarning())
+				if (ConvexElem.GetChaosConvexMesh()->IsPerformanceWarning())
 				{
 					const FString& PerformanceString = ConvexElem.GetChaosConvexMesh()->PerformanceWarningAndSimplifaction();
-					UE_LOG(LogPhysics, Warning, TEXT("TConvex Name:%s, Element [%d], %s"), *FullName, ElementIndex, *PerformanceString);
+					UE_LOG(LogPhysics, Warning, TEXT("TConvex Name:%s, Element [%d], %s"), FullName.GetCharArray().GetData(), ElementIndex, PerformanceString.GetCharArray().GetData());
 				}
 			}
 			else
 			{
-				if(ElementIndex >= ConvexImplicits.Num())
+				if (ElementIndex >= InReader.ConvexImplicitObjects.Num())
 				{
 					UE_LOG(LogPhysics, Warning, TEXT("InReader.ConvexImplicitObjects.Num() [%d], AggGeom.ConvexElems.Num() [%d]"),
-						   ConvexImplicits.Num(), AggGeom.ConvexElems.Num());
+						InReader.ConvexImplicitObjects.Num(), AggGeom.ConvexElems.Num());
 				}
-				CHAOS_LOG(LogPhysics, Warning, TEXT("TConvex Name:%s, Element [%d] has no Geometry"), *FullName, ElementIndex);
+				CHAOS_LOG(LogPhysics, Warning, TEXT("TConvex Name:%s, Element [%d] has no Geometry"), FullName.GetCharArray().GetData(), ElementIndex);
 			}
 		}
-		ConvexImplicits.Reset();
+		InReader.ConvexImplicitObjects.Reset();
 	}
 
-	ChaosTriMeshes = MoveTemp(TrimeshImplicits);
-	UVInfo = MoveTemp(InUvInfo);
-	FaceRemap = MoveTemp(InFaceRemap);
+	ChaosTriMeshes = MoveTemp(InReader.TrimeshImplicitObjects);
+	UVInfo = MoveTemp(InReader.UVInfo);
+	FaceRemap = MoveTemp(InReader.FaceRemap);
 #if TRACK_CHAOS_GEOMETRY
-	for(auto& TriMesh : ChaosTriMeshes)
+	for (auto& TriMesh : ChaosTriMeshes)
 	{
 		TriMesh->Track(Chaos::MakeSerializable(TriMesh), FullName);
 	}
@@ -794,14 +744,14 @@ void UBodySetup::FinishCreatingPhysicsMeshes_Chaos(TArray<TSharedPtr<Chaos::FCon
 
 #if WITH_CHAOS
 	// Force trimesh collisions off
-	for(auto& TriMesh : ChaosTriMeshes)
+	for (auto& TriMesh : ChaosTriMeshes)
 	{
 		TriMesh->SetDoCollide(false);
 	}
 #endif
 
 	// Clear the cooked data
-	if(!GIsEditor && !bSharedCookedData)
+	if (!GIsEditor && !bSharedCookedData)
 	{
 		CookedFormatData.FlushData();
 	}
@@ -1526,7 +1476,13 @@ void UBodySetup::GetGeometryDDCKey(FString& OutString) const
 		CDP->GetMeshId(MeshIdString);
 	}
 
-	OutString = FString::Printf(TEXT("%s_%s_%s_%d_%d_%d_%d_%f_%f_%d"),
+#if WITH_CHAOS
+	const int32 ConvexMarginType = Chaos::Chaos_Collision_ConvexMarginType;
+#else
+	const int32 ConvexMarginType = 0;
+#endif
+
+	OutString = FString::Printf(TEXT("%s_%s_%s_%d_%d_%d_%d_%f_%f_%d_%d"),
 		*BodySetupGuid.ToString(),
 		*MeshIdString,
 		*AggGeom.MakeDDCKey().ToString(),
@@ -1536,6 +1492,7 @@ void UBodySetup::GetGeometryDDCKey(FString& OutString) const
 		(int32)GetCollisionTraceFlag(),
 		UPhysicsSettings::Get()->SolverOptions.CollisionMarginFraction,
 		UPhysicsSettings::Get()->SolverOptions.CollisionMarginMax,
+		ConvexMarginType,
 		(int32)BODY_SETUP_GEOMETRY_KEY_VER);
 
 	if (bSupportUVsAndFaceRemap)
@@ -1932,21 +1889,19 @@ TArray<int32> FKConvexElem::GetChaosConvexIndices() const
 	const int32 NumVerts = VertexData.Num();
 	if (NumVerts > 0)
 	{
-		TArray<Chaos::FVec3> ConvexVertices;
-		ConvexVertices.SetNum(NumVerts);
+		Chaos::TParticles<Chaos::FReal, 3> ConvexParticles;
+		ConvexParticles.AddParticles(NumVerts);
 
 		for (int32 VertIndex = 0; VertIndex < NumVerts; ++VertIndex)
 		{
-			ConvexVertices[VertIndex] = VertexData[VertIndex];
+			ConvexParticles.X(VertIndex) = VertexData[VertIndex];
 		}
 
-		TArray<Chaos::TVec3<int32>> Triangles;
-		Chaos::FConvexBuilder::Params BuildParams;
-		BuildParams.HorizonEpsilon = Chaos::FConvexBuilder::SuggestEpsilon(ConvexVertices);
-		Chaos::FConvexBuilder::BuildConvexHull(ConvexVertices, Triangles, BuildParams);
+		TArray<Chaos::TVector<int32, 3>> Triangles;
+		Chaos::FConvexBuilder::BuildConvexHull(ConvexParticles, Triangles);
 
 		ResultIndexData.Reserve(Triangles.Num() * 3);
-		for (Chaos::TVec3<int32> Tri : Triangles)
+		for (Chaos::TVector<int32, 3> Tri : Triangles)
 		{
 			ResultIndexData.Add(Tri[0]);
 			ResultIndexData.Add(Tri[1]);

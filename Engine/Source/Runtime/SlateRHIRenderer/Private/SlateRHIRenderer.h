@@ -295,7 +295,6 @@ private:
 
 	FDeferredUpdateContextList DeferredUpdateContexts;
 
-	bool bIsStandaloneStereoOnlyDevice;
 	bool bTakingAScreenShot;
 	FIntRect ScreenshotRect;
 	FViewportInfo* ScreenshotViewportInfo;

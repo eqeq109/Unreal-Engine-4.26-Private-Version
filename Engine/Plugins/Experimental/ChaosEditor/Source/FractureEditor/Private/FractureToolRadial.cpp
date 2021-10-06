@@ -2,17 +2,33 @@
 
 #include "FractureToolRadial.h"
 
-#include "FractureToolContext.h"
-
+#include "FractureEditorStyle.h"
 
 #define LOCTEXT_NAMESPACE "FractureRadial"
+
+void UFractureRadialSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	if (OwnerTool != nullptr)
+	{
+		OwnerTool->PostEditChangeProperty(PropertyChangedEvent);
+	}
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+}
+
+void UFractureRadialSettings::PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent)
+{
+	if (OwnerTool != nullptr)
+	{
+		OwnerTool->PostEditChangeChainProperty(PropertyChangedEvent);
+	}
+	Super::PostEditChangeChainProperty(PropertyChangedEvent);
+}
 
 
 UFractureToolRadial::UFractureToolRadial(const FObjectInitializer& ObjInit) 
 	: Super(ObjInit) 
 {
-	RadialSettings = NewObject<UFractureRadialSettings>(GetTransientPackage(), UFractureRadialSettings::StaticClass());
-	RadialSettings->OwnerTool = this;
+	GetMutableDefault<UFractureRadialSettings>()->OwnerTool = this;
 }
 
 FText UFractureToolRadial::GetDisplayText() const
@@ -39,34 +55,35 @@ void UFractureToolRadial::RegisterUICommand( FFractureEditorCommands* BindingCon
 TArray<UObject*> UFractureToolRadial::GetSettingsObjects() const 
 { 
 	TArray<UObject*> Settings; 
-	Settings.Add(CutterSettings);
-	Settings.Add(CollisionSettings);
-	Settings.Add(RadialSettings);
+	Settings.Add(GetMutableDefault<UFractureCommonSettings>());
+	Settings.Add(GetMutableDefault<UFractureRadialSettings>());
 	return Settings;
 }
 
-void UFractureToolRadial::GenerateVoronoiSites(const FFractureToolContext& Context, TArray<FVector>& Sites)
+void UFractureToolRadial::GenerateVoronoiSites(const FFractureContext &Context, TArray<FVector>& Sites)
 {
- 	float RadialStep = RadialSettings->Radius / RadialSettings->RadialSteps;
+ 	const UFractureRadialSettings* FractureSettings = GetMutableDefault<UFractureRadialSettings>();
 
-	const FVector Center(Context.GetBounds().GetCenter() + RadialSettings->Center);
+	float RadialStep = FractureSettings->Radius / FractureSettings->RadialSteps;
 
-	FRandomStream RandStream(Context.GetSeed());
-	FVector UpVector(RadialSettings->Normal);
+	const FVector Center(Context.Bounds.GetCenter() + FractureSettings->Center);
+
+	FRandomStream RandStream(Context.RandomSeed);
+	FVector UpVector(FractureSettings->Normal);
 	UpVector.Normalize();
 	FVector PerpVector(UpVector[2], UpVector[0], UpVector[1]);
 
-	for (int32 ii = 1; ii < RadialSettings->RadialSteps; ++ii)
+	for (int32 ii = 1; ii < FractureSettings->RadialSteps; ++ii)
 	{
 		FVector PositionVector(PerpVector * RadialStep * ii);
 
-		float AngularStep = 360.f / RadialSettings->AngularSteps;
-		PositionVector = PositionVector.RotateAngleAxis(RadialSettings->AngleOffset * ii, UpVector);
+		float AngularStep = 360.f / FractureSettings->AngularSteps;
+		PositionVector = PositionVector.RotateAngleAxis(FractureSettings->AngleOffset * ii, UpVector);
 
-		for (int32 kk = 0; kk < RadialSettings->AngularSteps; ++kk)
+		for (int32 kk = 0; kk < FractureSettings->AngularSteps; ++kk)
 		{
 			PositionVector = PositionVector.RotateAngleAxis(AngularStep , UpVector);
-			Sites.Emplace(Center + PositionVector + (RandStream.VRand() * RandStream.FRand() * RadialSettings->Variability));
+			Sites.Emplace(Center + PositionVector + (RandStream.VRand() * RandStream.FRand() * FractureSettings->Variability));
 		}
 	}
 }

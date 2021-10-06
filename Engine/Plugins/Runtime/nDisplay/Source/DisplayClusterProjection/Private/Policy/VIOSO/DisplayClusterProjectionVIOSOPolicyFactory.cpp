@@ -1,28 +1,24 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Policy/VIOSO/DisplayClusterProjectionVIOSOPolicyFactory.h"
-
+#include "Policy/VIOSO/DisplayClusterProjectionVIOSOPolicy.h"
 #include "DisplayClusterProjectionStrings.h"
 #include "DisplayClusterProjectionLog.h"
 
-#include "DisplayClusterConfigurationTypes.h"
+FDisplayClusterProjectionVIOSOPolicyFactory::FDisplayClusterProjectionVIOSOPolicyFactory()
+{
+}
 
-#if PLATFORM_WINDOWS
-#include "Policy/VIOSO/Windows/DisplayClusterProjectionVIOSOPolicy.h"
-#endif
-
+FDisplayClusterProjectionVIOSOPolicyFactory::~FDisplayClusterProjectionVIOSOPolicyFactory()
+{
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe> FDisplayClusterProjectionVIOSOPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionVIOSOPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
 {
-	check(InConfigurationProjectionPolicy != nullptr);
+	UE_LOG(LogDisplayClusterProjectionVIOSO, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
 
-#if PLATFORM_WINDOWS
-	UE_LOG(LogDisplayClusterProjectionVIOSO, Log, TEXT("Instantiating projection policy <%s> id='%s'"), *InConfigurationProjectionPolicy->Type, *ProjectionPolicyId);
-	return  MakeShared<FDisplayClusterProjectionVIOSOPolicy, ESPMode::ThreadSafe>(ProjectionPolicyId, InConfigurationProjectionPolicy);
-#endif
-
-	return nullptr;
-}
+	return MakeShareable(new FDisplayClusterProjectionVIOSOPolicy(ViewportId, RHIName, Parameters));
+};

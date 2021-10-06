@@ -59,8 +59,6 @@ public:
 		return bUseSameOptions;
 	}
 
-	static const FString& GetDocumentationURL() { return DocumentationURL; }
-
 private:
 	FReply OnProceed()
 	{
@@ -94,5 +92,4 @@ private:
 	TWeakPtr< SWindow > Window;
 	bool bShouldProceed;
 	bool bUseSameOptions;
-	static FString DocumentationURL;
 };

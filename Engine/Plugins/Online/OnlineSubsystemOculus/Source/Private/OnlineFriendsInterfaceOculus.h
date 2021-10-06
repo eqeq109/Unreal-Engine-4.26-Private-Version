@@ -12,7 +12,8 @@
 class FOnlineOculusFriend : public FOnlineFriend
 {
 private:
-	FUniqueNetIdOculusRef UserId;
+
+	TSharedRef<const FUniqueNetIdOculus> UserId;
 	const FString DisplayName;
 	FOnlineUserPresence Presence;
 
@@ -21,14 +22,14 @@ private:
 public:
 
 	FOnlineOculusFriend(const ovrID ID, const FString& InDisplayName, ovrUserPresenceStatus FriendPresenceStatus, const FString& InInviteToken) :
-		UserId(FUniqueNetIdOculus::Create(ID)),
+		UserId(new FUniqueNetIdOculus(ID)),
 		DisplayName(InDisplayName),
 		InviteToken(InInviteToken)
 	{
 		Presence.bIsOnline = FriendPresenceStatus == ovrUserPresenceStatus_Online;
 	}
 
-	virtual FUniqueNetIdRef GetUserId() const override
+	virtual TSharedRef<const FUniqueNetId> GetUserId() const override
 	{
 		return UserId;
 	}

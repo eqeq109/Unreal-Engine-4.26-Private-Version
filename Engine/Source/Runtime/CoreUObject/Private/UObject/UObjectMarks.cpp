@@ -169,7 +169,7 @@ void UnMarkObject(const class UObjectBase* Object, EObjectMark Marks)
 
 void MarkAllObjects(EObjectMark Marks)
 {
-	for (FThreadSafeObjectIterator It; It; ++It)
+	for (FObjectIterator It; It; ++It)
 	{
 		MarkObject(*It, Marks);
 	}

@@ -69,13 +69,10 @@ struct FWidgetInvalidatedMessage
 	EInvalidateWidgetReason InvalidationReason = EInvalidateWidgetReason::None;
 	bool bRootInvalidated = false;
 	bool bRootChildOrderInvalidated = false;
-	FString ScriptTrace;
-	FString Callstack;
 
 	static FWidgetInvalidatedMessage FromWidget(const Trace::IAnalyzer::FEventData& EventData);
 	static FWidgetInvalidatedMessage FromRoot(const Trace::IAnalyzer::FEventData& EventData);
 	static FWidgetInvalidatedMessage FromChildOrder(const Trace::IAnalyzer::FEventData& EventData);
-	static FString GetCallstack(const Trace::IAnalyzer::FEventData& EventData);
 };
 
 struct FApplicationTickedMessage

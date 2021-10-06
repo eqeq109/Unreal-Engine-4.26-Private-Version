@@ -124,8 +124,8 @@ void ULiveLinkAnimationVirtualSubject::BuildSkeleton(const TArray<FLiveLinkSubje
 {
 	if (DoesSkeletonNeedRebuilding())
 	{
-		FLiveLinkStaticDataStruct StaticData(FLiveLinkSkeletonStaticData::StaticStruct());
-		FLiveLinkSkeletonStaticData* SkeletonData = StaticData.Cast<FLiveLinkSkeletonStaticData>();
+		FrameSnapshot.StaticData.InitializeWith(FLiveLinkSkeletonStaticData::StaticStruct(), nullptr);
+		FLiveLinkSkeletonStaticData* SkeletonData = FrameSnapshot.StaticData.Cast<FLiveLinkSkeletonStaticData>();
 
 		TArray<FName> BoneNames{ TEXT("Root") };
 		TArray<int32> BoneParents{ INDEX_NONE };
@@ -146,21 +146,23 @@ void ULiveLinkAnimationVirtualSubject::BuildSkeleton(const TArray<FLiveLinkSubje
 		SkeletonData->SetBoneNames(BoneNames);
 		SkeletonData->SetBoneParents(BoneParents);
 
-		UpdateStaticDataSnapshot(MoveTemp(StaticData));
-
 		bInvalidate = false;
 	}
 }
 
 void ULiveLinkAnimationVirtualSubject::BuildFrame(const TArray<FLiveLinkSubjectFrameData>& InSubjectSnapshots)
 {
-	const FLiveLinkSkeletonStaticData* SnapshotSkeletonData = GetFrameSnapshot().StaticData.Cast<FLiveLinkSkeletonStaticData>();
-	FLiveLinkFrameDataStruct NewFrameData(FLiveLinkAnimationFrameData::StaticStruct());
-	FLiveLinkAnimationFrameData* NewSnapshotFrameData = NewFrameData.Cast<FLiveLinkAnimationFrameData>();
+	if (!FrameSnapshot.FrameData.IsValid())
+	{
+		FrameSnapshot.FrameData.InitializeWith(FLiveLinkAnimationFrameData::StaticStruct(), nullptr);
+	}
 
-	NewSnapshotFrameData->Transforms.Reset(SnapshotSkeletonData->GetBoneNames().Num());
-	NewSnapshotFrameData->Transforms.Add(FTransform::Identity);
-	NewSnapshotFrameData->MetaData.StringMetaData.Empty();
+	FLiveLinkSkeletonStaticData* SnapshotSkeletonData = FrameSnapshot.StaticData.Cast<FLiveLinkSkeletonStaticData>();
+	FLiveLinkAnimationFrameData* SnapshotFrameData = FrameSnapshot.FrameData.Cast<FLiveLinkAnimationFrameData>();
+
+	SnapshotFrameData->Transforms.Reset(SnapshotSkeletonData->GetBoneNames().Num());
+	SnapshotFrameData->Transforms.Add(FTransform::Identity);
+	SnapshotFrameData->MetaData.StringMetaData.Empty();
 
 	//Go over each subject snapshot and take transforms and curves
 	check(InSubjectSnapshots.Num() == Subjects.Num());
@@ -170,21 +172,19 @@ void ULiveLinkAnimationVirtualSubject::BuildFrame(const TArray<FLiveLinkSubjectF
 		check(SubjectSnapShotData.FrameData.IsValid());
 		const FLiveLinkAnimationFrameData* SubjectFrameData = SubjectSnapShotData.FrameData.Cast<FLiveLinkAnimationFrameData>();
 
-		NewSnapshotFrameData->Transforms.Append(SubjectFrameData->Transforms);
-		NewSnapshotFrameData->PropertyValues.Append(SubjectFrameData->PropertyValues);
+		SnapshotFrameData->Transforms.Append(SubjectFrameData->Transforms);
+		SnapshotFrameData->PropertyValues.Append(SubjectFrameData->PropertyValues);
 		for (const auto& MetaDatum : SubjectFrameData->MetaData.StringMetaData)
 		{
 			const FName QualifiedKey = FName(*(Subjects[i].ToString() + MetaDatum.Key.ToString()));
-			NewSnapshotFrameData->MetaData.StringMetaData.Emplace(Subjects[i], MetaDatum.Value);
+			SnapshotFrameData->MetaData.StringMetaData.Emplace(Subjects[i], MetaDatum.Value);
 		}
 	}
-
-	UpdateFrameDataSnapshot(MoveTemp(NewFrameData));
 }
 
 bool ULiveLinkAnimationVirtualSubject::DoesSkeletonNeedRebuilding() const
 {
-	return !HasValidStaticData() || bInvalidate;
+	return !FrameSnapshot.StaticData.IsValid() || bInvalidate;
 }
 
 #if WITH_EDITOR

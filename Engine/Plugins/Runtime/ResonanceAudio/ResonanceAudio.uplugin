@@ -21,7 +21,7 @@
 		"LoadingPhase": "Default",
 		"WhitelistPlatforms": [
 			"Android",
-			"IOS",
+			"iOS",
 			"Linux",
 			"Mac",
 			"Win32",

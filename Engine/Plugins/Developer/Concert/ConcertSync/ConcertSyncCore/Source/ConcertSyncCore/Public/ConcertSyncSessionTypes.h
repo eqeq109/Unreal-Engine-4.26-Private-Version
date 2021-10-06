@@ -28,8 +28,7 @@ enum class EConcertSyncLockEventType : uint8
 UENUM()
 enum class EConcertSyncActivityEventType : uint8
 {
-	None = 0,
-	Connection,
+	Connection = 0,
 	Lock,
 	Transaction,
 	Package,
@@ -181,11 +180,11 @@ struct FConcertSyncActivity
 
 	/** The time at which the activity was produced (UTC) */
 	UPROPERTY()
-	FDateTime EventTime = {0};
+	FDateTime EventTime;
 
 	/** The type of this activity */
 	UPROPERTY()
-	EConcertSyncActivityEventType EventType = EConcertSyncActivityEventType::None;
+	EConcertSyncActivityEventType EventType;
 
 	/** The ID of the event associated with this activity (@see EventType to work out how to resolve this) */
 	UPROPERTY()
@@ -193,7 +192,7 @@ struct FConcertSyncActivity
 
 	/** The minimal summary of the event associated with this activity (@see FConcertSyncActivitySummary) */
 	UPROPERTY()
-	FConcertSessionSerializedPayload EventSummary{EConcertPayloadSerializationMethod::Cbor};
+	FConcertSessionSerializedCborPayload EventSummary;
 };
 
 /** Data for a connection activity entry in a Concert Sync Session */

@@ -4,7 +4,6 @@
 
 #include "AssetTypeCategories.h"
 #include "AjaMediaOutput.h"
-#include "EngineAnalytics.h"
 
 
 /* UAjaMediaSourceFactoryNew structors
@@ -22,19 +21,8 @@ UAjaMediaOutputFactoryNew::UAjaMediaOutputFactoryNew(const FObjectInitializer& O
 /* UFactory overrides
  *****************************************************************************/
 
-/**
- * @EventName MediaFramework.AjaMediaOutputCreated
- * @Trigger Triggered when an Aja media output asset is created.
- * @Type Client
- * @Owner MediaIO Team
- */
 UObject* UAjaMediaOutputFactoryNew::FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("MediaFramework.AjaMediaOutputCreated"));
-	}
-	
 	return NewObject<UAjaMediaOutput>(InParent, InClass, InName, Flags);
 }
 

@@ -2,6 +2,7 @@
 
 #include "Tracks/MovieSceneIntegerTrack.h"
 #include "Sections/MovieSceneIntegerSection.h"
+#include "Evaluation/MovieScenePropertyTemplates.h"
 
 UMovieSceneIntegerTrack::UMovieSceneIntegerTrack( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )
@@ -17,4 +18,9 @@ bool UMovieSceneIntegerTrack::SupportsType(TSubclassOf<UMovieSceneSection> Secti
 UMovieSceneSection* UMovieSceneIntegerTrack::CreateNewSection()
 {
 	return NewObject<UMovieSceneIntegerSection>(this, NAME_None, RF_Transactional);
+}
+
+FMovieSceneEvalTemplatePtr UMovieSceneIntegerTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FMovieSceneIntegerPropertySectionTemplate(*CastChecked<UMovieSceneIntegerSection>(&InSection), *this);
 }

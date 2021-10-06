@@ -10,7 +10,6 @@
 
 class ULidarPointCloud;
 class ULidarPointCloudComponent;
-class FLidarPointCloudOctree;
 struct FLidarPointCloudTraversalOctree;
 struct FLidarPointCloudTraversalOctreeNode;
 
@@ -32,6 +31,17 @@ struct FLidarPointCloudViewData
 	bool ComputeFromEditorViewportClient(class FViewportClient* ViewportClient);
 };
 
+/** Convenience struct to group all selection params into one */
+struct FLidarPointCloudNodeSelectionParams
+{
+	float MinScreenSize;
+	float ScreenCenterImportance;
+	int32 MinDepth;
+	int32 MaxDepth;
+	float BoundsScale;
+	const TArray<const ALidarClippingVolume*>* ClippingVolumes;
+};
+
 /**  
  * This class is responsible for selecting nodes for rendering among all instances of all LidarPointCloud assets.
  * 
@@ -40,14 +50,12 @@ class FLidarPointCloudLODManager : public FTickableGameObject
 {
 	struct FRegisteredProxy
 	{
-		TWeakObjectPtr<ULidarPointCloudComponent> Component;
-		TWeakObjectPtr<ULidarPointCloud> PointCloud;
-		FLidarPointCloudOctree* Octree;
-		FLidarPointCloudComponentRenderParams ComponentRenderParams;
+		ULidarPointCloudComponent* Component;
+		ULidarPointCloud* PointCloud;
 		TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper;
 		TSharedPtr<FLidarPointCloudTraversalOctree, ESPMode::ThreadSafe> TraversalOctree;
 
-		FRegisteredProxy(TWeakObjectPtr<ULidarPointCloudComponent> Component, TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper);
+		FRegisteredProxy(ULidarPointCloudComponent* Component, TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper);
 
 		/** Used to detect transform changes without the need of callbacks from the SceneProxy */
 		FTransform LastComponentTransform;
@@ -71,6 +79,15 @@ class FLidarPointCloudLODManager : public FTickableGameObject
 	FThreadSafeCounter64 NumPointsInFrustum;
 
 public:
+	/** Used for node size sorting and node selection. */
+	struct FNodeSizeData
+	{
+		FLidarPointCloudTraversalOctreeNode* Node;
+		float Size;
+		int32 ProxyIndex;
+		FNodeSizeData(FLidarPointCloudTraversalOctreeNode* Node, const float& Size, const int32& ProxyIndex) : Node(Node), Size(Size), ProxyIndex(ProxyIndex) {}
+	};
+
 	FLidarPointCloudLODManager();
 
 	virtual void Tick(float DeltaTime) override;
@@ -92,11 +109,11 @@ private:
 	 *
 	 * Returns the number of points in visible frustum
 	 */
-	int64 ProcessLOD(const TArray<FRegisteredProxy>& RegisteredProxies, const float CurrentTime, const uint32 PointBudget, const TArray<FLidarPointCloudClippingVolumeParams>& ClippingVolumes);
+	int64 ProcessLOD(const TArray<FRegisteredProxy>& RegisteredProxies, const float CurrentTime, const uint32 PointBudget, const TArray<const ALidarClippingVolume*>& ClippingVolumes);
 
 	/** Called to prepare the proxies for processing */
 	void PrepareProxies();
 
 	/** Compiles a list of all clipping volumes affecting any of the registered proxies */
-	TArray<FLidarPointCloudClippingVolumeParams> GetClippingVolumes() const;
+	TArray<const ALidarClippingVolume*> GetClippingVolumes() const;
 };

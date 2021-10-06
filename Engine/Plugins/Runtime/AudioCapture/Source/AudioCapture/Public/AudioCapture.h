@@ -36,11 +36,11 @@ struct AUDIOCAPTURE_API FAudioCaptureDeviceInfo
 
 	// The number of input channels
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AudioCapture")
-	int32 NumInputChannels = 0;
+	int32 NumInputChannels;
 
 	// The sample rate of the audio capture device
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AudioCapture")
-	int32 SampleRate = 0;
+	int32 SampleRate;
 };
 
 // Class which opens up a handle to an audio capture device.

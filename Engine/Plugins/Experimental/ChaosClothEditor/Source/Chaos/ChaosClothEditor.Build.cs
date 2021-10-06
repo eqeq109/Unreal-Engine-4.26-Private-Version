@@ -17,11 +17,7 @@ public class ChaosClothEditor : ModuleRules
                 "Persona",
                 "ChaosCloth",
                 "UnrealEd",
-                "Engine",
-                "DetailCustomizations",
-                "CoreUObject",
-                "InputCore",
-                "EditorStyle"
+                "Engine"
             }
         );
 

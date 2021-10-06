@@ -21,7 +21,7 @@ class TMediaQueueAllocator
 public:
 	static T* Allocate(uint32 NumElements)
 	{
-		return reinterpret_cast<T*>(FMemory::Malloc(NumElements * sizeof(T),  __alignof(T)));
+		return(reinterpret_cast<T*>(FMemory::Malloc(NumElements * sizeof(T),  __alignof(T))));
 	}
 	static void Deallocate(T* Address)
 	{
@@ -35,13 +35,13 @@ public:
 
 
 /**
- * Object safe queue class.
+ * Object safe FIFO container class.
  *
- * Implements by-value methods only to avoid working with references.
+ * Implements essential FIFO functions only to avoid working with references.
  *
  * Methods like
  *  T& Push()
- *  T& operator[](int32)
+ *  T& operator[](int)
  *  T& Front()
  *
  * are dangerous when used in a multi-threaded environment since the elements cannot be protected by an internal mutex.
@@ -56,13 +56,14 @@ public:
 	using ElementType = T;
 
 	TMediaQueue(SIZE_T InitialCapacity = 0)
+		: Elements(NULL)
+		, MaxNum(0)
+		, NumIn(0)
+		, IdxIn(0)
+		, IdxOut(0)
 	{
 		Resize(InitialCapacity);
 	}
-
-	// Not copyable (for now) because of the possible mutex class.
-	TMediaQueue(const MyType& rhs) = delete;
-	MyType& operator = (const MyType& rhs) = delete;
 
 	~TMediaQueue()
 	{
@@ -72,13 +73,11 @@ public:
 	void Clear()
 	{
 		L::Lock();
-		for(uint32 i = 0; i < NumIn; ++i)
+		for (uint32 i = 0; i < NumIn; ++i)
 		{
 			Elements[IdxOut].~T();
 			if (++IdxOut == MaxNum)
-			{
 				IdxOut -= MaxNum;
-			}
 		}
 		IdxIn = IdxOut = NumIn = 0;
 		L::Unlock();
@@ -92,13 +91,9 @@ public:
 		{
 			M::Deallocate(Elements);
 			if (newCapacity)
-			{
 				Elements = M::Allocate(newCapacity);
-			}
 			else
-			{
-				Elements = nullptr;
-			}
+				Elements = NULL;
 			MaxNum = newCapacity;
 		}
 		L::Unlock();
@@ -113,13 +108,13 @@ public:
 		SIZE_T  nNumIn = NumIn;
 		SIZE_T  nIdxIn = IdxIn;
 		SIZE_T  nIdxOut = IdxOut;
-		// Get the values from the other queue.
+		// Get the values from the other FIFO
 		Elements = rhs.Elements;
 		MaxNum = rhs.MaxNum;
 		NumIn = rhs.NumIn;
 		IdxIn = rhs.IdxIn;
 		IdxOut = rhs.IdxOut;
-		// Set our old values in the other queue.
+		// Set our old values in the other FIFO.
 		rhs.Elements = pElements;
 		rhs.MaxNum = nCapacity;
 		rhs.NumIn = nNumIn;
@@ -135,7 +130,7 @@ public:
 
 	SIZE_T Num() const
 	{
-		return NumIn;
+		return(NumIn);
 	}
 
 	bool IsEmpty() const
@@ -154,9 +149,7 @@ public:
 		check(!IsFull());
 		SIZE_T pos = IdxIn;
 		if (++IdxIn == MaxNum)
-		{
 			IdxIn = 0;
-		}
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
 		new ((void*)(Elements + pos)) T(Element);
@@ -168,13 +161,9 @@ public:
 		L::Lock();
 		check(!IsFull());
 		if (IdxOut == 0)
-		{
 			IdxOut = MaxNum - 1;
-		}
 		else
-		{
 			--IdxOut;
-		}
 		SIZE_T pos = IdxOut;
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
@@ -189,9 +178,7 @@ public:
 		T r(Elements[IdxOut]);
 		Elements[IdxOut].~T();
 		if (++IdxOut == MaxNum)
-		{
 			IdxOut = 0;
-		}
 		--NumIn;
 		L::Unlock();
 		return r;
@@ -207,11 +194,15 @@ public:
 	}
 
 protected:
-	T* 		Elements = nullptr;
-	SIZE_T	MaxNum = 0;
-	SIZE_T	NumIn = 0;
-	SIZE_T	IdxIn = 0;
-	SIZE_T	IdxOut = 0;
+	T* 		Elements;
+	SIZE_T	MaxNum;
+	SIZE_T	NumIn;
+	SIZE_T	IdxIn;
+	SIZE_T	IdxOut;
+
+	// Not copyable (for now) because of the possible mutex class.
+	TMediaQueue(const MyType& rhs);
+	MyType& operator = (const MyType& rhs);
 };
 
 
@@ -239,9 +230,7 @@ public:
 		check(!B::IsFull());
 		SIZE_T pos = B::IdxIn;
 		if (++B::IdxIn == B::Capacity())
-		{
 			B::IdxIn = 0;
-		}
 		++B::NumIn;
 		new ((void*)(B::Elements + pos)) T();
 		return B::Elements[pos];
@@ -278,24 +267,18 @@ public:
 		--B::NumIn;
 		SIZE_T i0 = (i + B::IdxOut) % B::Capacity();
 		SIZE_T i1 = (i + B::IdxOut + 1) % B::Capacity();
-		for(; i < B::NumIn; ++i)
+		for (; i < B::NumIn; ++i)
 		{
 			B::Elements[i0] = B::Elements[i1];
 			i0 = i1++;
 			if (i1 >= B::Capacity())
-			{
 				i1 -= B::Capacity();
-			}
 		}
 		B::Elements[i0].~T();
 		if (B::IdxIn == 0)
-		{
 			B::IdxIn = B::Capacity() - 1;
-		}
 		else
-		{
 			--B::IdxIn;
-		}
 	}
 
 	const T& operator[](SIZE_T i) const
@@ -304,9 +287,7 @@ public:
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= B::Capacity())
-		{
 			i -= B::Capacity();
-		}
 		return B::Elements[i];
 	}
 
@@ -316,30 +297,22 @@ public:
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= B::Capacity())
-		{
 			i -= B::Capacity();
-		}
 		return B::Elements[i];
 	}
 
 	void AppendFirstElements(const MyType& FromOther, SIZE_T MaxElements = ~SIZE_T(0))
 	{
 		// NOTE: Your code needs to make sure the source queue is protected by some external lock so does not get
-		//       modified while we are appending its elements.
+		//       modified while we're appending its elements.
 		SIZE_T NumAvail = B::Capacity() - B::Num();
 		SIZE_T NumToAppend = FromOther.Num();
 		if (NumToAppend > NumAvail)
-		{
 			NumToAppend = NumAvail;
-		}
 		if (NumToAppend > MaxElements)
-		{
 			NumToAppend = MaxElements;
-		}
-		for(SIZE_T i = 0; i < NumToAppend; ++i)
-		{
+		for (SIZE_T i = 0; i < NumToAppend; ++i)
 			B::Push(FromOther[i]);
-		}
 	}
 
 	void AppendLastElements(const MyType& FromOther, SIZE_T MaxElements = ~SIZE_T(0))
@@ -349,17 +322,11 @@ public:
 		SIZE_T NumAvail = B::Capacity() - B::Num();
 		SIZE_T NumToAppend = FromOther.Num();
 		if (NumToAppend > NumAvail)
-		{
 			NumToAppend = NumAvail;
-		}
 		if (NumToAppend > MaxElements)
-		{
 			NumToAppend = MaxElements;
-		}
-		for(SIZE_T i = 0, j = FromOther.Num() - NumToAppend; i < NumToAppend; ++i, ++j)
-		{
+		for (SIZE_T i = 0, j = FromOther.Num() - NumToAppend; i < NumToAppend; ++i, ++j)
 			B::Push(FromOther[j]);
-		}
 	}
 
 };
@@ -380,13 +347,13 @@ public:
 
 
 /**
- * Object safe queue class.
+ * Object safe FIFO container class.
  *
- * Implements by-value methods only to avoid working with references.
+ * Implements essential FIFO functions only to avoid working with references.
  *
  * Methods like
  *  T& Push()
- *  T& operator[](int32)
+ *  T& operator[](int)
  *  T& Front()
  *
  * are dangerous when used in a multi-threaded environment since the elements cannot be protected by an internal mutex.
@@ -402,12 +369,12 @@ public:
 	using ElementType = T;
 
 	TMediaQueueFixedStatic()
+		: Elements((T*)maElements)
+		, NumIn(0)
+		, IdxIn(0)
+		, IdxOut(0)
 	{
 	}
-
-	// Not copyable (for now) because of the possible mutex class.
-	TMediaQueueFixedStatic(const MyType& rhs) = delete;
-	MyType& operator = (const MyType& rhs) = delete;
 
 	~TMediaQueueFixedStatic()
 	{
@@ -417,13 +384,11 @@ public:
 	void Clear()
 	{
 		L::Lock();
-		for(uint32 i = 0; i < NumIn; ++i)
+		for (uint32 i = 0; i < NumIn; ++i)
 		{
 			Elements[IdxOut].~T();
 			if (++IdxOut == CAPACITY)
-			{
 				IdxOut -= CAPACITY;
-			}
 		}
 		IdxIn = IdxOut = NumIn = 0;
 		L::Unlock();
@@ -431,22 +396,22 @@ public:
 
 	SIZE_T Capacity() const
 	{
-		return CAPACITY;
+		return(CAPACITY);
 	}
 
 	SIZE_T Num() const
 	{
-		return NumIn;
+		return(NumIn);
 	}
 
 	bool IsEmpty() const
 	{
-		return Num() == 0;
+		return(Num() == 0);
 	}
 
 	bool IsFull() const
 	{
-		return Num() == Capacity();
+		return(Num() == Capacity());
 	}
 
 	void Push(const T& element)
@@ -455,9 +420,7 @@ public:
 		check(!IsFull());
 		SIZE_T pos = IdxIn;
 		if (++IdxIn == CAPACITY)
-		{
 			IdxIn = 0;
-		}
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
 		new ((void*)(Elements + pos)) T(element);
@@ -469,13 +432,9 @@ public:
 		L::Lock();
 		check(!IsFull());
 		if (IdxOut == 0)
-		{
 			IdxOut = CAPACITY - 1;
-		}
 		else
-		{
 			--IdxOut;
-		}
 		SIZE_T pos = IdxOut;
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
@@ -490,12 +449,10 @@ public:
 		T r(Elements[IdxOut]);
 		Elements[IdxOut].~T();
 		if (++IdxOut == CAPACITY)
-		{
 			IdxOut = 0;
-		}
 		--NumIn;
 		L::Unlock();
-		return r;
+		return(r);
 	}
 
 	T Front() const
@@ -504,18 +461,22 @@ public:
 		check(!IsEmpty());
 		T r(Elements[IdxOut]);
 		L::Unlock();
-		return r;
+		return(r);
 	}
 
 protected:
 
 	MS_ALIGN(16)
-	uint8	FixedElements[CAPACITY * sizeof(T)]
+	uint8	maElements[CAPACITY * sizeof(T)]
 	GCC_ALIGN(16);
-	T*		Elements = (T*)FixedElements;
-	SIZE_T	NumIn = 0;
-	SIZE_T	IdxIn = 0;
-	SIZE_T	IdxOut = 0;
+	T*		Elements;
+	SIZE_T	NumIn;
+	SIZE_T	IdxIn;
+	SIZE_T	IdxOut;
+
+	// Not copyable (for now) because of the possible mutex class.
+	TMediaQueueFixedStatic(const MyType& rhs);
+	MyType& operator = (const MyType& rhs);
 };
 
 
@@ -536,36 +497,34 @@ public:
 		check(!B::IsFull());
 		SIZE_T pos = B::IdxIn;
 		if (++B::IdxIn == CAPACITY)
-		{
 			B::IdxIn = 0;
-		}
 		++B::NumIn;
 		new ((void*)(B::Elements + pos)) T();
-		return B::Elements[pos];
+		return(B::Elements[pos]);
 	}
 
 	const T& FrontRef() const
 	{
 		check(!B::IsEmpty());
-		return B::Elements[B::IdxOut];
+		return(B::Elements[B::IdxOut]);
 	}
 
 	T& FrontRef()
 	{
 		check(!B::IsEmpty());
-		return B::Elements[B::IdxOut];
+		return(B::Elements[B::IdxOut]);
 	}
 
 	const T& BackRef() const
 	{
 		check(!B::IsEmpty());
-		return B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()];
+		return(B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()]);
 	}
 
 	T& BackRef()
 	{
 		check(!B::IsEmpty());
-		return B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()];
+		return(B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()]);
 	}
 
 	void Erase(SIZE_T i)
@@ -575,24 +534,18 @@ public:
 		--B::NumIn;
 		SIZE_T i0 = (i + B::IdxOut) % CAPACITY;
 		SIZE_T i1 = (i + B::IdxOut + 1) % CAPACITY;
-		for(; i < B::NumIn; ++i)
+		for (; i < B::NumIn; ++i)
 		{
 			B::Elements[i0] = B::Elements[i1];
 			i0 = i1++;
 			if (i1 >= CAPACITY)
-			{
 				i1 -= CAPACITY;
-			}
 		}
 		B::Elements[i0].~T();
 		if (B::IdxIn == 0)
-		{
 			B::IdxIn = CAPACITY - 1;
-		}
 		else
-		{
 			--B::IdxIn;
-		}
 	}
 
 	const T& operator[](SIZE_T i) const
@@ -601,10 +554,8 @@ public:
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= CAPACITY)
-		{
 			i -= CAPACITY;
-		}
-		return B::Elements[i];
+		return(B::Elements[i]);
 	}
 
 	T& operator[](SIZE_T i)
@@ -613,10 +564,8 @@ public:
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= CAPACITY)
-		{
 			i -= CAPACITY;
-		}
-		return B::Elements[i];
+		return(B::Elements[i]);
 	}
 };
 
@@ -636,7 +585,7 @@ public:
 
 
 /**
- * Dynamically sized queue.
+ * Dynamically sized FIFO.
  *
  * Will grow when capacity is reached.
  * Therefore a lock is REQUIRED! Never use this with a null-mutex unless you know what you're doing.
@@ -649,7 +598,12 @@ public:
 	using ElementType = T;
 
 	TMediaQueueDynamic(SIZE_T initialCapacity = 0, SIZE_T increment = 32)
-		: IncrementBy(increment)
+		: Elements(NULL)
+		, MaxNum(0)
+		, NumIn(0)
+		, IdxIn(0)
+		, IdxOut(0)
+		, mIncrement(increment)
 	{
 		Resize(initialCapacity);
 	}
@@ -664,20 +618,18 @@ public:
 	void SetIncrement(SIZE_T newIncrement)
 	{
 		L::Lock();
-		IncrementBy = newIncrement;
+		mIncrement = newIncrement;
 		L::Unlock();
 	}
 
 	void Clear()
 	{
 		L::Lock();
-		for(uint32 i = 0; i < NumIn; ++i)
+		for (uint32 i = 0; i < NumIn; ++i)
 		{
 			Elements[IdxOut].~T();
 			if (++IdxOut == MaxNum)
-			{
 				IdxOut -= MaxNum;
-			}
 		}
 		IdxIn = IdxOut = NumIn = 0;
 		L::Unlock();
@@ -690,22 +642,20 @@ public:
 		{
 			Clear();
 			M::Deallocate(Elements);
-			Elements = nullptr;
+			Elements = NULL;
 			MaxNum = 0;
 		}
 		else
 		{
 			// Create a new array and copy all active elements over.
-			checkf(newCapacity >= Num(), TEXT("Cannot shrink the dynamic queue to %u with %u elements currently managed!"), (uint32)newCapacity, (uint32)Num());
+			checkf(newCapacity >= Num(), TEXT("Cannot shrink the dynamic FIFO to %u with %u elements currently managed!"), (uint32)newCapacity, (uint32)Num());
 			T* pNewElements = M::Allocate(newCapacity);
-			for(SIZE_T i = 0, j = IdxOut; i < NumIn; ++i)
+			for (SIZE_T i = 0, j = IdxOut; i < NumIn; ++i)
 			{
 				new ((void*)(pNewElements + i)) T(Elements[j]);
 				Elements[j].~T();
 				if (++j == MaxNum)
-				{
 					j = 0;
-				}
 			}
 			M::Deallocate(Elements);
 			Elements = pNewElements;
@@ -718,27 +668,27 @@ public:
 
 	SIZE_T Increment() const
 	{
-		return IncrementBy;
+		return(mIncrement);
 	}
 
 	SIZE_T Capacity() const
 	{
-		return MaxNum;
+		return(MaxNum);
 	}
 
 	SIZE_T Num() const
 	{
-		return NumIn;
+		return(NumIn);
 	}
 
 	bool IsEmpty() const
 	{
-		return Num() == 0;
+		return(Num() == 0);
 	}
 
 	bool IsFull() const
 	{
-		return Num() == Capacity();
+		return(Num() == Capacity());
 	}
 
 	void Push(const T& element)
@@ -750,9 +700,7 @@ public:
 		}
 		SIZE_T pos = IdxIn;
 		if (++IdxIn == MaxNum)
-		{
 			IdxIn = 0;
-		}
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
 		new ((void*)(Elements + pos)) T(element);
@@ -767,13 +715,9 @@ public:
 			Resize(Capacity() + Increment());
 		}
 		if (IdxOut == 0)
-		{
 			IdxOut = MaxNum - 1;
-		}
 		else
-		{
 			--IdxOut;
-		}
 		SIZE_T pos = IdxOut;
 		++NumIn;
 		// Copying the element can NOT take place outside the lock in case multiple threads push at the same time and a Resize() will happen.
@@ -788,12 +732,10 @@ public:
 		T r(Elements[IdxOut]);
 		Elements[IdxOut].~T();
 		if (++IdxOut == MaxNum)
-		{
 			IdxOut = 0;
-		}
 		--NumIn;
 		L::Unlock();
-		return r;
+		return(r);
 	}
 
 	T Front() const
@@ -802,16 +744,16 @@ public:
 		check(!IsEmpty());
 		T r(Elements[IdxOut]);
 		L::Unlock();
-		return r;
+		return(r);
 	}
 
 protected:
-	T* Elements = nullptr;
-	SIZE_T	MaxNum = 0;
-	SIZE_T	NumIn = 0;
-	SIZE_T	IdxIn = 0;
-	SIZE_T	IdxOut = 0;
-	SIZE_T	IncrementBy = 32;
+	T* Elements;
+	SIZE_T	MaxNum;
+	SIZE_T	NumIn;
+	SIZE_T	IdxIn;
+	SIZE_T	IdxOut;
+	SIZE_T	mIncrement;
 };
 
 
@@ -832,41 +774,71 @@ public:
 
 	TMediaQueueDynamicNoLock() : B() {}
 	~TMediaQueueDynamicNoLock() {}
-
+	/*
+		T & PushRef(void)
+		{
+			check(!B::IsFull());
+			SIZE_T pos = B::IdxIn;
+			if (++B::IdxIn == B::MaxNum)
+				B::IdxIn = 0;
+			++B::NumIn;
+			new ((void *)(B::Elements + pos)) T();
+			return(B::Elements[pos]);
+		}
+	*/
 	const T& FrontRef() const
 	{
 		check(!B::IsEmpty());
-		return B::Elements[B::IdxOut];
+		return(B::Elements[B::IdxOut]);
 	}
 
 	T& FrontRef()
 	{
 		check(!B::IsEmpty());
-		return B::Elements[B::IdxOut];
+		return(B::Elements[B::IdxOut]);
 	}
 
 	const T& BackRef() const
 	{
 		check(!B::IsEmpty());
-		return B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()];
+		return(B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()]);
 	}
 
 	T& BackRef()
 	{
 		check(!B::IsEmpty());
-		return B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()];
+		return(B::Elements[(B::IdxIn + B::Capacity() - 1) % B::Capacity()]);
 	}
-
+	/*
+		void Erase(SIZE_T i)
+		{
+			check(!B::IsEmpty());
+			check(i < B::NumIn);
+			--B::NumIn;
+			SIZE_T i0 = (i + B::IdxOut    ) % B::MaxNum;
+			SIZE_T i1 = (i + B::IdxOut + 1) % B::MaxNum;
+			for(; i<B::NumIn; ++i)
+			{
+				B::Elements[i0] = B::Elements[i1];
+				i0 = i1++;
+				if (i1 >= B::MaxNum)
+					i1 -= B::MaxNum;
+			}
+			B::Elements[i0].~T();
+			if (B::IdxIn == 0)
+				B::IdxIn = B::MaxNum - 1;
+			else
+				--B::IdxIn;
+		}
+	*/
 	const T& operator[](SIZE_T i) const
 	{
 		check(!B::IsEmpty());
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= B::MaxNum)
-		{
 			i -= B::MaxNum;
-		}
-		return B::Elements[i];
+		return(B::Elements[i]);
 	}
 
 	T& operator[](SIZE_T i)
@@ -875,9 +847,111 @@ public:
 		check(i < B::NumIn);
 		i += B::IdxOut;
 		if (i >= B::MaxNum)
-		{
 			i -= B::MaxNum;
-		}
-		return B::Elements[i];
+		return(B::Elements[i]);
 	}
 };
+
+
+
+
+
+
+
+
+
+
+template <typename T, uint32 CAPACITY>
+class TMediaQueueFixedStaticInterlocked
+{
+public:
+	using MyType = TMediaQueueFixedStaticInterlocked<T, CAPACITY>;
+	using ElementType = T;
+
+	TMediaQueueFixedStaticInterlocked()
+		: Elements((T*)maElements)
+		, NumIn(0)
+		, IdxIn(0)
+		, IdxOut(0)
+	{
+	}
+
+	~TMediaQueueFixedStaticInterlocked()
+	{
+		Clear();
+	}
+
+	void Clear()
+	{
+		for (uint32 i = 0; i < NumIn; ++i)
+		{
+			Elements[IdxOut].~T();
+			if (++IdxOut == CAPACITY)
+				IdxOut -= CAPACITY;
+		}
+		IdxIn = IdxOut = NumIn = 0;
+	}
+
+	uint32 Capacity() const
+	{
+		return(CAPACITY);
+	}
+
+	uint32 Num() const
+	{
+		return(FMediaInterlockedRead(NumIn));
+	}
+
+	bool IsEmpty() const
+	{
+		return(Num() == 0);
+	}
+
+	bool IsFull() const
+	{
+		return(Num() == Capacity());
+	}
+
+	void Push(const T& element)
+	{
+		check(!IsFull());
+		uint32 pos = FMediaInterlockedIncrement(IdxIn) % CAPACITY;
+		new ((void*)(Elements + pos)) T(element);
+		FMediaInterlockedIncrement(NumIn);
+	}
+
+	T Pop()
+	{
+		check(!IsEmpty());
+		uint32 pos = FMediaInterlockedIncrement(IdxOut) % CAPACITY;
+		T r(Elements[pos]);
+		Elements[pos].~T();
+		FMediaInterlockedDecrement(NumIn);
+		return(r);
+	}
+
+	const T& FrontRef() const
+	{
+		check(!IsEmpty());
+		return(Elements[IdxOut % CAPACITY]);
+	}
+
+	T& FrontRef()
+	{
+		check(!IsEmpty());
+		return(Elements[IdxOut % CAPACITY]);
+	}
+
+protected:
+	MS_ALIGN(16)
+	uint8	maElements[CAPACITY * sizeof(T)]
+	GCC_ALIGN(16);
+	T* Elements;
+	mutable volatile uint32	NumIn;
+	volatile uint32			IdxIn;
+	volatile uint32			IdxOut;
+
+};
+
+
+

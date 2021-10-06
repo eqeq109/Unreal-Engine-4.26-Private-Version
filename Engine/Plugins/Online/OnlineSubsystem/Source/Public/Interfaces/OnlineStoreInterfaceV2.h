@@ -90,12 +90,12 @@ public:
 	/** Regular non-sale price as text for display */
 	FText RegularPriceText;
 	/** Regular non-sale price in numeric form for comparison/sorting */
-	int64 RegularPrice;
+	int32 RegularPrice;
 
 	/** Final-Pricing (Post-Sales/Discounts) as text for display */
 	FText PriceText;
 	/** Final-Price (Post-Sales/Discounts) in numeric form for comparison/sorting */
-	int64 NumericPrice;
+	int32 NumericPrice;
 
 	/** Price currency code */
 	FString CurrencyCode;

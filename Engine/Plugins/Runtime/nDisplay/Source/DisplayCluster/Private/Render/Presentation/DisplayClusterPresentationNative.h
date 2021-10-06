@@ -11,9 +11,12 @@
 class FDisplayClusterPresentationNative : public FDisplayClusterPresentationBase
 {
 public:
-	FDisplayClusterPresentationNative(FViewport* const Viewport, TSharedPtr<IDisplayClusterRenderSyncPolicy>& SyncPolicy)
-		: FDisplayClusterPresentationBase(Viewport, SyncPolicy)
-	{ }
+	FDisplayClusterPresentationNative(FViewport* const Viewport, TSharedPtr<IDisplayClusterRenderSyncPolicy>& SyncPolicy);
+	virtual ~FDisplayClusterPresentationNative();
 
-	virtual ~FDisplayClusterPresentationNative() = default;
+protected:
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// FRHICustomPresent
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	virtual bool Present(int32& InOutSyncInterval) override;
 };

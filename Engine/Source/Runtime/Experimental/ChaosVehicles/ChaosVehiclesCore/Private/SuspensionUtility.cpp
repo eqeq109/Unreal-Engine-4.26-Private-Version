@@ -2,7 +2,6 @@
 
 #include "SuspensionUtility.h"
 
-DEFINE_LOG_CATEGORY(LogVehicleUtility);
 bool FSuspensionUtility::ComputeSprungMasses(const TArray<FVector>& MassSpringPositions, const float TotalMass, TArray<float>& OutSprungMasses)
 {
 	/*
@@ -221,11 +220,8 @@ bool FSuspensionUtility::ComputeSprungMasses(const TArray<FVector>& MassSpringPo
 		const float Y = MassSpringPositions[Index].Y;
 		const float LLambda = (X * Lambda0) + (Y * Lambda1) + Lambda2;
 		OutSprungMasses[Index] = AverageMass - (0.5f * LLambda);
-		if (OutSprungMasses[Index] < 0.f)
+		if (!ensureMsgf(OutSprungMasses[Index] >= 0.f, TEXT("Spring configuration is invalid! Please make sure the center of mass is located inside the area covered by the springs.")))
 		{
-			// #TODO: it is technically possible for say a trailer to have all of its wheels at the rear and none at the front 
-			// hence violating this condition, need to think about handling this.
-			UE_LOG(LogVehicleUtility, Warning, TEXT("Spring configuration is invalid! Please make sure the center of mass is located inside the area covered by the springs."));
 			return false;
 		}
 	}

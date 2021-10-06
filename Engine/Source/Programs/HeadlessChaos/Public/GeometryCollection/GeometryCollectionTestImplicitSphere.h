@@ -6,6 +6,7 @@
 namespace GeometryCollectionTest
 {	
 
+	template<class T>
 	void TestImplicitSphere();
 	
 }

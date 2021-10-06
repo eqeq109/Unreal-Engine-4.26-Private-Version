@@ -16,8 +16,6 @@
 #include "PBDCollisionConstraints.ispc.generated.h"
 #endif
 
-//PRAGMA_DISABLE_OPTIMIZATION
-
 namespace Chaos
 {
 	namespace Collisions
@@ -25,7 +23,7 @@ namespace Chaos
 
 		FRigidTransform3 GetTransform(const TGeometryParticleHandle<FReal, 3>* Particle)
 		{
-			FGenericParticleHandle Generic = const_cast<FGeometryParticleHandle*>(Particle);
+			TGenericParticleHandle<FReal, 3> Generic = const_cast<TGeometryParticleHandle<FReal, 3>*>(Particle);
 			return FRigidTransform3(Generic->P(), Generic->Q());
 		}
 
@@ -193,30 +191,29 @@ namespace Chaos
 
 #if INTEL_ISPC
 		template<ECollisionUpdateType UpdateType>
-		FContactPoint SampleObject(const FImplicitObject& Object, const FRigidTransform3& ObjectTransform, const FBVHParticles& SampleParticles, const FRigidTransform3& SampleParticlesTransform, FReal CullingDistance)
+		FContactPoint SampleObject(const FImplicitObject& Object, const TRigidTransform<float, 3>& ObjectTransform, const TBVHParticles<float, 3>& SampleParticles, const TRigidTransform<float, 3>& SampleParticlesTransform, float CullingDistance)
 		{
-			check(bRealTypeCompatibleWithISPC);
 			SCOPE_CYCLE_COUNTER(STAT_SampleObject);
 
 			FContactPoint Contact;
 			FContactPoint AvgContact;
 
-			Contact.Location = FVec3::ZeroVector;
-			Contact.Normal = FVec3::ZeroVector;
-			AvgContact.Location = FVec3::ZeroVector;
-			AvgContact.Normal = FVec3::ZeroVector;
+			Contact.Location = TVector<float, 3>::ZeroVector;
+			Contact.Normal = TVector<float, 3>::ZeroVector;
+			AvgContact.Location = TVector<float, 3>::ZeroVector;
+			AvgContact.Normal = TVector<float, 3>::ZeroVector;
 			AvgContact.Phi = CullingDistance;
-			FReal WeightSum = FReal(0); // Sum of weights used for averaging (negative)
+			float WeightSum = float(0); // Sum of weights used for averaging (negative)
 
 			int32 DeepestParticle = -1;
 
-			const FRigidTransform3& SampleToObjectTM = SampleParticlesTransform.GetRelativeTransform(ObjectTransform);
+			const TRigidTransform<float, 3>& SampleToObjectTM = SampleParticlesTransform.GetRelativeTransform(ObjectTransform);
 			int32 NumParticles = SampleParticles.Size();
 
 			if (NumParticles > SampleMinParticlesForAcceleration && Object.HasBoundingBox())
 			{
 				SCOPE_CYCLE_COUNTER(STAT_UpdateLevelsetPartial);
-				FAABB3 ImplicitBox = Object.BoundingBox().TransformedAABB(ObjectTransform.GetRelativeTransform(SampleParticlesTransform));
+				TAABB<float, 3> ImplicitBox = Object.BoundingBox().TransformedAABB(ObjectTransform.GetRelativeTransform(SampleParticlesTransform));
 				ImplicitBox.Thicken(CullingDistance);
 				TArray<int32> PotentialParticles;
 				{
@@ -229,8 +226,8 @@ namespace Chaos
 					if (Object.GetType() == ImplicitObjectType::LevelSet && PotentialParticles.Num() > 0)
 					{
 						//QUICK_SCOPE_CYCLE_COUNTER(STAT_LevelSet);
-						const FLevelSet* LevelSet = Object.GetObject<FLevelSet>();
-						const TUniformGrid<FReal, 3>& Grid = LevelSet->GetGrid();
+						const TLevelSet<float, 3>* LevelSet = Object.GetObject<TLevelSet<float, 3>>();
+						const TUniformGrid<float, 3>& Grid = LevelSet->GetGrid();
 
 						if (NormalAveraging && UpdateType != ECollisionUpdateType::Any)
 						{
@@ -273,7 +270,7 @@ namespace Chaos
 					else if (Object.GetType() == ImplicitObjectType::Box && PotentialParticles.Num() > 0)
 					{
 						//QUICK_SCOPE_CYCLE_COUNTER(STAT_Box);
-						const TBox<FReal, 3>* Box = Object.GetObject<Chaos::TBox<FReal, 3>>();
+						const TBox<float, 3>* Box = Object.GetObject<Chaos::TBox<float, 3>>();
 						const FVec3 BoxMin = Box->Min();
 						const FVec3 BoxMax = Box->Max();
 
@@ -339,8 +336,8 @@ namespace Chaos
 				SCOPE_CYCLE_COUNTER(STAT_UpdateLevelsetAll);
 				if (Object.GetType() == ImplicitObjectType::LevelSet && NumParticles > 0)
 				{
-					const FLevelSet* LevelSet = Object.GetObject<Chaos::FLevelSet>();
-					const TUniformGrid<FReal, 3>& Grid = LevelSet->GetGrid();
+					const TLevelSet<float, 3>* LevelSet = Object.GetObject<Chaos::TLevelSet<float, 3>>();
+					const TUniformGrid<float, 3>& Grid = LevelSet->GetGrid();
 
 					if (NormalAveraging && UpdateType != ECollisionUpdateType::Any)
 					{
@@ -380,7 +377,7 @@ namespace Chaos
 				}
 				else if (Object.GetType() == ImplicitObjectType::Plane && NumParticles > 0)
 				{
-					const TPlane<FReal, 3>* Plane = Object.GetObject<Chaos::TPlane<FReal, 3>>();
+					const TPlane<float, 3>* Plane = Object.GetObject<Chaos::TPlane<float, 3>>();
 
 					if (NormalAveraging && UpdateType != ECollisionUpdateType::Any)
 					{
@@ -414,7 +411,7 @@ namespace Chaos
 				}
 				else if (Object.GetType() == ImplicitObjectType::Sphere && NumParticles > 0)
 				{
-					const TSphere<FReal, 3>* Sphere = Object.GetObject<Chaos::TSphere<FReal, 3>>();
+					const TSphere<float, 3>* Sphere = Object.GetObject<Chaos::TSphere<float, 3>>();
 
 					if (NormalAveraging && UpdateType != ECollisionUpdateType::Any)
 					{
@@ -448,7 +445,7 @@ namespace Chaos
 				}
 				else if (Object.GetType() == ImplicitObjectType::Box && NumParticles > 0)
 				{
-					const TBox<FReal, 3>* Box = Object.GetObject<Chaos::TBox<FReal, 3>>();
+					const TBox<float, 3>* Box = Object.GetObject<Chaos::TBox<float, 3>>();
 					const FVec3 BoxMin = Box->Min();
 					const FVec3 BoxMax = Box->Max();
 
@@ -511,9 +508,9 @@ namespace Chaos
 			{
 				if (WeightSum < -KINDA_SMALL_NUMBER)
 				{
-					FVec3 LocalPoint = AvgContact.Location / WeightSum;
-					FVec3 LocalNormal;
-					const FReal NewPhi = Object.PhiWithNormal(LocalPoint, LocalNormal);
+					TVector<float, 3> LocalPoint = AvgContact.Location / WeightSum;
+					TVector<float, 3> LocalNormal;
+					const float NewPhi = Object.PhiWithNormal(LocalPoint, LocalNormal);
 					if (NewPhi < Contact.Phi)
 					{
 						Contact.Phi = NewPhi;
@@ -529,8 +526,8 @@ namespace Chaos
 			else if (AvgContact.Phi < CullingDistance)
 			{
 				check(DeepestParticle >= 0);
-				FVec3 LocalPoint = SampleToObjectTM.TransformPositionNoScale(SampleParticles.X(DeepestParticle));
-				FVec3 LocalNormal;
+				TVector<float, 3> LocalPoint = SampleToObjectTM.TransformPositionNoScale(SampleParticles.X(DeepestParticle));
+				TVector<float, 3> LocalNormal;
 				Contact.Phi = Object.PhiWithNormal(LocalPoint, LocalNormal);
 				Contact.Location = ObjectTransform.TransformPositionNoScale(LocalPoint);
 				Contact.Normal = ObjectTransform.TransformVectorNoScale(LocalNormal);
@@ -540,19 +537,19 @@ namespace Chaos
 		}
 #else		
 		template <ECollisionUpdateType UpdateType>
-		FContactPoint SampleObject(const FImplicitObject& Object, const FRigidTransform3& ObjectTransform, const FBVHParticles& SampleParticles, const FRigidTransform3& SampleParticlesTransform, FReal CullingDistance)
+		FContactPoint SampleObject(const FImplicitObject& Object, const FRigidTransform3& ObjectTransform, const TBVHParticles<FReal, 3>& SampleParticles, const FRigidTransform3& SampleParticlesTransform, FReal CullingDistance)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_SampleObject);
 
 			FContactPoint Contact;
 			FContactPoint AvgContact;
 
-			Contact.Location = FVec3::ZeroVector;
-			Contact.Normal = FVec3::ZeroVector;
-			AvgContact.Location = FVec3::ZeroVector;
-			AvgContact.Normal = FVec3::ZeroVector;
+			Contact.Location = TVector<float, 3>::ZeroVector;
+			Contact.Normal = TVector<float, 3>::ZeroVector;
+			AvgContact.Location = TVector<float, 3>::ZeroVector;
+			AvgContact.Normal = TVector<float, 3>::ZeroVector;
 			AvgContact.Phi = CullingDistance;
-			FReal WeightSum = FReal(0); // Sum of weights used for averaging (negative)
+			float WeightSum = float(0); // Sum of weights used for averaging (negative)
 
 			int32 DeepestParticle = -1;
 			const int32 NumParticles = SampleParticles.Size();
@@ -681,8 +678,8 @@ namespace Chaos
 			return RelevantShapes;
 		}
 
-		template FContactPoint SampleObject<ECollisionUpdateType::Any>(const FImplicitObject& Object, const FRigidTransform3& ObjectTransform, const FBVHParticles& SampleParticles, const FRigidTransform3& SampleParticlesTransform, FReal CullingDistance);
-		template FContactPoint SampleObject<ECollisionUpdateType::Deepest>(const FImplicitObject& Object, const FRigidTransform3& ObjectTransform, const FBVHParticles& SampleParticles, const FRigidTransform3& SampleParticlesTransform, FReal CullingDistance);
+		template FContactPoint SampleObject<ECollisionUpdateType::Any>(const FImplicitObject& Object, const TRigidTransform<float, 3>& ObjectTransform, const TBVHParticles<float, 3>& SampleParticles, const TRigidTransform<float, 3>& SampleParticlesTransform, float CullingDistance);
+		template FContactPoint SampleObject<ECollisionUpdateType::Deepest>(const FImplicitObject& Object, const TRigidTransform<float, 3>& ObjectTransform, const TBVHParticles<float, 3>& SampleParticles, const TRigidTransform<float, 3>& SampleParticlesTransform, float CullingDistance);
 
 	} // Collisions
 

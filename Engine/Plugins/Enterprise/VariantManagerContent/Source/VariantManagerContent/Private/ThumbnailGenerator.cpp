@@ -255,8 +255,7 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromTexture(UTexture2D* Texture
 		TArrayView<const FColor> SourceColors = TArrayView<const FColor>(reinterpret_cast<const FColor*>(CommandData->PackedSourceBytes.GetData()), CommandData->SourceWidth* CommandData->SourceHeight);
 		TArrayView<FColor> DestColors = TArrayView<FColor>(reinterpret_cast<FColor*>(DestBytes.GetData()), TargetWidth * TargetHeight);
 
-		const bool bForceOpaqueOutput = false;
-		FImageUtils::ImageResize(CommandData->SourceWidth, CommandData->SourceHeight, SourceColors, TargetWidth, TargetHeight, DestColors, CommandData->Texture->SRGB, bForceOpaqueOutput);
+		FImageUtils::ImageResize(CommandData->SourceWidth, CommandData->SourceHeight, SourceColors, TargetWidth, TargetHeight, DestColors, CommandData->Texture->SRGB);
 
 		const bool bSetSourceData = true;
 		Thumbnail = ThumbnailGeneratorImpl::CreateTextureFromBulkData(
@@ -278,7 +277,13 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromTexture(UTexture2D* Texture
 			UE_LOG(LogVariantContent, Warning, TEXT("Thumbnail created from texture '%s' will store a thumbnail that is %d by %d in size (%d KB), because it failed to resize the received thumbnail effectively. Better results could be achieved with a texture that has more Mips, or an uncompressed pixel format."), *Texture->GetName(), TargetWidth, TargetHeight, NumBytes / 1000);
 		}
 
-		const bool bSetSourceData = true;
+#if WITH_EDITOR
+		// DuplicateObject will copy the texture Source data when in the editor, which is important to have it persist when saved
+		Thumbnail = DuplicateObject<UTexture2D>( Texture, GetTransientPackage() );
+#else
+		// At runtime the mip data won't be copied with DuplicateObject, so we copy it manually.
+		// There is no 'Source' at runtime though, so we just copy the mip data directly
+		const bool bSetSourceData = false;
 		Thumbnail = ThumbnailGeneratorImpl::CreateTextureFromBulkData(
 			TargetWidth,
 			TargetHeight,
@@ -287,6 +292,7 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromTexture(UTexture2D* Texture
 			SourceDataPixelFormat,
 			bSetSourceData
 		);
+#endif // WITH_EDITOR
 	}
 
     if (Thumbnail == nullptr)
@@ -360,12 +366,6 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromCamera(UObject* WorldContex
 UTexture2D* ThumbnailGenerator::GenerateThumbnailFromEditorViewport()
 {
 #if WITH_EDITOR
-	// Check for this too because WITH_EDITOR is still defined for Standalone mode
-	if ( !GIsEditor || !GEditor )
-	{
-		return nullptr;
-	}
-
 	FViewport* Viewport = GEditor->GetActiveViewport();
 
 	if (!GCurrentLevelEditingViewportClient || !Viewport)
@@ -417,7 +417,7 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromEditorViewport()
 UTexture2D* ThumbnailGenerator::GenerateThumbnailFromObjectThumbnail(UObject* Object)
 {
 #if WITH_EDITOR
-	if ( !Object || !GIsEditor || !GEditor )
+	if (!Object)
 	{
 		return nullptr;
 	}
@@ -444,9 +444,7 @@ UTexture2D* ThumbnailGenerator::GenerateThumbnailFromObjectThumbnail(UObject* Ob
             TArray<FColor> ResizedColors;
             ResizedColors.SetNum(VARIANT_MANAGER_THUMBNAIL_SIZE * VARIANT_MANAGER_THUMBNAIL_SIZE);
 
-			const bool bLinearSpace = false;
-			const bool bForceOpaqueOutput = false;
-			FImageUtils::ImageResize( Width, Height, OldColors, VARIANT_MANAGER_THUMBNAIL_SIZE, VARIANT_MANAGER_THUMBNAIL_SIZE, ResizedColors, bLinearSpace, bForceOpaqueOutput );
+            FImageUtils::ImageResize(Width, Height, OldColors, VARIANT_MANAGER_THUMBNAIL_SIZE, VARIANT_MANAGER_THUMBNAIL_SIZE, ResizedColors, false);
 
             OldColors = MoveTemp(ResizedColors);
         }

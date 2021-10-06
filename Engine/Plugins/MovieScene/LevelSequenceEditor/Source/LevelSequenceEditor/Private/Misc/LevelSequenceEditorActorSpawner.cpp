@@ -111,11 +111,7 @@ TValueOrError<FNewSpawnable, FText> FLevelSequenceEditorActorSpawner::CreateNewS
 			{
 				const FName ActorName = MakeUniqueObjectName(World->PersistentLevel, FactoryToUse->NewActorClass->StaticClass(), TemplateName);
 
-				FActorSpawnParameters SpawnParams;
-				SpawnParams.ObjectFlags = RF_Transient | RF_Transactional;
-				SpawnParams.Name = ActorName;
-
-				AActor* Instance = FactoryToUse->CreateActor(&SourceObject, World->PersistentLevel, FTransform(), SpawnParams);
+				AActor* Instance = FactoryToUse->CreateActor(&SourceObject, World->PersistentLevel, FTransform(), RF_Transient | RF_Transactional, ActorName );
 				Instance->bIsEditorPreviewActor = false;
 				NewSpawnable.ObjectTemplate = StaticDuplicateObject(Instance, &OwnerMovieScene, TemplateName, RF_AllFlags & ~RF_Transient);
 

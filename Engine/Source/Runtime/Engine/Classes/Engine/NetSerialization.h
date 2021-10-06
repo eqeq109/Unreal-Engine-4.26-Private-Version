@@ -321,8 +321,9 @@ class FNetFastTArrayBaseState : public INetDeltaBaseState
 {
 public:
 
-	FNetFastTArrayBaseState()
-		: ArrayReplicationKey(INDEX_NONE)
+	FNetFastTArrayBaseState():
+		ArrayReplicationKey(INDEX_NONE),
+		ChangelistHistory(0)
 	{}
 
 	virtual bool IsStateEqual(INetDeltaBaseState* OtherState)
@@ -343,6 +344,8 @@ public:
 	TMap<int32, int32> IDToCLMap;
 
 	int32 ArrayReplicationKey;
+
+	uint32 ChangelistHistory;
 };
 
 
@@ -1625,15 +1628,13 @@ bool FFastArraySerializer::FastArrayDeltaSerialize_DeltaSerializeStructs(TArray<
 		TMap<int32, int32>* OldItemMap = nullptr;
 		int32 BaseReplicationKey = INDEX_NONE;
 		int32 OldChangelistHistory = INDEX_NONE;
-		int32 OldLastAckedHistory = INDEX_NONE;
 
 		// See if the array changed at all. If the ArrayReplicationKey matches we can skip checking individual items
 		if (Parms.OldState)
 		{
 			OldItemMap = &((FNetFastTArrayBaseState*)Parms.OldState)->IDToCLMap;
 			BaseReplicationKey = ((FNetFastTArrayBaseState*)Parms.OldState)->ArrayReplicationKey;
-			OldChangelistHistory = Parms.OldState->GetChangelistHistory();
-			OldLastAckedHistory = Parms.OldState->GetLastAckedHistory();
+			OldChangelistHistory = ((FNetFastTArrayBaseState*)Parms.OldState)->ChangelistHistory;
 
 			if (!Helper.ConditionalCreateNewDeltaState(*OldItemMap, BaseReplicationKey))
 			{
@@ -1673,8 +1674,7 @@ bool FFastArraySerializer::FastArrayDeltaSerialize_DeltaSerializeStructs(TArray<
 		Header.NumChanged = ChangedElements.Num();
 		Helper.WriteDeltaHeader(Header);
 
-		NewState->SetChangelistHistory(OldChangelistHistory);
-		NewState->SetLastAckedHistory(OldLastAckedHistory);
+		NewState->ChangelistHistory = OldChangelistHistory;
 
 		DeltaSerializeParams.WriteChangedElements = &ChangedElements;
 		DeltaSerializeParams.WriteBaseState = NewState;

@@ -8,7 +8,6 @@
 #include "NiagaraSettings.h"
 #include "NiagaraParameterCollection.h"
 #include "NiagaraSystemInstance.h"
-#include "NiagaraSystemGpuComputeProxy.h"
 #include "NiagaraConstants.h"
 #include "NiagaraStats.h"
 #include "Async/ParallelFor.h"
@@ -17,23 +16,11 @@
 #include "NiagaraEmitterInstanceBatcher.h"
 #include "NiagaraCrashReporterHandler.h"
 
-// Niagara Async Ticking Sequence
-// - NiagaraSystemSimulation::Tick_GameThread
-//  - Enqueue simulation concurrent tick (FNiagaraSystemSimulationTickConcurrentTask), tracks task event in instances
-// - NiagaraSystemSimulation::Tick_Concurrent
-//  - Enqueue instance concurrent ticks in batches (FNiagaraSystemInstanceTickConcurrentTask), tracks task inside instances
-//  - Enqueue finalize tasks (FNiagaraSystemInstanceFinalizeTask), tracks finalize inside instances
-//  - Appends all finalize tasks to a completion task (FNiagaraSystemSimulationAllWorkCompleteTask), when complete everything is done, used to track tick task completion
-//
-// Niagara Async Spawning Sequence
-// - NiagaraSystemSimulation::Spawn_GameThread
-//  - Enqueue simulation spawn concurrent FNiagaraSystemSimulationSpawnConcurrentTask, tracks task event in instances
-// - NiagaraSystemSimulation::Spawn_Concurrent
-//  - Enqueue instance concurrent ticks in batches (FNiagaraSystemInstanceTickConcurrentTask), they can not execute until Spawn_Concurrent is complete, tracks the task inside instances
-//  - Enqueue finalize tasks (FNiagaraSystemInstanceFinalizeTask), tracks finalize inside instances
-//  - Appends all finalize tasks to a completion task (FNiagaraSystemSimulationAllWorkCompleteTask), when complete everything is done
-
-#define NIAGARA_SYSTEMSIMULATION_DEBUGGING 0
+// Niagara simulations async will block the tick task from completion until all async work is finished
+// If simulations are allowed to tick async we will create a FNiagaraSystemSimulationTickTask task to run on any thread
+// If instances are allowed to tick async we will create a FNiagaraSystemInstanceAsyncTask in batches to run on any thread
+// If any async is enabled we create a FNiagaraSystemInstanceFinalizeTask for each batch that will not run until FNiagaraSystemSimulationTickTask is complete (Due to contention with SystemInstances) and will run on the GameThread
+// If any async is enabled we create a FNiagaraSystemSimulationWaitAllFinalizeTask task to wait for all FNiagaraSystemInstanceFinalizeTask's to complete before allowing the tick group to advance
 
 //High level stats for system sim tick.
 DECLARE_CYCLE_STAT(TEXT("System Simulaton Tick [GT]"), STAT_NiagaraSystemSim_TickGT, STATGROUP_Niagara);
@@ -64,159 +51,61 @@ static FAutoConsoleVariableRef CVarNiagaraDumpSystemData(
 	ECVF_Default
 );
 
-static int32 GNiagaraSystemSimulationUpdateOnSpawn = 1;
+static int32 GbSystemUpdateOnSpawn = 1;
 static FAutoConsoleVariableRef CVarSystemUpdateOnSpawn(
-	TEXT("fx.Niagara.SystemSimulation.UpdateOnSpawn"),
-	GNiagaraSystemSimulationUpdateOnSpawn,
+	TEXT("fx.SystemUpdateOnSpawn"),
+	GbSystemUpdateOnSpawn,
 	TEXT("If > 0, system simulations are given a small update after spawn. \n"),
 	ECVF_Default
 );
 
-static int32 GNiagaraSystemSimulationAllowASync = 1;
-static FAutoConsoleVariableRef CVarNiagaraSystemSimulationAllowASync(
-	TEXT("fx.Niagara.SystemSimulation.AllowASync"),
-	GNiagaraSystemSimulationAllowASync,
+static int32 GbParallelSystemSimTick = 1;
+static FAutoConsoleVariableRef CVarParallelSystemSimTick(
+	TEXT("fx.ParallelSystemSimTick"),
+	GbParallelSystemSimTick,
 	TEXT("If > 0, system post tick is parallelized. \n"),
 	ECVF_Default
 );
 
-static int32 GNiagaraSystemSimulationTickBatchSize = NiagaraSystemTickBatchSize;
+static int32 GbParallelSystemInstanceTick = 1;
+static FAutoConsoleVariableRef CVarParallelSystemInstanceTick(
+	TEXT("fx.ParallelSystemInstanceTick"),
+	GbParallelSystemInstanceTick,
+	TEXT("If > 0, system post tick is parallelized. \n"),
+	ECVF_Default
+);
+
+static int32 GbParallelSystemInstanceTickBatchSize = NiagaraSystemTickBatchSize;
 static FAutoConsoleVariableRef CVarParallelSystemInstanceTickBatchSize(
-	TEXT("fx.Niagara.SystemSimulation.TickBatchSize"),
-	GNiagaraSystemSimulationTickBatchSize,
+	TEXT("fx.ParallelSystemInstanceTickBatchSize"),
+	GbParallelSystemInstanceTickBatchSize,
 	TEXT("The number of system instances to process per async task. \n"),
 	ECVF_Default
 );
 
-static int32 GNiagaraSystemSimulationConcurrentGPUTickInit = 1;
+static int32 GbSystemSimTransferParamsParallelThreshold = 64;
+static FAutoConsoleVariableRef CVarSystemSimTransferParamsParallelThreshold(
+	TEXT("fx.SystemSimTransferParamsParallelThreshold"),
+	GbSystemSimTransferParamsParallelThreshold,
+	TEXT("The number of system instances required for the transfer parameters portion of the system tick to go wide. \n"),
+	ECVF_Default
+);
+
+static int32 GNiagaraConcurrentGPUTickInit = 1;
 static FAutoConsoleVariableRef CVarNiagaraConcurrentGPUTickInit(
-	TEXT("fx.Niagara.SystemSimulation.ConcurrentGPUTickInit"),
-	GNiagaraSystemSimulationConcurrentGPUTickInit,
+	TEXT("fx.Niagara.ConcurrentGPUTickInit"),
+	GNiagaraConcurrentGPUTickInit,
 	TEXT("The if non zero we allow GPU Ticks to be initialized in the System's concurrent tick rather than on the game thread."),
 	ECVF_Default
 );
 
-static int32 GNiagaraSystemSimulationBatchGPUTickSubmit = 1;
+static int32 GNiagaraBatchGPUTickSubmit = 1;
 static FAutoConsoleVariableRef CVarNiagaraBatchGPUTickSubmit(
-	TEXT("fx.Niagara.SystemSimulation.BatchGPUTickSubmit"),
-	GNiagaraSystemSimulationBatchGPUTickSubmit,
+	TEXT("fx.Niagara.BatchGPUTickSubmit"),
+	GNiagaraBatchGPUTickSubmit,
 	TEXT("The if non zero we allow GPU Ticks to be submitted to the Render Thread in batches."),
 	ECVF_Default
 );
-
-static float GNiagaraSystemSimulationSkipTickDeltaSeconds = 0.0f;
-static FAutoConsoleVariableRef CVarNiagaraSkipTickDeltaSeconds(
-	TEXT("fx.Niagara.SystemSimulation.SkipTickDeltaSeconds"),
-	GNiagaraSystemSimulationSkipTickDeltaSeconds,
-	TEXT("When none zero we skip all ticks with a delta seconds less than equal to this number."),
-	ECVF_Default
-);
-
-namespace NiagaraSystemSimulationLocal
-{
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-	static int GDebugKillAllOnSpawn = 0;
-	static FAutoConsoleVariableRef CVarDebugKillAllOnSpawn(
-		TEXT("fx.Niagara.SystemSimulation.DebugKillAllOnSpawn"),
-		GDebugKillAllOnSpawn,
-		TEXT("Will randomly kill all spawning instances based on probability of 0-100."),
-		ECVF_Default
-	);
-
-	static int GDebugKillAllOnUpdate = 0;
-	static FAutoConsoleVariableRef CVarDebugKillAllOnUpdate(
-		TEXT("fx.Niagara.SystemSimulation.DebugKillAllOnUpdate"),
-		GDebugKillAllOnUpdate,
-		TEXT("Will randomly kill all updating instances based on probability of 0-100."),
-		ECVF_Default
-	);
-
-	static int GDebugKillInstanceOnTick = 0;
-	static FAutoConsoleVariableRef CVarDebugKillInstanceOnTick(
-		TEXT("fx.Niagara.SystemSimulation.DebugKillInstanceOnTick"),
-		GDebugKillInstanceOnTick,
-		TEXT("Will randomly kill an instance on tick based on probability of 0-100."),
-		ECVF_Default
-	);
-
-	static float GDebugForceDelayConcurrentTask = 0.0f;
-	static FAutoConsoleVariableRef CVarDebugForceDelayConcurrentTask(
-		TEXT("fx.Niagara.SystemSimulation.DebugForceDelayConcurrentTask"),
-		GDebugForceDelayConcurrentTask,
-		TEXT("Forces a time delay into the concurrent task."),
-		ECVF_Default
-	);
-
-	static float GDebugForceDelayInstancesTask = 0.0f;
-	static FAutoConsoleVariableRef CVarDebugForceDelayInstancesTask(
-		TEXT("fx.Niagara.SystemSimulation.DebugForceDelayInstancesTask"),
-		GDebugForceDelayInstancesTask,
-		TEXT("Forces a time delay into the instances task."),
-		ECVF_Default
-	);
-
-	bool DebugKillAllOnSpawn(FNiagaraSystemSimulationTickContext& Context)
-	{
-		if (GDebugKillAllOnSpawn > 0)
-		{
-			if ((FMath::Rand() % 100) < GDebugKillAllOnSpawn)
-			{
-				for (FNiagaraSystemInstance* SystemInst : Context.Instances)
-				{
-					SystemInst->SetActualExecutionState(ENiagaraExecutionState::Disabled);
-				}
-				Context.DataSet.EndSimulate();
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool DebugKillAllOnUpdate(FNiagaraSystemSimulationTickContext& Context)
-	{
-		if (GDebugKillAllOnUpdate > 0)
-		{
-			if ((FMath::Rand() % 100) < GDebugKillAllOnUpdate)
-			{
-				for (FNiagaraSystemInstance* SystemInst : Context.Instances)
-				{
-					SystemInst->SetActualExecutionState(ENiagaraExecutionState::Disabled);
-				}
-				Context.DataSet.EndSimulate();
-				return true;
-			}
-		}
-		return false;
-	}
-
-	void DebugKillInstanceOnTick(FNiagaraSystemInstance* Instance)
-	{
-		if (GDebugKillInstanceOnTick > 0)
-		{
-			if ((FMath::Rand() % 100) < GDebugKillInstanceOnTick)
-			{
-				Instance->Complete(true);
-			}
-		}
-	}
-
-	void DebugDelayConcurrentTask()
-	{
-		if (GDebugForceDelayConcurrentTask > 0.0f)
-		{
-			FPlatformProcess::Sleep(GDebugForceDelayConcurrentTask);
-		}
-	}
-
-	void DebugDelayInstancesTask()
-	{
-		if (GDebugForceDelayInstancesTask > 0.0f)
-		{
-			FPlatformProcess::Sleep(GDebugForceDelayInstancesTask);
-		}
-	}
-#endif
-}
 
 //////////////////////////////////////////////////////////////////////////
 // Task priorities for simulation tasks
@@ -265,9 +154,9 @@ static FAutoConsoleVariableRef CVarNiagaraSystemSimulationWaitAllTaskPri(
 ENamedThreads::Type GetNiagaraTaskPriority(int32 Priority)
 {
 #if WITH_PARTICLE_PERF_STATS
-	// If we are profiling particle performance make sure we don't get context switched due to lower priority as that will confuse the results
-	// Leave low pri if we're just gathering world stats but for per system or per component stats we should use high pri.
-	if (FParticlePerfStats::GetGatherSystemStats() || FParticlePerfStats::GetGatherComponentStats())
+	// If we are profiling particle performance make sure we don't get context switched due to lower priorty as that will confuse the results
+	static const IConsoleVariable* EffectsQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("fx.ParticlePerfStats.Enabled"));
+	if (EffectsQualityCVar && (EffectsQualityCVar->GetInt() != 0))
 	{
 		return GNiagaraTaskPriorities[1].Get();
 	}
@@ -300,181 +189,140 @@ static FAutoConsoleCommand CCmdNiagaraDumpPriorities(
 
 //////////////////////////////////////////////////////////////////////////
 
-#if WITH_PER_COMPONENT_PARTICLE_PERF_STATS
-FORCEINLINE FParticlePerfStats* GetInstancePerfStats(FNiagaraSystemInstance* Inst) { return CastChecked<UNiagaraComponent>(Inst->GetAttachComponent())->ParticlePerfStats; }
-#else
-FORCEINLINE FParticlePerfStats* GetInstancePerfStats(FNiagaraSystemInstance* Inst) { return nullptr; }
-#endif
+FNiagaraSystemSimulationTickContext FNiagaraSystemSimulationTickContext::MakeContextForTicking(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, const FGraphEventRef& MyCompletionGraphEvent)
+{
+	static const auto EffectsQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sg.EffectsQuality"));
+	check(EffectsQualityCVar != nullptr);
+
+	FNiagaraSystemSimulationTickContext Context(Instances, DataSet);
+	Context.Owner = Owner;
+	Context.System = Owner->GetSystem();
+	Context.DeltaSeconds = DeltaSeconds;
+	Context.SpawnNum = SpawnNum;
+	Context.MyCompletionGraphEvent = MyCompletionGraphEvent;
+	Context.FinalizeEvents = nullptr;
+	Context.bTickAsync = MyCompletionGraphEvent.IsValid() && GbParallelSystemSimTick && FApp::ShouldUseThreadingForPerformance();
+	Context.bTickInstancesAsync = MyCompletionGraphEvent.IsValid() && GbParallelSystemInstanceTick && FApp::ShouldUseThreadingForPerformance() && !Owner->GetIsSolo();
+	Context.EffectsQuality = EffectsQualityCVar->GetInt();
+	return Context;
+}
+
+FNiagaraSystemSimulationTickContext FNiagaraSystemSimulationTickContext::MakeContextForSpawning(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, bool bAllowAsync)
+{
+	static const auto EffectsQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sg.EffectsQuality"));
+	check(EffectsQualityCVar != nullptr);
+
+	FNiagaraSystemSimulationTickContext Context(Instances, DataSet);
+	Context.Owner = Owner;
+	Context.System = Owner->GetSystem();
+	Context.DeltaSeconds = DeltaSeconds;
+	Context.SpawnNum = SpawnNum;
+	Context.MyCompletionGraphEvent = nullptr;
+	Context.FinalizeEvents = nullptr;
+	Context.bTickAsync = bAllowAsync && GbParallelSystemSimTick && FApp::ShouldUseThreadingForPerformance();
+	Context.bTickInstancesAsync = false;
+	Context.EffectsQuality = EffectsQualityCVar->GetInt();
+	return Context;
+}
 
 //////////////////////////////////////////////////////////////////////////
-// Task used to determine when all work is complete, i.e. system simulation concurrent, system instance concurrent, finalize
-// Do not wait on this in the GameThread as it may deadlock if we are within a task
-struct FNiagaraSystemSimulationAllWorkCompleteTask
+
+// This task is used to wait for all finalize tasks to complete
+class FNiagaraSystemSimulationWaitAllFinalizeTask
 {
-	FNiagaraSystemSimulationAllWorkCompleteTask(FGraphEventArray*& OutEventsToWaitFor)
+	FGraphEventArray EventsToWaitFor;
+public:
+	FNiagaraSystemSimulationWaitAllFinalizeTask(FGraphEventArray*& OutEventsToWaitFor)
 	{
 		OutEventsToWaitFor = &EventsToWaitFor;
 	}
 
-	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationAllWorkCompleteTask, STATGROUP_TaskGraphTasks); }
+	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationWaitAllFinalizeTask, STATGROUP_TaskGraphTasks); }
 	ENamedThreads::Type GetDesiredThread() { return GetNiagaraTaskPriority(GNiagaraSystemSimulationWaitAllTaskPri); }
 	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
+
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		for (FGraphEventRef& Event : EventsToWaitFor)
+		for ( FGraphEventRef& Event : EventsToWaitFor )
 		{
 			MyCompletionGraphEvent->DontCompleteUntil(Event);
 		}
 		EventsToWaitFor.Empty();
 	}
-
-	FGraphEventArray EventsToWaitFor;
 };
-//////////////////////////////////////////////////////////////////////////
-// Task to run FNiagaraSystemSimulation::Tick_Concurrent
-struct FNiagaraSystemSimulationTickConcurrentTask
+
+//This task performs the concurrent part of the system simulation tick.
+class FNiagaraSystemSimulationTickTask
 {
-	FNiagaraSystemSimulationTickConcurrentTask(FNiagaraSystemSimulationTickContext InContext, FGraphEventRef& CompletionGraphEvent)
+	FNiagaraSystemSimulationTickContext Context;
+	TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* WaitAllFinalizeTask;
+public:
+	FNiagaraSystemSimulationTickTask(FNiagaraSystemSimulationTickContext InContext, TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* InWaitAllFinalizeTask)
 		: Context(InContext)
+		, WaitAllFinalizeTask(InWaitAllFinalizeTask)
 	{
-		CompletionTask = TGraphTask<FNiagaraSystemSimulationAllWorkCompleteTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context.CompletionEvents);
-		CompletionGraphEvent = CompletionTask->GetCompletionEvent();
 	}
 
-	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationTickConcurrentTask, STATGROUP_TaskGraphTasks); }
+	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationTickTask, STATGROUP_TaskGraphTasks); }
 	ENamedThreads::Type GetDesiredThread() { return GetNiagaraTaskPriority(GNiagaraSystemSimulationTaskPri); }
 	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(Context.World, Context.System), TickConcurrent);
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		NiagaraSystemSimulationLocal::DebugDelayConcurrentTask();
-#endif
-
-		Context.Owner->Tick_Concurrent(Context);
-		CompletionTask->Unlock();
+		{
+			PARTICLE_PERF_STAT_CYCLES(Context.System, TickConcurrent);
+			Context.MyCompletionGraphEvent = MyCompletionGraphEvent;
+			Context.Owner->Tick_Concurrent(Context);
+			Context.FinalizeEvents = nullptr;
+		}
+		WaitAllFinalizeTask->Unlock();
 	}
-
-	FNiagaraSystemSimulationTickContext Context;
-	TGraphTask<FNiagaraSystemSimulationAllWorkCompleteTask>* CompletionTask = nullptr;
 };
 
-//////////////////////////////////////////////////////////////////////////
-// Task to run FNiagaraSystemSimulation::Spawn_Concurrent
-struct FNiagaraSystemSimulationSpawnConcurrentTask
+//This task performs the concurrent part of spawning new instances
+class FNiagaraSystemSimulationSpawnPendingTask
 {
-	FNiagaraSystemSimulationSpawnConcurrentTask(FNiagaraSystemSimulationTickContext InContext, FGraphEventRef& CompletionGraphEvent)
+	FNiagaraSystemSimulationTickContext Context;
+	TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* WaitAllFinalizeTask;
+public:
+	FNiagaraSystemSimulationSpawnPendingTask(FNiagaraSystemSimulationTickContext InContext, TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* InWaitAllFinalizeTask)
 		: Context(InContext)
+		, WaitAllFinalizeTask(InWaitAllFinalizeTask)
 	{
-		CompletionTask = TGraphTask<FNiagaraSystemSimulationAllWorkCompleteTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context.CompletionEvents);
-		CompletionGraphEvent = CompletionTask->GetCompletionEvent();
 	}
 
-	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationSpawnConcurrentTask, STATGROUP_TaskGraphTasks); }
+	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemSimulationSpawnPendingTask, STATGROUP_TaskGraphTasks); }
 	ENamedThreads::Type GetDesiredThread() { return GetNiagaraTaskPriority(GNiagaraSystemSimulationSpawnPendingTaskPri); }
 	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
 
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(Context.World, Context.System), TickConcurrent);
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		NiagaraSystemSimulationLocal::DebugDelayConcurrentTask();
-#endif
-
-		Context.BeforeInstancesTickGraphEvents.Add(MyCompletionGraphEvent);
-		Context.Owner->Spawn_Concurrent(Context);
-		CompletionTask->Unlock();
+		{
+			PARTICLE_PERF_STAT_CYCLES(Context.System, TickConcurrent);
+			Context.MyCompletionGraphEvent = MyCompletionGraphEvent;
+			Context.Owner->Spawn_Concurrent(Context);
+			Context.FinalizeEvents = nullptr;
+		}
+		WaitAllFinalizeTask->Unlock();
 	}
-
-	FNiagaraSystemSimulationTickContext Context;
-	TGraphTask<FNiagaraSystemSimulationAllWorkCompleteTask>* CompletionTask = nullptr;
 };
 
 //////////////////////////////////////////////////////////////////////////
-// Task to run FNiagaraSystemInstance::Tick_Concurrent
-struct FNiagaraSystemInstanceTickConcurrentTask
+
+/** 
+Task to call FinalizeTick_GameThread() on a batch of FNiagaraSystemInstances 
+Must be done on the game thread.
+*/
+class FNiagaraSystemInstanceFinalizeTask
 {
-	FNiagaraSystemInstanceTickConcurrentTask(FNiagaraSystemSimulation* InSystemSimulation, FNiagaraSystemTickBatch& InBatch)
-		: SystemSimulation(InSystemSimulation)
-		, Batch(InBatch)
-	{
-	}
-
-	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemInstanceTickConcurrentTask, STATGROUP_TaskGraphTasks); }
-	ENamedThreads::Type GetDesiredThread() { return GetNiagaraTaskPriority(GNiagaraSystemInstanceTaskPri); }
-	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
-
-	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
-	{
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		NiagaraSystemSimulationLocal::DebugDelayInstancesTask();
-#endif
-
-		if (SystemSimulation->GetGPUTickHandlingMode() == ENiagaraGPUTickHandlingMode::ConcurrentBatched)
-		{
-			TArray<TPair<FNiagaraSystemGpuComputeProxy*, FNiagaraGPUSystemTick>, TInlineAllocator<NiagaraSystemTickBatchSize>> GPUTicks;
-			GPUTicks.Reserve(Batch.Num());
-			for (FNiagaraSystemInstance* Inst : Batch)
-			{
-				PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(GetInstancePerfStats(Inst)), TickConcurrent);
-				Inst->Tick_Concurrent(false);
-				if (Inst->NeedsGPUTick())
-				{
-					auto& Tick = GPUTicks.AddDefaulted_GetRef();
-					Tick.Key = Inst->GetSystemGpuComputeProxy();
-					Inst->InitGPUTick(Tick.Value);
-				}
-			}
-
-			if (GPUTicks.Num() > 0)
-			{
-				ENQUEUE_RENDER_COMMAND(FNiagaraGiveSystemInstanceTickToRT)(
-					[GPUTicks](FRHICommandListImmediate& RHICmdList) mutable
-					{
-						for (auto& GPUTick : GPUTicks)
-						{
-							GPUTick.Key->QueueTick(GPUTick.Value);
-						}
-					}
-				);
-			}
-		}
-		else
-		{
-			for (FNiagaraSystemInstance* Inst : Batch)
-			{
-				PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(GetInstancePerfStats(Inst)), TickConcurrent);
-				Inst->Tick_Concurrent();
-			}
-		}
-	}
-
-	FNiagaraSystemSimulation* SystemSimulation = nullptr;
+	FNiagaraSystemSimulation* SystemSim;
 	FNiagaraSystemTickBatch Batch;
-};
-
-
-//////////////////////////////////////////////////////////////////////////
-// Task to run FNiagaraSystemInstance::Finalize_GameThread
-struct FNiagaraSystemInstanceFinalizeTask
-{
-	FNiagaraSystemInstanceFinalizeTask(FNiagaraSystemSimulation* InSystemSimulation, FNiagaraSystemTickBatch& InBatch)
-		: SystemSimulation(InSystemSimulation)
+public:
+	FNiagaraSystemInstanceFinalizeTask(FNiagaraSystemSimulation* InSystemSim, FNiagaraSystemTickBatch& InBatch)
+		: SystemSim(InSystemSim)
 		, Batch(InBatch)
-		, TickHandlingMode(SystemSimulation->GetGPUTickHandlingMode())
 	{
-#if DO_CHECK
-		DebugCounter = 0;
-#endif
-		for ( int32 i=0; i < Batch.Num(); ++i )
-		{
-			FNiagaraSystemInstanceFinalizeRef FinalizeRef(&Batch[i]);
-#if DO_CHECK
-			FinalizeRef.SetDebugCounter(&DebugCounter);
-#endif
-			Batch[i]->SetPendingFinalize(FinalizeRef);
-		}
+
 	}
 
 	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemInstanceFinalizeTask, STATGROUP_TaskGraphTasks); }
@@ -484,36 +332,36 @@ struct FNiagaraSystemInstanceFinalizeTask
 	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
 		check(CurrentThread == ENamedThreads::GameThread);
+		FNiagaraScopedRuntimeCycleCounter RuntimeScope(SystemSim->GetSystem(), true, false);
 
-		if ( TickHandlingMode == ENiagaraGPUTickHandlingMode::GameThreadBatched )
+		PARTICLE_PERF_STAT_CYCLES(SystemSim->GetSystem(), Finalize);
+
+		ENiagaraGPUTickHandlingMode Mode = SystemSim->GetGPUTickHandlingMode();
+		if(Mode == ENiagaraGPUTickHandlingMode::GameThreadBatched)
 		{
-			TArray<TPair<FNiagaraSystemGpuComputeProxy*, FNiagaraGPUSystemTick>, TInlineAllocator<NiagaraSystemTickBatchSize>> GPUTicks;
+			TArray<FNiagaraGPUSystemTick, TInlineAllocator<NiagaraSystemTickBatchSize>> GPUTicks;
 			GPUTicks.Reserve(Batch.Num());
-			for (FNiagaraSystemInstance* Instance : Batch)
+			for (FNiagaraSystemInstance* Inst : Batch)
 			{
-				if (Instance == nullptr )
+				//Don't submit if the finalize was already done in a wait() as then we'd be double ticking GPU emitters.
+				if(Inst->FinalizeTick_GameThread(false))
 				{
-					continue;
-				}
-
-				PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(GetInstancePerfStats(Instance)), Finalize);
-				Instance->FinalizeTick_GameThread(false);
-				if(Instance->NeedsGPUTick())
-				{
-					auto& Tick = GPUTicks.AddDefaulted_GetRef();
-					Tick.Key = Instance->GetSystemGpuComputeProxy();
-					Instance->InitGPUTick(Tick.Value);
+					if(Inst->NeedsGPUTick())
+					{
+						Inst->InitGPUTick(GPUTicks.AddDefaulted_GetRef());
+					}
 				}
 			}
 
 			if(GPUTicks.Num() > 0)
 			{
+				NiagaraEmitterInstanceBatcher* TheBatcher = SystemSim->GetBatcher();
 				ENQUEUE_RENDER_COMMAND(FNiagaraGiveSystemInstanceTickToRT)(
-					[GPUTicks](FRHICommandListImmediate& RHICmdList) mutable
+					[TheBatcher, GPUTicks](FRHICommandListImmediate& RHICmdList) mutable
 					{
 						for(auto& GPUTick : GPUTicks)
 						{
-							GPUTick.Key->QueueTick(GPUTick.Value);
+							TheBatcher->GiveSystemTick_RenderThread(GPUTick);
 						}
 					}
 				);
@@ -521,54 +369,75 @@ struct FNiagaraSystemInstanceFinalizeTask
 		}
 		else
 		{
-			for (FNiagaraSystemInstance* Instance : Batch)
+			for (FNiagaraSystemInstance* Inst : Batch)
 			{
-				if (Instance == nullptr)
-				{
-					continue;
-				}
-
-				PARTICLE_PERF_STAT_CYCLES_GT(FParticlePerfStatsContext(GetInstancePerfStats(Instance)), Finalize);
-				Instance->FinalizeTick_GameThread();
+				Inst->FinalizeTick_GameThread();
 			}
 		}
-#if DO_CHECK
-		ensureMsgf(DebugCounter.load() == 0, TEXT("Finalize batch is complete but counter is %d when it should be zero"), DebugCounter.load());
-#endif
 	}
-
-	FNiagaraSystemSimulation* SystemSimulation = nullptr;
-	FNiagaraSystemTickBatch Batch;
-	ENiagaraGPUTickHandlingMode TickHandlingMode = ENiagaraGPUTickHandlingMode::None;
-#if DO_CHECK
-	std::atomic<int> DebugCounter;
-#endif
 };
 
-//////////////////////////////////////////////////////////////////////////
-
-FNiagaraSystemSimulationTickContext::FNiagaraSystemSimulationTickContext(class FNiagaraSystemSimulation* InOwner, TArray<FNiagaraSystemInstance*>& InInstances, FNiagaraDataSet& InDataSet, float InDeltaSeconds, int32 InSpawnNum, bool bAllowAsync)
-	: Owner(InOwner)
-	, System(InOwner->GetSystem())
-	, World(InOwner->GetWorld())
-	, Instances(InInstances)
-	, DataSet(InDataSet)
-	, DeltaSeconds(InDeltaSeconds)
-	, SpawnNum(InSpawnNum)
+/** 
+Async task to call Tick_Concurrent() on batches of FNiagaraSystemInstances.
+Can be performed on task threads. 
+*/
+class FNiagaraSystemInstanceAsyncTask
 {
-	static const auto EffectsQualityCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sg.EffectsQuality"));
-	check(EffectsQualityCVar != nullptr);
-	EffectsQuality = EffectsQualityCVar->GetInt();
+	FNiagaraSystemSimulation* SystemSim;
+	FNiagaraSystemTickBatch Batch;
 
-	bRunningAsync = bAllowAsync && GNiagaraSystemSimulationAllowASync && FApp::ShouldUseThreadingForPerformance();
-
-#if WITH_EDITORONLY_DATA
-	if ( Owner->GetIsSolo() && Instances.Num() == 1 )
+public:
+	FNiagaraSystemInstanceAsyncTask(FNiagaraSystemSimulation* InSystemSim, FNiagaraSystemTickBatch& InBatch)
+		: SystemSim(InSystemSim)
+		, Batch(InBatch)
 	{
-		bRunningAsync &= Instances[0]->ShouldCaptureThisFrame() == false;
 	}
-#endif
-}
+
+	FORCEINLINE TStatId GetStatId() const { RETURN_QUICK_DECLARE_CYCLE_STAT(FNiagaraSystemInstanceAsyncTask, STATGROUP_TaskGraphTasks); }
+	ENamedThreads::Type GetDesiredThread() { return GetNiagaraTaskPriority(GNiagaraSystemInstanceTaskPri); }
+	static ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::TrackSubsequents; }
+
+	void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+	{
+		PARTICLE_PERF_STAT_CYCLES(Batch[0]->GetSystem(), TickConcurrent);
+
+		ENiagaraGPUTickHandlingMode Mode = SystemSim->GetGPUTickHandlingMode();
+		if (Mode == ENiagaraGPUTickHandlingMode::ConcurrentBatched)
+		{
+			TArray<FNiagaraGPUSystemTick, TInlineAllocator<NiagaraSystemTickBatchSize>> GPUTicks;
+			GPUTicks.Reserve(Batch.Num());
+			for (FNiagaraSystemInstance* Inst : Batch)
+			{
+				Inst->Tick_Concurrent(false);
+				if(Inst->NeedsGPUTick())
+				{
+					Inst->InitGPUTick(GPUTicks.AddDefaulted_GetRef());
+				}
+			}
+
+			if (GPUTicks.Num() > 0)
+			{
+				NiagaraEmitterInstanceBatcher* TheBatcher = SystemSim->GetBatcher();
+				ENQUEUE_RENDER_COMMAND(FNiagaraGiveSystemInstanceTickToRT)(
+					[TheBatcher, GPUTicks](FRHICommandListImmediate& RHICmdList) mutable
+					{
+						for (auto& GPUTick : GPUTicks)
+						{
+							TheBatcher->GiveSystemTick_RenderThread(GPUTick);
+						}
+					}
+				);
+			}
+		}
+		else
+		{
+			for (FNiagaraSystemInstance* Inst : Batch)
+			{
+				Inst->Tick_Concurrent();
+			}
+		}
+	}
+};
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -641,7 +510,7 @@ bool FNiagaraSystemSimulation::Init(UNiagaraSystem* InSystem, UWorld* InWorld, b
 			SpawningDataSet.Init(&SystemCompiledData.DataSetCompiledData);
 
 			//Initialize the dataset for paused systems.
-			PausedDataSet.Init(&SystemCompiledData.DataSetCompiledData);
+			PausedInstanceData.Init(&SystemCompiledData.DataSetCompiledData);
 			
 			SpawnInstanceParameterDataSet.Init(&SystemCompiledData.SpawnInstanceParamsDataSetCompiledData);
 
@@ -722,25 +591,22 @@ bool FNiagaraSystemSimulation::Init(UNiagaraSystem* InSystem, UWorld* InWorld, b
 void FNiagaraSystemSimulation::Destroy()
 {
 	check(IsInGameThread());
-	WaitForInstancesTickComplete();
+	WaitForSystemTickComplete();
 
-	auto DeactivateInstances =
-		[](TArray<FNiagaraSystemInstance*>& Instances)
-		{
-			while (Instances.Num() > 0)
-			{
-				FNiagaraSystemInstance* Instance = Instances.Last();
-				Instance->Deactivate(true);		
-				check(Instance->SystemInstanceState == ENiagaraSystemInstanceState::None);
-			}
-		};
-
-	DeactivateInstances(GetSystemInstances(ENiagaraSystemInstanceState::Running));
-	DeactivateInstances(GetSystemInstances(ENiagaraSystemInstanceState::Paused));
-	DeactivateInstances(GetSystemInstances(ENiagaraSystemInstanceState::PendingSpawn));
-	DeactivateInstances(GetSystemInstances(ENiagaraSystemInstanceState::PendingSpawnPaused));
-
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Spawning).Num() == 0);
+	while (SystemInstances.Num())
+	{
+		FNiagaraSystemInstance* Inst = SystemInstances.Last();
+		check(Inst);
+		Inst->Deactivate(true);		
+	}
+	while (PendingSystemInstances.Num())
+	{
+		FNiagaraSystemInstance* Inst = PendingSystemInstances.Last();
+		check(Inst);
+		Inst->Deactivate(true);		
+	}
+	SystemInstances.Empty();
+	PendingSystemInstances.Empty();
 
 	FNiagaraWorldManager* WorldMan = FNiagaraWorldManager::Get(World);
 	check(WorldMan);
@@ -775,68 +641,55 @@ FNiagaraParameterStore& FNiagaraSystemSimulation::GetScriptDefinedDataInterfaceP
 	return ScriptDefinedDataInterfaceParameters;
 }
 
-void FNiagaraSystemSimulation::TransferInstance(FNiagaraSystemInstance* Instance)
+void FNiagaraSystemSimulation::TransferInstance(FNiagaraSystemSimulation* SourceSimulation, FNiagaraSystemInstance* SystemInst)
 {
-	check(Instance);
-	check(Instance->SystemSimulation.Get() != this);
+	check(SourceSimulation->GetSystem() == GetSystem());
+	check(SystemInst);
 
-	// Wait for all current instance ticks to complete we could complete the instance in question
-	TSharedPtr<class FNiagaraSystemSimulation, ESPMode::ThreadSafe> SourceSimulation = Instance->SystemSimulation;
+	check(!SystemInst->IsPaused());
+	check(!bInSpawnPhase);
+	check(!SourceSimulation->bInSpawnPhase);
+
 	WaitForInstancesTickComplete();
 	SourceSimulation->WaitForInstancesTickComplete();
 
-	switch ( Instance->SystemInstanceState)
+	int32 SystemInstIdx = SystemInst->SystemInstanceIndex;
+	if (!SystemInst->IsPendingSpawn() && SystemInst->SystemInstanceIndex != INDEX_NONE)
 	{
-		// Nothing to do as nothing to transfer
-		case ENiagaraSystemInstanceState::None:
-			break;
+// 		UE_LOG(LogNiagara, Log, TEXT("== Dataset Transfer ========================"));
+// 		UE_LOG(LogNiagara, Log, TEXT(" ----- Existing values in src. Idx: %d -----"), SystemInstIdx);
+// 		SourceSimulation->DataSet.Dump(true, SystemInstIdx, 1);
 
-		case ENiagaraSystemInstanceState::PendingSpawn:
-			SourceSimulation->RemoveFromInstanceList(Instance);
-			Instance->SystemSimulation = this->AsShared();
-			AddToInstanceList(Instance, ENiagaraSystemInstanceState::PendingSpawn);
-			break;
+		//If we're not pending then the system actually has data to pull over. This is not fast.
+		int32 NewDataSetIndex = MainDataSet.GetCurrentDataChecked().TransferInstance(SourceSimulation->MainDataSet.GetCurrentDataChecked(), SystemInstIdx, false);
 
-		// Should never get here!
-		case ENiagaraSystemInstanceState::Spawning:
-			UE_LOG(LogNiagara, Fatal, TEXT("Attempting to transfer an instance that is in the spawning state"));
-			break;
+// 		UE_LOG(LogNiagara, Log, TEXT(" ----- Transfered values in dest. Idx: %d -----"), NewDataIndex);
+// 		DataSet.Dump(true, NewDataIndex, 1);
+	
+		SourceSimulation->RemoveInstance(SystemInst);
+	
+		//Move the system direct to the new sim's 
+		SystemInst->SystemInstanceIndex = SystemInstances.Add(SystemInst);
+		check(NewDataSetIndex == SystemInst->SystemInstanceIndex);
 
-		case ENiagaraSystemInstanceState::Running:
+		if (!bBindingsInitialized)
 		{
-			const int32 NewDataSetIndex = MainDataSet.GetCurrentDataChecked().TransferInstance(SourceSimulation->MainDataSet.GetCurrentDataChecked(), Instance->SystemInstanceIndex);
-
-			SourceSimulation->RemoveFromInstanceList(Instance);
-			Instance->SystemSimulation = this->AsShared();
-			AddToInstanceList(Instance, ENiagaraSystemInstanceState::Running);
-
-			check(Instance->SystemInstanceIndex == NewDataSetIndex);
-			break;
-		}
-
-		// If not pending spawn we need to transfer the data over
-		case ENiagaraSystemInstanceState::Paused:
-		{
-			const int32 NewDataSetIndex = PausedDataSet.GetCurrentDataChecked().TransferInstance(SourceSimulation->PausedDataSet.GetCurrentDataChecked(), Instance->SystemInstanceIndex);
-
-			SourceSimulation->RemoveFromInstanceList(Instance);
-			Instance->SystemSimulation = this->AsShared();
-			AddToInstanceList(Instance, ENiagaraSystemInstanceState::Paused);
-
-			check(Instance->SystemInstanceIndex == NewDataSetIndex);
-			break;
+			InitParameterDataSetBindings(SystemInst);
 		}
 	}
-
-	if (!bBindingsInitialized)
+	else
 	{
-		InitParameterDataSetBindings(Instance);
+		SourceSimulation->RemoveInstance(SystemInst);
+
+		AddInstance(SystemInst);			
 	}
+
+	SystemInst->SystemSimulation = this->AsShared();
 }
 
 void FNiagaraSystemSimulation::DumpInstance(const FNiagaraSystemInstance* Inst)const
 {
-	ensure(!Inst->HasPendingFinalize());
+	ensure(Inst->bAsyncWorkInProgress == false);
 
 	UE_LOG(LogNiagara, Log, TEXT("==  %s (%d) ========"), *Inst->GetSystem()->GetFullName(), Inst->SystemInstanceIndex);
 	UE_LOG(LogNiagara, Log, TEXT(".................Spawn................."));
@@ -852,20 +705,30 @@ void FNiagaraSystemSimulation::DumpInstance(const FNiagaraSystemInstance* Inst)c
 void FNiagaraSystemSimulation::DumpTickInfo(FOutputDevice& Ar)
 {
 	check(IsInGameThread());
-
-	UEnum* InstanceStateEnum = StaticEnum<ENiagaraSystemInstanceState>();
-	check(InstanceStateEnum);
-
-	for ( int i=0; i < int(ENiagaraSystemInstanceState::Num); ++i )
+	if (SystemInstances.Num() > 0)
 	{
-		TArray<FNiagaraSystemInstance*> Instances = GetSystemInstances(ENiagaraSystemInstanceState(i));
-		if (Instances.Num() > 0)
+		Ar.Logf(TEXT("\t\tSystemInstances %d"), SystemInstances.Num());
+		for (FNiagaraSystemInstance* Instance : SystemInstances)
 		{
-			Ar.Logf(TEXT("\t\tInstances State(%s) Count(%d)"), *InstanceStateEnum->GetNameByIndex(i).ToString(), Instances.Num());
-			for (FNiagaraSystemInstance* Instance : Instances)
-			{
-				Instance->DumpTickInfo(Ar);
-			}
+			Instance->DumpTickInfo(Ar);
+		}
+	}
+
+	if (PendingSystemInstances.Num() > 0)
+	{
+		Ar.Logf(TEXT("\t\tPendingSystemInstances %d"), PendingSystemInstances.Num());
+		for (FNiagaraSystemInstance* Instance : PendingSystemInstances)
+		{
+			Instance->DumpTickInfo(Ar);
+		}
+	}
+
+	if (PausedSystemInstances.Num() > 0)
+	{
+		Ar.Logf(TEXT("\t\tPausedSystemInstances %d"), PausedSystemInstances.Num());
+		for (FNiagaraSystemInstance* Instance : PausedSystemInstances)
+		{
+			Instance->DumpTickInfo(Ar);
 		}
 	}
 }
@@ -878,149 +741,30 @@ void FNiagaraSystemSimulation::AddTickGroupPromotion(FNiagaraSystemInstance* Ins
 
 	check(bIsSolo == false);
 
-	FNiagaraWorldManager::Get(World)->MarkSimulationForPostActorWork(this);
+	FNiagaraWorldManager* WorldManager = FNiagaraWorldManager::Get(World);
+	check(WorldManager != nullptr);
+	WorldManager->MarkSimulationForPostActorWork(this);
 }
 
-void FNiagaraSystemSimulation::RemoveFromInstanceList(FNiagaraSystemInstance* Instance)
+int32 FNiagaraSystemSimulation::AddPendingSystemInstance(FNiagaraSystemInstance* Instance)
 {
-	const int32 InstanceIndex = Instance->SystemInstanceIndex;
-	const int32 InstanceState = int32(Instance->SystemInstanceState);
+	check(IsInGameThread());
+	check(!PendingSystemInstances.Contains(Instance));
 
-	TArray<FNiagaraSystemInstance*>& SystemInstances = GetSystemInstances(Instance->SystemInstanceState);
-
-	check(SystemInstances.IsValidIndex(InstanceIndex));
-	check(SystemInstances[InstanceIndex] == Instance);
-
-	SystemInstances.RemoveAtSwap(InstanceIndex);
-	if (SystemInstances.IsValidIndex(InstanceIndex))
+	if (bIsSolo == false)
 	{
-		SystemInstances[InstanceIndex]->SystemInstanceIndex = InstanceIndex;
-	}
-	Instance->SystemInstanceIndex = INDEX_NONE;
-	Instance->SystemInstanceState = ENiagaraSystemInstanceState::None;
-}
-
-void FNiagaraSystemSimulation::AddToInstanceList(FNiagaraSystemInstance* Instance, ENiagaraSystemInstanceState InstanceState)
-{
-	check(InstanceState != ENiagaraSystemInstanceState::None);
-	check(Instance->SystemInstanceIndex == INDEX_NONE);
-	check(Instance->SystemInstanceState == ENiagaraSystemInstanceState::None);
-	Instance->SystemInstanceState = InstanceState;
-	Instance->SystemInstanceIndex = GetSystemInstances(InstanceState).Add(Instance);
-}
-
-void FNiagaraSystemSimulation::SetInstanceState(FNiagaraSystemInstance* Instance, ENiagaraSystemInstanceState NewState)
-{
-	check(Instance != nullptr);
-
-	switch ( Instance->SystemInstanceState )
-	{
-		// If we are not in a list the only possible place to go is pending spawn, anything else is invalid
-		case ENiagaraSystemInstanceState::None:
-		{
-			check(NewState == ENiagaraSystemInstanceState::PendingSpawn);
-			AddToInstanceList(Instance, NewState);
-			break;
-		}
-
-		// If we are pending spawn we can only move to None, PendingSpawnPaused, Spawning or Running
-		case ENiagaraSystemInstanceState::PendingSpawn:
-		{
-			check((NewState == ENiagaraSystemInstanceState::None) || (NewState == ENiagaraSystemInstanceState::PendingSpawnPaused) || (NewState == ENiagaraSystemInstanceState::Spawning) || (NewState == ENiagaraSystemInstanceState::Running));
-
-			RemoveFromInstanceList(Instance);
-			if (NewState != ENiagaraSystemInstanceState::None)
-			{
-				AddToInstanceList(Instance, NewState);
-			}
-			break;
-		}
-
-		// Can only move to None or PendingSpawn
-		case ENiagaraSystemInstanceState::PendingSpawnPaused:
-		{
-			check((NewState == ENiagaraSystemInstanceState::None) || (NewState == ENiagaraSystemInstanceState::PendingSpawn));
-
-			RemoveFromInstanceList(Instance);
-			if (NewState != ENiagaraSystemInstanceState::None)
-			{
-				AddToInstanceList(Instance, NewState);
-			}
-			break;
-		}
-
-		// Can only move to None or Running
-		case ENiagaraSystemInstanceState::Spawning:
-		{
-			check((NewState == ENiagaraSystemInstanceState::None) || (NewState == ENiagaraSystemInstanceState::Running));
-
-			const int32 CurrDataSetIndex = Instance->SystemInstanceIndex;
-			RemoveFromInstanceList(Instance);
-			if (NewState == ENiagaraSystemInstanceState::None)
-			{
-				SpawningDataSet.GetCurrentDataChecked().KillInstance(CurrDataSetIndex);
-			}
-			else
-			{
-				const int32 NewDataSetIndex = MainDataSet.GetCurrentDataChecked().TransferInstance(SpawningDataSet.GetCurrentDataChecked(), CurrDataSetIndex);
-				AddToInstanceList(Instance, NewState);
-				check(Instance->SystemInstanceIndex == NewDataSetIndex);
-			}
-			break;
-		}
-
-		// Can only move to None or Paused
-		case ENiagaraSystemInstanceState::Running:
-		{
-			check((NewState == ENiagaraSystemInstanceState::None) || (NewState == ENiagaraSystemInstanceState::Paused));
-
-			const int32 CurrDataSetIndex = Instance->SystemInstanceIndex;
-			RemoveFromInstanceList(Instance);
-			if (NewState == ENiagaraSystemInstanceState::None)
-			{
-				MainDataSet.GetCurrentDataChecked().KillInstance(CurrDataSetIndex);
-			}
-			else
-			{
-				const int32 NewDataSetIndex = PausedDataSet.GetCurrentDataChecked().TransferInstance(MainDataSet.GetCurrentDataChecked(), CurrDataSetIndex);
-				AddToInstanceList(Instance, NewState);
-				check(Instance->SystemInstanceIndex == NewDataSetIndex);
-			}
-			break;
-		}
-
-		// Can only move to None or Running
-		case ENiagaraSystemInstanceState::Paused:
-		{
-			check((NewState == ENiagaraSystemInstanceState::None) || (NewState == ENiagaraSystemInstanceState::Running));
-
-			const int32 CurrDataSetIndex = Instance->SystemInstanceIndex;
-			RemoveFromInstanceList(Instance);
-			if (NewState == ENiagaraSystemInstanceState::None)
-			{
-				PausedDataSet.GetCurrentDataChecked().KillInstance(CurrDataSetIndex);
-			}
-			else
-			{
-				const int32 NewDataSetIndex = MainDataSet.GetCurrentDataChecked().TransferInstance(PausedDataSet.GetCurrentDataChecked(), CurrDataSetIndex);
-				AddToInstanceList(Instance, NewState);
-				check(Instance->SystemInstanceIndex == NewDataSetIndex);
-			}
-			break;
-		}
+		FNiagaraWorldManager* WorldManager = FNiagaraWorldManager::Get(World);
+		check(WorldManager != nullptr);
+		WorldManager->MarkSimulationForPostActorWork(this);
 	}
 
-	// When we add an instance to pending spawn we must also flag for post actor work
-	if ((NewState == ENiagaraSystemInstanceState::PendingSpawn) && !bIsSolo)
-	{
-		FNiagaraWorldManager::Get(World)->MarkSimulationForPostActorWork(this);
-	}
+	return PendingSystemInstances.Add(Instance);
 }
 
 void FNiagaraSystemSimulation::AddSystemToTickBatch(FNiagaraSystemInstance* Instance, FNiagaraSystemSimulationTickContext& Context)
 {
 	TickBatch.Add(Instance);
-	if (TickBatch.Num() == GNiagaraSystemSimulationTickBatchSize)
+	if (TickBatch.Num() == GbParallelSystemInstanceTickBatchSize)
 	{
 		FlushTickBatch(Context);
 	}
@@ -1030,32 +774,32 @@ void FNiagaraSystemSimulation::FlushTickBatch(FNiagaraSystemSimulationTickContex
 {
 	if (TickBatch.Num() > 0)
 	{
-		// If we are running async create tasks to execute
-		if ( Context.IsRunningAsync() )
+		FGraphEventArray FinalizePrereq;
+		FinalizePrereq.Add(Context.MyCompletionGraphEvent);
+
+		// Enqueue or tick the instances
+		if ( Context.bTickInstancesAsync )
 		{
-			// Queue instance concurrent task and track information in the instance
-			FGraphEventRef InstanceAsyncGraphEvent = TGraphTask<FNiagaraSystemInstanceTickConcurrentTask>::CreateTask(&Context.BeforeInstancesTickGraphEvents).ConstructAndDispatchWhenReady(this, TickBatch);
+			check(Context.FinalizeEvents != nullptr);
 
-			for (FNiagaraSystemInstance* Inst : TickBatch)
-			{
-				Inst->ConcurrentTickGraphEvent = InstanceAsyncGraphEvent;
-			}
-
-			// Queue finalize task which will run after the instances are complete, track with our all completion event
-			FGraphEventArray FinalizePrereqArray;
-			FinalizePrereqArray.Add(InstanceAsyncGraphEvent);
-			FGraphEventRef FinalizeTask = TGraphTask<FNiagaraSystemInstanceFinalizeTask>::CreateTask(&FinalizePrereqArray).ConstructAndDispatchWhenReady(this, TickBatch);
-
-			check(Context.CompletionEvents != nullptr);
-			Context.CompletionEvents->Add(FinalizeTask);
+			FGraphEventRef AsyncTask = TGraphTask<FNiagaraSystemInstanceAsyncTask>::CreateTask(nullptr).ConstructAndDispatchWhenReady(this, TickBatch);
+			FinalizePrereq.Add(AsyncTask);
 		}
-		// Execute immediately
 		else
 		{
 			for (FNiagaraSystemInstance* Inst : TickBatch)
 			{
 				Inst->Tick_Concurrent();
 			}
+		}
+
+		// Enqueue a finalize task?
+		if (Context.bTickAsync || Context.bTickInstancesAsync )
+		{
+			check(Context.FinalizeEvents != nullptr);
+
+			FGraphEventRef FinalizeTask = TGraphTask<FNiagaraSystemInstanceFinalizeTask>::CreateTask(&FinalizePrereq).ConstructAndDispatchWhenReady(this, TickBatch);
+			Context.FinalizeEvents->Add(FinalizeTask);
 		}
 
 		TickBatch.Reset();
@@ -1065,15 +809,7 @@ void FNiagaraSystemSimulation::FlushTickBatch(FNiagaraSystemSimulationTickContex
 /** First phase of system sim tick. Must run on GameThread. */
 void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphEventRef& MyCompletionGraphEvent)
 {
-	TArray<FNiagaraSystemInstance*>& SystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::Running);
-	TArray<FNiagaraSystemInstance*>& PendingSystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::PendingSpawn);
-
 	if ((PendingSystemInstances.Num() == 0 && SystemInstances.Num() == 0) || !bCanExecute)
-	{
-		return;
-	}
-
-	if ((GNiagaraSystemSimulationSkipTickDeltaSeconds > 0.0f) && (DeltaSeconds <= GNiagaraSystemSimulationSkipTickDeltaSeconds))
 	{
 		return;
 	}
@@ -1083,8 +819,7 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 
 	FNiagaraCrashReporterScope CRScope(this);
 
-	// Work may not be complete if we back to back tick the GameThread without sending EOF updates
-	WaitForInstancesTickComplete();
+	WaitForSystemTickComplete(true);
 
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraOverview_GT);
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraSystemSim_TickGT);
@@ -1094,18 +829,14 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 
 	UNiagaraSystem* System = WeakSystem.Get();
 	FScopeCycleCounter SystemStatCounter(System->GetStatID(true, false));
+	PARTICLE_PERF_STAT_INSTANCE_COUNT(System, SystemInstances.Num());
+	PARTICLE_PERF_STAT_CYCLES(System, TickGameThread);
 
-	const int32 NumInstances = SystemInstances.Num();
-	PARTICLE_PERF_STAT_CYCLES_WITH_COUNT_GT(FParticlePerfStatsContext(GetWorld(), GetSystem()), TickGameThread, NumInstances);
+	SystemTickGraphEvent = nullptr;
 
-	checkf(!ConcurrentTickGraphEvent.IsValid() || ConcurrentTickGraphEvent->IsComplete(), TEXT("NiagaraSystemSimulation System Concurrent has not completed when calling Tick_GameThread."));
-	checkf(!AllWorkCompleteGraphEvent.IsValid() || AllWorkCompleteGraphEvent->IsComplete(), TEXT("NiagaraSystemSimulation Finalizes are not completed when calling Tick_GameThread"));
-	ConcurrentTickGraphEvent = nullptr;
-	AllWorkCompleteGraphEvent = nullptr;
-
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Running).Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Spawning).Num() == SpawningDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Paused).Num() == PausedDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+	FNiagaraScopedRuntimeCycleCounter RuntimeScope(System, true, false);
 
 	if (MaxDeltaTime.IsSet())
 	{
@@ -1125,12 +856,12 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 	int32 SystemIndex = 0;
 	while (SystemIndex < SystemInstances.Num())
 	{
-		FNiagaraSystemInstance* Instance = SystemInstances[SystemIndex];
+		FNiagaraSystemInstance* Inst = SystemInstances[SystemIndex];
 
 		// Update instance tick group, this can involve demoting the instance (i.e. removing from our list)
 		if ( bUpdateTickGroups )
 		{
-			ETickingGroup DesiredTickGroup = Instance->CalculateTickGroup();
+			ETickingGroup DesiredTickGroup = Inst->CalculateTickGroup();
 			if (DesiredTickGroup != SystemTickGroup )
 			{
 				// Tick demotion we need to do this now to ensure we complete in the correct group
@@ -1140,30 +871,45 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 					check(WorldManager != nullptr);
 
 					TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> NewSim = WorldManager->GetSystemSimulation(DesiredTickGroup, System);
-					NewSim->TransferInstance(Instance);
+					NewSim->WaitForInstancesTickComplete();
+					NewSim->MainDataSet.GetCurrentDataChecked().TransferInstance(MainDataSet.GetCurrentDataChecked(), SystemIndex, true);
+
+					SystemInstances.RemoveAtSwap(SystemIndex);
+					if (SystemInstances.IsValidIndex(SystemIndex))
+					{
+						SystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+					}
+
+					Inst->SystemInstanceIndex = NewSim->SystemInstances.Add(Inst);
+					Inst->SystemSimulation = NewSim;
+
+					if (!NewSim->bBindingsInitialized)
+					{
+						NewSim->InitParameterDataSetBindings(Inst);
+					}
 					continue;
 				}
 				// Tick promotions must be deferred as the tick group has already been processed
 				//-OPT: We could tick in this group and add a task dependent on both groups to do the transform async
 				else
 				{
-					AddTickGroupPromotion(Instance);
+					AddTickGroupPromotion(Inst);
 				}
 			}
 		}
 
-		PARTICLE_PERF_STAT_CYCLES_WITH_COUNT_GT(FParticlePerfStatsContext(GetInstancePerfStats(Instance)), TickGameThread, 1);
-
 		// Perform instance tick
-		Instance->Tick_GameThread(DeltaSeconds);
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		NiagaraSystemSimulationLocal::DebugKillInstanceOnTick(Instance);
-#endif
+		Inst->Tick_GameThread(DeltaSeconds);
 
-		// Ticking the instance can result in it being removed, completing + reactivating or transferring
-		if (SystemInstances.IsValidIndex(SystemIndex) && (SystemInstances[SystemIndex] == Instance))
+		// TickDataInterfaces could remove the system so we only increment if the system has changed
+		// Also possible for this system to have been transfered to another system simulation.
+		if ( Inst->GetSystemSimulation().Get() == this )
 		{
-			++SystemIndex;
+			if (Inst->SystemInstanceIndex != INDEX_NONE)
+			{
+				check(Inst->SystemInstanceIndex == SystemIndex);
+				++SystemIndex;
+			}
 		}
 	}
 
@@ -1176,43 +922,72 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 	{
 		SystemInstances.Reserve(SystemInstances.Num() + PendingSystemInstances.Num());
 
-		while (PendingSystemInstances.Num() > 0)
+		SystemIndex = 0;
+		while (SystemIndex < PendingSystemInstances.Num())
 		{
-			FNiagaraSystemInstance* Instance = PendingSystemInstances[0];
+			FNiagaraSystemInstance* Inst = PendingSystemInstances[SystemIndex];
+			// Gather any pending spawn systems and add to the end of the system instances
 
-			// Not solo, look to see if we should move tick group
+			if (Inst->IsPaused())
+			{
+				++SystemIndex;
+				continue;
+			}
+
+			// If we are paused continue
+
 			if (!bIsSolo)
 			{
-				const ETickingGroup DesiredTickGroup = Instance->CalculateTickGroup();
+				const ETickingGroup DesiredTickGroup = Inst->CalculateTickGroup();
 				if (DesiredTickGroup != SystemTickGroup)
 				{
-					TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> DestSim = FNiagaraWorldManager::Get(World)->GetSystemSimulation(DesiredTickGroup, System);
-					DestSim->TransferInstance(Instance);
+					PendingSystemInstances.RemoveAtSwap(SystemIndex);
+					if (PendingSystemInstances.IsValidIndex(SystemIndex))
+					{
+						PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+					}
+					Inst->SystemInstanceIndex = INDEX_NONE;
+
+					FNiagaraWorldManager* WorldManager = FNiagaraWorldManager::Get(World);
+					check(WorldManager != nullptr);
+
+					TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> DestSim = WorldManager->GetSystemSimulation(DesiredTickGroup, System);
+
+					Inst->SystemSimulation = DestSim;
+					Inst->SystemInstanceIndex = DestSim->AddPendingSystemInstance(Inst);
 					continue;
 				}
 			}
 
 			// Execute instance tick
-			PARTICLE_PERF_STAT_CYCLES_WITH_COUNT_GT(FParticlePerfStatsContext(GetInstancePerfStats(Instance)), TickGameThread, 1);
-			Instance->Tick_GameThread(DeltaSeconds);
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-			NiagaraSystemSimulationLocal::DebugKillInstanceOnTick(Instance);
-#endif
+			Inst->Tick_GameThread(DeltaSeconds);
 
-			// Ensure we handle the instance being killed or potentially transfering system
-			if ( PendingSystemInstances.IsValidIndex(0) && (PendingSystemInstances[0] == Instance) )
+			if (Inst->SystemInstanceIndex != INDEX_NONE)
 			{
+				// We should not move tick group during Tick_GameThread but let's be safe
+				check(Inst->SystemSimulation.Get() == this);
+
 				// When the first instance is added we need to initialize the parameter store to data set bindings.
 				if (!bBindingsInitialized)
 				{
-					InitParameterDataSetBindings(Instance);
+					InitParameterDataSetBindings(Inst);
 				}
 
-				SetInstanceState(Instance, ENiagaraSystemInstanceState::Running);
+				check(PendingSystemInstances[SystemIndex] == Inst);
+				PendingSystemInstances.RemoveAtSwap(SystemIndex);
+				if (PendingSystemInstances.IsValidIndex(SystemIndex))
+				{
+					PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+				}
+
+				Inst->SystemInstanceIndex = SystemInstances.Add(Inst);
+				Inst->SetPendingSpawn(false);
 				++SpawnNum;
 			}
 		}
 	}
+
+	FNiagaraSystemSimulationTickContext Context = FNiagaraSystemSimulationTickContext::MakeContextForTicking(this, SystemInstances, MainDataSet, DeltaSeconds, SpawnNum, MyCompletionGraphEvent);
 
 	//Solo systems add their counts in their component tick.
 	if (GetIsSolo() == false)
@@ -1221,22 +996,35 @@ void FNiagaraSystemSimulation::Tick_GameThread(float DeltaSeconds, const FGraphE
 		INC_DWORD_STAT_BY(STAT_TotalNiagaraSystemInstances, SystemInstances.Num());
 	}
 
-	//  Execute simulation async if allowed, otherwise everything will run on the game thread
-	FNiagaraSystemSimulationTickContext Context(this, SystemInstances, MainDataSet, DeltaSeconds, SpawnNum, MyCompletionGraphEvent.IsValid());
-	if ( Context.IsRunningAsync() )
+	//Now kick of the concurrent tick.
+	if (Context.bTickAsync)
 	{
-		auto ConcurrentTickTask = TGraphTask<FNiagaraSystemSimulationTickConcurrentTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context, AllWorkCompleteGraphEvent);
-		ConcurrentTickGraphEvent = ConcurrentTickTask->GetCompletionEvent();
-		for (FNiagaraSystemInstance* Instance : Context.Instances)
-		{
-			Instance->ConcurrentTickGraphEvent = ConcurrentTickGraphEvent;
-		}
-		ConcurrentTickTask->Unlock();
-		MyCompletionGraphEvent->DontCompleteUntil(AllWorkCompleteGraphEvent);
+		TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* WaitAllFinalizeTask = TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context.FinalizeEvents);
+		FGraphEventRef FinalizeGraphEvent = WaitAllFinalizeTask->GetCompletionEvent();
+
+		TGraphTask<FNiagaraSystemSimulationTickTask>* SimulationTickTask = TGraphTask<FNiagaraSystemSimulationTickTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context, WaitAllFinalizeTask);
+		SystemTickGraphEvent = SimulationTickTask->GetCompletionEvent();
+		Context.FinalizeEvents->Add(SystemTickGraphEvent);
+
+		MyCompletionGraphEvent->DontCompleteUntil(FinalizeGraphEvent);
+
+		SimulationTickTask->Unlock(ENamedThreads::GameThread);
 	}
 	else
 	{
+		TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* WaitAllFinalizeTask = nullptr;
+		if (Context.bTickInstancesAsync)
+		{
+			WaitAllFinalizeTask = TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context.FinalizeEvents);
+		}
+
 		Tick_Concurrent(Context);
+
+		if (Context.bTickInstancesAsync)
+		{
+			WaitAllFinalizeTask->Unlock(ENamedThreads::GameThread);
+			Context.FinalizeEvents = nullptr;
+		}
 	}
 }
 
@@ -1257,6 +1045,8 @@ void FNiagaraSystemSimulation::UpdateTickGroups_GameThread()
 	UNiagaraSystem* System = WeakSystem.Get();
 	check(System != nullptr);
 
+	FNiagaraScopedRuntimeCycleCounter RuntimeScope(System, true, false);
+
 	// Transfer promoted instances to the new tick group
 	//-OPT: This can be done async
 	while (PendingTickGroupPromotions.Num() > 0)
@@ -1267,23 +1057,34 @@ void FNiagaraSystemSimulation::UpdateTickGroups_GameThread()
 		if (TickGroup != SystemTickGroup)
 		{
 			TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> NewSim = WorldManager->GetSystemSimulation(TickGroup, System);
-			NewSim->TransferInstance(Instance);
+			NewSim->TransferInstance(this, Instance);
 		}
 	}
 	PendingTickGroupPromotions.Reset();
 
 	// Move pending system instances into new tick groups
-	TArray<FNiagaraSystemInstance*>& PendingSystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::PendingSpawn);
 	int32 SystemIndex = 0;
 	while ( SystemIndex < PendingSystemInstances.Num() )
 	{
 		FNiagaraSystemInstance* Instance = PendingSystemInstances[SystemIndex];
-		const ETickingGroup DesiredTickGroup = Instance->CalculateTickGroup();
-		if (DesiredTickGroup != SystemTickGroup)
+		if ( !Instance->IsPaused() )
 		{
-			TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> DestSim = WorldManager->GetSystemSimulation(DesiredTickGroup, System);
-			DestSim->TransferInstance(Instance);
-			continue;
+			const ETickingGroup DesiredTickGroup = Instance->CalculateTickGroup();
+			if (DesiredTickGroup != SystemTickGroup)
+			{
+				PendingSystemInstances.RemoveAtSwap(SystemIndex);
+				if (PendingSystemInstances.IsValidIndex(SystemIndex))
+				{
+					PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+				}
+				Instance->SystemInstanceIndex = INDEX_NONE;
+
+				TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> DestSim = WorldManager->GetSystemSimulation(DesiredTickGroup, System);
+
+				Instance->SystemSimulation = DestSim;
+				Instance->SystemInstanceIndex = DestSim->AddPendingSystemInstance(Instance);
+				continue;
+			}
 		}
 		++SystemIndex;
 	}
@@ -1292,16 +1093,14 @@ void FNiagaraSystemSimulation::UpdateTickGroups_GameThread()
 void FNiagaraSystemSimulation::Spawn_GameThread(float DeltaSeconds, bool bPostActorTick)
 {
 	// Early out, nothing to do
-	TArray<FNiagaraSystemInstance*>& PendingSystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::PendingSpawn);
 	if (PendingSystemInstances.Num() == 0 || !bCanExecute)
 	{
 		return;
 	}
 
-	// Check to see if all work is complete already or not
-	if (AllWorkCompleteGraphEvent.IsValid() && !AllWorkCompleteGraphEvent->IsComplete())
+	if (SystemTickGraphEvent.IsValid() && !SystemTickGraphEvent->IsComplete())
 	{
-		//-OPT: We should be able to chain this task off the AllWorkCompleteGraphEvent rather than not spawning
+		//-OPT: We could chain a task onto the existing one here if we had a reference to the finalize all task
 		if (bPostActorTick == false)
 		{
 			return;
@@ -1310,8 +1109,7 @@ void FNiagaraSystemSimulation::Spawn_GameThread(float DeltaSeconds, bool bPostAc
 		// We should not wait here in post actor tick, but we will be safe and warn
 		WaitForInstancesTickComplete(true);
 	}
-	ConcurrentTickGraphEvent = nullptr;
-	AllWorkCompleteGraphEvent = nullptr;
+	SystemTickGraphEvent = nullptr;
 
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraSystemSim_SpawnNewGT);
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraOverview_GT);
@@ -1337,37 +1135,56 @@ void FNiagaraSystemSimulation::Spawn_GameThread(float DeltaSeconds, bool bPostAc
 
 	SetupParameters_GameThread(DeltaSeconds);
 
+	FNiagaraScopedRuntimeCycleCounter RuntimeScope(System, true, false);
+
 	// Spawn instances
 	FNiagaraWorldManager* WorldManager = FNiagaraWorldManager::Get(World);
 	check(WorldManager != nullptr);
 
-	TArray<FNiagaraSystemInstance*>& SpawningInstances = GetSystemInstances(ENiagaraSystemInstanceState::Spawning);
 	SpawningInstances.Reserve(PendingSystemInstances.Num());
 
 	int32 SystemIndex = 0;
 	while (SystemIndex < PendingSystemInstances.Num())
 	{
 		FNiagaraSystemInstance* Instance = PendingSystemInstances[SystemIndex];
+		if (Instance->IsPaused())
+		{
+			++SystemIndex;
+			continue;
+		}
 
 		// Do we need to move tick group, has something changed since we last checked?
 		const ETickingGroup DesiredTickGroup = Instance->CalculateTickGroup();
 		if (DesiredTickGroup != SystemTickGroup)
 		{
+			PendingSystemInstances.RemoveAtSwap(SystemIndex);
+			if (PendingSystemInstances.IsValidIndex(SystemIndex))
+			{
+				PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+			}
+			Instance->SystemInstanceIndex = INDEX_NONE;
+
 			TSharedPtr<FNiagaraSystemSimulation, ESPMode::ThreadSafe> DestSim = WorldManager->GetSystemSimulation(DesiredTickGroup, System);
-			DestSim->TransferInstance(Instance);
+
+			Instance->SystemSimulation = DestSim;
+			Instance->SystemInstanceIndex = DestSim->AddPendingSystemInstance(Instance);
 			continue;
 		}
 
 		// We are about to spawn execute game thread tick part
 		Instance->Tick_GameThread(DeltaSeconds);
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		NiagaraSystemSimulationLocal::DebugKillInstanceOnTick(Instance);
-#endif
 
 		// If we are still alive spawn
 		if (Instance->SystemInstanceIndex != INDEX_NONE)
 		{
-			SetInstanceState(Instance, ENiagaraSystemInstanceState::Spawning);
+			check(PendingSystemInstances[SystemIndex] == Instance);
+			PendingSystemInstances.RemoveAtSwap(SystemIndex);
+			if (PendingSystemInstances.IsValidIndex(SystemIndex))
+			{
+				PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+			}
+
+			Instance->SystemInstanceIndex = SpawningInstances.Add(Instance);
 		}
 	}
 
@@ -1379,19 +1196,17 @@ void FNiagaraSystemSimulation::Spawn_GameThread(float DeltaSeconds, bool bPostAc
 			InitParameterDataSetBindings(SpawningInstances[0]);
 		}
 
-		// Can we spawn async?
-		FNiagaraSystemSimulationTickContext Context(this, SpawningInstances, SpawningDataSet, DeltaSeconds, SpawningInstances.Num(), !bPostActorTick);
-		if ( Context.IsRunningAsync() )
+		// Execute Spawn_Concurrent (async or sync)
+		FNiagaraSystemSimulationTickContext Context = FNiagaraSystemSimulationTickContext::MakeContextForSpawning(this, SpawningInstances, SpawningDataSet, DeltaSeconds, SpawningInstances.Num(), bPostActorTick == false);
+		if (Context.bTickAsync || Context.bTickInstancesAsync)
 		{
+			TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>* WaitAllFinalizeTask = TGraphTask<FNiagaraSystemSimulationWaitAllFinalizeTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context.FinalizeEvents);
+			WaitAllFinalizeTask->GetCompletionEvent();
+
+			SystemTickGraphEvent = TGraphTask<FNiagaraSystemSimulationSpawnPendingTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(Context, WaitAllFinalizeTask);
+
 			check(bIsSolo == false);
 
-			auto ConcurrentTickTask = TGraphTask<FNiagaraSystemSimulationSpawnConcurrentTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndHold(Context, AllWorkCompleteGraphEvent);
-			ConcurrentTickGraphEvent = ConcurrentTickTask->GetCompletionEvent();
-			for (FNiagaraSystemInstance* Instance : Context.Instances)
-			{
-				Instance->ConcurrentTickGraphEvent = ConcurrentTickGraphEvent;
-			}
-			ConcurrentTickTask->Unlock();
 			WorldManager->MarkSimulationForPostActorWork(this);
 		}
 		else
@@ -1407,77 +1222,69 @@ void FNiagaraSystemSimulation::Spawn_GameThread(float DeltaSeconds, bool bPostAc
 
 void FNiagaraSystemSimulation::Spawn_Concurrent(FNiagaraSystemSimulationTickContext& Context)
 {
-	check(bInSpawnPhase);
+	check(bInSpawnPhase == true);
+
 	Tick_Concurrent(Context);
 
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Running).Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Spawning).Num() == SpawningDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Paused).Num() == PausedDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(MainDataSet.GetCurrentDataChecked().GetNumInstances() == SystemInstances.Num());
+	check(PausedInstanceData.GetCurrentDataChecked().GetNumInstances() == PausedSystemInstances.Num());
+	check(SpawningDataSet.GetCurrentDataChecked().GetNumInstances() == SpawningInstances.Num());
 
 	// Append spawned data to our active DataSet
 	SpawningDataSet.CopyTo(MainDataSet, 0, INDEX_NONE, false);
 	SpawningDataSet.ResetBuffers();
 
 	// Move instances from spawning to active
-	TArray<FNiagaraSystemInstance*>& SystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::Running);
-	TArray<FNiagaraSystemInstance*>& SpawningInstances = GetSystemInstances(ENiagaraSystemInstanceState::Spawning);
-
 	SystemInstances.Reserve(SystemInstances.Num() + SpawningInstances.Num());
 	for (FNiagaraSystemInstance* Instance : SpawningInstances)
 	{
+		checkSlow(!Instance->IsComplete());
 		Instance->SystemInstanceIndex = SystemInstances.Add(Instance);
-		Instance->SystemInstanceState = ENiagaraSystemInstanceState::Running;
+		Instance->SetPendingSpawn(false);
 	}
 	SpawningInstances.Reset();
 
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Running).Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Spawning).Num() == SpawningDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Paused).Num() == PausedDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(MainDataSet.GetCurrentDataChecked().GetNumInstances() == SystemInstances.Num());
+	check(PausedInstanceData.GetCurrentDataChecked().GetNumInstances() == PausedSystemInstances.Num());
 
 	bInSpawnPhase = false;
 }
 
-void FNiagaraSystemSimulation::WaitForConcurrentTickComplete(bool bEnsureComplete)
+void FNiagaraSystemSimulation::WaitForSystemTickComplete(bool bEnsureComplete)
 {
 	check(IsInGameThread());
 
-	if (ConcurrentTickGraphEvent.IsValid() && !ConcurrentTickGraphEvent->IsComplete())
+	if (SystemTickGraphEvent.IsValid() && !SystemTickGraphEvent->IsComplete())
 	{
 		SCOPE_CYCLE_COUNTER(STAT_NiagaraSystemSim_ForceWaitForAsync);
-		ensureAlwaysMsgf(!bEnsureComplete, TEXT("NiagaraSystemSimulation(%s) ConcurrentTickGraphEvent is not completed."), *GetSystem()->GetPathName());
-		FTaskGraphInterface::Get().WaitUntilTaskCompletes(ConcurrentTickGraphEvent, ENamedThreads::GameThread);
+		ensureAlwaysMsgf(!bEnsureComplete, TEXT("Niagara System Simulation Tasks should be complete by now. %s"), *GetSystem()->GetPathName());
+		FTaskGraphInterface::Get().WaitUntilTaskCompletes(SystemTickGraphEvent, ENamedThreads::GameThread);
 	}
-	ConcurrentTickGraphEvent = nullptr;
+	SystemTickGraphEvent = nullptr;
 }
 
 void FNiagaraSystemSimulation::WaitForInstancesTickComplete(bool bEnsureComplete)
 {
 	check(IsInGameThread());
+	WaitForSystemTickComplete(bEnsureComplete);
 
-	// If our AllWorkCompleteGraphEvent is not complete we need to wait on all instances to complete manually
-	const bool bConcurrentInFlight = ConcurrentTickGraphEvent.IsValid() && !ConcurrentTickGraphEvent->IsComplete();
-	const bool bInstancesInFlight = AllWorkCompleteGraphEvent.IsValid() && !AllWorkCompleteGraphEvent->IsComplete();
-	if (bConcurrentInFlight || bInstancesInFlight)
+	SCOPE_CYCLE_COUNTER(STAT_NiagaraSystemSim_ForceWaitForAsync);
+
+	int32 SystemInstIndex = 0;
+	while (SystemInstIndex < SystemInstances.Num())
 	{
-		SCOPE_CYCLE_COUNTER(STAT_NiagaraSystemSim_ForceWaitForAsync);
-		ensureAlwaysMsgf(!bEnsureComplete, TEXT("NiagaraSystemSimulation(%s) AllWorkCompleteGraphEvent is not completed (ConcurrentInFlight=%d, InstancesInFlight=%d)."), *GetSystem()->GetPathName(), bConcurrentInFlight, bInstancesInFlight);
-		WaitForConcurrentTickComplete(false);
+		// If we're in a spawn phase all existing instances should be complete already.
+		FNiagaraSystemInstance* Inst = SystemInstances[SystemInstIndex];
+		Inst->WaitForAsyncTickAndFinalize(bInSpawnPhase);
 
-		TArray<FNiagaraSystemInstance*>& SystemInstances = GetSystemInstances(ENiagaraSystemInstanceState::Running);
-		int32 SystemInstanceIndex = 0;
-		while ( SystemInstanceIndex < SystemInstances.Num() )
+		// If the system completes during finalize it can be removed from instances so we don't update the index.
+		if ( SystemInstances[SystemInstIndex] == Inst)
 		{
-			FNiagaraSystemInstance* Instance = SystemInstances[SystemInstanceIndex];
-			Instance->WaitForConcurrentTickAndFinalize();
-
-			// Finalize may result in the instance being removed or it being completed & reactivated
-			if (SystemInstances.IsValidIndex(Instance->SystemInstanceIndex) && (SystemInstances[Instance->SystemInstanceIndex] == Instance) )
-			{
-				++SystemInstanceIndex;
-			}
+			++SystemInstIndex;
 		}
+
+		check(MainDataSet.GetCurrentDataChecked().GetNumInstances() == SystemInstances.Num());
 	}
-	AllWorkCompleteGraphEvent = nullptr;
 }
 
 void FNiagaraSystemSimulation::Tick_Concurrent(FNiagaraSystemSimulationTickContext& Context)
@@ -1489,6 +1296,7 @@ void FNiagaraSystemSimulation::Tick_Concurrent(FNiagaraSystemSimulationTickConte
 
 	FScopeCycleCounterUObject AdditionalScope(Context.System, GET_STATID(STAT_NiagaraOverview_GT_CNC));
 
+	FNiagaraScopedRuntimeCycleCounter RuntimeScope(Context.System, true, true);
 	FNiagaraSystemInstance* SoloSystemInstance = bIsSolo && Context.Instances.Num() == 1 ? Context.Instances[0] : nullptr;
 
 	FNiagaraCrashReporterScope CRScope(this);
@@ -1526,20 +1334,20 @@ void FNiagaraSystemSimulation::Tick_Concurrent(FNiagaraSystemSimulationTickConte
 		}
 		FlushTickBatch(Context);
 
-		// When not running async we can finalize straight away
-		if ( !Context.IsRunningAsync() )
+		//If both the instances and the main sim are run on the GT then we need to finalize here.
+		if (!Context.bTickAsync && !Context.bTickInstancesAsync)
 		{
 			check(IsInGameThread());
-			int32 InstanceIndex = 0;
-			while (InstanceIndex < Context.Instances.Num())
+			int32 SystemInstIndex = 0;
+			while (SystemInstIndex < Context.Instances.Num())
 			{
-				FNiagaraSystemInstance* Instance = Context.Instances[InstanceIndex];
-				Instance->FinalizeTick_GameThread();
+				FNiagaraSystemInstance* Inst = Context.Instances[SystemInstIndex];
+				Inst->FinalizeTick_GameThread();
 
-				// Finalize can complete the instance and potentially reactivate
-				if (Context.Instances.IsValidIndex(InstanceIndex) && (Context.Instances[InstanceIndex] == Instance))
+				// If the system completes during finalize it will be removed from the instances, therefore we do not need to increment our system index;
+				if (!Inst->IsComplete())
 				{
-					++InstanceIndex;
+					++SystemInstIndex;
 				}
 
 				check(Context.DataSet.GetCurrentDataChecked().GetNumInstances() == Context.Instances.Num());
@@ -1561,9 +1369,8 @@ void FNiagaraSystemSimulation::SetupParameters_GameThread(float DeltaSeconds)
 {
 	check(IsInGameThread());
 
-	const int32 NumInstances = GetSystemInstances(ENiagaraSystemInstanceState::Running).Num();
-	SpawnNumSystemInstancesParam.SetValue(NumInstances);
-	UpdateNumSystemInstancesParam.SetValue(NumInstances);
+	SpawnNumSystemInstancesParam.SetValue(SystemInstances.Num());
+	UpdateNumSystemInstancesParam.SetValue(SystemInstances.Num());
 	SpawnGlobalSpawnCountScaleParam.SetValue(INiagaraModule::GetGlobalSpawnCountScale());
 	UpdateGlobalSpawnCountScaleParam.SetValue(INiagaraModule::GetGlobalSpawnCountScale());
 	SpawnGlobalSystemCountScaleParam.SetValue(INiagaraModule::GetGlobalSystemCountScale());
@@ -1621,6 +1428,7 @@ void FNiagaraSystemSimulation::PrepareForSystemSimulate(FNiagaraSystemSimulation
 	};
 
 	//This can go wide if we have a very large number of instances.
+	//ParallelFor(Instances.Num(), TransferInstanceParameters, Instances.Num() < GbSystemSimTransferParamsParallelThreshold);
 	ParallelFor(Context.Instances.Num(), TransferInstanceParameters, true);
 
 	SpawnInstanceParameterDataSet.GetDestinationDataChecked().SetNumInstances(NumInstances);
@@ -1659,13 +1467,6 @@ void FNiagaraSystemSimulation::SpawnSystemInstances(FNiagaraSystemSimulationTick
 		Context.DataSet.EndSimulate();
 		return;
 	}
-
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-	if ( NiagaraSystemSimulationLocal::DebugKillAllOnSpawn(Context) )
-	{
-		return;
-	}
-#endif
 
 	SpawnExecContext->BindSystemInstances(Context.Instances);
 	SpawnExecContext->BindData(0, Context.DataSet, OrigNum, false);
@@ -1728,13 +1529,6 @@ void FNiagaraSystemSimulation::UpdateSystemInstances(FNiagaraSystemSimulationTic
 			return;
 		}
 
-#if NIAGARA_SYSTEMSIMULATION_DEBUGGING
-		if ( NiagaraSystemSimulationLocal::DebugKillAllOnUpdate(Context) )
-		{
-			return;
-		}
-#endif
-
 		// Run update.
 		if (OrigNum > 0)
 		{
@@ -1758,7 +1552,7 @@ void FNiagaraSystemSimulation::UpdateSystemInstances(FNiagaraSystemSimulationTic
 		//Also run the update script on the newly spawned systems too.
 		//TODO: JIRA - UE-60096 - Remove.
 		//Ideally this should be compiled directly into the script similarly to interpolated particle spawning.
-		if ( (SpawnNum > 0) && GNiagaraSystemSimulationUpdateOnSpawn)
+		if ( (SpawnNum > 0) && GbSystemUpdateOnSpawn)
 		{
 			UpdateExecContext->BindSystemInstances(Context.Instances);
 			UpdateExecContext->BindData(0, Context.DataSet, OrigNum, false);
@@ -1919,21 +1713,119 @@ void FNiagaraSystemSimulation::RemoveInstance(FNiagaraSystemInstance* Instance)
 		System->UnregisterActiveInstance();
 	}
 
-	// Depending on the instance state we may need to wait for async work to complete in order to correctly remove the instance
-	// as async work could impact if the instance is still alive or which group it remains in
-	if ( (Instance->SystemInstanceState == ENiagaraSystemInstanceState::Running) || (Instance->SystemInstanceState == ENiagaraSystemInstanceState::Spawning) )
+	if (Instance->IsPendingSpawn())
 	{
-		WaitForConcurrentTickComplete();
-		Instance->WaitForConcurrentTickDoNotFinalize();
+		if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("=== Removing Pending Spawn %d ==="), Instance->SystemInstanceIndex);
+			MainDataSet.GetCurrentDataChecked().Dump(Instance->SystemInstanceIndex, 1, TEXT("System data being removed."));
+		}
+
+		// If we are in the spawn phase we may be running concurrently so handle this by waiting for the system tick to complete
+		if (bInSpawnPhase)
+		{
+			WaitForSystemTickComplete();
+			Instance->WaitForAsyncTickDoNotFinalize();
+
+			check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+			check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+
+			int32 SystemIndex = Instance->SystemInstanceIndex;
+			if (SystemIndex != INDEX_NONE)
+			{
+				check(SpawningInstances.IsValidIndex(SystemIndex));
+				check(Instance == SpawningInstances[SystemIndex]);
+
+				SpawningDataSet.GetCurrentDataChecked().KillInstance(Instance->SystemInstanceIndex);
+
+				SpawningInstances.RemoveAtSwap(SystemIndex);
+				Instance->SystemInstanceIndex = INDEX_NONE;
+				Instance->SetPendingSpawn(false);
+				if (SpawningInstances.IsValidIndex(SystemIndex))
+				{
+					SpawningInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+				}
+			}
+		}
+		else
+		{
+			int32 SystemIndex = Instance->SystemInstanceIndex;
+			check(PendingSystemInstances.IsValidIndex(SystemIndex));
+			check(Instance == PendingSystemInstances[SystemIndex]);
+
+			PendingSystemInstances.RemoveAtSwap(SystemIndex);
+			Instance->SystemInstanceIndex = INDEX_NONE;
+			Instance->SetPendingSpawn(false);
+			if (PendingSystemInstances.IsValidIndex(SystemIndex))
+			{
+				PendingSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+			}
+		}
 	}
-
-	// We did not finalize and will not so clear the reference
-	Instance->FinalizeRef.ConditionalClear();
-
-	// Remove the instance if it is still valid
-	if (Instance->SystemInstanceState != ENiagaraSystemInstanceState::None)
+	else if (Instance->IsPaused())
 	{
-		SetInstanceState(Instance, ENiagaraSystemInstanceState::None);
+		if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("=== Removing Paused %d ==="), Instance->SystemInstanceIndex);
+			MainDataSet.GetCurrentDataChecked().Dump(Instance->SystemInstanceIndex, 1, TEXT("System data being removed."));
+		}
+
+		const int32 NumInstances = PausedInstanceData.GetCurrentDataChecked().GetNumInstances();
+		check(PausedSystemInstances.Num() == NumInstances);
+
+		const int32 SystemIndex = Instance->SystemInstanceIndex;
+		check(PausedSystemInstances.IsValidIndex(SystemIndex));
+		check(Instance == PausedSystemInstances[SystemIndex]);
+
+		PausedInstanceData.GetCurrentDataChecked().KillInstance(SystemIndex);
+		PausedSystemInstances.RemoveAtSwap(SystemIndex);
+		Instance->SystemInstanceIndex = INDEX_NONE;
+		if (PausedSystemInstances.IsValidIndex(SystemIndex))
+		{
+			PausedSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+		}
+
+		check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+		check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+	}
+	else if (SystemInstances.IsValidIndex(Instance->SystemInstanceIndex))
+	{
+		if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("=== Removing System %d ==="), Instance->SystemInstanceIndex);
+			MainDataSet.GetCurrentDataChecked().Dump(Instance->SystemInstanceIndex, 1, TEXT("System data being removed."));
+		}
+
+		// Wait for the system simulation & the system instances tick to complete as we are touching both the SystemInstances & DataSet
+		// Note: We do not need to wait for all instances to complete as the system simulation concurrent tick will have transfered data from the DataSet out to ParameterStores
+		WaitForSystemTickComplete();
+		Instance->WaitForAsyncTickDoNotFinalize();
+
+		check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+		check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+
+		// There is a slim window where the finalize will have executed so we must ensure we have not been removed.
+		// This can happen where the async task is not complete, we start to wait and it posts the finalize task.  The TG will drain the GT queue which contains the finalize and we have been removed (via completion)
+		if ( Instance->SystemInstanceIndex != INDEX_NONE )
+		{
+			const int32 NumInstances = MainDataSet.GetCurrentDataChecked().GetNumInstances();
+			check(SystemInstances.Num() == NumInstances);
+
+			const int32 SystemIndex = Instance->SystemInstanceIndex;
+			check(Instance == SystemInstances[SystemIndex]);
+			check(SystemInstances.IsValidIndex(SystemIndex));
+
+			MainDataSet.GetCurrentDataChecked().KillInstance(SystemIndex);
+			SystemInstances.RemoveAtSwap(SystemIndex);
+			Instance->SystemInstanceIndex = INDEX_NONE;
+			if (SystemInstances.IsValidIndex(SystemIndex))
+			{
+				SystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
+			}
+
+			check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+			check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+		}
 	}
 
 #if NIAGARA_NAN_CHECKING
@@ -1946,11 +1838,18 @@ void FNiagaraSystemSimulation::AddInstance(FNiagaraSystemInstance* Instance)
 	check(IsInGameThread());
 	check(Instance->SystemInstanceIndex == INDEX_NONE);
 
-	WaitForConcurrentTickComplete();
+	WaitForSystemTickComplete();
 
-	SetInstanceState(Instance, ENiagaraSystemInstanceState::PendingSpawn);
-	
+	Instance->SetPendingSpawn(true);
+	Instance->SystemInstanceIndex = AddPendingSystemInstance(Instance);
+
 	UNiagaraSystem* System = WeakSystem.Get();
+	if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+	{
+		UE_LOG(LogNiagara, Log, TEXT("=== Adding To Pending Spawn %d ==="), Instance->SystemInstanceIndex);
+		//MainDataSet.Dump(true, Instance->SystemInstanceIndex, 1);
+	}
+	
 	if(System)
 	{
 		System->RegisterActiveInstance();
@@ -1962,53 +1861,109 @@ void FNiagaraSystemSimulation::AddInstance(FNiagaraSystemInstance* Instance)
 		EffectType->bNewSystemsSinceLastScalabilityUpdate = true;
 	}
 
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Running).Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Spawning).Num() == SpawningDataSet.GetCurrentDataChecked().GetNumInstances());
-	check(GetSystemInstances(ENiagaraSystemInstanceState::Paused).Num() == PausedDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
 }
 
 void FNiagaraSystemSimulation::PauseInstance(FNiagaraSystemInstance* Instance)
 {
 	check(IsInGameThread());
-
-	//-OPT: This can be more tightly scoped depending on the instance state
 	WaitForInstancesTickComplete();
 
-	if ( Instance->SystemInstanceState == ENiagaraSystemInstanceState::Running )
+	check(!Instance->IsPaused());
+	check(!MainDataSet.GetDestinationData());
+	check(!PausedInstanceData.GetDestinationData());
+
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+
+	UNiagaraSystem* System = WeakSystem.Get();
+	if (Instance->IsPendingSpawn())
 	{
-		SetInstanceState(Instance, ENiagaraSystemInstanceState::Paused);
+		if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("=== Pausing Pending Spawn %d ==="), Instance->SystemInstanceIndex);
+			//MainDataSet.Dump(true, Instance->SystemInstanceIndex, 1);
+		}
+		//Nothing to do for pending spawn systems.
+		check(PendingSystemInstances[Instance->SystemInstanceIndex] == Instance);
+		return;
 	}
-	else if ( Instance->SystemInstanceState == ENiagaraSystemInstanceState::PendingSpawn )
+
+	if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
 	{
-		SetInstanceState(Instance, ENiagaraSystemInstanceState::PendingSpawnPaused);
+		UE_LOG(LogNiagara, Log, TEXT("=== Pausing System %d ==="), Instance->SystemInstanceIndex);
+		MainDataSet.GetCurrentDataChecked().Dump(Instance->SystemInstanceIndex, 1, TEXT("System data being paused."));
 	}
-	else
+
+	int32 SystemIndex = Instance->SystemInstanceIndex;
+	check(SystemInstances.IsValidIndex(SystemIndex));
+	check(Instance == SystemInstances[SystemIndex]);
+
+	int32 NewDataSetIndex = PausedInstanceData.GetCurrentDataChecked().TransferInstance(MainDataSet.GetCurrentDataChecked(), SystemIndex);
+
+	Instance->SystemInstanceIndex = PausedSystemInstances.Add(Instance);
+
+	check(NewDataSetIndex == Instance->SystemInstanceIndex);
+
+	SystemInstances.RemoveAtSwap(SystemIndex);
+	if (SystemInstances.IsValidIndex(SystemIndex))
 	{
-		// Must be None as the instance has been killed
-		check(Instance->SystemInstanceState == ENiagaraSystemInstanceState::None);
+		SystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
 	}
+
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
 }
 
 void FNiagaraSystemSimulation::UnpauseInstance(FNiagaraSystemInstance* Instance)
 {
 	check(IsInGameThread());
-
-	//-OPT: This can be more tightly scoped depending on the instance state
 	WaitForInstancesTickComplete();
 
-	if (Instance->SystemInstanceState == ENiagaraSystemInstanceState::Paused)
+	check(Instance->IsPaused());
+	check(!MainDataSet.GetDestinationData());
+	check(!PausedInstanceData.GetDestinationData());
+
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
+
+	UNiagaraSystem* System = WeakSystem.Get();
+	if (Instance->IsPendingSpawn())
 	{
-		SetInstanceState(Instance, ENiagaraSystemInstanceState::Running);
+		if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("=== Unpausing Pending Spawn %d ==="), Instance->SystemInstanceIndex);
+			//MainDataSet.Dump(true, Instance->SystemInstanceIndex, 1);
+		}
+		//Nothing to do for pending spawn systems.
+		check(PendingSystemInstances[Instance->SystemInstanceIndex] == Instance);
+		return;
 	}
-	else if (Instance->SystemInstanceState == ENiagaraSystemInstanceState::PendingSpawnPaused)
+
+	if (GbDumpSystemData || (System && System->bDumpDebugSystemInfo))
 	{
-		SetInstanceState(Instance, ENiagaraSystemInstanceState::PendingSpawn);
+		UE_LOG(LogNiagara, Log, TEXT("=== Unpausing System %d ==="), Instance->SystemInstanceIndex);
+		MainDataSet.GetCurrentDataChecked().Dump(Instance->SystemInstanceIndex, 1, TEXT("System data being unpaused."));
 	}
-	else
+
+	int32 SystemIndex = Instance->SystemInstanceIndex;
+	check(PausedSystemInstances.IsValidIndex(SystemIndex));
+	check(Instance == PausedSystemInstances[SystemIndex]);
+
+	int32 NewDataSetIndex = MainDataSet.GetCurrentDataChecked().TransferInstance(PausedInstanceData.GetCurrentDataChecked(), SystemIndex);
+
+	Instance->SystemInstanceIndex = SystemInstances.Add(Instance);
+	check(NewDataSetIndex == Instance->SystemInstanceIndex);
+
+	PausedSystemInstances.RemoveAtSwap(SystemIndex);
+	if (PausedSystemInstances.IsValidIndex(SystemIndex))
 	{
-		// Must be None as the instance has been killed
-		check(Instance->SystemInstanceState == ENiagaraSystemInstanceState::None);
+		PausedSystemInstances[SystemIndex]->SystemInstanceIndex = SystemIndex;
 	}
+
+	check(SystemInstances.Num() == MainDataSet.GetCurrentDataChecked().GetNumInstances());
+	check(PausedSystemInstances.Num() == PausedInstanceData.GetCurrentDataChecked().GetNumInstances());
 }
 
 void FNiagaraSystemSimulation::InitParameterDataSetBindings(FNiagaraSystemInstance* SystemInst)
@@ -2166,8 +2121,8 @@ ENiagaraGPUTickHandlingMode FNiagaraSystemSimulation::GetGPUTickHandlingMode()co
 	if (Batcher && FNiagaraUtilities::AllowGPUParticles(Batcher->GetShaderPlatform()) && System && System->HasAnyGPUEmitters())
 	{
 		//TODO: Maybe some DI post ticks can even be done concurrent too which would also remove this restriction.
-		bool bGT = System->HasDIsWithPostSimulateTick() || GNiagaraSystemSimulationConcurrentGPUTickInit == 0;
-		bool bBatched = GNiagaraSystemSimulationBatchGPUTickSubmit && !bIsSolo;
+		bool bGT = System->HasDIsWithPostSimulateTick() || GNiagaraConcurrentGPUTickInit == 0;
+		bool bBatched = GNiagaraBatchGPUTickSubmit && !bIsSolo;
 
 		if (bGT)
 		{
@@ -2213,7 +2168,7 @@ void FNiagaraSystemSimulation::OnChanged_UseLegacySystemSimulationContexts(ICons
 		FNiagaraWorldManager::ForAllWorldManagers(
 			[](FNiagaraWorldManager& WorldMan)
 			{
-				WorldMan.GetComponentPool()->Cleanup(nullptr);
+				WorldMan.GetComponentPool()->Cleanup(true);
 			}
 		);
 

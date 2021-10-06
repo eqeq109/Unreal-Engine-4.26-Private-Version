@@ -24,13 +24,13 @@ namespace ImmediatePhysics_Chaos
 		FChaosConstraintHandle* GetConstraint();
 		const FChaosConstraintHandle* GetConstraint() const;
 
-		const Chaos::TVec2<FActorHandle*>& GetActorHandles();
-		const Chaos::TVec2<const FActorHandle*>& GetActorHandles() const;
+		const Chaos::TVector<FActorHandle*, 2>& GetActorHandles();
+		const Chaos::TVector<const FActorHandle*, 2>& GetActorHandles() const;
 
 		void SetSoftLinearSettings(bool bLinearSoft, FReal LinearStiffness, FReal LinearDamping);
 
 	private:
-		Chaos::TVec2<FActorHandle*> ActorHandles;
+		Chaos::TVector<FActorHandle*, 2> ActorHandles;
 		FChaosConstraintContainer* Constraints;
 		FChaosConstraintHandle* ConstraintHandle;
 	};

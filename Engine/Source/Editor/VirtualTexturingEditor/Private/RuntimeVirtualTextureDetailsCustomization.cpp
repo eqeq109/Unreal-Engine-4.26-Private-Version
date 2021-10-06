@@ -262,7 +262,6 @@ void FRuntimeVirtualTextureComponentDetailsCustomization::CustomizeDetails(IDeta
 			.ContentPadding(2)
 			.Text(LOCTEXT("Button_Build", "Build"))
 			.OnClicked(this, &FRuntimeVirtualTextureComponentDetailsCustomization::BuildStreamedMips)
-			.IsEnabled(this, &FRuntimeVirtualTextureComponentDetailsCustomization::IsBuildStreamedMipsEnabled)
 		]
 		+ SHorizontalBox::Slot()
 		.HAlign(HAlign_Center)
@@ -292,11 +291,6 @@ FReply FRuntimeVirtualTextureComponentDetailsCustomization::SetBounds()
 		return FReply::Handled();
 	}
 	return FReply::Unhandled();
-}
-
-bool FRuntimeVirtualTextureComponentDetailsCustomization::IsBuildStreamedMipsEnabled() const
-{
-	return RuntimeVirtualTextureComponent->GetVirtualTexture() != nullptr;
 }
 
 EVisibility FRuntimeVirtualTextureComponentDetailsCustomization::IsBuildWarningIconVisible() const

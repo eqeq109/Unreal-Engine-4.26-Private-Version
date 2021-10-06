@@ -418,10 +418,7 @@ TSharedRef<FInternetAddr> ISocketSubsystem::GetLocalHostAddr(FOutputDevice& Out,
 		}
 		else
 		{
-			if (AdapterAddresses.Num() > 0)
-			{ 
-				HostAddr = AdapterAddresses[0]->Clone();
-			}
+			HostAddr = AdapterAddresses[0]->Clone();
 		}
 	}
 
@@ -613,11 +610,6 @@ double ISocketSubsystem::TranslatePacketTimestamp(const FPacketTimestamp& Timest
 	UE_LOG(LogSockets, Warning, TEXT("TranslatePacketTimestamp is not supported by current socket subsystem."));
 
 	return 0.0;
-}
-
-bool ISocketSubsystem::IsRecvFromWithPktInfoSupported() const
-{
-	return false;
 }
 
 //////////////////////////////////

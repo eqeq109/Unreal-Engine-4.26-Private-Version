@@ -8,17 +8,18 @@
 
 namespace Chaos
 {
-class FPBDTetConstraints : public FParticleRule, public FPBDTetConstraintsBase
+template<class T>
+class PBDTetConstraints : public TParticleRule<T, 3>, public PBDTetConstraintsBase<T>
 {
-	typedef FPBDTetConstraintsBase Base;
+	typedef PBDTetConstraintsBase<T> Base;
 	using Base::MConstraints;
 
   public:
-	  FPBDTetConstraints(const FDynamicParticles& InParticles, TArray<TVec4<int32>>&& Constraints, const FReal Stiffness = (FReal)1)
+	PBDTetConstraints(const TDynamicParticles<T, 3>& InParticles, TArray<TVector<int32, 4>>&& Constraints, const T Stiffness = (T)1)
 	    : Base(InParticles, MoveTemp(Constraints), Stiffness) {}
-	virtual ~FPBDTetConstraints() {}
+	virtual ~PBDTetConstraints() {}
 
-	void Apply(FPBDParticles& InParticles, const FReal dt) const override //-V762
+	void Apply(TPBDParticles<T, 3>& InParticles, const T dt) const override //-V762
 	{
 		for (int i = 0; i < MConstraints.Num(); ++i)
 		{
@@ -36,8 +37,4 @@ class FPBDTetConstraints : public FParticleRule, public FPBDTetConstraintsBase
 		}
 	}
 };
-
-template<class T>
-using PBDTetConstraints UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPBDTetConstraints instead") = FPBDTetConstraints;
-
 }

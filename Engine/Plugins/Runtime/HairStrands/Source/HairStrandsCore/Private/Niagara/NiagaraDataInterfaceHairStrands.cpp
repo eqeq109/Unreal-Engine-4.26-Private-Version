@@ -154,7 +154,6 @@ static const FName ComputeAirDragForceName(TEXT("ComputeAirDragForce"));
 
 static const FName NeedSimulationResetName(TEXT("NeedSimulationReset"));
 static const FName HasGlobalInterpolationName(TEXT("HasGlobalInterpolation"));
-static const FName NeedRestUpdateName(TEXT("NeedRestUpdate"));
 
 //------------------------------------------------------------------------------------------------------------
 
@@ -175,7 +174,6 @@ const FString UNiagaraDataInterfaceHairStrands::RestPositionBufferName(TEXT("Res
 
 const FString UNiagaraDataInterfaceHairStrands::ResetSimulationName(TEXT("ResetSimulation_"));
 const FString UNiagaraDataInterfaceHairStrands::InterpolationModeName(TEXT("InterpolationMode_"));
-const FString UNiagaraDataInterfaceHairStrands::RestUpdateName(TEXT("RestUpdate_"));
 const FString UNiagaraDataInterfaceHairStrands::RootBarycentricCoordinatesName(TEXT("RootBarycentricCoordinatesBuffer_"));
 
 const FString UNiagaraDataInterfaceHairStrands::RestRootOffsetName(TEXT("RestRootOffset_"));
@@ -204,9 +202,6 @@ const FString UNiagaraDataInterfaceHairStrands::ParamsScaleBufferName(TEXT("Para
 static int32 GHairSimulationMaxDelay = 4;
 static FAutoConsoleVariableRef CVarHairSimulationMaxDelay(TEXT("r.HairStrands.SimulationMaxDelay"), GHairSimulationMaxDelay, TEXT("Maximum tick Delay before starting the simulation"));
 
-static int32 GHairSimulationRestUpdate = false;
-static FAutoConsoleVariableRef CVarHairSimulationRestUpdate(TEXT("r.HairStrands.SimulationRestUpdate"), GHairSimulationRestUpdate, TEXT("Update the simulation rest pose"));
-
 //------------------------------------------------------------------------------------------------------------
 
 struct FNDIHairStrandsParametersName
@@ -225,7 +220,6 @@ struct FNDIHairStrandsParametersName
 
 		InterpolationModeName = UNiagaraDataInterfaceHairStrands::InterpolationModeName + Suffix;
 		ResetSimulationName = UNiagaraDataInterfaceHairStrands::ResetSimulationName + Suffix;
-		RestUpdateName = UNiagaraDataInterfaceHairStrands::RestUpdateName + Suffix;
 		RootBarycentricCoordinatesName = UNiagaraDataInterfaceHairStrands::RootBarycentricCoordinatesName + Suffix;
 
 		RestRootOffsetName = UNiagaraDataInterfaceHairStrands::RestRootOffsetName + Suffix;
@@ -262,7 +256,6 @@ struct FNDIHairStrandsParametersName
 
 	FString ResetSimulationName;
 	FString InterpolationModeName;
-	FString RestUpdateName;
 	FString RootBarycentricCoordinatesName;
 
 	FString RestRootOffsetName;
@@ -390,21 +383,6 @@ void FNDIHairStrandsBuffer::ReleaseRHI()
 
 //------------------------------------------------------------------------------------------------------------
 
-ETickingGroup ComputeTickingGroup(const TWeakObjectPtr<UGroomComponent> GroomComponent)
-{
-	ETickingGroup TickingGroup = NiagaraFirstTickGroup;
-	
-	if (GroomComponent.Get() != nullptr)
-	{
-		const ETickingGroup ComponentTickGroup = FMath::Max(GroomComponent->PrimaryComponentTick.TickGroup, GroomComponent->PrimaryComponentTick.EndTickGroup);
-		const ETickingGroup ClampedTickGroup = FMath::Clamp(ETickingGroup(ComponentTickGroup + 1), NiagaraFirstTickGroup, NiagaraLastTickGroup);
-
-		TickingGroup = FMath::Max(TickingGroup, ClampedTickGroup);
-	}
-	return TickingGroup;
-}
-
-
 void FNDIHairStrandsData::Release()
 {
 	if (HairStrandsBuffer)
@@ -420,16 +398,15 @@ void FNDIHairStrandsData::Release()
 }
 
 void FNDIHairStrandsData::Update(UNiagaraDataInterfaceHairStrands* Interface, FNiagaraSystemInstance* SystemInstance, const FHairStrandsDatas* StrandsDatas, 
-	UGroomAsset* GroomAsset, const int32 GroupIndex, const FTransform& LocalToWorld)
+	UGroomAsset* GroomAsset, const int32 GroupIndex)
 {
 	if (Interface != nullptr)
 	{
-		WorldTransform = LocalToWorld;
+		WorldTransform = Interface->IsComponentValid() ? Interface->SourceComponent->GetComponentToWorld() :
+			SystemInstance ? SystemInstance->GetWorldTransform() : FTransform::Identity;
 
 		GlobalInterpolation = (Interface->IsComponentValid() && Interface->SourceComponent->BindingAsset && Interface->SourceComponent->GroomAsset) ?
 			Interface->SourceComponent->GroomAsset->EnableGlobalInterpolation : false;
-
-		TickingGroup = Interface->IsComponentValid() ? ComputeTickingGroup(Interface->SourceComponent) : NiagaraFirstTickGroup;
 
 		if (StrandsDatas != nullptr && GroomAsset != nullptr && GroupIndex >= 0 && GroupIndex < GroomAsset->HairGroupsPhysics.Num() &&
 			GroomAsset->HairGroupsPhysics[GroupIndex].SolverSettings.EnableSimulation)
@@ -501,9 +478,8 @@ bool FNDIHairStrandsData::Init(UNiagaraDataInterfaceHairStrands* Interface, FNia
 		int32 GroupIndex = 0;
 
 		{
-			FTransform LocalToWorld = FTransform::Identity;
-			Interface->ExtractDatasAndResources(SystemInstance, StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource, GroomAsset, GroupIndex, LocalToWorld);
-			Update(Interface, SystemInstance, StrandsDatas, GroomAsset, GroupIndex, LocalToWorld);
+			Interface->ExtractDatasAndResources(SystemInstance, StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource, GroomAsset, GroupIndex);
+			Update(Interface, SystemInstance, StrandsDatas, GroomAsset, GroupIndex);
 
 			HairStrandsBuffer = new FNDIHairStrandsBuffer();
 			HairStrandsBuffer->Initialize(StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource, ParamsScale);
@@ -539,7 +515,6 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 
 		ResetSimulation.Bind(ParameterMap, *ParamNames.ResetSimulationName);
 		InterpolationMode.Bind(ParameterMap,*ParamNames.InterpolationModeName);
-		RestUpdate.Bind(ParameterMap, *ParamNames.RestUpdateName);
 		RestRootOffset.Bind(ParameterMap, *ParamNames.RestRootOffsetName);
 		DeformedRootOffset.Bind(ParameterMap, *ParamNames.DeformedRootOffsetName);
 
@@ -583,7 +558,6 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 		const bool IsRestValid = IsHairValid && ProxyData->HairStrandsBuffer->SourceRestResources != nullptr;//&& ProxyData->HairStrandsBuffer->SourceRestResources->IsInitialized();
 		const bool IsDeformedValid = IsHairValid && ProxyData->HairStrandsBuffer->SourceDeformedResources != nullptr && ProxyData->HairStrandsBuffer->SourceDeformedResources->IsInitialized();
 
-
 		if (IsHairValid && IsRestValid)
 		{
 			FNDIHairStrandsBuffer* HairStrandsBuffer = ProxyData->HairStrandsBuffer;
@@ -591,12 +565,8 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 			FUnorderedAccessViewRHIRef PointPositionsUAV = IsDeformedValid ?
 				HairStrandsBuffer->SourceDeformedResources->DeformedPositionBuffer[HairStrandsBuffer->SourceDeformedResources->CurrentIndex].UAV : HairStrandsBuffer->DeformedPositionBuffer.UAV;
 
-			FRHIShaderResourceView* DeformedPositionOffsetSRV = IsDeformedValid ? 
-				HairStrandsBuffer->SourceDeformedResources->DeformedOffsetBuffer[HairStrandsBuffer->SourceDeformedResources->CurrentIndex].SRV.GetReference() : FNiagaraRenderer::GetDummyFloatBuffer();
-
 			const int32 MeshLODIndex = IsRootValid ? HairStrandsBuffer->SourceDeformedRootResources->MeshLODIndex : -1;
 			int32 InterpolationModeValue = IsRootValid && HairStrandsBuffer->SourceDeformedRootResources->IsValid(MeshLODIndex) ? 1 : 0;
-			const int32 RestUpdateValue = GHairSimulationRestUpdate;
 
 			const FHairStrandsRestRootResource::FLOD* RestMeshProjection = (InterpolationModeValue == 1) ? &(HairStrandsBuffer->SourceRestRootResources->LODs[MeshLODIndex]) : nullptr;
 			const FHairStrandsDeformedRootResource::FLOD* DeformedMeshProjection = (InterpolationModeValue == 1) ? &(HairStrandsBuffer->SourceDeformedRootResources->LODs[MeshLODIndex]) : nullptr;
@@ -632,14 +602,15 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 				InterpolationModeValue = 2;
 			}
 
-			//FUnorderedAccessViewRHIRef DummyFloatUAV(Context.Batcher->GetEmptyUAVFromPool(RHICmdList, PF_R32_FLOAT, ENiagaraEmptyUAVType::Buffer), false);
+			//FUnorderedAccessViewRHIRef DummyFloatUAV(Context.Batcher->GetEmptyRWBufferFromPool(RHICmdList, PF_R32_FLOAT), false);
 			//FUnorderedAccessViewRHIRef MeshSampleWeightsBufferUAV = (DeformedMeshProjection != nullptr && RestMeshProjection->SampleCount > 0) ?
-			//	DeformedMeshProjection->MeshSampleWeightsBuffer.UAV : Context.Batcher->GetEmptyUAVFromPool(RHICmdList, PF_R32_FLOAT, ENiagaraEmptyUAVType::Buffer);
+			//	DeformedMeshProjection->MeshSampleWeightsBuffer.UAV : Context.Batcher->GetEmptyRWBufferFromPool(RHICmdList, PF_R32_FLOAT);
 
 			//UE_LOG(LogHairStrands, Log, TEXT("Shader Reset : %d %d %d"), bNeedSimReset, IsRootValid, InterpolationModeValue);
 			FVector RestRootOffsetValue = FVector::ZeroVector;
 			FVector DeformedRootOffsetValue = FVector::ZeroVector;
-			
+			FVector DeformedPositionOffsetValue =  IsDeformedValid ? HairStrandsBuffer->SourceDeformedResources->GetPositionOffset(FHairStrandsDeformedResource::EFrameType::Current) :
+																	 HairStrandsBuffer->SourceRestResources->PositionOffset;
 			FVector RestPositionOffsetValue = ProxyData->HairStrandsBuffer->SourceRestResources->PositionOffset;
 
 			FRHITransitionInfo Transitions[] = {
@@ -664,12 +635,11 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 
 			SetShaderValue(RHICmdList, ComputeShaderRHI, ResetSimulation, bNeedSimReset);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, InterpolationMode, InterpolationModeValue);
-			SetShaderValue(RHICmdList, ComputeShaderRHI, RestUpdate, RestUpdateValue);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, RestRootOffset, RestRootOffsetValue);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, DeformedRootOffset, DeformedRootOffsetValue);
 
 			SetShaderValue(RHICmdList, ComputeShaderRHI, RestPositionOffset, RestPositionOffsetValue);
-			SetSRVParameter(RHICmdList, ComputeShaderRHI, DeformedPositionOffset, DeformedPositionOffsetSRV);
+			SetShaderValue(RHICmdList, ComputeShaderRHI, DeformedPositionOffset, DeformedPositionOffsetValue);
 
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, RestTrianglePositionABuffer, RestTrianglePositionASRV);
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, RestTrianglePositionBBuffer, RestTrianglePositionBSRV);
@@ -690,8 +660,8 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 		}
 		else
 		{
-			SetUAVParameter(RHICmdList, ComputeShaderRHI, DeformedPositionBuffer, Context.Batcher->GetEmptyUAVFromPool(RHICmdList, PF_R32_FLOAT, ENiagaraEmptyUAVType::Buffer));
-			SetUAVParameter(RHICmdList, ComputeShaderRHI, BoundingBoxBuffer, Context.Batcher->GetEmptyUAVFromPool(RHICmdList, PF_R32_UINT, ENiagaraEmptyUAVType::Buffer));
+			SetUAVParameter(RHICmdList, ComputeShaderRHI, DeformedPositionBuffer, Context.Batcher->GetEmptyRWBufferFromPool(RHICmdList, PF_R32_FLOAT));
+			SetUAVParameter(RHICmdList, ComputeShaderRHI, BoundingBoxBuffer, Context.Batcher->GetEmptyRWBufferFromPool(RHICmdList, PF_R32_UINT));
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, CurvesOffsetsBuffer, FNiagaraRenderer::GetDummyUIntBuffer());
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, RestPositionBuffer, FNiagaraRenderer::GetDummyFloatBuffer());
 
@@ -704,12 +674,11 @@ struct FNDIHairStrandsParametersCS : public FNiagaraDataInterfaceParametersCS
 
 			SetShaderValue(RHICmdList, ComputeShaderRHI, ResetSimulation, 0);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, InterpolationMode, 0);
-			SetShaderValue(RHICmdList, ComputeShaderRHI, RestUpdate, 0);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, RestRootOffset, FVector4(0, 0, 0, 0));
 			SetShaderValue(RHICmdList, ComputeShaderRHI, DeformedRootOffset, FVector4(0, 0, 0, 0));
 
 			SetShaderValue(RHICmdList, ComputeShaderRHI, RestPositionOffset, FVector(0,0,0));
-			SetSRVParameter(RHICmdList, ComputeShaderRHI, DeformedPositionOffset, FNiagaraRenderer::GetDummyFloatBuffer());
+			SetShaderValue(RHICmdList, ComputeShaderRHI, DeformedPositionOffset, FVector(0,0,0));
 
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, RestTrianglePositionABuffer, FNiagaraRenderer::GetDummyFloatBuffer());
 			SetSRVParameter(RHICmdList, ComputeShaderRHI, RestTrianglePositionBBuffer, FNiagaraRenderer::GetDummyFloatBuffer());
@@ -749,7 +718,6 @@ private:
 
 	LAYOUT_FIELD(FShaderParameter, ResetSimulation);
 	LAYOUT_FIELD(FShaderParameter, InterpolationMode);
-	LAYOUT_FIELD(FShaderParameter, RestUpdate);
 	LAYOUT_FIELD(FShaderParameter, RestRootOffset);
 	LAYOUT_FIELD(FShaderParameter, DeformedRootOffset);
 
@@ -768,7 +736,7 @@ private:
 	LAYOUT_FIELD(FShaderResourceParameter, MeshSampleWeightsBuffer);
 
 	LAYOUT_FIELD(FShaderParameter, RestPositionOffset);
-	LAYOUT_FIELD(FShaderResourceParameter, DeformedPositionOffset);
+	LAYOUT_FIELD(FShaderParameter, DeformedPositionOffset);
 
 	LAYOUT_FIELD(FShaderResourceParameter, ParamsScaleBuffer);
 	LAYOUT_FIELD(FShaderResourceParameter, BoundingBoxBuffer);
@@ -916,8 +884,7 @@ void UNiagaraDataInterfaceHairStrands::ExtractDatasAndResources(
 	FHairStrandsRestRootResource*& OutStrandsRestRootResource, 
 	FHairStrandsDeformedRootResource*& OutStrandsDeformedRootResource,
 	UGroomAsset*& OutGroomAsset,
-	int32& OutGroupIndex, 
-	FTransform& OutLocalToWorld)
+	int32& OutGroupIndex)
 {
 	ExtractSourceComponent(SystemInstance);
 
@@ -949,13 +916,11 @@ void UNiagaraDataInterfaceHairStrands::ExtractDatasAndResources(
 			OutStrandsRestRootResource = SourceComponent->GetGuideStrandsRestRootResource(OutGroupIndex);
 			OutStrandsDeformedRootResource = SourceComponent->GetGuideStrandsDeformedRootResource(OutGroupIndex);
 			OutGroomAsset = SourceComponent->GroomAsset;
-			OutLocalToWorld = SourceComponent->GetGuideStrandsLocalToWorld(OutGroupIndex);
 		}
 	}
 	else if (DefaultSource != nullptr)
 	{
 		OutGroupIndex = 0;
-		OutLocalToWorld = SystemInstance ? SystemInstance->GetWorldTransform() : FTransform::Identity;
 		if (OutGroupIndex < DefaultSource->GetNumHairGroups())
 		{
 			OutStrandsDatas = &DefaultSource->HairGroupsData[OutGroupIndex].Strands.Data;
@@ -963,17 +928,6 @@ void UNiagaraDataInterfaceHairStrands::ExtractDatasAndResources(
 			OutGroomAsset = DefaultSource;
 		}
 	}
-}
-
-ETickingGroup UNiagaraDataInterfaceHairStrands::CalculateTickGroup(const void* PerInstanceData) const
-{
-	const FNDIHairStrandsData* InstanceData = static_cast<const FNDIHairStrandsData*>(PerInstanceData);
-
-	if (InstanceData)
-	{
-		return InstanceData->TickingGroup;
-	}
-	return NiagaraFirstTickGroup;
 }
 
 bool UNiagaraDataInterfaceHairStrands::InitPerInstanceData(void* PerInstanceData, FNiagaraSystemInstance* SystemInstance)
@@ -1012,10 +966,9 @@ bool UNiagaraDataInterfaceHairStrands::PerInstanceTick(void* PerInstanceData, FN
 	UGroomAsset* GroomAsset = nullptr;
 	int32 GroupIndex = 0;
 
-	InstanceData->TickCount = FMath::Min(GHairSimulationMaxDelay + 1, InstanceData->TickCount + 1);
+	InstanceData->TickCount = FMath::Min(GHairSimulationMaxDelay +1,InstanceData->TickCount+1);
 
-	FTransform LocalToWorld = FTransform::Identity;
-	ExtractDatasAndResources(SystemInstance, StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource, GroomAsset, GroupIndex, LocalToWorld);
+	ExtractDatasAndResources(SystemInstance, StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource, GroomAsset, GroupIndex);
 	InstanceData->HairStrandsBuffer->Update(StrandsDatas, StrandsRestResource, StrandsDeformedResource, StrandsRestRootResource, StrandsDeformedRootResource);
 
 	if (SourceComponent != nullptr)
@@ -1027,7 +980,7 @@ bool UNiagaraDataInterfaceHairStrands::PerInstanceTick(void* PerInstanceData, FN
 		}
 		InstanceData->ForceReset = bRequiresReset;
 	}
-	InstanceData->Update(this, SystemInstance, StrandsDatas, GroomAsset, GroupIndex, LocalToWorld);
+	InstanceData->Update(this, SystemInstance, StrandsDatas, GroomAsset, GroupIndex);
 	return false;
 }
 
@@ -1064,8 +1017,7 @@ void UNiagaraDataInterfaceHairStrands::PostInitProperties()
 
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
-		ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable | ENiagaraTypeRegistryFlags::AllowParameter;
-		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), Flags);
+		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 }
 
@@ -1613,8 +1565,7 @@ void UNiagaraDataInterfaceHairStrands::GetFunctions(TArray<FNiagaraFunctionSigna
 		Sig.bMemberFunction = true;
 		Sig.bRequiresContext = false;
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition(GetClass()), TEXT("Hair Strands")));
-		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("Node Position")));
-		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("Rest Position")));
+		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("Node Displace")));
 		Sig.Outputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetBoolDef(), TEXT("Report Status")));
 
 		OutFunctions.Add(Sig);
@@ -2055,16 +2006,6 @@ void UNiagaraDataInterfaceHairStrands::GetFunctions(TArray<FNiagaraFunctionSigna
 
 		OutFunctions.Add(Sig);
 	}
-	{
-		FNiagaraFunctionSignature Sig;
-		Sig.Name = NeedRestUpdateName;
-		Sig.bMemberFunction = true;
-		Sig.bRequiresContext = false;
-		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition(GetClass()), TEXT("Hair Strands")));
-		Sig.Outputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetBoolDef(), TEXT("Rest Update")));
-
-		OutFunctions.Add(Sig);
-	}
 }
 
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, GetNumStrands);
@@ -2161,7 +2102,6 @@ DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, ComputeMaterialF
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, ComputeAirDragForce);
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, NeedSimulationReset);
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, HasGlobalInterpolation);
-DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, NeedRestUpdate);
 
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, InitGridSamples);
 DEFINE_NDI_DIRECT_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, GetSampleState);
@@ -2395,7 +2335,7 @@ void UNiagaraDataInterfaceHairStrands::GetVMExternalFunction(const FVMExternalFu
 	}
 	else if (BindingInfo.Name == UpdatePointPositionName)
 	{
-		check(BindingInfo.GetNumInputs() == 7 && BindingInfo.GetNumOutputs() == 1);
+		check(BindingInfo.GetNumInputs() == 4 && BindingInfo.GetNumOutputs() == 1);
 		NDI_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, UpdatePointPosition)::Bind(this, OutFunc);
 	}
 	else if (BindingInfo.Name == ResetPointPositionName)
@@ -2562,11 +2502,6 @@ void UNiagaraDataInterfaceHairStrands::GetVMExternalFunction(const FVMExternalFu
 	{
 		check(BindingInfo.GetNumInputs() == 1 && BindingInfo.GetNumOutputs() == 1);
 		NDI_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, HasGlobalInterpolation)::Bind(this, OutFunc);
-	}
-	else if (BindingInfo.Name == NeedRestUpdateName)
-	{
-		check(BindingInfo.GetNumInputs() == 1 && BindingInfo.GetNumOutputs() == 1);
-		NDI_FUNC_BINDER(UNiagaraDataInterfaceHairStrands, NeedRestUpdate)::Bind(this, OutFunc);
 	}
 }
 
@@ -3179,12 +3114,6 @@ void UNiagaraDataInterfaceHairStrands::HasGlobalInterpolation(FVectorVMContext& 
 	}
 }
 
-void UNiagaraDataInterfaceHairStrands::NeedRestUpdate(FVectorVMContext& Context)
-{
-	// @todo : implement function for cpu 
-}
-
-#if WITH_EDITORONLY_DATA
 bool UNiagaraDataInterfaceHairStrands::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
 {
 	FNDIHairStrandsParametersName ParamNames(ParamInfo.DataInterfaceHLSLSymbol);
@@ -3456,9 +3385,9 @@ bool UNiagaraDataInterfaceHairStrands::GetFunctionHLSL(const FNiagaraDataInterfa
 	else if (FunctionInfo.DefinitionName == UpdatePointPositionName)
 	{
 		static const TCHAR *FormatSample = TEXT(R"(
-			void {InstanceFunctionName} (in float3 NodePosition, in float3 RestPosition, out bool OutReportStatus)
+			void {InstanceFunctionName} (in float3 NodeDisplace, out bool OutReportStatus)
 			{
-				{HairStrandsContextName} DIHairStrands_UpdatePointPosition(DIContext,NodePosition, RestPosition ,OutReportStatus);
+				{HairStrandsContextName} DIHairStrands_UpdatePointPosition(DIContext,NodeDisplace,OutReportStatus);
 			}
 			)");
 		OutHLSL += FString::Format(FormatSample, ArgsSample);
@@ -3898,17 +3827,6 @@ in float RestLength, in float DeltaTime, in int NodeOffset, in float MaterialDam
 		OutHLSL += FString::Format(FormatSample, ArgsSample);
 		return true;
 	}
-	else if (FunctionInfo.DefinitionName == NeedRestUpdateName)
-	{
-		static const TCHAR* FormatSample = TEXT(R"(
-				void {InstanceFunctionName} ( out bool RestUpdate)
-				{
-					{HairStrandsContextName} RestUpdate  = DIContext.RestUpdate;
-				}
-				)");
-		OutHLSL += FString::Format(FormatSample, ArgsSample);
-		return true;
-	}
 
 	OutHLSL += TEXT("\n");
 	return false;
@@ -3917,7 +3835,6 @@ in float RestLength, in float DeltaTime, in int NodeOffset, in float MaterialDam
 void UNiagaraDataInterfaceHairStrands::GetCommonHLSL(FString& OutHLSL)
 {
 	OutHLSL += TEXT("#include \"/Plugin/Runtime/HairStrands/Private/NiagaraQuaternionUtils.ush\"\n");
-	//OutHLSL += TEXT("#include \"/Plugin/Runtime/HairStrands/Private/NiagaraDirectSolver.ush\"\n");
 	OutHLSL += TEXT("#include \"/Plugin/Runtime/HairStrands/Private/NiagaraStrandsExternalForce.ush\"\n");
 	OutHLSL += TEXT("#include \"/Plugin/Runtime/HairStrands/Private/NiagaraHookeSpringMaterial.ush\"\n");
 	OutHLSL += TEXT("#include \"/Plugin/Runtime/HairStrands/Private/NiagaraAngularSpringMaterial.ush\"\n");
@@ -3955,7 +3872,6 @@ void UNiagaraDataInterfaceHairStrands::GetParameterDefinitionHLSL(const FNiagara
 {
 	OutHLSL += TEXT("DIHAIRSTRANDS_DECLARE_CONSTANTS(") + ParamInfo.DataInterfaceHLSLSymbol + TEXT(")\n");
 }
-#endif
 
 void UNiagaraDataInterfaceHairStrands::ProvidePerInstanceDataForRenderThread(void* DataForRenderThread, void* PerInstanceData, const FNiagaraSystemInstanceID& SystemInstance)
 {
@@ -3972,7 +3888,7 @@ void UNiagaraDataInterfaceHairStrands::ProvidePerInstanceDataForRenderThread(voi
 
 void FNDIHairStrandsProxy::PreStage(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceStageArgs& Context)
 {
-	if (Context.SimStageData->bFirstStage)
+	if (Context.SimulationStageIndex == 0)
 	{
 		FNDIHairStrandsData* ProxyData =
 			SystemInstancesToProxyData.Find(Context.SystemInstanceID);

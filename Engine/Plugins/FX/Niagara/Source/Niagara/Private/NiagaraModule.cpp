@@ -22,10 +22,6 @@
 #include "NiagaraShaderModule.h"
 #include "UObject/CoreRedirects.h"
 #include "NiagaraEmitterInstanceBatcher.h"
-#include "Misc/CoreDelegates.h"
-#include "NiagaraDebuggerClient.h"
-#include "Particles/FXBudget.h"
-#include "UObject/UObjectGlobals.h"
 
 IMPLEMENT_MODULE(INiagaraModule, Niagara);
 
@@ -58,24 +54,6 @@ static FAutoConsoleVariableRef CVarNiaraGlobalSystemCountScale(
 	ECVF_Scalability
 );
 
-bool INiagaraModule::bUseGlobalFXBudget = true;
-static FAutoConsoleVariableRef CVarUseGlobalFXBudget(
-	TEXT("fx.Niagara.UseGlobalFXBudget"),
-	INiagaraModule::bUseGlobalFXBudget,
-	TEXT("If true, Niagara will track performace data into the global FX budget and feed the global budget values into scalability. \n"),
-	FConsoleVariableDelegate::CreateStatic(&INiagaraModule::OnUseGlobalFXBudgetChanged),
-	ECVF_Default
-);
-
-void INiagaraModule::OnUseGlobalFXBudgetChanged(IConsoleVariable* Variable)
-{
-	//Enable the global budget tracking if needed.
-	if (UseGlobalFXBudget() && FFXBudget::Enabled() == false)
-	{
-		FFXBudget::SetEnabled(true);
-	}
-}
-
 FNiagaraVariable INiagaraModule::Engine_DeltaTime;
 FNiagaraVariable INiagaraModule::Engine_InvDeltaTime;
 FNiagaraVariable INiagaraModule::Engine_Time;
@@ -105,7 +83,6 @@ FNiagaraVariable INiagaraModule::Engine_Owner_ExecutionState;
 
 FNiagaraVariable INiagaraModule::Engine_ExecutionCount;
 FNiagaraVariable INiagaraModule::Engine_Emitter_NumParticles;
-FNiagaraVariable INiagaraModule::Engine_Emitter_SimulationPosition;
 FNiagaraVariable INiagaraModule::Engine_Emitter_TotalSpawnedParticles;
 FNiagaraVariable INiagaraModule::Engine_Emitter_SpawnCountScale;
 FNiagaraVariable INiagaraModule::Engine_System_TickCount;
@@ -150,7 +127,6 @@ FNiagaraVariable INiagaraModule::Particles_Scale;
 FNiagaraVariable INiagaraModule::Particles_Lifetime;
 FNiagaraVariable INiagaraModule::Particles_MeshOrientation;
 FNiagaraVariable INiagaraModule::Particles_UVScale;
-FNiagaraVariable INiagaraModule::Particles_PivotOffset;
 FNiagaraVariable INiagaraModule::Particles_CameraOffset;
 FNiagaraVariable INiagaraModule::Particles_MaterialRandom;
 FNiagaraVariable INiagaraModule::Particles_LightRadius;
@@ -166,13 +142,10 @@ FNiagaraVariable INiagaraModule::Particles_RibbonU0Override;
 FNiagaraVariable INiagaraModule::Particles_RibbonV0RangeOverride;
 FNiagaraVariable INiagaraModule::Particles_RibbonU1Override;
 FNiagaraVariable INiagaraModule::Particles_RibbonV1RangeOverride;
-FNiagaraVariable INiagaraModule::Particles_RibbonUVDistance;
 FNiagaraVariable INiagaraModule::Particles_VisibilityTag;
-FNiagaraVariable INiagaraModule::Particles_MeshIndex;
 FNiagaraVariable INiagaraModule::Particles_ComponentsEnabled;
 FNiagaraVariable INiagaraModule::ScriptUsage;
 FNiagaraVariable INiagaraModule::ScriptContext;
-FNiagaraVariable INiagaraModule::FunctionDebugState;
 FNiagaraVariable INiagaraModule::DataInstance_Alive;
 FNiagaraVariable INiagaraModule::Translator_BeginDefaults;
 FNiagaraVariable INiagaraModule::Translator_CallID;
@@ -185,17 +158,11 @@ void INiagaraModule::StartupModule()
 
 	FNiagaraWorldManager::OnStartup();
 
-#if WITH_NIAGARA_DEBUGGER
-	DebuggerClient = MakePimpl<FNiagaraDebuggerClient>();
-#endif
-
 #if WITH_EDITOR	
 	// Loading uncooked data in a game environment, we still need to get some functionality from the NiagaraEditor module.
 	// This includes the ability to compile scripts and load WITH_EDITOR_ONLY data.
 	// Note that when loading with the Editor, the NiagaraEditor module is loaded based on the plugin description.
 	FModuleManager::Get().LoadModule(TEXT("NiagaraEditor"));
-
-	FCoreUObjectDelegates::OnAssetLoaded.AddRaw(this, &INiagaraModule::OnAssetLoaded);
 #endif
 
 	//Init commonly used FNiagaraVariables
@@ -230,7 +197,6 @@ void INiagaraModule::StartupModule()
 	
 	Engine_ExecutionCount = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Engine.ExecutionCount"));
 	Engine_Emitter_NumParticles = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Engine.Emitter.NumParticles"));
-	Engine_Emitter_SimulationPosition = FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("Engine.Emitter.SimulationPosition"));
 	Engine_Emitter_TotalSpawnedParticles = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Engine.Emitter.TotalSpawnedParticles"));
 	Engine_Emitter_SpawnCountScale = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Engine.Emitter.SpawnCountScale"));
 	Engine_Emitter_InstanceSeed = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Engine.Emitter.InstanceSeed"));
@@ -274,7 +240,6 @@ void INiagaraModule::StartupModule()
 	Particles_Lifetime = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.Lifetime"));
 	Particles_MeshOrientation = FNiagaraVariable(FNiagaraTypeDefinition::GetQuatDef(), TEXT("Particles.MeshOrientation"));
 	Particles_UVScale = FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("Particles.UVScale"));
-	Particles_PivotOffset = FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("Particles.PivotOffset"));
 	Particles_CameraOffset = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.CameraOffset"));
 	Particles_MaterialRandom = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.MaterialRandom"));
 	Particles_LightRadius = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.LightRadius"));
@@ -286,20 +251,16 @@ void INiagaraModule::StartupModule()
 	Particles_RibbonTwist = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.RibbonTwist"));
 	Particles_RibbonFacing = FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("Particles.RibbonFacing"));
 	Particles_RibbonLinkOrder = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.RibbonLinkOrder"));
-	Particles_RibbonUVDistance = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.RibbonUVDistance"));
 	Particles_RibbonU0Override = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.RibbonU0Override"));
 	Particles_RibbonV0RangeOverride = FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("Particles.RibbonV0RangeOverride"));
 	Particles_RibbonU1Override = FNiagaraVariable(FNiagaraTypeDefinition::GetFloatDef(), TEXT("Particles.RibbonU1Override"));
 	Particles_RibbonV1RangeOverride = FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("Particles.RibbonV1RangeOverride"));
 	Particles_VisibilityTag = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Particles.VisibilityTag"));
-	Particles_MeshIndex = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Particles.MeshIndex"));
 	Particles_ComponentsEnabled = FNiagaraVariable(FNiagaraTypeDefinition::GetBoolDef(), TEXT("Particles.ComponentsEnabled"));
 
 	ScriptUsage = FNiagaraVariable(FNiagaraTypeDefinition::GetScriptUsageEnum(), TEXT("Script.Usage"));
 	ScriptContext = FNiagaraVariable(FNiagaraTypeDefinition::GetScriptContextEnum(), TEXT("Script.Context"));
 	DataInstance_Alive = FNiagaraVariable(FNiagaraTypeDefinition::GetBoolDef(), TEXT("DataInstance.Alive"));
-
-	FunctionDebugState = FNiagaraVariable(FNiagaraTypeDefinition::GetFunctionDebugStateEnum(), TEXT("Function.DebugState"));
 
 	Translator_BeginDefaults = FNiagaraVariable(FNiagaraTypeDefinition::GetParameterMapDef(), TEXT("Begin Defaults"));
 	Translator_CallID = FNiagaraVariable(FNiagaraTypeDefinition::GetIntDef(), TEXT("Translator.CallID"));
@@ -327,62 +288,6 @@ void INiagaraModule::StartupModule()
 
 	// Needed for NiagaraDataInterfaceAudioSpectrum
 	FModuleManager::Get().LoadModule(TEXT("SignalProcessing"));
-
-#if NIAGARA_PERF_BASELINES
-#if !WITH_EDITOR
-	//The editor has it's own path for generating baselines. This is used in non editor builds only.
-	UNiagaraEffectType::OnGeneratePerfBaselines().BindRaw(this, &INiagaraModule::GeneratePerfBaselines);
-#endif
-#endif
-
-	FCoreDelegates::OnPostEngineInit.AddRaw(this, &INiagaraModule::OnPostEngineInit);
-	FCoreDelegates::OnPreExit.AddRaw(this, &INiagaraModule::OnPreExit);
-	FWorldDelegates::OnWorldBeginTearDown.AddRaw(this, &INiagaraModule::OnWorldBeginTearDown);
-	FWorldDelegates::OnWorldTickStart.AddRaw(this, &INiagaraModule::OnWorldTickStart);
-}
-
-void INiagaraModule::OnPostEngineInit()
-{
-#if NIAGARA_PERF_BASELINES
-	if (BaselineHandler.IsValid() == false)
-	{
-		BaselineHandler = MakeUnique<FNiagaraPerfBaselineHandler>();
-	}
-#endif
-}
-
-void INiagaraModule::OnPreExit()
-{
-#if NIAGARA_PERF_BASELINES
-	if (BaselineHandler.IsValid())
-	{
-		BaselineHandler.Reset();
-	}
-#endif
-
-#if WITH_NIAGARA_DEBUGGER
-	DebuggerClient.Reset();
-#endif
-}
-
-void INiagaraModule::OnWorldTickStart(UWorld* World, ELevelTick TickType, float DeltaSeconds)
-{
-#if NIAGARA_PERF_BASELINES
-	if (BaselineHandler.IsValid())
-	{
-		BaselineHandler->Tick(World, DeltaSeconds);
-	}
-#endif
-}
-
-void INiagaraModule::OnWorldBeginTearDown(UWorld* World)
-{
-#if NIAGARA_PERF_BASELINES
-	if (BaselineHandler.IsValid())
-	{
-		BaselineHandler->OnWorldBeginTearDown(World);
-	}
-#endif
 }
 
 void INiagaraModule::ShutdownRenderingResources()
@@ -394,9 +299,6 @@ void INiagaraModule::ShutdownRenderingResources()
 
 void INiagaraModule::ShutdownModule()
 {
-	FWorldDelegates::OnWorldBeginTearDown.RemoveAll(this);
-	FWorldDelegates::OnWorldTickStart.RemoveAll(this);
-
 	FNiagaraWorldManager::OnShutdown();
 
 	// Clear out the handler when shutting down..
@@ -406,18 +308,6 @@ void INiagaraModule::ShutdownModule()
 	ShutdownRenderingResources();
 
 	FNiagaraTypeRegistry::TearDown();
-
-#if WITH_EDITOR
-	FCoreUObjectDelegates::OnAssetLoaded.RemoveAll(this);
-#endif
-
-#if WITH_NIAGARA_DEBUGGER
-	DebuggerClient.Reset();
-#endif
-
-#if NIAGARA_PERF_BASELINES
-	UNiagaraEffectType::OnGeneratePerfBaselines().Unbind();
-#endif
 }
 
 #if WITH_EDITOR
@@ -500,10 +390,10 @@ void INiagaraModule::UnregisterCompileResultDelegate(FDelegateHandle DelegateHan
 	CompilationResultDelegate.Unbind();
 }
 
-TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe> INiagaraModule::Precompile(UObject* Obj, FGuid Version)
+TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe> INiagaraModule::Precompile(UObject* Obj)
 {
 	checkf(ObjectPrecompilerDelegate.IsBound(), TEXT("ObjectPrecompiler delegate not bound."));
-	return ObjectPrecompilerDelegate.Execute(Obj, Version);
+	return ObjectPrecompilerDelegate.Execute(Obj);
 }
 
 FDelegateHandle INiagaraModule::RegisterPrecompiler(FOnPrecompile PreCompiler)
@@ -518,18 +408,6 @@ void INiagaraModule::UnregisterPrecompiler(FDelegateHandle DelegateHandle)
 	checkf(ObjectPrecompilerDelegate.IsBound(), TEXT("ObjectPrecompiler is not registered"));
 	checkf(ObjectPrecompilerDelegate.GetHandle() == DelegateHandle, TEXT("Can only unregister the ObjectPrecompiler delegate with the handle it was registered with."));
 	ObjectPrecompilerDelegate.Unbind();
-}
-
-void INiagaraModule::OnAssetLoaded(UObject* Asset)
-{
-	if (Asset->IsA<UNiagaraSystem>())
-	{
-		CastChecked<UNiagaraSystem>(Asset)->UpdateSystemAfterLoad();
-	}
-	else if (Asset->IsA<UNiagaraEmitter>())
-	{
-		CastChecked<UNiagaraEmitter>(Asset)->UpdateEmitterAfterLoad();
-	}
 }
 
 #endif
@@ -548,7 +426,6 @@ UScriptStruct* FNiagaraTypeDefinition::Vec3Struct;
 UScriptStruct* FNiagaraTypeDefinition::Vec2Struct;
 UScriptStruct* FNiagaraTypeDefinition::ColorStruct;
 UScriptStruct* FNiagaraTypeDefinition::QuatStruct;
-UScriptStruct* FNiagaraTypeDefinition::WildcardStruct;
 
 UScriptStruct* FNiagaraTypeDefinition::HalfStruct;
 UScriptStruct* FNiagaraTypeDefinition::HalfVec2Struct;
@@ -561,8 +438,6 @@ UClass* FNiagaraTypeDefinition::UTextureClass;
 UClass* FNiagaraTypeDefinition::UTextureRenderTargetClass;
 
 UEnum* FNiagaraTypeDefinition::ExecutionStateEnum;
-UEnum* FNiagaraTypeDefinition::CoordinateSpaceEnum;
-UEnum* FNiagaraTypeDefinition::OrientationAxisEnum;
 UEnum* FNiagaraTypeDefinition::SimulationTargetEnum;
 UEnum* FNiagaraTypeDefinition::ExecutionStateSourceEnum;
 UEnum* FNiagaraTypeDefinition::ScriptUsageEnum;
@@ -570,8 +445,6 @@ UEnum* FNiagaraTypeDefinition::ScriptContextEnum;
 
 UEnum* FNiagaraTypeDefinition::ParameterScopeEnum;
 UEnum* FNiagaraTypeDefinition::ParameterPanelCategoryEnum;
-
-UEnum* FNiagaraTypeDefinition::FunctionDebugStateEnum;
 
 FNiagaraTypeDefinition FNiagaraTypeDefinition::ParameterMapDef;
 FNiagaraTypeDefinition FNiagaraTypeDefinition::IDDef;
@@ -595,7 +468,6 @@ FNiagaraTypeDefinition FNiagaraTypeDefinition::UObjectDef;
 FNiagaraTypeDefinition FNiagaraTypeDefinition::UMaterialDef;
 FNiagaraTypeDefinition FNiagaraTypeDefinition::UTextureDef;
 FNiagaraTypeDefinition FNiagaraTypeDefinition::UTextureRenderTargetDef;
-FNiagaraTypeDefinition FNiagaraTypeDefinition::WildcardDef;
 
 TSet<UScriptStruct*> FNiagaraTypeDefinition::NumericStructs;
 TArray<FNiagaraTypeDefinition> FNiagaraTypeDefinition::OrderedNumericTypes;
@@ -625,7 +497,6 @@ void FNiagaraTypeDefinition::Init()
 	FNiagaraTypeDefinition::BoolStruct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraBool"));
 	FNiagaraTypeDefinition::IntStruct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraInt32"));
 	FNiagaraTypeDefinition::Matrix4Struct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraMatrix"));
-	FNiagaraTypeDefinition::WildcardStruct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraWildcard"));
 
 	FNiagaraTypeDefinition::HalfStruct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraHalf"));
 	FNiagaraTypeDefinition::HalfVec2Struct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraHalfVector2"));
@@ -655,8 +526,7 @@ void FNiagaraTypeDefinition::Init()
 	ColorDef = FNiagaraTypeDefinition(ColorStruct);
 	QuatDef = FNiagaraTypeDefinition(QuatStruct);
 	Matrix4Def = FNiagaraTypeDefinition(Matrix4Struct);
-	WildcardDef = FNiagaraTypeDefinition(WildcardStruct);
-	
+
 	HalfDef = FNiagaraTypeDefinition(HalfStruct);
 	HalfVec2Def = FNiagaraTypeDefinition(HalfVec2Struct);
 	HalfVec3Def = FNiagaraTypeDefinition(HalfVec3Struct);
@@ -703,15 +573,14 @@ void FNiagaraTypeDefinition::Init()
 	ScalarStructs.Add(FloatStruct);
 	ScalarStructs.Add(HalfStruct);
 
-	CoordinateSpaceEnum = StaticEnum<ENiagaraCoordinateSpace>();
-	OrientationAxisEnum = StaticEnum<ENiagaraOrientationAxis>();
 	ExecutionStateEnum = StaticEnum<ENiagaraExecutionState>();
 	ExecutionStateSourceEnum = StaticEnum<ENiagaraExecutionStateSource>();
 	SimulationTargetEnum = StaticEnum<ENiagaraSimTarget>();
 	ScriptUsageEnum = StaticEnum<ENiagaraCompileUsageStaticSwitch>();
 	ScriptContextEnum = StaticEnum<ENiagaraScriptContextStaticSwitch>();
 
-	FunctionDebugStateEnum = StaticEnum<ENiagaraFunctionDebugState>();
+	ParameterScopeEnum = StaticEnum<ENiagaraParameterScope>();
+	ParameterPanelCategoryEnum = StaticEnum<ENiagaraParameterPanelCategory>();
 	
 #if WITH_EDITOR
 	RecreateUserDefinedTypeRegistry();
@@ -829,49 +698,37 @@ void FNiagaraTypeDefinition::RecreateUserDefinedTypeRegistry()
 
 	FNiagaraTypeRegistry::ClearUserDefinedRegistry();
 
-	ENiagaraTypeRegistryFlags VarFlags = ENiagaraTypeRegistryFlags::AllowAnyVariable;
-	ENiagaraTypeRegistryFlags ParamFlags = VarFlags | ENiagaraTypeRegistryFlags::AllowParameter;
-	ENiagaraTypeRegistryFlags PayloadFlags = VarFlags | ENiagaraTypeRegistryFlags::AllowPayload;
-	FNiagaraTypeRegistry::Register(CollisionEventDef, PayloadFlags);
+	FNiagaraTypeRegistry::Register(CollisionEventDef, false, true, false);
 
-	FNiagaraTypeRegistry::Register(ParameterMapDef, ParamFlags);
-	FNiagaraTypeRegistry::Register(IDDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(NumericDef, ParamFlags);
-	FNiagaraTypeRegistry::Register(FloatDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(HalfDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(IntDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(BoolDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(Vec2Def, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(Vec3Def, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(Vec4Def, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(ColorDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(QuatDef, ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(Matrix4Def, ParamFlags);
-	// @todo wildcard shouldn't be available for parameters etc., so just don't register here?
-	//FNiagaraTypeRegistry::Register(WildcardDef, VarFlags);
+	FNiagaraTypeRegistry::Register(ParameterMapDef, true, false, false);
+	FNiagaraTypeRegistry::Register(IDDef, true, true, false);
+	FNiagaraTypeRegistry::Register(NumericDef, true, false, false);
+	FNiagaraTypeRegistry::Register(FloatDef, true, true, false);
+	FNiagaraTypeRegistry::Register(HalfDef, true, true, false);
+	FNiagaraTypeRegistry::Register(IntDef, true, true, false);
+	FNiagaraTypeRegistry::Register(BoolDef, true, true, false);
+	FNiagaraTypeRegistry::Register(Vec2Def, true, true, false);
+	FNiagaraTypeRegistry::Register(Vec3Def, true, true, false);
+	FNiagaraTypeRegistry::Register(Vec4Def, true, true, false);
+	FNiagaraTypeRegistry::Register(ColorDef, true, true, false);
+	FNiagaraTypeRegistry::Register(QuatDef, true, true, false);
+	FNiagaraTypeRegistry::Register(Matrix4Def, true, false, false);
 
-	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(ExecutionStateEnum), ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(CoordinateSpaceEnum), ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(OrientationAxisEnum), ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(ExecutionStateSourceEnum), ParamFlags | PayloadFlags);
+	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(ExecutionStateEnum), true, true, false);
+	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(ExecutionStateSourceEnum), true, true, false);
 
 	UScriptStruct* SpawnInfoStruct = FindObjectChecked<UScriptStruct>(NiagaraPkg, TEXT("NiagaraSpawnInfo"));
-	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(SpawnInfoStruct), ParamFlags);
+	FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(SpawnInfoStruct), true, false, false);
 
-	FNiagaraTypeRegistry::Register(UObjectDef, VarFlags);
-	FNiagaraTypeRegistry::Register(UMaterialDef, VarFlags);
-	FNiagaraTypeRegistry::Register(UTextureDef, VarFlags);
-	FNiagaraTypeRegistry::Register(UTextureRenderTargetDef, VarFlags);
-	FNiagaraTypeRegistry::Register(FNiagaraRandInfo::StaticStruct(), ParamFlags | PayloadFlags);
-	FNiagaraTypeRegistry::Register(StaticEnum<ENiagaraLegacyTrailWidthMode>(), ParamFlags | PayloadFlags);
+	FNiagaraTypeRegistry::Register(UObjectDef, true, false, false);
+	FNiagaraTypeRegistry::Register(UMaterialDef, true, false, false);
+	FNiagaraTypeRegistry::Register(UTextureDef, true, false, false);
+	FNiagaraTypeRegistry::Register(UTextureRenderTargetDef, true, false, false);
+	FNiagaraTypeRegistry::Register(FNiagaraRandInfo::StaticStruct(), true, true, false);
+	FNiagaraTypeRegistry::Register(StaticEnum<ENiagaraLegacyTrailWidthMode>(), true, true, false);
 
-	
 	if (!IsRunningCommandlet())
 	{
-		TArray<FString> Blacklist;
-		Blacklist.Emplace(TEXT("/Niagara/Enums/ENiagaraCoordinateSpace.ENiagaraCoordinateSpace"));
-		Blacklist.Emplace(TEXT("/Niagara/Enums/ENiagaraOrientationAxis.ENiagaraOrientationAxis"));
-		
 		const UNiagaraSettings* Settings = GetDefault<UNiagaraSettings>();
 		check(Settings);
 		TArray<FSoftObjectPath> TotalStructAssets;
@@ -889,9 +746,6 @@ void FNiagaraTypeDefinition::RecreateUserDefinedTypeRegistry()
 		{
 			FName AssetRefPathNamePreResolve = AssetRef.GetAssetPathName();
 
-			if (Blacklist.Contains(AssetRefPathNamePreResolve.ToString()))
-				continue;
-
 			UObject* Obj = AssetRef.ResolveObject();
 			if (Obj == nullptr)
 			{
@@ -905,16 +759,7 @@ void FNiagaraTypeDefinition::RecreateUserDefinedTypeRegistry()
 				UScriptStruct* ScriptStruct = Cast<UScriptStruct>(Obj);
 				if (ScriptStruct != nullptr)
 				{
-					ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable;
-					if (ParamRefFound)
-					{
-						Flags |= ENiagaraTypeRegistryFlags::AllowParameter;
-					}
-					if (PayloadRefFound)
-					{
-						Flags |= ENiagaraTypeRegistryFlags::AllowPayload;
-					}
-					FNiagaraTypeRegistry::Register(ScriptStruct, Flags);
+					FNiagaraTypeRegistry::Register(ScriptStruct, ParamRefFound != nullptr, PayloadRefFound != nullptr, true);
 				}
 
 				UObjectRedirector* Redirector = FindObject<UObjectRedirector>(nullptr, *AssetRefPathNamePreResolve.ToString());
@@ -936,10 +781,6 @@ void FNiagaraTypeDefinition::RecreateUserDefinedTypeRegistry()
 		{
 			FName AssetRefPathNamePreResolve = AssetRef.GetAssetPathName();
 			UObject* Obj = AssetRef.ResolveObject();
-
-			if (Blacklist.Contains(AssetRefPathNamePreResolve.ToString()))
-				continue;
-
 			if (Obj == nullptr)
 			{
 				Obj = AssetRef.TryLoad();
@@ -952,16 +793,7 @@ void FNiagaraTypeDefinition::RecreateUserDefinedTypeRegistry()
 				UEnum* Enum = Cast<UEnum>(Obj);
 				if (Enum != nullptr)
 				{
-					ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable;
-					if (ParamRefFound)
-					{
-						Flags |= ENiagaraTypeRegistryFlags::AllowParameter;
-					}
-					if (PayloadRefFound)
-					{
-						Flags |= ENiagaraTypeRegistryFlags::AllowPayload;
-					}
-					FNiagaraTypeRegistry::Register(Enum, Flags);
+					FNiagaraTypeRegistry::Register(Enum, ParamRefFound != nullptr, PayloadRefFound != nullptr, true);
 				}
 
 				UObjectRedirector* Redirector = FindObject<UObjectRedirector>(nullptr, *AssetRefPathNamePreResolve.ToString());
@@ -1399,23 +1231,6 @@ const TArray<FNiagaraVariable>& FNiagaraEmitterParameters::GetVariables()
 
 	return Variables;
 }
-#endif
-
-#if NIAGARA_PERF_BASELINES
-
-void INiagaraModule::GeneratePerfBaselines(TArray<UNiagaraEffectType*>& BaselinesToGenerate)
-{	
-	if (BaselinesToGenerate.Num() == 0)
-	{
-		return;
-	}
-
-	if (BaselineHandler.IsValid())
-	{
-		BaselineHandler->GenerateBaselines(BaselinesToGenerate);
-	}
-}
-
 #endif
 
 #undef LOCTEXT_NAMESPACE

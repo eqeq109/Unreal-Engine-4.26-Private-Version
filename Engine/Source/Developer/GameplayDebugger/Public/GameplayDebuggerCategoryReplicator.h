@@ -52,13 +52,13 @@ struct FGameplayDebuggerDebugActor
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	AActor* Actor = nullptr;
+	AActor* Actor;
 
 	UPROPERTY()
 	FName ActorName;
 
 	UPROPERTY()
-	int32 SyncCounter = 0;
+	int32 SyncCounter;
 };
 
 USTRUCT()

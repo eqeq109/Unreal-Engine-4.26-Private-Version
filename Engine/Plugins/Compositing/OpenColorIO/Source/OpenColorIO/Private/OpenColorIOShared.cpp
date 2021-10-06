@@ -36,10 +36,15 @@ void FOpenColorIOTransformResource::SetupShaderCompilationEnvironment(EShaderPla
 {
 }
 
+
 OPENCOLORIO_API bool FOpenColorIOTransformResource::ShouldCache(EShaderPlatform InPlatform, const FShaderType* InShaderType) const
 {
 	check(InShaderType->GetOpenColorIOShaderType() )
 	return true;
+}
+
+OPENCOLORIO_API void FOpenColorIOTransformResource::NotifyCompilationFinished()
+{
 }
 
 OPENCOLORIO_API void FOpenColorIOTransformResource::CancelCompilation()
@@ -71,7 +76,7 @@ OPENCOLORIO_API void FOpenColorIOTransformResource::Invalidate()
 
 bool FOpenColorIOTransformResource::IsSame(const FOpenColorIOShaderMapId& InIdentifier) const
 {
-	return InIdentifier.ShaderCodeAndConfigHash == ShaderCodeAndConfigHash;
+	return InIdentifier.ShaderCodeHash == ShaderCodeHash;
 }
 
 void FOpenColorIOTransformResource::GetDependentShaderTypes(EShaderPlatform InPlatform, TArray<FShaderType*>& OutShaderTypes) const
@@ -101,11 +106,17 @@ OPENCOLORIO_API void FOpenColorIOTransformResource::GetShaderMapId(EShaderPlatfo
 		GetDependentShaderTypes(InPlatform, ShaderTypes);
 
 		OutId.FeatureLevel = GetFeatureLevel();
-
-		OutId.ShaderCodeAndConfigHash = ShaderCodeAndConfigHash;
+		OutId.ShaderCodeHash = ShaderCodeHash;
 		OutId.SetShaderDependencies(ShaderTypes, InPlatform);
 #if WITH_EDITOR
-		OutId.LayoutParams.InitializeForPlatform(TargetPlatform);
+		if (TargetPlatform)
+		{
+			OutId.LayoutParams.InitializeForPlatform(TargetPlatform->IniPlatformName(), TargetPlatform->HasEditorOnlyData());
+		}
+		else
+		{
+			OutId.LayoutParams.InitializeForCurrent();
+		}
 #else
 		if (TargetPlatform != nullptr)
 		{
@@ -191,21 +202,9 @@ void FOpenColorIOTransformResource::SerializeShaderMap(FArchive& Ar)
 	}
 }
 
-void FOpenColorIOTransformResource::SetupResource(ERHIFeatureLevel::Type InFeatureLevel, const FString& InShaderCodeHash, const FString& InShadercode, const FString& InRawConfigHash, const FString& InFriendlyName, const FName& InAssetPath)
+void FOpenColorIOTransformResource::SetupResource(ERHIFeatureLevel::Type InFeatureLevel, const FString& InShaderCodeHash, const FString& InShadercode, const FString& InFriendlyName, const FString& InAssetPath)
 {
-	// When this happens we assume that shader was cooked and we don't need to do anything. 
-	if (InShaderCodeHash.IsEmpty() && InRawConfigHash.IsEmpty())
-	{
-		return;
-	}
-
-	FString FullShaderCodeHash;
-	FullShaderCodeHash.Reserve(InShaderCodeHash.Len());
-	const FString ConcatHashes = InShaderCodeHash + InRawConfigHash;
-	FSHAHash FullHash;
-	FSHA1::HashBuffer(TCHAR_TO_ANSI(*(ConcatHashes)), ConcatHashes.Len(), FullHash.Hash);
-
-	ShaderCodeAndConfigHash = FullHash.ToString();
+	ShaderCodeHash = InShaderCodeHash;
 	ShaderCode = InShadercode;
 	FriendlyName = InFriendlyName;
 #if WITH_EDITOR
@@ -408,7 +407,7 @@ bool FOpenColorIOTransformResource::BeginCompileShaderMap(const FOpenColorIOShad
 #endif
 
 	// Create a shader compiler environment for the material that will be shared by all jobs from this material
-	TRefCountPtr<FSharedShaderCompilerEnvironment> MaterialEnvironment = new FSharedShaderCompilerEnvironment();
+	TRefCountPtr<FShaderCompilerEnvironment> MaterialEnvironment = new FShaderCompilerEnvironment();
 
 	// Compile the shaders for the transform.
 	FOpenColorIOCompilationOutput CompilationOutput;

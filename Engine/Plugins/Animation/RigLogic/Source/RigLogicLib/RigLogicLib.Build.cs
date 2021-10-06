@@ -58,6 +58,7 @@ public class RigLogicLib : ModuleRules
                 Target.Platform == UnrealTargetPlatform.Linux ||
                 Target.Platform == UnrealTargetPlatform.Mac)
         {
+            PublicDefinitions.Add("TERSE_ENABLE_SSE=1");
             PrivateDefinitions.Add("RL_BUILD_WITH_SSE=1");
         }
     }

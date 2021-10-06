@@ -40,18 +40,18 @@ private:
 	void SetPlaybackNetworkVersions(FArchive& Ar);
 	void SetPlaybackNetworkVersions(UNetConnection* Connection);
 
-	void StartRecording(UNetConnection* Connection);
+	void StartRecording(UWorld* World);
 	void StopReplay();
 
 	void OnStartRecordingComplete(const FStartStreamingResult& Result);
 
-	void WriteNetworkDemoHeader(UNetConnection* Connection);
+	void WriteNetworkDemoHeader();
 	bool ReadPlaybackDemoHeader(FString& Error);
 
 	static void FlushNetChecked(UNetConnection& NetConnection);
 	static void WritePacket(FArchive& Ar, uint8* Data, int32 Count);
 
-	void OnSeamlessTravelStart(UWorld* InWorld, const FString& LevelName, UNetConnection* Connection);
+	void OnSeamlessTravelStart(UWorld* InWorld, const FString& LevelName);
 
 	APlayerController* CreateSpectatorController(UNetConnection* Connection);
 
@@ -284,15 +284,12 @@ private:
 		int32 NumNetGuidsForRecording;
 		FArchivePos NetGuidsCountPos;
 
-		TMap<FName, uint32> NameTableMap;
-
 		void CountBytes(FArchive& Ar) const
 		{
 			CheckpointAckState.CountBytes(Ar);
 			PendingCheckpointActors.CountBytes(Ar);
 			DeltaCheckpointData.CountBytes(Ar);
 			NetGuidCacheSnapshot.CountBytes(Ar);
-			NameTableMap.CountBytes(Ar);
 		}
 	};
 
@@ -446,6 +443,9 @@ private:
 
 	/** Net startup actors that need to be destroyed after checkpoints are loaded */
 	TSet<FString> DeletedNetStartupActors;
+
+	/** Keeps track of NetGUIDs that were deleted, so we can skip them when saving checkpoints. Only used while recording. */
+	TSet<FNetworkGUID> DeletedNetStartupActorGUIDs;
 
 	TSharedPtr<IAnalyticsProvider> AnalyticsProvider;
 

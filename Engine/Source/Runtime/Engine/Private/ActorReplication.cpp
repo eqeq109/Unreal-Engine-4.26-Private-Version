@@ -19,7 +19,6 @@
 #include "PhysicsPublic.h"
 #include "DrawDebugHelpers.h"
 #include "Net/Core/PushModel/PushModel.h"
-#include "Interfaces/Interface_ActorSubobject.h"
 
 /*-----------------------------------------------------------------------------
 	AActor networking implementation.
@@ -484,12 +483,8 @@ void AActor::OnSubobjectCreatedFromReplication(UObject *NewSubobject)
 	check(NewSubobject);
 	if ( UActorComponent * Component = Cast<UActorComponent>(NewSubobject) )
 	{
-		Component->OnCreatedFromReplication();
-	}
-	// Experimental
-	else if (IInterface_ActorSubobject* SubojectInterface = Cast<IInterface_ActorSubobject>(NewSubobject))
-	{
-		SubojectInterface->OnCreatedFromReplication();
+		Component->RegisterComponent();
+		Component->SetIsReplicated(true);
 	}
 }
 
@@ -499,23 +494,13 @@ void AActor::OnSubobjectDestroyFromReplication(UObject *Subobject)
 	check(Subobject);
 	if ( UActorComponent * Component = Cast<UActorComponent>(Subobject) )
 	{
-		Component->OnDestroyedFromReplication();
+		Component->DestroyComponent();
 	}
-	// Experimental
-	else if (IInterface_ActorSubobject* SubojectInterface = Cast<IInterface_ActorSubobject>(Subobject))
-	{
-		SubojectInterface->OnDestroyedFromReplication();
-	}
-}
-
-void AActor::SetNetAddressable()
-{
-	bForceNetAddressable = 1;
 }
 
 bool AActor::IsNameStableForNetworking() const
 {
-	return IsNetStartupActor() || HasAnyFlags( RF_ClassDefaultObject | RF_ArchetypeObject ) || bForceNetAddressable != 0;
+	return IsNetStartupActor() || HasAnyFlags( RF_ClassDefaultObject | RF_ArchetypeObject );
 }
 
 bool AActor::IsSupportedForNetworking() const

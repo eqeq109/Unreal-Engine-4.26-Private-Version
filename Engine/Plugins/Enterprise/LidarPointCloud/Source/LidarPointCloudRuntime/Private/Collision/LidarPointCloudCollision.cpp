@@ -423,79 +423,68 @@ void LidarPointCloudCollision::BuildCollisionMesh(FLidarPointCloudOctree* Octree
 
 	BuildScaledVertexTable(CellSize);
 	
+	// Fire threads
+	for (int32 t = 0; t < MaxNumThreads && SampleIndex.GetValue() < TotalNumSamples; t++)
 	{
-		// Make sure to acquire data release lock before loading nodes
-		FScopeLock ReleaseLock(&Octree->DataReleaseLock);
-
-		Octree->LoadAllNodes(false);
-
-		const FLidarPointCloudOctree* OctreeConst = Octree;
-
-		// Fire threads
-		for (int32 t = 0; t < MaxNumThreads && SampleIndex.GetValue() < TotalNumSamples; t++)
+		ThreadResults.Add(Async(EAsyncExecution::TaskGraph, [t, &SampleIndex, &Vertices, &NumVertices, CollisionMesh, BatchSize, TotalNumSamples, NumSamples, BaseSamplingBounds, CellSize, Octree, InversedCellSize, bVisibleOnly, LocationOffset]
 		{
-			ThreadResults.Add(Async(EAsyncExecution::TaskGraph, [t, &SampleIndex, &Vertices, &NumVertices, CollisionMesh, BatchSize, TotalNumSamples, NumSamples, BaseSamplingBounds, CellSize, OctreeConst, InversedCellSize, bVisibleOnly, LocationOffset]
+			// Local caching arrays to reduce number of syncs required
+			TArray<FVector> _Vertices;
+
+			const int32 NumCellsSq = BatchSize * BatchSize;
+			const int32 NumCellsCu = NumCellsSq * BatchSize;
+
+			uint8* VoxelizedGrid = new uint8[NumCellsCu];
+
+			const float OffsetMultiplier = (BatchSize - 1) * CellSize;
+
+			TArray<FLidarPointCloudPoint*> Selection;
+			
+			int32 Index;
+			while ((Index = SampleIndex.Add(1)) < TotalNumSamples)
+			{
+				const FBox SamplingBounds = BaseSamplingBounds.ShiftBy(ExtractCoordinatesFromIndex(Index, NumSamples) * OffsetMultiplier);
+
+				// Sample the data using the calculated bounds
+				Octree->GetPointsInBox(Selection, SamplingBounds, bVisibleOnly);
+
+				// Skip if no points in selection
+				if (Selection.Num() == 0)
 				{
-					// Local caching arrays to reduce number of syncs required
-					TArray<FVector> _Vertices;
+					continue;
+				}
 
-					const int32 NumCellsSq = BatchSize * BatchSize;
-					const int32 NumCellsCu = NumCellsSq * BatchSize;
+				// Clear existing grids
+				FMemory::Memzero(VoxelizedGrid, NumCellsCu);
 
-					uint8* VoxelizedGrid = new uint8[NumCellsCu];
+				// Calculate voxelized grids
+				for (FLidarPointCloudPoint** Point = Selection.GetData(), ** DataEnd = Selection.GetData() + Selection.Num(); Point != DataEnd; ++Point)
+				{
+					// Calculate location relative to sampling bounds
+					FVector Location = (*Point)->Location - SamplingBounds.Min;
 
-					const float OffsetMultiplier = (BatchSize - 1) * CellSize;
+					// Calculate grid coordinates
+					const FIntVector Grid(FMath::Min(BatchSize - 1, (int32)(Location.X * InversedCellSize)), FMath::Min(BatchSize - 1, (int32)(Location.Y * InversedCellSize)), FMath::Min(BatchSize - 1, (int32)(Location.Z * InversedCellSize)));
 
-					TArray64<const FLidarPointCloudPoint*> Selection;
+					VoxelizedGrid[Grid.Z * NumCellsSq + Grid.Y * BatchSize + Grid.X] = 1;
+				}
 
-					int32 Index;
-					while ((Index = SampleIndex.Add(1)) < TotalNumSamples)
-					{
-						const FBox SamplingBounds = BaseSamplingBounds.ShiftBy(ExtractCoordinatesFromIndex(Index, NumSamples) * OffsetMultiplier);
+				MarchingCubes(VoxelizedGrid, BatchSize, CellSize, SamplingBounds.Min + LocationOffset, _Vertices);
+			}
 
-						// Sample the data using the calculated bounds
-						OctreeConst->GetPointsInBox(Selection, SamplingBounds, bVisibleOnly);
+			// Sync
+			Vertices[t].Append(_Vertices);
+			NumVertices.Add(_Vertices.Num());
 
-						// Skip if no points in selection
-						if (Selection.Num() == 0)
-						{
-							continue;
-						}
+			// Clean up
+			delete[] VoxelizedGrid;
+		}));
+	}
 
-						// Clear existing grids
-						FMemory::Memzero(VoxelizedGrid, NumCellsCu);
-
-						// Calculate voxelized grids
-						for (const FLidarPointCloudPoint** Point = Selection.GetData(), **DataEnd = Selection.GetData() + Selection.Num(); Point != DataEnd; ++Point)
-						{
-							// Calculate location relative to sampling bounds
-							FVector Location = (*Point)->Location - SamplingBounds.Min;
-
-							// Calculate grid coordinates
-							const FIntVector Grid(FMath::Min(BatchSize - 1, (int32)(Location.X * InversedCellSize)), FMath::Min(BatchSize - 1, (int32)(Location.Y * InversedCellSize)), FMath::Min(BatchSize - 1, (int32)(Location.Z * InversedCellSize)));
-
-							VoxelizedGrid[Grid.Z * NumCellsSq + Grid.Y * BatchSize + Grid.X] = 1;
-						}
-
-						MarchingCubes(VoxelizedGrid, BatchSize, CellSize, SamplingBounds.Min + LocationOffset, _Vertices);
-					}
-
-					// Sync
-					Vertices[t].Append(_Vertices);
-					NumVertices.Add(_Vertices.Num());
-
-					// Clean up
-					delete[] VoxelizedGrid;
-				}));
-		}
-
-		// Sync threads
-		for (const TFuture<void>& ThreadResult : ThreadResults)
-		{
-			ThreadResult.Get();
-		}
-
-		Octree->ReleaseAllNodes(false);
+	// Sync threads
+	for (const TFuture<void>& ThreadResult : ThreadResults)
+	{
+		ThreadResult.Get();
 	}
 
 	FBenchmarkTimer::Log("Collision: Meshing");

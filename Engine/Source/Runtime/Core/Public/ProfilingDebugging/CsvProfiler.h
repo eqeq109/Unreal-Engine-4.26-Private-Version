@@ -35,13 +35,10 @@
 #define CSV_PROFILER_USE_CUSTOM_FRAME_TIMINGS 0
 #endif
 
-// CSV_PROFILER default enabling rules, if not specified explicitly in <Program>.Target.cs GlobalDefinitions
-#ifndef CSV_PROFILER
-	#if WITH_SERVER_CODE
-	  #define CSV_PROFILER (WITH_ENGINE && 1)
-	#else
-	  #define CSV_PROFILER (WITH_ENGINE && (!UE_BUILD_SHIPPING || CSV_PROFILER_ENABLE_IN_SHIPPING))
-	#endif
+#if WITH_SERVER_CODE
+  #define CSV_PROFILER (WITH_ENGINE && 1)
+#else
+  #define CSV_PROFILER (WITH_ENGINE && (!UE_BUILD_SHIPPING || CSV_PROFILER_ENABLE_IN_SHIPPING))
 #endif
 
 #if CSV_PROFILER
@@ -68,8 +65,7 @@
 	TRACE_CSV_PROFILER_INLINE_STAT_EXCLUSIVE(#StatName); \
 	FScopedCsvStatExclusiveConditional _ScopedCsvStatExclusive_ ## StatName (#StatName,Condition);
 
-#define CSV_SCOPED_WAIT(WaitTime)							FScopedCsvWaitConditional _ScopedCsvWait(WaitTime>0 && FCsvProfiler::IsWaitTrackingEnabledOnCurrentThread());
-#define CSV_SCOPED_WAIT_CONDITIONAL(Condition)				FScopedCsvWaitConditional _ScopedCsvWait(Condition);
+#define CSV_SCOPED_WAIT_CONDITIONAL(Condition)					FScopedCsvWaitConditional _ScopedCsvWait(Condition);
 
 #define CSV_SCOPED_SET_WAIT_STAT(StatName) \
 	TRACE_CSV_PROFILER_INLINE_STAT_EXCLUSIVE("EventWait/"#StatName); \
@@ -117,7 +113,6 @@
   #define CSV_SCOPED_TIMING_STAT_GLOBAL(StatName)					
   #define CSV_SCOPED_TIMING_STAT_EXCLUSIVE(StatName)
   #define CSV_SCOPED_TIMING_STAT_EXCLUSIVE_CONDITIONAL(StatName,Condition)
-  #define CSV_SCOPED_WAIT(WaitTime)
   #define CSV_SCOPED_WAIT_CONDITIONAL(Condition)
   #define CSV_SCOPED_SET_WAIT_STAT(StatName)
   #define CSV_SCOPED_SET_WAIT_STAT_IGNORE()
@@ -247,9 +242,6 @@ public:
 	CORE_API static void RecordEventAtTimestamp(int32 CategoryIndex, const FString& EventText, uint64 Cycles64);
 
 	CORE_API static void SetMetadata(const TCHAR* Key, const TCHAR* Value);
-	
-	/** Set Thread name for a TLS. Needs to be called before the first event of that thread is sent. */
-	CORE_API static void SetThreadName(const FString& ThreadName);
 
 	static CORE_API int32 RegisterCategory(const FString& Name, bool bEnableByDefault, bool bIsGlobal);
 
@@ -305,9 +297,6 @@ public:
 	CORE_API void SetDeviceProfileName(FString InDeviceProfileName);
 
 	CORE_API FString GetOutputFilename() const { return OutputFilename; }
-
-	CORE_API static bool IsWaitTrackingEnabledOnCurrentThread();
-
 
 	DECLARE_MULTICAST_DELEGATE(FOnCSVProfileStart);
 	FOnCSVProfileStart& OnCSVProfileStart() { return OnCSVProfileStartDelegate; }
@@ -473,7 +462,6 @@ public:
 	}
 	bool bCondition;
 };
-
 
 class FScopedCsvSetWaitStat
 {

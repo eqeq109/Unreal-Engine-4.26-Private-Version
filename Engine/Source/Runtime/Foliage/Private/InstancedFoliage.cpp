@@ -48,7 +48,6 @@ InstancedFoliage.cpp: Instanced foliage implementation.
 #include "LevelUtils.h"
 #include "FoliageHelper.h"
 #include "Algo/Transform.h"
-#include "Misc/CoreMisc.h"
 
 #define LOCTEXT_NAMESPACE "InstancedFoliage"
 
@@ -437,8 +436,6 @@ UFoliageType::UFoliageType(const FObjectInitializer& ObjectInitializer)
 	bOverrideLightMapRes = false;
 	OverriddenLightMapRes = 8;
 	bUseAsOccluder = false;
-	bVisibleInRayTracing = true;
-	bEvaluateWorldPositionOffset = false;
 
 	BodyInstance.SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
 
@@ -678,9 +675,9 @@ void UFoliageType_InstancedStaticMesh::UpdateBounds()
 	float MinX = FLT_MAX, MaxX = FLT_MIN, MinY = FLT_MAX, MaxY = FLT_MIN;
 	LowBoundOriginRadius = FVector::ZeroVector;
 
-	if (Mesh->GetRenderData())
+	if (Mesh->RenderData)
 	{
-		FPositionVertexBuffer& PositionVertexBuffer = Mesh->GetRenderData()->LODResources[0].VertexBuffers.PositionVertexBuffer;
+		FPositionVertexBuffer& PositionVertexBuffer = Mesh->RenderData->LODResources[0].VertexBuffers.PositionVertexBuffer;
 		for (uint32 Index = 0; Index < PositionVertexBuffer.GetNumVertices(); ++Index)
 		{
 			const FVector& Pos = PositionVertexBuffer.VertexPosition(Index);
@@ -1416,17 +1413,6 @@ void FFoliageStaticMesh::UpdateComponentSettings(const UFoliageType_InstancedSta
 			Component->bUseAsOccluder = FoliageType->bUseAsOccluder;
 			bNeedsMarkRenderStateDirty = true;
 		}
-		if (Component->bVisibleInRayTracing != FoliageType->bVisibleInRayTracing)
-		{
-			Component->bVisibleInRayTracing = FoliageType->bVisibleInRayTracing;
-			bNeedsMarkRenderStateDirty = true;
-		}
-		if (Component->bEvaluateWorldPositionOffset != FoliageType->bEvaluateWorldPositionOffset)
-		{
-			Component->bEvaluateWorldPositionOffset = FoliageType->bEvaluateWorldPositionOffset;
-			bNeedsMarkRenderStateDirty = true;
-		}
-
 
 		if (Component->bEnableDensityScaling != FoliageType->bEnableDensityScaling)
 		{
@@ -1557,8 +1543,7 @@ void FFoliageStaticMesh::ReapplyInstancesToComponent(const TArray<FFoliageInstan
 FFoliageInfo::FFoliageInfo()
 	: Type(EFoliageImplType::StaticMesh)
 #if WITH_EDITOR
-	  // This will cover cases of running in editor or as editor with -game.  We do not want this during cooking.
-	, InstanceHash(GIsEditor || IsRunningGame() ? new FFoliageInstanceHash() : nullptr)
+	, InstanceHash(GIsEditor ? new FFoliageInstanceHash() : nullptr)
 	, bMovingInstances(false)
 #endif
 { }

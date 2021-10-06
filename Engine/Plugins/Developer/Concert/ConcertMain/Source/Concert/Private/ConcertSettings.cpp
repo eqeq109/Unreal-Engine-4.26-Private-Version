@@ -59,7 +59,6 @@ UConcertServerConfig::UConcertServerConfig()
 	: bCleanWorkingDir(false)
 	, NumSessionsToKeep(-1)
 {
-	DefaultVersionInfo.Initialize();
 }
 
 UConcertClientConfig::UConcertClientConfig()

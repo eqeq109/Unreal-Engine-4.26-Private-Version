@@ -470,9 +470,9 @@ FReply SAssetViewItem::OnDragOver( const FGeometry& MyGeometry, const FDragDropE
 	return (bDraggedOver) ? FReply::Handled() : FReply::Unhandled();
 }
 
-FReply SAssetViewItem::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent, const TSharedRef<SWidget>& InParentWidget)
+FReply SAssetViewItem::OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent )
 {
-	if (AssetItem && DragDropHandler::HandleDragDropOnItem(AssetItem->GetItem(), DragDropEvent, InParentWidget))
+	if (AssetItem && DragDropHandler::HandleDragDropOnItem(AssetItem->GetItem(), DragDropEvent, AsShared()))
 	{
 		bDraggedOver = false;
 		return FReply::Handled();
@@ -486,11 +486,6 @@ FReply SAssetViewItem::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent&
 	}
 
 	return FReply::Unhandled();
-}
-
-FReply SAssetViewItem::OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent )
-{
-	return OnDrop(MyGeometry, DragDropEvent, AsShared());
 }
 
 bool SAssetViewItem::IsNameReadOnly() const

@@ -638,9 +638,7 @@ struct TMovieSceneEvaluationTree : FMovieSceneEvaluationTree
 	 */
 	void AddIfEmpty(TRange<FFrameNumber> InTimeRange, DataType InData)
 	{
-		AddSelective(InTimeRange, MoveTemp(InData), [this](FMovieSceneEvaluationTreeNodeHandle InNodeHandle){
-			return this->GetAllData(InNodeHandle).IsValid() == false;
-		});
+		AddTimeRange(InTimeRange, FAddIfEmptyOperator(*this, MoveTemp(InData)), FMovieSceneEvaluationTreeNodeHandle::Root(), nullptr);
 	}
 
 	/**
@@ -651,9 +649,7 @@ struct TMovieSceneEvaluationTree : FMovieSceneEvaluationTree
 	 */
 	void AddIfEmptySelective(TRange<FFrameNumber> InTimeRange, DataType InData, TFunctionRef<bool(FMovieSceneEvaluationTreeNodeHandle)> Predicate)
 	{
-		AddSelective(InTimeRange, MoveTemp(InData), [this, &Predicate](FMovieSceneEvaluationTreeNodeHandle InNodeHandle){
-			return this->GetAllData(InNodeHandle).IsValid() && Predicate(InNodeHandle);
-		});
+		AddTimeRange(InTimeRange, FAddIfEmptyOperator(*this, MoveTemp(InData)), FMovieSceneEvaluationTreeNodeHandle::Root(), &Predicate);
 	}
 
 	/**
@@ -761,6 +757,23 @@ private:
 			TArrayView<const DataType> NodeData = Tree.Data.Get(InNode.DataID);
 			if (!NodeData.Contains(DataToInsert))
 			{
+				Tree.Data.Add(InNode.DataID, CopyTemp(DataToInsert));
+			}
+		}
+		TMovieSceneEvaluationTree<DataType>& Tree;
+		DataType DataToInsert;
+	};
+
+	/** Operator that adds data to nodes only the first time (i.e. if the node is empty) */
+	struct FAddIfEmptyOperator : IMovieSceneEvaluationTreeNodeOperator
+	{
+		FAddIfEmptyOperator(TMovieSceneEvaluationTree<DataType>& InTree, DataType&& InDataToInsert) : Tree(InTree), DataToInsert(InDataToInsert) {}
+
+		virtual void operator()(FMovieSceneEvaluationTreeNode& InNode) const override
+		{
+			if (!InNode.DataID.IsValid())
+			{
+				InNode.DataID = Tree.Data.AllocateEntry(1);
 				Tree.Data.Add(InNode.DataID, CopyTemp(DataToInsert));
 			}
 		}

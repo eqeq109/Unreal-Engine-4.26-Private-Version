@@ -19,4 +19,7 @@ public:
 protected:
 	void RegisterSettings();
 	void UnregisterSettings();
+
+	void RegisterCustomizations();
+	void UnregisterCustomizations();
 };

@@ -83,13 +83,13 @@ struct MAGICLEAPIMAGETRACKER_API FMagicLeapImageTargetState
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ImageTracking|MagicLeap")
-	EMagicLeapImageTargetStatus TrackingStatus = EMagicLeapImageTargetStatus::Tracked;
+	EMagicLeapImageTargetStatus TrackingStatus;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ImageTracking|MagicLeap")
-	FVector Location = FVector(0.0f);
+	FVector Location;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ImageTracking|MagicLeap")
-	FRotator Rotation = FRotator(0.0f);
+	FRotator Rotation;
 };
 
 UENUM(BlueprintType)

@@ -36,7 +36,7 @@ private:
 	bool HandlePurchaseExecCommands(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar);
 	
 	/** Delegate fired when exec cheat related to receipts completes */
-	void OnQueryReceiptsComplete(const FOnlineError& Result, FUniqueNetIdPtr UserId);
+	void OnQueryReceiptsComplete(const FOnlineError& Result, TSharedPtr<const FUniqueNetId> UserId);
 	
 	/** Dump purchase receipts for a given user id */
 	void DumpReceipts(const FUniqueNetId& UserId);
@@ -131,7 +131,6 @@ public:
 	virtual FName GetInstanceName() const override { return InstanceName; }
 	virtual bool IsEnabled() const override;
 	virtual void ReloadConfigs(const TSet<FString>& /*ConfigSections*/) override {};
-	virtual FText GetSocialPlatformName() const override;
 
 	// FTickerObjectBase
 	virtual bool Tick(float DeltaTime) override;

@@ -39,8 +39,6 @@ CSV_DECLARE_CATEGORY_MODULE_EXTERN(RHI_API, RHITFlushes);
 #include "HAL/PlatformStackwalk.h"
 #endif
 
-#define DISABLE_BREADCRUMBS 1
-
 class FApp;
 class FBlendStateInitializerRHI;
 class FGraphicsPipelineStateInitializer;
@@ -668,7 +666,7 @@ protected:
 	{
 		FRHISetRenderTargetsInfo RTInfo;
 		Info.ConvertToRenderTargetsInfo(RTInfo);
-		CacheActiveRenderTargets(RTInfo.NumColorRenderTargets, RTInfo.ColorRenderTarget, &RTInfo.DepthStencilRenderTarget, RTInfo.ShadingRateTexture != nullptr, RTInfo.MultiViewCount);
+		CacheActiveRenderTargets(RTInfo.NumColorRenderTargets, RTInfo.ColorRenderTarget, &RTInfo.DepthStencilRenderTarget, RTInfo.FoveationTexture != nullptr, RTInfo.MultiViewCount);
 	}
 
 	void IncrementSubpass()
@@ -837,35 +835,19 @@ FRHICOMMAND_MACRO(FRHICommandWaitForTemporalEffect)
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
-struct FRHICommandBroadcastTemporalEffectString
-{
-	static const TCHAR* TStr() { return TEXT("FRHICommandBroadcastTemporalEffect"); }
-};
-template <typename TRHIResource>
-struct FRHICommandBroadcastTemporalEffect final	: public FRHICommand<FRHICommandBroadcastTemporalEffect<TRHIResource>, FRHICommandBroadcastTemporalEffectString>
+FRHICOMMAND_MACRO(FRHICommandBroadcastTemporalEffect)
 {
 	FName EffectName;
-	const TArrayView<TRHIResource*> Resources;
-	FORCEINLINE_DEBUGGABLE FRHICommandBroadcastTemporalEffect(const FName& InEffectName, const TArrayView<TRHIResource*> InResources)
+	FRHITexture** Textures;
+	int32 NumTextures;
+	FORCEINLINE_DEBUGGABLE FRHICommandBroadcastTemporalEffect(const FName& InEffectName, FRHITexture** InTextures, int32 InNumTextures)
 		: EffectName(InEffectName)
-		, Resources(InResources)
+		, Textures(InTextures)
+		, NumTextures(InNumTextures)
 	{
 	}
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
-
-FRHICOMMAND_MACRO(FRHICommandTransferTextures)
-{
-	TArray<FTransferTextureParams, TInlineAllocator<4>> Params;
-
-	FORCEINLINE_DEBUGGABLE FRHICommandTransferTextures(TArrayView<const FTransferTextureParams> InParams)
-		: Params(InParams)
-	{
-	}
-
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
 #endif // WITH_MGPU
 
 FRHICOMMAND_MACRO(FRHICommandSetStencilRef)
@@ -1159,28 +1141,6 @@ FRHICOMMAND_MACRO(FRHICommandBeginRenderPass)
 FRHICOMMAND_MACRO(FRHICommandEndRenderPass)
 {
 	FRHICommandEndRenderPass()
-	{
-	}
-
-	RHI_API void Execute(FRHICommandListBase& CmdList);
-};
-
-FRHICOMMAND_MACRO(FRHICommandBeginLateLatching)
-{
-	int32 FrameNumber;
-
-	FRHICommandBeginLateLatching(int32 InFrameNumber)
-		:FrameNumber(InFrameNumber)
-	{
-	}
-
-	RHI_API void Execute(FRHICommandListBase & CmdList);
-};
-
-
-FRHICOMMAND_MACRO(FRHICommandEndLateLatching)
-{
-	FRHICommandEndLateLatching()
 	{
 	}
 
@@ -1821,13 +1781,16 @@ FRHICOMMAND_MACRO(FRHICommandCalibrateTimers)
 	RHI_API void Execute(FRHICommandListBase & CmdList);
 };
 
-FRHICOMMAND_MACRO(FRHICommandSubmitCommandsHint)
+struct FRHICommandSubmitCommandsHintString
 {
-	RHI_API void Execute(FRHICommandListBase& CmdList);
+	static const TCHAR* TStr() { return TEXT("FRHICommandSubmitCommandsHint"); }
 };
 
-FRHICOMMAND_MACRO(FRHICommandPostExternalCommandsReset)
+struct FRHICommandSubmitCommandsHint final : public FRHICommand<FRHICommandSubmitCommandsHint, FRHICommandSubmitCommandsHintString>
 {
+	FORCEINLINE_DEBUGGABLE FRHICommandSubmitCommandsHint()
+	{
+	}
 	RHI_API void Execute(FRHICommandListBase& CmdList);
 };
 
@@ -2800,35 +2763,9 @@ public:
 				checkSlow(!Bypass());
 				ALLOC_COMMAND(FRHICommandSetGPUMask)(GPUMask);
 			}
-#endif // WITH_MGPU
+#endif
 		}
 	}
-
-	FORCEINLINE_DEBUGGABLE void TransferTextures(const TArrayView<const FTransferTextureParams> Params)
-	{
-#if WITH_MGPU
-		if (Bypass())
-		{
-			GetComputeContext().RHITransferTextures(Params);
-		}
-		else
-		{
-			ALLOC_COMMAND(FRHICommandTransferTextures)(Params);
-		}
-#endif // WITH_MGPU
-	}
-
-#if PLATFORM_REQUIRES_UAV_TO_RTV_TEXTURE_CACHE_FLUSH_WORKAROUND
-	FORCEINLINE_DEBUGGABLE void RHIFlushTextureCacheBOP(FRHITexture* Texture)
-	{
-		if (Bypass())
-		{
-			GetContext().RHIFlushTextureCacheBOP(Texture);
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandFlushTextureCacheBOP)(Texture);
-	}
-#endif // #if PLATFORM_REQUIRES_UAV_TO_RTV_TEXTURE_CACHE_FLUSH_WORKAROUND
 
 #if RHI_RAYTRACING
 	FORCEINLINE_DEBUGGABLE void BuildAccelerationStructure(FRHIRayTracingGeometry* Geometry)
@@ -2847,19 +2784,7 @@ public:
 		}
 		else
 		{
-			// Copy the params themselves as well their segment lists, if there are any.
-			// AllocArray() can't be used here directly, as we have to modify the params after copy.
-			size_t DataSize = sizeof(FAccelerationStructureBuildParams) * Params.Num();
-			FAccelerationStructureBuildParams* InlineParams = (FAccelerationStructureBuildParams*) Alloc(DataSize, alignof(FAccelerationStructureBuildParams));
-			FMemory::Memcpy(InlineParams, Params.GetData(), DataSize);
-			for (int32 i=0; i<Params.Num(); ++i)
-			{
-				if (Params[i].Segments.Num())
-				{
-					InlineParams[i].Segments = AllocArray(Params[i].Segments);
-				}
-			}
-			ALLOC_COMMAND(FRHICommandBuildAccelerationStructures)(MakeArrayView(InlineParams, Params.Num()));
+			ALLOC_COMMAND(FRHICommandBuildAccelerationStructures)(AllocArray(Params));
 		}
 	}
 
@@ -2875,16 +2800,6 @@ public:
 		}
 	}
 #endif
-
-	FORCEINLINE_DEBUGGABLE void PostExternalCommandsReset()
-	{
-		if (Bypass())
-		{
-			GetContext().RHIPostExternalCommandsReset();
-			return;
-		}
-		ALLOC_COMMAND(FRHICommandPostExternalCommandsReset)();
-	}
 };
 
 class RHI_API FRHICommandList : public FRHIComputeCommandList
@@ -2972,19 +2887,15 @@ public:
 			return;
 		}
 
-		ALLOC_COMMAND(FRHICommandBroadcastTemporalEffect<FRHITexture>)(EffectName, AllocArray(Textures));
-	}
-
-	FORCEINLINE_DEBUGGABLE void BroadcastTemporalEffect(const FName& EffectName, const TArrayView<FRHIVertexBuffer*> Buffers)
-	{
-		//check(IsOutsideRenderPass());
-		if (Bypass())
+		// Allocate space to hold the list of textures inline in the command list itself.
+		const int32 NumTextures = Textures.Num();
+		FRHITexture** InlineTextureArray = (FRHITexture**)Alloc(sizeof(FRHITexture*) * NumTextures, alignof(FRHITexture*));
+		for (int32 Index = 0; Index < NumTextures; ++Index)
 		{
-			GetContext().RHIBroadcastTemporalEffect(EffectName, Buffers);
-			return;
+			InlineTextureArray[Index] = Textures[Index];
 		}
 
-		ALLOC_COMMAND(FRHICommandBroadcastTemporalEffect<FRHIVertexBuffer>)(EffectName, AllocArray(Buffers));
+		ALLOC_COMMAND(FRHICommandBroadcastTemporalEffect)(EffectName, InlineTextureArray, NumTextures);
 	}
 #endif // WITH_MGPU
 
@@ -3368,10 +3279,16 @@ public:
 #endif
 	}
 
-	UE_DEPRECATED(4.27, "SetShadingRateImage is deprecated. Bind the shading rate image as part of the FRHIRenderPassInfo struct.")
 	FORCEINLINE_DEBUGGABLE void SetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner)
 	{
-		check(false);
+#if PLATFORM_SUPPORTS_VARIABLE_RATE_SHADING
+		if (Bypass())
+		{
+			GetContext().RHISetShadingRateImage(RateImageTexture, Combiner);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandSetShadingRateImage)(RateImageTexture, Combiner);
+#endif
 	}
 
 	FORCEINLINE_DEBUGGABLE void CopyToResolveTarget(FRHITexture* SourceTextureRHI, FRHITexture* DestTextureRHI, const FResolveParams& ResolveParams)
@@ -3597,6 +3514,18 @@ public:
 		ALLOC_COMMAND(FRHICommandBackBufferWaitTrackingBeginFrame)(FrameToken, bDeferred);
 	}
 #endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
+
+#if PLATFORM_REQUIRES_UAV_TO_RTV_TEXTURE_CACHE_FLUSH_WORKAROUND
+	FORCEINLINE_DEBUGGABLE void RHIFlushTextureCacheBOP(FRHITexture* Texture)
+	{
+		if (Bypass())
+		{
+			GetContext().RHIFlushTextureCacheBOP(Texture);
+			return;
+		}
+		ALLOC_COMMAND(FRHICommandFlushTextureCacheBOP)(Texture);
+	}
+#endif // #if PLATFORM_REQUIRES_UAV_TO_RTV_TEXTURE_CACHE_FLUSH_WORKAROUND
 	
 	FORCEINLINE_DEBUGGABLE void CopyBufferRegion(FRHIVertexBuffer* DestBuffer, uint64 DstOffset, FRHIVertexBuffer* SourceBuffer, uint64 SrcOffset, uint64 NumBytes)
 	{
@@ -4265,6 +4194,22 @@ public:
 		});
 	}
 
+	FORCEINLINE void TransferTexture(FRHITexture2D* Texture, FIntRect Rect, uint32 SrcGPUIndex, uint32 DestGPUIndex, bool PullData)
+	{
+		LLM_SCOPE(ELLMTag::Textures);
+		ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+
+		return GDynamicRHI->RHITransferTexture(Texture, Rect, SrcGPUIndex, DestGPUIndex, PullData);
+	}
+
+	FORCEINLINE void TransferTextures(const TArrayView<const FTransferTextureParams> Params)
+	{
+		LLM_SCOPE(ELLMTag::Textures);
+		ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+
+		return GDynamicRHI->RHITransferTextures(Params);
+	}
+
 	UE_DEPRECATED(4.26, "The RHI resource creation API has been refactored. Use global RHICreate functions with default initial ResourceState")
 	FORCEINLINE FTexture2DArrayRHIRef CreateTexture2DArray(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, FRHIResourceCreateInfo& CreateInfo)
 	{
@@ -4693,7 +4638,12 @@ public:
 	{
 		return GDynamicRHI->RHIEnqueueDecompress(SrcBuffer, DestBuffer, CompressedSize, ErrorCodeBuffer);
 	}
-		
+
+	FORCEINLINE bool EnqueueCompress(uint8_t* SrcBuffer, uint8_t* DestBuffer, int UnCompressedSize, void* ErrorCodeBuffer)
+	{
+		return GDynamicRHI->RHIEnqueueCompress(SrcBuffer, DestBuffer, UnCompressedSize, ErrorCodeBuffer);
+	}
+	
 	FORCEINLINE bool GetAvailableResolutions(FScreenResolutionArray& Resolutions, bool bIgnoreRefreshRate)
 	{
 		return RHIGetAvailableResolutions(Resolutions, bIgnoreRefreshRate);
@@ -4734,41 +4684,12 @@ public:
 		return GDynamicRHI->RHIGetNativeDevice();
 	}
 	
-	FORCEINLINE void* GetNativePhysicalDevice()
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_GetNativePhysicalDevice_Flush);
-		ImmediateFlush(EImmediateFlushType::FlushRHIThread); 
-		 
-		return GDynamicRHI->RHIGetNativePhysicalDevice();
-	}
-	
-	FORCEINLINE void* GetNativeGraphicsQueue()
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_GetNativeGraphicsQueue_Flush);
-		ImmediateFlush(EImmediateFlushType::FlushRHIThread); 
-		 
-		return GDynamicRHI->RHIGetNativeGraphicsQueue();
-	}
-	
-	FORCEINLINE void* GetNativeComputeQueue()
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_GetNativeComputeQueue_Flush);
-		ImmediateFlush(EImmediateFlushType::FlushRHIThread); 
-		 
-		return GDynamicRHI->RHIGetNativeComputeQueue();
-	}
-	
 	FORCEINLINE void* GetNativeInstance()
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_RHIMETHOD_GetNativeInstance_Flush);
 		ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 
 		return GDynamicRHI->RHIGetNativeInstance();
-	}
-	
-	FORCEINLINE void* GetNativeCommandBuffer()
-	{
-		return GDynamicRHI->RHIGetNativeCommandBuffer();
 	}
 
 	FORCEINLINE class IRHICommandContext* GetDefaultContext()
@@ -4793,30 +4714,6 @@ public:
 	 * @param bNeedReleaseRefs - whether Release need to be called on RHI resources referenced by update infos
 	 */
 	void UpdateRHIResources(FRHIResourceUpdateInfo* UpdateInfos, int32 Num, bool bNeedReleaseRefs);
-
-	FORCEINLINE void BeginLateLatching(int32 FrameNumber)
-	{
-		if (Bypass())
-		{
-			GetContext().RHIBeginLateLatching(FrameNumber);
-		}
-		else
-		{
-			ALLOC_COMMAND(FRHICommandBeginLateLatching)(FrameNumber);
-		}
-	}
-
-	FORCEINLINE void EndLateLatching()
-	{
-		if (Bypass())
-		{
-			GetContext().RHIEndLateLatching();
-		}
-		else
-		{
-			ALLOC_COMMAND(FRHICommandEndLateLatching)();
-		}
-	}
 };
 
 class FRHICommandListScopedFlushAndExecute
@@ -5377,6 +5274,16 @@ FORCEINLINE void RHICopySharedMips(FRHITexture2D* DestTexture2D, FRHITexture2D* 
 	return FRHICommandListExecutor::GetImmediateCommandList().CopySharedMips(DestTexture2D, SrcTexture2D);
 }
 
+FORCEINLINE void RHITransferTexture(FRHITexture2D* Texture, FIntRect Rect, uint32 SrcGPUIndex, uint32 DestGPUIndex, bool PullData)
+{
+	return FRHICommandListExecutor::GetImmediateCommandList().TransferTexture(Texture, Rect, SrcGPUIndex, DestGPUIndex, PullData);
+}
+
+FORCEINLINE void RHITransferTextures(const TArrayView<const FTransferTextureParams> Params)
+{
+	return FRHICommandListExecutor::GetImmediateCommandList().TransferTextures(Params);
+}
+
 FORCEINLINE FTexture2DArrayRHIRef RHICreateTexture2DArray(uint32 SizeX, uint32 SizeY, uint32 SizeZ, uint8 Format, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
 {
 	LLM_SCOPE((Flags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable)) != 0 ? ELLMTag::RenderTargets : ELLMTag::Textures);
@@ -5597,30 +5504,11 @@ FORCEINLINE void* RHIGetNativeDevice()
 	return FRHICommandListExecutor::GetImmediateCommandList().GetNativeDevice();
 }
 
-FORCEINLINE void* RHIGetNativePhysicalDevice()
-{
-	return FRHICommandListExecutor::GetImmediateCommandList().GetNativePhysicalDevice();
-}
-
-FORCEINLINE void* RHIGetNativeGraphicsQueue()
-{
-	return FRHICommandListExecutor::GetImmediateCommandList().GetNativeGraphicsQueue();
-}
-
-FORCEINLINE void* RHIGetNativeComputeQueue()
-{
-	return FRHICommandListExecutor::GetImmediateCommandList().GetNativeComputeQueue();
-}
-
 FORCEINLINE void* RHIGetNativeInstance()
 {
 	return FRHICommandListExecutor::GetImmediateCommandList().GetNativeInstance();
 }
 
-FORCEINLINE void* RHIGetNativeCommandBuffer()
-{
-	return FRHICommandListExecutor::GetImmediateCommandList().GetNativeCommandBuffer();
-}
 
 FORCEINLINE FRHIShaderLibraryRef RHICreateShaderLibrary(EShaderPlatform Platform, FString const& FilePath, FString const& Name)
 {

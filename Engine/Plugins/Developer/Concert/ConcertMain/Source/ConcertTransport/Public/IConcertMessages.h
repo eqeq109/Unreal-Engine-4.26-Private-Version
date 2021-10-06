@@ -75,12 +75,6 @@ public:
 	/** Timeout the message */
 	virtual void TimeOut() = 0;
 
-	/** Annotations associated with this message. */
-	virtual void SetAnnotations(TMap<FName, FString> Annotations) = 0;
-
-	/** Annotations for sending across message bus */
-	virtual const TMap<FName, FString>& GetAnnotations() const = 0;
-
 protected:
 	friend class IConcertLocalEndpoint;
 	friend class IConcertRemoteEndpoint;
@@ -224,15 +218,6 @@ public:
 		MessageState = EConcertMessageState::TimedOut;
 	}
 
-	virtual void SetAnnotations(TMap<FName, FString> InAnnotations) override
-	{
-		Annotations = MoveTemp(InAnnotations);
-	}
-
-	virtual const TMap<FName, FString>& GetAnnotations() const override
-	{
-		return Annotations;
-	}
 protected:
 	virtual void SetMessageId(const FGuid& MessageId) override
 	{
@@ -254,7 +239,6 @@ protected:
 		MessageTemplate.ConcertEndpointId = SenderId;
 	}
 
-	TMap<FName, FString> Annotations;
 	FDateTime CreationDate;
 	EConcertMessageState MessageState;
 	MessageType MessageTemplate;

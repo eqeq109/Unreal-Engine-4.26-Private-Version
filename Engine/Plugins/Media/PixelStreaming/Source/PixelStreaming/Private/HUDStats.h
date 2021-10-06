@@ -3,7 +3,8 @@
 #pragma once
 
 #include "Utils.h"
-#include "PixelStreamingSettings.h"
+
+#include "Templates/Atomic.h"
 
 // displays selected stats on HUD
 struct FHUDStats
@@ -13,13 +14,14 @@ struct FHUDStats
 	void Tick();
 	void Reset();
 
+	TAtomic<bool> bEnabled{ false };
+
 	static constexpr uint32 SmoothingPeriod = 3 * 60; // kinda 3 secs for 60FPS
 
-	// Note: FSmoothedValue is thread safe.
 	FSmoothedValue<SmoothingPeriod> EndToEndLatencyMs;
 	FSmoothedValue<SmoothingPeriod> EncoderLatencyMs;
-	FSmoothedValue<SmoothingPeriod> CaptureLatencyMs;
 	FSmoothedValue<SmoothingPeriod> EncoderBitrateMbps;
-	FSmoothedValue<SmoothingPeriod> EncoderFPS;
 	FSmoothedValue<SmoothingPeriod> EncoderQP;
+	FSmoothedValue<SmoothingPeriod> EncoderFPS;
+	double BandwidthMbps = 0;
 };

@@ -9,10 +9,6 @@
 #include "Misc/SecureHash.h"
 #include "Containers/StringConv.h"
 
-#if PLATFORM_ANDROID
-#include "Android/AndroidPlatformMisc.h"
-#endif
-
 UAndroidDeviceProfileMatchingRules::UAndroidDeviceProfileMatchingRules(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -47,9 +43,7 @@ FString FAndroidDeviceProfileSelector::FindMatchingProfile(const FString& GPUFam
 		bool bFoundMatch = true;
 		for (const FProfileMatchItem& Item : Profile.Match)
 		{
-			FString ConfigRuleString;
 			const FString* SourceString = nullptr;
-			FString MatchString = Item.MatchString;
 			switch (Item.SourceType)
 			{
 			case SRC_PreviousRegexMatch:
@@ -91,71 +85,50 @@ FString FAndroidDeviceProfileSelector::FindMatchingProfile(const FString& GPUFam
 			case SRC_Chipset:
 				SourceString = &Chipset;
 				break;
-			case SRC_ConfigRuleVar:
-				{
-					// expected Matchstring contents for configrulevar is "configrule_varname|matchstring"
-					// sourcestring is set to the configrule variable content. 
-					// sourcestring will be an empty string if configrule_varname is not found.
-					FString VariableValueMatchString;
-					FString ConfigRuleVarName;
-					SourceString = &ConfigRuleString;
-					if (MatchString.Split(TEXT("|"), &ConfigRuleVarName, &VariableValueMatchString))
-					{
-						MatchString = VariableValueMatchString;
-#if PLATFORM_ANDROID
-						// TODO: Do this when running device selection with editor builds.
-						if (FString* ConfigRuleVar = FAndroidMisc::GetConfigRulesVariable(ConfigRuleVarName))
-						{
-							ConfigRuleString = *ConfigRuleVar;
-						}
-#endif
-					}					
-					break;
-				}
 			default:
 				continue;
 			}
 
-			const bool bNumericOperands = SourceString->IsNumeric() && MatchString.IsNumeric();
+			const bool bNumericOperands = SourceString->IsNumeric() && Item.MatchString.IsNumeric();
 
 			switch (Item.CompareType)
 			{
 			case CMP_Equal:
 				if (Item.SourceType == SRC_CommandLine) 
 				{
-					if (!FParse::Param(*CommandLine, *MatchString))
+					if (!FParse::Param(*CommandLine, *Item.MatchString))
 					{
 						bFoundMatch = false;
 					}
 				}
 				else
 				{
-					if (*SourceString != MatchString)
+					if (*SourceString != Item.MatchString)
 					{
 						bFoundMatch = false;
 					}
 				}
 				break;
 			case CMP_Less:
-				if ((bNumericOperands && FCString::Atof(**SourceString) >= FCString::Atof(*MatchString)) || (!bNumericOperands && *SourceString >= MatchString))
+				if ((bNumericOperands && FCString::Atof(**SourceString) >= FCString::Atof(*Item.MatchString)) || (!bNumericOperands && *SourceString >= Item.MatchString))
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_LessEqual:
-				if ((bNumericOperands && FCString::Atof(**SourceString) > FCString::Atof(*MatchString)) || (!bNumericOperands && *SourceString > MatchString))
+				if ((bNumericOperands && FCString::Atof(**SourceString) > FCString::Atof(*Item.MatchString)) || (!bNumericOperands && *SourceString > Item.MatchString))
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_Greater:
-				if ((bNumericOperands && FCString::Atof(**SourceString) <= FCString::Atof(*MatchString)) || (!bNumericOperands && *SourceString <= MatchString))
+				if ((bNumericOperands && FCString::Atof(**SourceString) <= FCString::Atof(*Item.MatchString)) || (!bNumericOperands && *SourceString <= Item.MatchString))
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_GreaterEqual:
-				if ((bNumericOperands && FCString::Atof(**SourceString) < FCString::Atof(*MatchString)) || (!bNumericOperands && *SourceString < MatchString))
+				if ((bNumericOperands && FCString::Atof(**SourceString) < FCString::Atof(*Item.MatchString)) || (!bNumericOperands && *SourceString < Item.MatchString))
 				{
 					bFoundMatch = false;
 				}
@@ -163,58 +136,58 @@ FString FAndroidDeviceProfileSelector::FindMatchingProfile(const FString& GPUFam
 			case CMP_NotEqual:
 				if (Item.SourceType == SRC_CommandLine)
 				{
-					if (FParse::Param(*CommandLine, *MatchString))
+					if (FParse::Param(*CommandLine, *Item.MatchString))
 					{
 						bFoundMatch = false;
 					}
 				}
 				else
 				{
-					if (*SourceString == MatchString)
+					if (*SourceString == Item.MatchString)
 					{
 						bFoundMatch = false;
 					}
 				}
 				break;
 			case CMP_EqualIgnore:
-				if (SourceString->ToLower() != MatchString.ToLower())
+				if (SourceString->ToLower() != Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_LessIgnore:
-				if (SourceString->ToLower() >= MatchString.ToLower())
+				if (SourceString->ToLower() >= Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_LessEqualIgnore:
-				if (SourceString->ToLower() > MatchString.ToLower())
+				if (SourceString->ToLower() > Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_GreaterIgnore:
-				if (SourceString->ToLower() <= MatchString.ToLower())
+				if (SourceString->ToLower() <= Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_GreaterEqualIgnore:
-				if (SourceString->ToLower() < MatchString.ToLower())
+				if (SourceString->ToLower() < Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_NotEqualIgnore:
-				if (SourceString->ToLower() == MatchString.ToLower())
+				if (SourceString->ToLower() == Item.MatchString.ToLower())
 				{
 					bFoundMatch = false;
 				}
 				break;
 			case CMP_Regex:
 				{
-					const FRegexPattern RegexPattern(MatchString);
+					const FRegexPattern RegexPattern(Item.MatchString);
 					FRegexMatcher RegexMatcher(RegexPattern, *SourceString);
 					if (RegexMatcher.FindNext())
 					{
@@ -235,9 +208,9 @@ FString FAndroidDeviceProfileSelector::FindMatchingProfile(const FString& GPUFam
 					// "Salt|d9e5cbd6b0e4dba00edd9de92cf64ee4c3f3a2db". Salt is optional.
 					FString MatchHashString;
 					FString SaltString;
-					if (!MatchString.Split(TEXT("|"), &SaltString, &MatchHashString))
+					if (!Item.MatchString.Split(TEXT("|"), &SaltString, &MatchHashString))
 					{
-						MatchHashString = MatchString;
+						MatchHashString = Item.MatchString;
 					}
 					FString HashInputString = *SourceString + SaltString
 #ifdef HASH_PEPPER_SECRET_GUID

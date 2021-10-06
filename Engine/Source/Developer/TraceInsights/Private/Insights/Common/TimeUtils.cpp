@@ -2,8 +2,8 @@
 
 #include "Insights/Common/TimeUtils.h"
 
-#include <cmath>
 #include <limits>
+//#include <math.h>
 
 //#include "Insights/Log.h"
 
@@ -14,11 +14,6 @@ namespace TimeUtils
 
 FString FormatTimeValue(const double Duration, const int32 NumDigits)
 {
-	if (std::isnan(Duration))
-	{
-		return TEXT("NaN");
-	}
-
 #if !PLATFORM_USE_GENERIC_STRING_IMPLEMENTATION
 	FString Str = FString::Printf(TEXT("%.*f"), NumDigits, Duration);
 #else
@@ -48,11 +43,6 @@ FString FormatTimeAuto(const double InDuration, const int32 NumDigits)
 	//TestTimeAutoFormatting();
 
 	double Duration = InDuration;
-
-	if (std::isnan(Duration))
-	{
-		return TEXT("NaN");
-	}
 
 	if (Duration == 0.0)
 	{
@@ -214,11 +204,6 @@ FString FormatTimeAuto(const double InDuration, const int32 NumDigits)
 
 FString FormatTimeMs(const double InDuration, const int32 NumDigits, bool bAddTimeUnit)
 {
-	if (std::isnan(InDuration))
-	{
-		return TEXT("NaN");
-	}
-
 	if (FMath::IsNearlyZero(InDuration, TimeUtils::Picosecond))
 	{
 		return TEXT("0");
@@ -261,11 +246,6 @@ FString FormatTimeMs(const double InDuration, const int32 NumDigits, bool bAddTi
 
 FString FormatTime(const double InTime, const double Precision)
 {
-	if (std::isnan(InTime))
-	{
-		return TEXT("NaN");
-	}
-
 	if (FMath::IsNearlyZero(InTime, FMath::Max(TimeUtils::Picosecond, Precision / 10.0f)))
 	{
 		return TEXT("0");
@@ -436,24 +416,11 @@ void SplitTime(const double InTime, FTimeSplit& OutTimeSplit)
 {
 	double Time = InTime;
 
-	OutTimeSplit.bIsZero = false;
-	OutTimeSplit.bIsNegative = false;
-	OutTimeSplit.bIsInfinite = false;
-	OutTimeSplit.bIsNaN = false;
-
-	if (std::isnan(InTime))
-	{
-		OutTimeSplit.bIsNaN = true;
-		return;
-	}
-
 	if (FMath::IsNearlyZero(Time, TimeUtils::Picosecond))
 	{
 		OutTimeSplit.bIsZero = true;
-		for (int32 Index = 0; Index < 8; ++Index)
-		{
-			OutTimeSplit.Units[Index] = 0;
-		}
+		OutTimeSplit.bIsNegative = false;
+		OutTimeSplit.bIsInfinite = false;
 		return;
 	}
 
@@ -462,9 +429,14 @@ void SplitTime(const double InTime, FTimeSplit& OutTimeSplit)
 		Time = -Time;
 		OutTimeSplit.bIsNegative = true;
 	}
+	else
+	{
+		OutTimeSplit.bIsNegative = false;
+	}
 
 	if (Time == DBL_MAX || Time == std::numeric_limits<double>::infinity())
 	{
+		OutTimeSplit.bIsZero = false;
 		OutTimeSplit.bIsInfinite = true;
 		for (int32 Index = 0; Index < 8; ++Index)
 		{
@@ -473,6 +445,7 @@ void SplitTime(const double InTime, FTimeSplit& OutTimeSplit)
 		return;
 	}
 
+	OutTimeSplit.bIsInfinite = false;
 	bool bIsZero = true; // assume true and see if any split unit is != 0
 
 	const double Days = FMath::FloorToDouble(Time / TimeUtils::Day);
@@ -546,12 +519,6 @@ void SplitTime(const double InTime, FTimeSplit& OutTimeSplit)
 FString FormatTimeSplit(const FTimeSplit& InTimeSplit, const double Precision)
 {
 	FString Str;
-
-	if (InTimeSplit.bIsNaN)
-	{
-		Str = TEXT("NaN");
-		return Str;
-	}
 
 	if (InTimeSplit.bIsZero)
 	{

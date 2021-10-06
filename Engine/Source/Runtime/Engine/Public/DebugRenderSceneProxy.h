@@ -283,7 +283,6 @@ public:
 
 protected:
 	ENGINE_API virtual void DrawDebugLabels(UCanvas* Canvas, APlayerController*);
-	ENGINE_API void ResetTexts() { Texts.Reset(); }
 
 protected:
 	FDebugDrawDelegate DebugTextDrawingDelegate;

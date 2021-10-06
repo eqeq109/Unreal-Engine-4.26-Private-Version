@@ -126,14 +126,6 @@ struct CORE_API FGenericPlatformTime
 	}
 
 	/**
-	 * @return the cpu processing time (kernel + user time of all threads) from the last update
-	 */
-	static double GetLastIntervalCPUTimeInSeconds()
-	{
-		return LastIntervalCPUTimeInSeconds;
-	}
-
-	/**
 	* @return seconds per cycle.
 	*/
 	static double GetSecondsPerCycle()
@@ -171,5 +163,4 @@ protected:
 
 	static double SecondsPerCycle;
 	static double SecondsPerCycle64;
-	static double LastIntervalCPUTimeInSeconds;
 };

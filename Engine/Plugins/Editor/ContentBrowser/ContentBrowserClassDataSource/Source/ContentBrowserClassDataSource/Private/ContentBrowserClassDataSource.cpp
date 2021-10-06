@@ -14,7 +14,6 @@
 #include "NewClassContextMenu.h"
 #include "GameProjectGenerationModule.h"
 #include "Framework/Docking/TabManager.h"
-#include "ContentBrowserDataSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "ContentBrowserClassDataSource"
 
@@ -54,17 +53,6 @@ void UContentBrowserClassDataSource::Shutdown()
 	Super::Shutdown();
 }
 
-void UContentBrowserClassDataSource::EnumerateRootPaths(const FContentBrowserDataFilter& InFilter, TFunctionRef<void(FName)> InCallback)
-{
-	TArray<FName> InternalRoots;
-	NativeClassHierarchy->GetClassRoots(InternalRoots, EnumHasAnyFlags(InFilter.ItemAttributeFilter, EContentBrowserItemAttributeFilter::IncludeEngine), EnumHasAnyFlags(InFilter.ItemAttributeFilter, EContentBrowserItemAttributeFilter::IncludePlugins));
-
-	for (const FName RootContentPath : InternalRoots)
-	{
-		InCallback(RootContentPath);
-	}
-}
-
 void UContentBrowserClassDataSource::CompileFilter(const FName InPath, const FContentBrowserDataFilter& InFilter, FContentBrowserDataCompiledFilter& OutCompiledFilter)
 {
 	const FContentBrowserDataClassFilter* ClassFilter = InFilter.ExtraFilters.FindFilter<FContentBrowserDataClassFilter>();
@@ -86,58 +74,22 @@ void UContentBrowserClassDataSource::CompileFilter(const FName InPath, const FCo
 		return;
 	}
 
-	ConditionalCreateNativeClassHierarchy();
-
 	// Convert the virtual path - if it doesn't exist in this data source then the filter won't include anything
-	TSet<FName> InternalPaths;
-	TMap<FName, TArray<FName>> VirtualPaths;
-	FName SingleInternalPath;
-	ExpandVirtualPath(InPath, InFilter, SingleInternalPath, InternalPaths, VirtualPaths);
-
-	{
-		FContentBrowserCompiledVirtualFolderFilter* VirtualFolderFilter = nullptr;
-		for (const auto& It : VirtualPaths)
-		{
-			const FName VirtualSubPath = It.Key;
-			{
-				if (!VirtualFolderFilter)
-				{
-					VirtualFolderFilter = &FilterList.FindOrAddFilter<FContentBrowserCompiledVirtualFolderFilter>();
-				}
-
-				if (!VirtualFolderFilter->CachedSubPaths.Contains(VirtualSubPath))
-				{
-					FName InternalPath;
-					if (TryConvertVirtualPathToInternal(VirtualSubPath, InternalPath))
-					{
-						VirtualFolderFilter->CachedSubPaths.Add(VirtualSubPath, CreateClassFolderItem(InternalPath));
-					}
-					else
-					{
-						const FString MountLeafName = FPackageName::GetShortName(VirtualSubPath);
-						VirtualFolderFilter->CachedSubPaths.Add(VirtualSubPath, FContentBrowserItemData(this, EContentBrowserItemFlags::Type_Folder, VirtualSubPath, *MountLeafName, FText(), nullptr));
-					}
-				}
-			}
-		}
-	}
-
-	if (InternalPaths.Num() == 0)
+	FName InternalPath;
+	if (!TryConvertVirtualPathToInternal(InPath, InternalPath))
 	{
 		return;
 	}
 
+	ConditionalCreateNativeClassHierarchy();
+
 	FNativeClassHierarchyFilter ClassHierarchyFilter;
-	ClassHierarchyFilter.ClassPaths.Reserve(InternalPaths.Num());
-	for (const FName InternalPath : InternalPaths)
-	{
-		ClassHierarchyFilter.ClassPaths.Add(InternalPath);
-	}
+	ClassHierarchyFilter.ClassPaths.Add(InternalPath);
 	ClassHierarchyFilter.bRecursivePaths = InFilter.bRecursivePaths;
 	
 	// Roots need some special path handling
 	static const FName RootPath = "/";
-	if (InPath == RootPath)
+	if (InternalPath == RootPath)
 	{
 		TArray<FName> ClassRootFolders;
 		NativeClassHierarchy->GetClassRoots(ClassRootFolders, EnumHasAnyFlags(InFilter.ItemAttributeFilter, EContentBrowserItemAttributeFilter::IncludeEngine), EnumHasAnyFlags(InFilter.ItemAttributeFilter, EContentBrowserItemAttributeFilter::IncludePlugins));
@@ -187,7 +139,7 @@ void UContentBrowserClassDataSource::CompileFilter(const FName InPath, const FCo
 
 		if (ChildClassObjects.Num() > 0)
 		{
-			TSet<FName> ClassPathsToInclude;
+			TSet<FName> ClassNamesToInclude;
 			if (CollectionFilter)
 			{
 				TArray<FName> ClassPathsForCollections;
@@ -197,12 +149,12 @@ void UContentBrowserClassDataSource::CompileFilter(const FName InPath, const FCo
 					return;
 				}
 
-				ClassPathsToInclude.Append(ClassPathsForCollections);
+				ClassNamesToInclude.Append(ClassPathsForCollections);
 			}
 
 			for (UClass* ChildClassObject : ChildClassObjects)
 			{
-				const bool bPassesInclusiveFilter = ClassPathsToInclude.Num() == 0 || ClassPathsToInclude.Contains(*ChildClassObject->GetPathName());
+				const bool bPassesInclusiveFilter = ClassNamesToInclude.Num() == 0 || ClassNamesToInclude.Contains(ChildClassObject->GetFName());
 				const bool bPassesBlacklistFilter = !ClassBlacklist || ClassBlacklist->PassesFilter(ChildClassObject->GetFName());
 
 				if (bPassesInclusiveFilter && bPassesBlacklistFilter)

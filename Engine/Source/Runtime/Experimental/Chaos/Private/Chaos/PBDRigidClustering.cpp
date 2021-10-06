@@ -21,6 +21,7 @@
 #include "Chaos/PerParticleEulerStepVelocity.h"
 #include "Chaos/PerParticleEtherDrag.h"
 #include "Chaos/PerParticlePBDEulerStep.h"
+#include "Chaos/EvolutionTraits.h"
 #include "CoreMinimal.h"
 
 namespace Chaos
@@ -28,13 +29,13 @@ namespace Chaos
 	//
 	//  Connectivity PVar
 	//
-	FRealSingle ClusterDistanceThreshold = 100.f;
+	float ClusterDistanceThreshold = 100.f;
 	FAutoConsoleVariableRef CVarClusterDistance(TEXT("p.ClusterDistanceThreshold"), ClusterDistanceThreshold, TEXT("How close a cluster child must be to a contact to break off"));
 
 	int32 UseConnectivity = 1;
 	FAutoConsoleVariableRef CVarUseConnectivity(TEXT("p.UseConnectivity"), UseConnectivity, TEXT("Whether to use connectivity graph when breaking up clusters"));
 
-	CHAOS_API FRealSingle ChaosClusteringChildrenInheritVelocity = 1.f;
+	CHAOS_API float ChaosClusteringChildrenInheritVelocity = 1.f;
 	FAutoConsoleVariableRef CVarChildrenInheritVelocity(TEXT("p.ChildrenInheritVelocity"), ChaosClusteringChildrenInheritVelocity, TEXT("Whether children inherit parent collision velocity when declustering. 0 has no impact velocity like glass, 1 has full impact velocity like brick"));
 
 	int32 ComputeClusterCollisionStrains = 1;
@@ -49,7 +50,7 @@ namespace Chaos
 	int32 MaxLevelsetDimension = 20;
 	FAutoConsoleVariableRef CVarMaxLevelsetDimension(TEXT("p.MaxLevelsetDimension"), MaxLevelsetDimension, TEXT("The maximum number of cells on a single level set axis"));
 
-	FRealSingle MinLevelsetSize = 50.f;
+	float MinLevelsetSize = 50.f;
 	FAutoConsoleVariableRef CVarLevelSetResolution(TEXT("p.MinLevelsetSize"), MinLevelsetSize, TEXT("The minimum size on the smallest axis to use a level set"));
 
 	int32 UseLevelsetCollision = 0;
@@ -58,7 +59,7 @@ namespace Chaos
 	int32 LevelsetGhostCells = 1;
 	FAutoConsoleVariableRef CVarLevelsetGhostCells(TEXT("p.LevelsetGhostCells"), LevelsetGhostCells, TEXT("Increase the level set grid by this many ghost cells"));
 
-	FRealSingle ClusterSnapDistance = 1.f;
+	float ClusterSnapDistance = 1.f;
 	FAutoConsoleVariableRef CVarClusterSnapDistance(TEXT("p.ClusterSnapDistance"), ClusterSnapDistance, TEXT(""));
 
 	int32 MinCleanedPointsBeforeRemovingInternals = 10;
@@ -78,17 +79,17 @@ namespace Chaos
 	//==========================================================================
 
 	template<class T, int d>
-	FVec3 GetContactLocation(const FRigidBodyPointContactConstraint& Contact)
+	TVector<T, d> GetContactLocation(const FRigidBodyPointContactConstraint& Contact)
 	{
 		return Contact.GetLocation();
 	}
 
 	template<class T, int d>
-	FVec3 GetContactLocation(const FRigidBodyContactConstraintPGS& Contact)
+	TVector<T, d> GetContactLocation(const FRigidBodyContactConstraintPGS& Contact)
 	{
 		// @todo(mlentine): Does the exact point matter?
 		T MinPhi = FLT_MAX;
-		FVec3 MinLoc;
+		TVector<T, d> MinLoc;
 		for (int32 i = 0; i < Contact.Phi.Num(); ++i)
 		{
 			if (Contact.Phi[i] < MinPhi)
@@ -103,22 +104,22 @@ namespace Chaos
 	template<class T, int d>
 	T CalculatePseudoMomentum(const TPBDRigidClusteredParticles<T, d>& InParticles, const uint32 Index)
 	{
-		FVec3 LinearPseudoMomentum = (InParticles.X(Index) - InParticles.P(Index)) * InParticles.M(Index);
-		FRotation3 Delta = InParticles.R(Index) * InParticles.Q(Index).Inverse();
-		FVec3 Axis;
+		TVector<T, d> LinearPseudoMomentum = (InParticles.X(Index) - InParticles.P(Index)) * InParticles.M(Index);
+		TRotation<T, d> Delta = InParticles.R(Index) * InParticles.Q(Index).Inverse();
+		TVector<T, d> Axis;
 		T Angle;
 		Delta.ToAxisAndAngle(Axis, Angle);
-		FVec3 AngularPseudoMomentum = InParticles.I(Index) * (Axis * Angle);
+		TVector<T, d> AngularPseudoMomentum = InParticles.I(Index) * (Axis * Angle);
 		return LinearPseudoMomentum.Size() + AngularPseudoMomentum.Size();
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::RewindAndEvolve<BGF>()"), STAT_RewindAndEvolve_BGF, STATGROUP_Chaos);
-	template<typename T, int d>
+	template<typename Traits, typename T, int d>
 	void RewindAndEvolve(
-		FPBDRigidsEvolutionGBF& Evolution, 
+		TPBDRigidsEvolutionGBF<Traits>& Evolution, 
 		TPBDRigidClusteredParticles<T, d>& InParticles, 
 		const TSet<int32>& IslandsToRecollide, 
-		const TSet<FPBDRigidParticleHandle*> AllActivatedChildren,
+		const TSet<TPBDRigidParticleHandle<T, d>*> AllActivatedChildren,
 		const T Dt, 
 		FPBDCollisionConstraints& CollisionRule)
 	{
@@ -147,7 +148,7 @@ namespace Chaos
 			Evolution.Integrate(MakeHandleView(Particles), Dt);
 		});
 
-		TSet<FGeometryParticleHandle*> AllIslandParticles;
+		TSet<TGeometryParticleHandle<T, d>*> AllIslandParticles;
 		for (int32 Island = 0; Island < Evolution.NumIslands(); ++Island)
 		{
 			const auto& ParticleIndices = Evolution.GetIslandParticles(Island);
@@ -195,37 +196,38 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateClusterMassProperties()"), STAT_UpdateClusterMassProperties, STATGROUP_Chaos);
+	template<class T, int d>
 	void UpdateClusterMassProperties(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent, 
-		TSet<FPBDRigidParticleHandle*>& Children, 
-		const FRigidTransform3* ForceMassOrientation)
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent, 
+		TSet<TPBDRigidParticleHandle<T, d>*>& Children, 
+		const TRigidTransform<T, d>* ForceMassOrientation)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateClusterMassProperties);
 		check(Children.Num());
 
-		Parent->SetX(FVec3(0));
-		Parent->SetR(FRotation3(FQuat::MakeFromEuler(FVec3(0))));
-		Parent->SetV(FVec3(0));
-		Parent->SetW(FVec3(0));
+		Parent->SetX(TVector<T, d>(0));
+		Parent->SetR(TRotation<T, d>(FQuat::MakeFromEuler(TVector<T, d>(0))));
+		Parent->SetV(TVector<T, d>(0));
+		Parent->SetW(TVector<T, d>(0));
 		Parent->SetM(0);
-		Parent->SetI(FMatrix33(0));
+		Parent->SetI(PMatrix<T, d, d>(0));
 
 		bool bHasChild = false;
 		bool bHasProxyChild = false;
-		for (FPBDRigidParticleHandle* OriginalChild : Children)
+		for (TPBDRigidParticleHandle<T, d>* OriginalChild : Children)
 		{
 			FMultiChildProxyId MultiChildProxyId; // sizeof(FMultiChildProxyId) = sizeof(void*), so copy
-			TMultiChildProxyData<FReal, 3>* ProxyData = nullptr;
-			if (FPBDRigidClusteredParticleHandle* ClusteredOriginalChild = OriginalChild->CastToClustered())
+			TMultiChildProxyData<T, d>* ProxyData = nullptr;
+			if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredOriginalChild = OriginalChild->CastToClustered())
 			{
 				MultiChildProxyId = ClusteredOriginalChild->MultiChildProxyId();
 				ProxyData = ClusteredOriginalChild->MultiChildProxyData().Get();
 			}
 
 			//int32 Child;
-			FPBDRigidParticleHandle* Child;
-			FVec3 ChildPosition;
-			FRotation3 ChildRotation;
+			TPBDRigidParticleHandle<T, d>* Child;
+			TVector<T, d> ChildPosition;
+			TRotation<T, d> ChildRotation;
 			if (MultiChildProxyId.Id == nullptr)
 			{
 				Child = OriginalChild;
@@ -236,9 +238,9 @@ namespace Chaos
 			{
 				Child = MultiChildProxyId.Id;
 
-				const FRigidTransform3 ProxyWorldTM =
+				const TRigidTransform<T, d> ProxyWorldTM =
 					ProxyData->RelativeToKeyChild *
-					FRigidTransform3(
+					TRigidTransform<T, d>(
 						OriginalChild->X(), OriginalChild->R());
 				ChildPosition = ProxyWorldTM.GetLocation();
 				ChildRotation = ProxyWorldTM.GetRotation();
@@ -248,8 +250,8 @@ namespace Chaos
 				continue; //using a proxy but we are not the key child
 			}
 
-			const FReal ChildMass = Child->M();
-			const FMatrix33 ChildWorldSpaceI = 
+			const T ChildMass = Child->M();
+			const PMatrix<T, d, d> ChildWorldSpaceI = 
 				(ChildRotation * FMatrix::Identity) * Child->I() * (ChildRotation * FMatrix::Identity).GetTransposed();
 			if (ChildWorldSpaceI.ContainsNaN())
 			{
@@ -266,14 +268,14 @@ namespace Chaos
 		}
 		if (!ensure(bHasProxyChild))
 		{
-			for (FPBDRigidParticleHandle* OriginalChild : Children)
+			for (TPBDRigidParticleHandle<T, d>* OriginalChild : Children)
 			{
-				FPBDRigidParticleHandle* Child = OriginalChild;
-				const FVec3& ChildPosition = Child->X();
-				const FRotation3& ChildRotation = Child->R();
-				const FReal ChildMass = Child->M();
+				TPBDRigidParticleHandle<T, d>* Child = OriginalChild;
+				const TVector<T, d>& ChildPosition = Child->X();
+				const TRotation<T, d>& ChildRotation = Child->R();
+				const T ChildMass = Child->M();
 
-				const FMatrix33 ChildWorldSpaceI =
+				const PMatrix<T, d, d> ChildWorldSpaceI = 
 					(ChildRotation * FMatrix::Identity) * Child->I() * (ChildRotation * FMatrix::Identity).GetTransposed();
 				if (ChildWorldSpaceI.ContainsNaN())
 				{
@@ -287,12 +289,12 @@ namespace Chaos
 				Parent->W() += OriginalChild->W() * ChildMass;
 			}
 		}
-		for (int32 i = 0; i < 3; i++)
+		for (int32 i = 0; i < d; i++)
 		{
-			const FMatrix33& InertiaTensor = Parent->I();
+			const PMatrix<T, d, d>& InertiaTensor = Parent->I();
 			if (InertiaTensor.GetColumn(i)[i] < SMALL_NUMBER)
 			{
-				Parent->SetI(FMatrix33(1.f, 1.f, 1.f));
+				Parent->SetI(PMatrix<T, d, d>(1.f, 1.f, 1.f));
 				break;
 			}
 		}
@@ -300,14 +302,14 @@ namespace Chaos
 		if (!ensure(bHasChild) || !ensure(Parent->M() > SMALL_NUMBER))
 		{
 			Parent->M() = 1.0;
-			Parent->X() = FVec3(0);
-			Parent->V() = FVec3(0);
+			Parent->X() = TVector<T, d>(0);
+			Parent->V() = TVector<T, d>(0);
 			Parent->PreV() = Parent->V();
 			Parent->InvM() = 1;
 			Parent->P() = Parent->X();
-			Parent->W() = FVec3(0);
+			Parent->W() = TVector<T, d>(0);
 			Parent->PreW() = Parent->W();
-			Parent->R() = FRotation3(FMatrix::Identity);
+			Parent->R() = TRotation<T, d>(FMatrix::Identity);
 			Parent->Q() = Parent->R();
 			Parent->I() = FMatrix::Identity;
 			Parent->InvI() = FMatrix::Identity;
@@ -325,18 +327,18 @@ namespace Chaos
 			Parent->X() = ForceMassOrientation->GetLocation();
 		}
 		Parent->P() = Parent->X();
-		for (FPBDRigidParticleHandle* OriginalChild : Children)
+		for (TPBDRigidParticleHandle<T, d>* OriginalChild : Children)
 		{
 			FMultiChildProxyId MultiChildProxyId; // sizeof(FMultiChildProxyId) = sizeof(void*), so copy
-			TMultiChildProxyData<FReal, 3>* ProxyData = nullptr;
-			if (FPBDRigidClusteredParticleHandle* ClusteredOriginalChild = OriginalChild->CastToClustered())
+			TMultiChildProxyData<T, d>* ProxyData = nullptr;
+			if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredOriginalChild = OriginalChild->CastToClustered())
 			{
 				MultiChildProxyId = ClusteredOriginalChild->MultiChildProxyId();
 				ProxyData = ClusteredOriginalChild->MultiChildProxyData().Get();
 			}
 
-			FPBDRigidParticleHandle* Child;
-			FVec3 ChildPosition;
+			TPBDRigidParticleHandle<T, d>* Child;
+			TVector<T, d> ChildPosition;
 			if (MultiChildProxyId.Id == nullptr)
 			{
 				Child = OriginalChild;
@@ -345,8 +347,8 @@ namespace Chaos
 			else if (ProxyData && ProxyData->KeyChild == OriginalChild)
 			{
 				Child = MultiChildProxyId.Id;
-				const FRigidTransform3 ProxyWorldTM = 
-					ProxyData->RelativeToKeyChild * FRigidTransform3(OriginalChild->X(), OriginalChild->R());
+				const TRigidTransform<T, d> ProxyWorldTM = 
+					ProxyData->RelativeToKeyChild * TRigidTransform<T, d>(OriginalChild->X(), OriginalChild->R());
 				ChildPosition = ProxyWorldTM.GetLocation();
 			}
 			else
@@ -354,43 +356,43 @@ namespace Chaos
 				continue; //using a proxy but we are not the key child
 			}
 
-			FVec3 ParentToChild = ChildPosition - Parent->X();
+			TVector<T, d> ParentToChild = ChildPosition - Parent->X();
 
-			const FReal ChildMass = Child->M();
+			const T ChildMass = Child->M();
 			// taking v from original child since we are not actually simulating the proxy child
 			Parent->W() += 
-				FVec3::CrossProduct(ParentToChild, 
+				TVector<T, d>::CrossProduct(ParentToChild, 
 					OriginalChild->V() * ChildMass);
 			{
-				const FReal& p0 = ParentToChild[0];
-				const FReal& p1 = ParentToChild[1];
-				const FReal& p2 = ParentToChild[2];
-				const FReal& m = ChildMass;
+				const T& p0 = ParentToChild[0];
+				const T& p1 = ParentToChild[1];
+				const T& p2 = ParentToChild[2];
+				const T& m = ChildMass;
 				Parent->I() += 
-					FMatrix33(
+					PMatrix<T, d, d>(
 						m * (p1 * p1 + p2 * p2), -m * p1 * p0, -m * p2 * p0, 
 						m * (p2 * p2 + p0 * p0), -m * p2 * p1, m * (p1 * p1 + p0 * p0));
 			}
 		}
-		FMatrix33& InertiaTensor = Parent->I();
+		PMatrix<T, d, d>& InertiaTensor = Parent->I();
 		if (Parent->I().ContainsNaN())
 		{
-			InertiaTensor = FMatrix33((FReal)1., (FReal)1., (FReal)1.);
+			InertiaTensor = PMatrix<T, d, d>(1.f, 1.f, 1.f);
 		}
 		else
 		{
-			for (int32 i = 0; i < 3; i++)
+			for (int32 i = 0; i < d; i++)
 			{
 				if (InertiaTensor.GetColumn(i)[i] < SMALL_NUMBER)
 				{
-					InertiaTensor = FMatrix33((FReal)1., (FReal)1., (FReal)1.);
+					InertiaTensor = PMatrix<T, d, d>(1.f, 1.f, 1.f);
 					break;
 				}
 			}
 		}
 		Parent->W() /= Parent->M();
 		Parent->PreW() = Parent->W();
-		Parent->R() = Chaos::TransformToLocalSpace(InertiaTensor);
+		Parent->R() = Chaos::TransformToLocalSpace<T, d>(InertiaTensor);
 		if (ForceMassOrientation)
 		{
 			Parent->R() = ForceMassOrientation->GetRotation();
@@ -403,30 +405,30 @@ namespace Chaos
 	// TPBDRigidClustering
 	//==========================================================================
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::TPBDRigidClustering(T_FPBDRigidsEvolution& InEvolution, FPBDRigidClusteredParticles& InParticles)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::TPBDRigidClustering(T_FPBDRigidsEvolution& InEvolution, TPBDRigidClusteredParticles<T, d>& InParticles)
 		: MEvolution(InEvolution)
 		, MParticles(InParticles)
 		, MCollisionImpulseArrayDirty(true)
 		, DoGenerateBreakingData(false)
 		, MClusterConnectionFactor(1.0)
-		, MClusterUnionConnectionType(FClusterCreationParameters::EConnectionMethod::DelaunayTriangulation)
+		, MClusterUnionConnectionType(FClusterCreationParameters<T>::EConnectionMethod::DelaunayTriangulation)
 	{}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::~TPBDRigidClustering()
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::~TPBDRigidClustering()
 	{}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::CreateClusterParticle"), STAT_CreateClusterParticle, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	Chaos::FPBDRigidClusteredParticleHandle* TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::CreateClusterParticle(const int32 ClusterGroupIndex, TArray<Chaos::FPBDRigidParticleHandle*>&& Children, const FClusterCreationParameters& Parameters, TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe> ProxyGeometry, const FRigidTransform3* ForceMassOrientation, const FUniqueIdx* ExistingIndex)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	Chaos::TPBDRigidClusteredParticleHandle<float, 3>* TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::CreateClusterParticle(const int32 ClusterGroupIndex, TArray<Chaos::TPBDRigidParticleHandle<T,d>*>&& Children, const FClusterCreationParameters<T>& Parameters, TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe> ProxyGeometry, const TRigidTransform<T, d>* ForceMassOrientation)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_CreateClusterParticle);
 
-		Chaos::FPBDRigidClusteredParticleHandle* NewParticle = Parameters.ClusterParticleHandle;
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* NewParticle = Parameters.ClusterParticleHandle;
 		if (!NewParticle)
 		{
-			NewParticle = MEvolution.CreateClusteredParticles(1, ExistingIndex)[0]; // calls Evolution.DirtyParticle()
+			NewParticle = MEvolution.CreateClusteredParticles(1)[0]; // calls Evolution.DirtyParticle()
 		}
 
 		// Must do this so that the constraint graph knows about this particle 
@@ -455,18 +457,18 @@ namespace Chaos
 			MChildren.Add(NewParticle, MoveTemp(Children));
 		}
 
-		const TArray<FPBDRigidParticleHandle*>& ChildrenArray = MChildren[NewParticle];
-		TSet<FPBDRigidParticleHandle*> ChildrenSet(ChildrenArray);
+		const TArray<TPBDRigidParticleHandle<T, d>*>& ChildrenArray = MChildren[NewParticle];
+		TSet<TPBDRigidParticleHandle<T, d>*> ChildrenSet(ChildrenArray);
 
 		// Disable the children
-		MEvolution.DisableParticles(reinterpret_cast<TSet<FGeometryParticleHandle*>&>(ChildrenSet));
+		MEvolution.DisableParticles(reinterpret_cast<TSet<TGeometryParticleHandle<T, d>*>&>(ChildrenSet));
 
 		bool bClusterIsAsleep = true;
-		for (FPBDRigidParticleHandle* Child : ChildrenSet)
+		for (TPBDRigidParticleHandle<T, d>* Child : ChildrenSet)
 		{
 			bClusterIsAsleep &= Child->Sleeping();
 
-			if (FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered())
+			if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild = Child->CastToClustered())
 			{
 				TopLevelClusterParents.Remove(ClusteredChild);
 
@@ -508,18 +510,18 @@ namespace Chaos
 	FAutoConsoleVariableRef CVarUnionsHaveCollisionParticles(TEXT("p.UnionsHaveCollisionParticles"), UnionsHaveCollisionParticles, TEXT(""));
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::CreateClusterParticleFromClusterChildren"), STAT_CreateClusterParticleFromClusterChildren, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	Chaos::FPBDRigidClusteredParticleHandle* 
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::CreateClusterParticleFromClusterChildren(
-		TArray<FPBDRigidParticleHandle*>&& Children, 
-		FPBDRigidClusteredParticleHandle* Parent, 
-		const FRigidTransform3& ClusterWorldTM, 
-		const FClusterCreationParameters& Parameters)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	Chaos::TPBDRigidClusteredParticleHandle<float, 3>* 
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::CreateClusterParticleFromClusterChildren(
+		TArray<TPBDRigidParticleHandle<T,d>*>&& Children, 
+		TPBDRigidClusteredParticleHandle<T,d>* Parent, 
+		const TRigidTransform<T, d>& ClusterWorldTM, 
+		const FClusterCreationParameters<T>& Parameters)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_CreateClusterParticleFromClusterChildren);
 
 		//This cluster is made up of children that are currently in a cluster. This means we don't need to update or disable as much
-		Chaos::FPBDRigidClusteredParticleHandle* NewParticle = Parameters.ClusterParticleHandle;
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* NewParticle = Parameters.ClusterParticleHandle;
 		if (!NewParticle)
 		{
 			NewParticle = MEvolution.CreateClusteredParticles(1)[0]; // calls Evolution.DirtyParticle()
@@ -545,20 +547,20 @@ namespace Chaos
 			MChildren.Add(NewParticle, MoveTemp(Children));
 		}
 
-		TArray<FPBDRigidParticleHandle*>& ChildrenArray = MChildren[NewParticle];
+		TArray<TPBDRigidParticleHandle<T, d>*>& ChildrenArray = MChildren[NewParticle];
 		//child transforms are out of date, need to update them. @todo(ocohen): if children transforms are relative we would not need to update this, but would simply have to do a final transform on the new cluster index
 		// TODO(mlentine): Why is this not needed? (Why is it ok to have DeactivateClusterChildren==false?)
 		if (DeactivateClusterChildren)
 		{
 			//TODO: avoid iteration just pass in a view
-			TSet<FGeometryParticleHandle*> ChildrenHandles(static_cast<TArray<FGeometryParticleHandle*>>(ChildrenArray));
+			TSet<TGeometryParticleHandle<T, d>*> ChildrenHandles(static_cast<TArray<TGeometryParticleHandle<T,d>*>>(ChildrenArray));
 			MEvolution.DisableParticles(ChildrenHandles);
 		}
-		for (FPBDRigidParticleHandle* Child : ChildrenArray)
+		for (TPBDRigidParticleHandle<T, d>* Child : ChildrenArray)
 		{
-			if (FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered())
+			if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild = Child->CastToClustered())
 			{
-				FRigidTransform3 ChildFrame = ClusteredChild->ChildToParent() * ClusterWorldTM;
+				TRigidTransform<T, d> ChildFrame = ClusteredChild->ChildToParent() * ClusterWorldTM;
 				ClusteredChild->SetX(ChildFrame.GetTranslation());
 				ClusteredChild->SetR(ChildFrame.GetRotation());
 				ClusteredChild->ClusterIds().Id = NewParticle;
@@ -573,11 +575,11 @@ namespace Chaos
 			}
 		}
 
-		FClusterCreationParameters NoCleanParams = Parameters;
+		FClusterCreationParameters<T> NoCleanParams = Parameters;
 		NoCleanParams.bCleanCollisionParticles = false;
 		NoCleanParams.bCopyCollisionParticles = !!UnionsHaveCollisionParticles;
 
-		TSet<FPBDRigidParticleHandle*> ChildrenSet(ChildrenArray);
+		TSet<TPBDRigidParticleHandle<T, d>*> ChildrenSet(ChildrenArray);
 		UpdateMassProperties(NewParticle, ChildrenSet, nullptr);
 		UpdateGeometry(NewParticle, ChildrenSet, nullptr, NoCleanParams);
 
@@ -591,37 +593,37 @@ namespace Chaos
 	FAutoConsoleVariableRef CVarMinChildrenForMultiProxy(TEXT("p.MinChildrenForMultiProxy"), MinChildrenForMultiProxy, TEXT("Min number of children needed for multi child proxy optimization"));
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UnionClusterGroups"), STAT_UnionClusterGroups, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UnionClusterGroups()
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UnionClusterGroups()
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UnionClusterGroups);
 
 		if(ClusterUnionMap.Num())
 		{
-			TMap<FPBDRigidParticleHandle*, FPBDRigidParticleHandle*> ChildToParentMap;
-			TMap<int32, TArray<FPBDRigidParticleHandle*>> NewClusterGroups;
+			TMap<TPBDRigidParticleHandle<T, 3>*, TPBDRigidParticleHandle<T, 3>*> ChildToParentMap;
+			TMap<int32, TArray<TPBDRigidParticleHandle<T, 3>*>> NewClusterGroups;
 
 			// Walk the list of registered cluster groups
-			for(TTuple<int32, TArray<FPBDRigidClusteredParticleHandle* >>& Group : ClusterUnionMap)
+			for(TTuple<int32, TArray<TPBDRigidClusteredParticleHandle<T, 3>* >>& Group : ClusterUnionMap)
 			{
 				int32 ClusterGroupID = Group.Key;
-				TArray<FPBDRigidClusteredParticleHandle*> Handles = Group.Value;
+				TArray<TPBDRigidClusteredParticleHandle<T, 3>*> Handles = Group.Value;
 
 				if(Handles.Num() > 1)
 				{
 					// First see if this is a new group
 					if(!NewClusterGroups.Contains(ClusterGroupID))
 					{
-						NewClusterGroups.Add(ClusterGroupID, TArray < FPBDRigidParticleHandle*>());
+						NewClusterGroups.Add(ClusterGroupID, TArray < TPBDRigidParticleHandle<T, 3>*>());
 					}
 
-					TArray<FPBDRigidParticleHandle*> ClusterBodies;
-					for(FPBDRigidClusteredParticleHandle* ActiveCluster : Handles)
+					TArray<TPBDRigidParticleHandle<T, 3>*> ClusterBodies;
+					for(TPBDRigidClusteredParticleHandle<T, 3>* ActiveCluster : Handles)
 					{
 						if(!ActiveCluster->Disabled())
 						{
 							// If this is an external cluster (from the rest collection) we release its children and append them to the current group
-							TSet<FPBDRigidParticleHandle*> Children;
+							TSet<TPBDRigidParticleHandle<T, 3>*> Children;
 							
 							{
 								// First disable breaking data generation - this is not a break we're just reclustering under a dynamic parent.
@@ -631,7 +633,7 @@ namespace Chaos
 
 							NewClusterGroups[ClusterGroupID].Append(Children.Array());
 							
-							for(FPBDRigidParticleHandle* Child : Children)
+							for(TPBDRigidParticleHandle<T, 3>* Child : Children)
 							{
 								ChildToParentMap.Add(Child, ActiveCluster);
 							}
@@ -641,20 +643,20 @@ namespace Chaos
 			}
 
 			// For new cluster groups, create an internal cluster parent.
-			for(TTuple<int32, TArray<FPBDRigidParticleHandle* >>& Group : NewClusterGroups)
+			for(TTuple<int32, TArray<TPBDRigidParticleHandle<T, 3>* >>& Group : NewClusterGroups)
 			{
 				int32 ClusterGroupID = FMath::Abs(Group.Key);
 
-				TArray<FPBDRigidParticleHandle*> ActiveCluster = Group.Value;
+				TArray<TPBDRigidParticleHandle<T, 3>*> ActiveCluster = Group.Value;
 
-				FClusterCreationParameters Parameters(0.3, 100, false, !!UnionsHaveCollisionParticles);
+				FClusterCreationParameters<T> Parameters(0.3, 100, false, !!UnionsHaveCollisionParticles);
 				Parameters.ConnectionMethod = MClusterUnionConnectionType;
-				TPBDRigidClusteredParticleHandleImp<FReal, 3, true>* Handle = CreateClusterParticle(-ClusterGroupID, MoveTemp(Group.Value), Parameters, TSharedPtr<FImplicitObject, ESPMode::ThreadSafe>());
+				TPBDRigidClusteredParticleHandleImp<float, 3, true>* Handle = CreateClusterParticle(-ClusterGroupID, MoveTemp(Group.Value), Parameters, TSharedPtr<FImplicitObject, ESPMode::ThreadSafe>());
 				Handle->SetInternalCluster(true);
 
 				MEvolution.SetPhysicsMaterial(Handle, MEvolution.GetPhysicsMaterial(ActiveCluster[0]));
 
-				for(FPBDRigidParticleHandle* Constituent : ActiveCluster)
+				for(TPBDRigidParticleHandle<T, 3>* Constituent : ActiveCluster)
 				{
 					MEvolution.DoInternalParticleInitilization(ChildToParentMap[Constituent], Handle);
 				}
@@ -666,13 +668,13 @@ namespace Chaos
 
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::DeactivateClusterParticle"), STAT_DeactivateClusterParticle, STATGROUP_Chaos);
-	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint>
-	TSet<FPBDRigidParticleHandle*> TPBDRigidClustering<FPBDRigidsEvolution, FPBDCollisionConstraint>::DeactivateClusterParticle(
-		FPBDRigidClusteredParticleHandle* ClusteredParticle)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TSet<TPBDRigidParticleHandle<T, d>*> TPBDRigidClustering<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::DeactivateClusterParticle(
+		TPBDRigidClusteredParticleHandle<T,d>* ClusteredParticle)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_DeactivateClusterParticle);
 
-		TSet<FPBDRigidParticleHandle*> ActivatedChildren;
+		TSet<TPBDRigidParticleHandle<T, d>*> ActivatedChildren;
 		check(!ClusteredParticle->Disabled());
 		if (MChildren.Contains(ClusteredParticle))
 		{
@@ -682,35 +684,35 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::ReleaseClusterParticles(STRAIN)"), STAT_ReleaseClusterParticles_STRAIN, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	TSet<FPBDRigidParticleHandle*> 
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ReleaseClusterParticles(
-		FPBDRigidClusteredParticleHandle* ClusteredParticle,
-		const TMap<FGeometryParticleHandle*, FReal>* ExternalStrainMap,
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TSet<TPBDRigidParticleHandle<T, d>*> 
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ReleaseClusterParticles(
+		TPBDRigidClusteredParticleHandle<T,d>* ClusteredParticle,
+		const TMap<TGeometryParticleHandle<T, d>*, float>* ExternalStrainMap,
 		bool bForceRelease)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ReleaseClusterParticles_STRAIN);
 
-		TSet<FPBDRigidParticleHandle*> ActivatedChildren;
+		TSet<TPBDRigidParticleHandle<T, d>*> ActivatedChildren;
 		if (!ensureMsgf(MChildren.Contains(ClusteredParticle), TEXT("Removing Cluster that does not exist!")))
 		{
 			return ActivatedChildren;
 		}
-		TArray<FPBDRigidParticleHandle*>& Children = MChildren[ClusteredParticle];
+		TArray<TPBDRigidParticleHandle<T, d>*>& Children = MChildren[ClusteredParticle];
 
 		bool bChildrenChanged = false;
 		const bool bRewindOnDecluster = ChaosClusteringChildrenInheritVelocity < 1;
-		const FRigidTransform3 PreSolveTM = 
+		const TRigidTransform<T, d> PreSolveTM = 
 			bRewindOnDecluster ? 
-			FRigidTransform3(ClusteredParticle->X(), ClusteredParticle->R()) : 
-			FRigidTransform3(ClusteredParticle->P(), ClusteredParticle->Q());
+			TRigidTransform<T, d>(ClusteredParticle->X(), ClusteredParticle->R()) : 
+			TRigidTransform<T, d>(ClusteredParticle->P(), ClusteredParticle->Q());
 
 		//@todo(ocohen): iterate with all the potential parents at once?
 		//find all children within some distance of contact point
 
-		auto RemoveChildLambda = [&](FPBDRigidParticleHandle* Child/*, const int32 Idx*/)
+		auto RemoveChildLambda = [&](TPBDRigidParticleHandle<T, d>* Child/*, const int32 Idx*/)
 		{
-			FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered();
+			TPBDRigidClusteredParticleHandle<T,d>* ClusteredChild = Child->CastToClustered();
 
 			MEvolution.EnableParticle(Child, ClusteredParticle);
 			TopLevelClusterParents.Add(ClusteredChild);
@@ -720,7 +722,7 @@ namespace Chaos
 			ClusteredChild->MultiChildProxyId().Id = nullptr;
 			ClusteredChild->SetClusterId(ClusterId(nullptr, ClusteredChild->ClusterIds().NumChildren)); // clear Id but retain number of children
 
-			const FRigidTransform3 ChildFrame = ClusteredChild->ChildToParent() * PreSolveTM;
+			const TRigidTransform<T, d> ChildFrame = ClusteredChild->ChildToParent() * PreSolveTM;
 			Child->SetX(ChildFrame.GetTranslation());
 			Child->SetR(ChildFrame.GetRotation());
 
@@ -750,7 +752,7 @@ namespace Chaos
 
 		for (int32 ChildIdx = Children.Num() - 1; ChildIdx >= 0; --ChildIdx)
 		{
-			FPBDRigidClusteredParticleHandle* Child = Children[ChildIdx]->CastToClustered();
+			TPBDRigidClusteredParticleHandle<T, d>* Child = Children[ChildIdx]->CastToClustered();
 			
 			if (!Child)
 			{
@@ -791,8 +793,8 @@ namespace Chaos
 				{
 					if (DoGenerateBreakingData)
 					{
-						const int32 NewIdx = MAllClusterBreakings.Add(FBreakingData());
-						FBreakingData& ClusterBreak = MAllClusterBreakings[NewIdx];
+						const int32 NewIdx = MAllClusterBreakings.Add(TBreakingData<float, 3>());
+						TBreakingData<float, 3>& ClusterBreak = MAllClusterBreakings[NewIdx];
 						ClusterBreak.Particle = Child;
 						ClusterBreak.ParticleProxy = nullptr;
 						ClusterBreak.Location = Child->X();
@@ -817,40 +819,40 @@ namespace Chaos
 				// The cluster may have contained forests, so find the connected pieces and cluster them together.
 
 				//first update the connected graph of the children we already removed
-				for (FPBDRigidParticleHandle* Child : ActivatedChildren)
+				for (TPBDRigidParticleHandle<T,d>* Child : ActivatedChildren)
 				{
 					RemoveNodeConnections(Child);
 				}
 
 				if (Children.Num())
 				{
-					TArray<TArray<FPBDRigidParticleHandle*>> ConnectedPiecesArray;
+					TArray<TArray<TPBDRigidParticleHandle<T,d>*>> ConnectedPiecesArray;
 
 					{ // tmp scope
 
 						//traverse connectivity and see how many connected pieces we have
-						TSet<FPBDRigidParticleHandle*> ProcessedChildren;
+						TSet<TPBDRigidParticleHandle<T, d>*> ProcessedChildren;
 						ProcessedChildren.Reserve(Children.Num());
 
-						for (FPBDRigidParticleHandle* PotentialActivatedChild : Children)
+						for (TPBDRigidParticleHandle<T, d>* PotentialActivatedChild : Children)
 						{
 							if (ProcessedChildren.Contains(PotentialActivatedChild))
 							{
 								continue;
 							}
 							ConnectedPiecesArray.AddDefaulted();
-							TArray<FPBDRigidParticleHandle*>& ConnectedPieces = ConnectedPiecesArray.Last();
+							TArray<TPBDRigidParticleHandle<T, d>*>& ConnectedPieces = ConnectedPiecesArray.Last();
 
-							TArray<FPBDRigidParticleHandle*> ProcessingQueue;
+							TArray<TPBDRigidParticleHandle<T, d>*> ProcessingQueue;
 							ProcessingQueue.Add(PotentialActivatedChild);
 							while (ProcessingQueue.Num())
 							{
-								FPBDRigidParticleHandle* Child = ProcessingQueue.Pop();
+								TPBDRigidParticleHandle<T, d>* Child = ProcessingQueue.Pop();
 								if (!ProcessedChildren.Contains(Child))
 								{
 									ProcessedChildren.Add(Child);
 									ConnectedPieces.Add(Child);
-									for (const TConnectivityEdge<FReal>& Edge : Child->CastToClustered()->ConnectivityEdges())
+									for (const TConnectivityEdge<T>& Edge : Child->CastToClustered()->ConnectivityEdges())
 									{
 										if (!ProcessedChildren.Contains(Edge.Sibling))
 										{
@@ -863,11 +865,11 @@ namespace Chaos
 					} // tmp scope
 
 					int32 NumNewClusters = 0;
-					for (TArray<FPBDRigidParticleHandle*>& ConnectedPieces : ConnectedPiecesArray)
+					for (TArray<TPBDRigidParticleHandle<T,d>*>& ConnectedPieces : ConnectedPiecesArray)
 					{
 						if (ConnectedPieces.Num() == 1) //need to break single pieces first in case multi child proxy needs to be invalidated
 						{
-							FPBDRigidParticleHandle* Child = ConnectedPieces[0];
+							TPBDRigidParticleHandle<T,d>* Child = ConnectedPieces[0];
 							RemoveChildLambda(Child);
 						}
 						else if (ConnectedPieces.Num() > 1)
@@ -875,16 +877,16 @@ namespace Chaos
 							NumNewClusters++;
 						}
 					}
-					TArray<Chaos::FPBDRigidClusteredParticleHandle*> NewClusterHandles = 
+					TArray<Chaos::TPBDRigidClusteredParticleHandle<float,3>*> NewClusterHandles = 
 						MEvolution.CreateClusteredParticles(NumNewClusters);
 					int32 ClusterHandlesIdx = 0;
-					for (TArray<FPBDRigidParticleHandle*>& ConnectedPieces : ConnectedPiecesArray)
+					for (TArray<TPBDRigidParticleHandle<T,d>*>& ConnectedPieces : ConnectedPiecesArray)
 					{
 						if (ConnectedPieces.Num() > 1) //now build the remaining pieces
 						{
-							Chaos::FClusterCreationParameters CreationParameters;
+							Chaos::FClusterCreationParameters<float> CreationParameters;
 							CreationParameters.ClusterParticleHandle = NewClusterHandles[ClusterHandlesIdx++];
-							Chaos::FPBDRigidClusteredParticleHandle* NewCluster = 
+							Chaos::TPBDRigidClusteredParticleHandle<float, 3>* NewCluster = 
 								CreateClusterParticleFromClusterChildren(
 									MoveTemp(ConnectedPieces), 
 									ClusteredParticle, 
@@ -930,7 +932,7 @@ namespace Chaos
 				}
 			}
 
-			for (FPBDRigidParticleHandle* Child : ActivatedChildren)
+			for (TPBDRigidParticleHandle<T,d>* Child : ActivatedChildren)
 			{
 				UpdateKinematicProperties(Child);
 			}
@@ -945,11 +947,11 @@ namespace Chaos
 
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::ReleaseClusterParticlesNoInternalCluster"), STAT_ReleaseClusterParticlesNoInternalCluster, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	TSet<FPBDRigidParticleHandle*>
-		TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ReleaseClusterParticlesNoInternalCluster(
-			FPBDRigidClusteredParticleHandle* ClusteredParticle,
-			const TMap<FGeometryParticleHandle*, FReal>* ExternalStrainMap,
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TSet<TPBDRigidParticleHandle<T, d>*>
+		TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ReleaseClusterParticlesNoInternalCluster(
+			TPBDRigidClusteredParticleHandle<T, d>* ClusteredParticle,
+			const TMap<TGeometryParticleHandle<T, d>*, float>* ExternalStrainMap,
 			bool bForceRelease)
 	{
 		/* This is a near duplicate of the ReleaseClusterParticles() method with the internal cluster creation removed.
@@ -959,26 +961,26 @@ namespace Chaos
 		
 		SCOPE_CYCLE_COUNTER(STAT_ReleaseClusterParticlesNoInternalCluster);
 
-		TSet<FPBDRigidParticleHandle*> ActivatedChildren;
+		TSet<TPBDRigidParticleHandle<T, d>*> ActivatedChildren;
 		if (!ensureMsgf(MChildren.Contains(ClusteredParticle), TEXT("Removing Cluster that does not exist!")))
 		{
 			return ActivatedChildren;
 		}
-		TArray<FPBDRigidParticleHandle*>& Children = MChildren[ClusteredParticle];
+		TArray<TPBDRigidParticleHandle<T, d>*>& Children = MChildren[ClusteredParticle];
 
 		bool bChildrenChanged = false;
 		const bool bRewindOnDecluster = ChaosClusteringChildrenInheritVelocity < 1;
-		const FRigidTransform3 PreSolveTM =
+		const TRigidTransform<T, d> PreSolveTM =
 			bRewindOnDecluster ?
-			FRigidTransform3(ClusteredParticle->X(), ClusteredParticle->R()) :
-			FRigidTransform3(ClusteredParticle->P(), ClusteredParticle->Q());
+			TRigidTransform<T, d>(ClusteredParticle->X(), ClusteredParticle->R()) :
+			TRigidTransform<T, d>(ClusteredParticle->P(), ClusteredParticle->Q());
 
 		//@todo(ocohen): iterate with all the potential parents at once?
 		//find all children within some distance of contact point
 
-		auto RemoveChildLambda = [&](FPBDRigidParticleHandle* Child/*, const int32 Idx*/)
+		auto RemoveChildLambda = [&](TPBDRigidParticleHandle<T, d>* Child/*, const int32 Idx*/)
 		{
-			FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered();
+			TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild = Child->CastToClustered();
 
 			MEvolution.EnableParticle(Child, ClusteredParticle);
 			TopLevelClusterParents.Add(ClusteredChild);
@@ -988,7 +990,7 @@ namespace Chaos
 			ClusteredChild->MultiChildProxyId().Id = nullptr;
 			ClusteredChild->SetClusterId(ClusterId(nullptr, ClusteredChild->ClusterIds().NumChildren)); // clear Id but retain number of children
 
-			const FRigidTransform3 ChildFrame = ClusteredChild->ChildToParent() * PreSolveTM;
+			const TRigidTransform<T, d> ChildFrame = ClusteredChild->ChildToParent() * PreSolveTM;
 			Child->SetX(ChildFrame.GetTranslation());
 			Child->SetR(ChildFrame.GetRotation());
 
@@ -1018,7 +1020,7 @@ namespace Chaos
 
 		for (int32 ChildIdx = Children.Num() - 1; ChildIdx >= 0; --ChildIdx)
 		{
-			FPBDRigidClusteredParticleHandle* Child = Children[ChildIdx]->CastToClustered();
+			TPBDRigidClusteredParticleHandle<T, d>* Child = Children[ChildIdx]->CastToClustered();
 
 			if (!Child)
 			{
@@ -1060,8 +1062,8 @@ namespace Chaos
 				{
 					if (DoGenerateBreakingData)
 					{
-						const int32 NewIdx = MAllClusterBreakings.Add(FBreakingData());
-						FBreakingData& ClusterBreak = MAllClusterBreakings[NewIdx];
+						const int32 NewIdx = MAllClusterBreakings.Add(TBreakingData<float, 3>());
+						TBreakingData<float, 3>& ClusterBreak = MAllClusterBreakings[NewIdx];
 						ClusterBreak.Particle = Child;
 						ClusterBreak.ParticleProxy = nullptr;
 						ClusterBreak.Location = Child->X();
@@ -1086,40 +1088,40 @@ namespace Chaos
 				// The cluster may have contained forests, so find the connected pieces and cluster them together.
 
 				//first update the connected graph of the children we already removed
-				for (FPBDRigidParticleHandle* Child : ActivatedChildren)
+				for (TPBDRigidParticleHandle<T, d>* Child : ActivatedChildren)
 				{
 					RemoveNodeConnections(Child);
 				}
 
 				if (Children.Num())
 				{
-					TArray<TArray<FPBDRigidParticleHandle*>> ConnectedPiecesArray;
+					TArray<TArray<TPBDRigidParticleHandle<T, d>*>> ConnectedPiecesArray;
 
 					{ // tmp scope
 
 						//traverse connectivity and see how many connected pieces we have
-						TSet<FPBDRigidParticleHandle*> ProcessedChildren;
+						TSet<TPBDRigidParticleHandle<T, d>*> ProcessedChildren;
 						ProcessedChildren.Reserve(Children.Num());
 
-						for (FPBDRigidParticleHandle* PotentialActivatedChild : Children)
+						for (TPBDRigidParticleHandle<T, d>* PotentialActivatedChild : Children)
 						{
 							if (ProcessedChildren.Contains(PotentialActivatedChild))
 							{
 								continue;
 							}
 							ConnectedPiecesArray.AddDefaulted();
-							TArray<FPBDRigidParticleHandle*>& ConnectedPieces = ConnectedPiecesArray.Last();
+							TArray<TPBDRigidParticleHandle<T, d>*>& ConnectedPieces = ConnectedPiecesArray.Last();
 
-							TArray<FPBDRigidParticleHandle*> ProcessingQueue;
+							TArray<TPBDRigidParticleHandle<T, d>*> ProcessingQueue;
 							ProcessingQueue.Add(PotentialActivatedChild);
 							while (ProcessingQueue.Num())
 							{
-								FPBDRigidParticleHandle* Child = ProcessingQueue.Pop();
+								TPBDRigidParticleHandle<T, d>* Child = ProcessingQueue.Pop();
 								if (!ProcessedChildren.Contains(Child))
 								{
 									ProcessedChildren.Add(Child);
 									ConnectedPieces.Add(Child);
-									for (const TConnectivityEdge<FReal>& Edge : Child->CastToClustered()->ConnectivityEdges())
+									for (const TConnectivityEdge<T>& Edge : Child->CastToClustered()->ConnectivityEdges())
 									{
 										if (!ProcessedChildren.Contains(Edge.Sibling))
 										{
@@ -1132,11 +1134,11 @@ namespace Chaos
 					} // tmp scope
 
 					int32 NumNewClusters = 0;
-					for (TArray<FPBDRigidParticleHandle*>& ConnectedPieces : ConnectedPiecesArray)
+					for (TArray<TPBDRigidParticleHandle<T, d>*>& ConnectedPieces : ConnectedPiecesArray)
 					{
 						if (ConnectedPieces.Num() == 1) //need to break single pieces first in case multi child proxy needs to be invalidated
 						{
-							FPBDRigidParticleHandle* Child = ConnectedPieces[0];
+							TPBDRigidParticleHandle<T, d>* Child = ConnectedPieces[0];
 							RemoveChildLambda(Child);
 						}
 						else if (ConnectedPieces.Num() > 1)
@@ -1147,7 +1149,7 @@ namespace Chaos
 				}
 			}
 
-			for (FPBDRigidParticleHandle* Child : ActivatedChildren)
+			for (TPBDRigidParticleHandle<T, d>* Child : ActivatedChildren)
 			{
 				UpdateKinematicProperties(Child);
 			}
@@ -1163,31 +1165,31 @@ namespace Chaos
 
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::ReleaseClusterParticles(LIST)"), STAT_ReleaseClusterParticles_LIST, STATGROUP_Chaos);
-	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint>
-	TSet<FPBDRigidParticleHandle*> TPBDRigidClustering<FPBDRigidsEvolution, FPBDCollisionConstraint>::ReleaseClusterParticles(
-		TArray<FPBDRigidParticleHandle*> ChildrenParticles)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TSet<TPBDRigidParticleHandle<T, d>*> TPBDRigidClustering<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::ReleaseClusterParticles(
+		TArray<TPBDRigidParticleHandle<T, d>*> ChildrenParticles)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ReleaseClusterParticles_LIST);
-		TSet<FPBDRigidParticleHandle*> ActivatedBodies;
+		TSet<TPBDRigidParticleHandle<T, d>*> ActivatedBodies;
 		if (ChildrenParticles.Num())
 		{
-			FPBDRigidParticleHandle* ClusterHandle = nullptr;
+			TPBDRigidParticleHandle<float, 3>* ClusterHandle = nullptr;
 			//todo(ocohen): refactor incoming, for now just assume these all belong to same cluster and hack strain array
 			
-			TMap<FGeometryParticleHandle*, FReal> FakeStrain;
+			TMap<TGeometryParticleHandle<T, d>*, float> FakeStrain;
 
 			bool bPreDoGenerateData = DoGenerateBreakingData;
 			DoGenerateBreakingData = false;
 
-			for (FPBDRigidParticleHandle* ChildHandle : ChildrenParticles)
+			for (TPBDRigidParticleHandle<T, d>* ChildHandle : ChildrenParticles)
 			{
-				if (FPBDRigidClusteredParticleHandle* ClusteredChildHandle = ChildHandle->CastToClustered())
+				if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredChildHandle = ChildHandle->CastToClustered())
 				{
 					if (ClusteredChildHandle->Disabled() && ClusteredChildHandle->ClusterIds().Id != nullptr)
 					{
 						if (ensure(!ClusterHandle || ClusteredChildHandle->ClusterIds().Id == ClusterHandle))
 						{
-							FakeStrain.Add(ClusteredChildHandle, TNumericLimits<FReal>::Max());
+							FakeStrain.Add(ClusteredChildHandle, TNumericLimits<float>::Max());
 							ClusterHandle = ClusteredChildHandle->ClusterIds().Id;
 						}
 						else
@@ -1210,10 +1212,10 @@ namespace Chaos
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::Update Impulse from Strain"), STAT_UpdateImpulseStrain, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::Update Dirty Impulses"), STAT_UpdateDirtyImpulses, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::Rewind"), STAT_ClusterRewind, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
 	void 
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::AdvanceClustering(
-		const FReal Dt, 
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::AdvanceClustering(
+		const T Dt, 
 		T_FPBDCollisionConstraint& CollisionRule)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_AdvanceClustering);
@@ -1224,9 +1226,9 @@ namespace Chaos
 		Timer.Start();
 
 		{
-			const FReal Threshold = (FReal)1.f;
-			TSet<Chaos::FPBDRigidParticleHandle*> RemovalIndicesCopy = MActiveRemovalIndices;
-			for (Chaos::FPBDRigidParticleHandle* Particle : RemovalIndicesCopy)
+			const float Threshold = 1.0f;
+			TSet<Chaos::TPBDRigidParticleHandle<float, 3>*> RemovalIndicesCopy = MActiveRemovalIndices;
+			for (Chaos::TPBDRigidParticleHandle<float, 3>* Particle : RemovalIndicesCopy)
 			{
 				//if (MParticles.ToBeRemovedOnFracture(ParticleIdx) && MParticles.V(ParticleIdx).SizeSquared() > Threshold && MParticles.PreV(ParticleIdx).SizeSquared() > Threshold)
 				if (Particle->ToBeRemovedOnFracture() && 
@@ -1263,10 +1265,10 @@ namespace Chaos
 				{
 					if (ActiveCluster->ClusterIds().NumChildren > 0) //active index is a cluster
 					{
-						TArray<FPBDRigidParticleHandle*>& ParentToChildren = MChildren[ActiveCluster];
-						for (FPBDRigidParticleHandle* Child : ParentToChildren)
+						TArray<TPBDRigidParticleHandle<T, d>*>& ParentToChildren = MChildren[ActiveCluster];
+						for (TPBDRigidParticleHandle<T, d>* Child : ParentToChildren)
 						{
-							if (FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered())
+							if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild = Child->CastToClustered())
 							{
 								if (ClusteredChild->Strain() <= 0.f)
 								{
@@ -1283,16 +1285,16 @@ namespace Chaos
 			{
 
 				SCOPE_CYCLE_COUNTER(STAT_UpdateDirtyImpulses);
-				TMap<FPBDRigidClusteredParticleHandle*, TSet<FPBDRigidParticleHandle*>> ClusterToActivatedChildren = 
+				TMap<TPBDRigidClusteredParticleHandle<T, d>*, TSet<TPBDRigidParticleHandle<T, d>*>> ClusterToActivatedChildren = 
 					BreakingModel();
 
-				TSet<FPBDRigidParticleHandle*> AllActivatedChildren;
+				TSet<TPBDRigidParticleHandle<T, d>*> AllActivatedChildren;
 				TSet<int32> IslandsToRecollide;
 				for (auto Itr : ClusterToActivatedChildren)
 				{
 					//question: do we need to iterate all the children? Seems like island is known from cluster, but don't want to break anything at this point
-					TSet<FPBDRigidParticleHandle*>& ActivatedChildren = Itr.Value;
-					for (FPBDRigidParticleHandle* ActiveChild : ActivatedChildren)
+					TSet<TPBDRigidParticleHandle<T, d>*>& ActivatedChildren = Itr.Value;
+					for (TPBDRigidParticleHandle<T, d>* ActiveChild : ActivatedChildren)
 					{
 						if (ensure(!ActiveChild->Disabled()))
 						{
@@ -1320,9 +1322,9 @@ namespace Chaos
 					{
 						for (auto Itr : ClusterToActivatedChildren)
 						{
-							FPBDRigidClusteredParticleHandle* ClusteredParticle = Itr.Key;
-							TSet<FPBDRigidParticleHandle*>& ActivatedChildren = Itr.Value;
-							for (FPBDRigidParticleHandle* ActiveChild : ActivatedChildren)
+							TPBDRigidClusteredParticleHandle<T, d>* ClusteredParticle = Itr.Key;
+							TSet<TPBDRigidParticleHandle<T, d>*>& ActivatedChildren = Itr.Value;
+							for (TPBDRigidParticleHandle<T, d>* ActiveChild : ActivatedChildren)
 							{
 								ActiveChild->SetV(
 									ActiveChild->V() * (1.f - ChaosClusteringChildrenInheritVelocity) + ClusteredParticle->V() * ChaosClusteringChildrenInheritVelocity);
@@ -1339,17 +1341,17 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::BreakingModel()"), STAT_BreakingModel, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	TMap<FPBDRigidClusteredParticleHandle*, TSet<FPBDRigidParticleHandle*>> 
-	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::BreakingModel(
-		TMap<FGeometryParticleHandle*, FReal>* ExternalStrainMap)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TMap<TPBDRigidClusteredParticleHandle<T, d>*, TSet<TPBDRigidParticleHandle<T, d>*>> 
+	TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::BreakingModel(
+		TMap<TGeometryParticleHandle<T, d>*, float>* ExternalStrainMap)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_BreakingModel);
 
-		TMap<FPBDRigidClusteredParticleHandle*, TSet<FPBDRigidParticleHandle*>> AllActivatedChildren;
+		TMap<TPBDRigidClusteredParticleHandle<T,d>*, TSet<TPBDRigidParticleHandle<T, d>*>> AllActivatedChildren;
 
 		auto NonDisabledClusteredParticles = MEvolution.GetNonDisabledClusteredArray(); //make copy because release cluster modifies active indices. We want to iterate over original active indices
-		for (Chaos::TPBDRigidClusteredParticleHandleImp<FReal, 3, true>* ClusteredParticle : NonDisabledClusteredParticles)
+		for (Chaos::TPBDRigidClusteredParticleHandleImp<float, 3, true>* ClusteredParticle : NonDisabledClusteredParticles)
 		{
 			if (ClusteredParticle->ClusterIds().NumChildren)
 			{
@@ -1367,8 +1369,8 @@ namespace Chaos
 						DisableCluster(ClusteredParticle);
 						if (DoGenerateBreakingData)
 						{
-							int32 NewIdx = MAllClusterBreakings.Add(FBreakingData());
-							FBreakingData& ClusterBreak = MAllClusterBreakings[NewIdx];
+							int32 NewIdx = MAllClusterBreakings.Add(TBreakingData<float, 3>());
+							TBreakingData<float, 3>& ClusterBreak = MAllClusterBreakings[NewIdx];
 							ClusterBreak.Particle = ClusteredParticle;
 							ClusterBreak.ParticleProxy = nullptr;
 							ClusterBreak.Location = ClusteredParticle->X();
@@ -1385,17 +1387,17 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::PromoteStrains()"), STAT_PromoteStrains, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	FReal TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::PromoteStrains(
-		FPBDRigidParticleHandle* CurrentNode)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	T TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::PromoteStrains(
+		TPBDRigidParticleHandle<T, d>* CurrentNode)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_PromoteStrains);
-		if (FPBDRigidClusteredParticleHandle* ClusteredCurrentNode = CurrentNode->CastToClustered())
+		if (TPBDRigidClusteredParticleHandle<T, d>* ClusteredCurrentNode = CurrentNode->CastToClustered())
 		{
-			FReal ChildrenStrains = (FReal)0.;
+			T ChildrenStrains = 0;
 			if (MChildren.Contains(CurrentNode))
 			{
-				for (FPBDRigidParticleHandle* Child : MChildren[CurrentNode])
+				for (TPBDRigidParticleHandle<T, d>* Child : MChildren[CurrentNode])
 				{
 					ChildrenStrains += PromoteStrains(Child);
 				}
@@ -1407,13 +1409,13 @@ namespace Chaos
 			ClusteredCurrentNode->SetStrains(ClusteredCurrentNode->Strains() + ChildrenStrains);
 			return ClusteredCurrentNode->Strains();
 		}
-		return (FReal)0.;
+		return (T)0.0;
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateKinematicProperties()"), STAT_UpdateKinematicProperties, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UpdateKinematicProperties(
-		Chaos::FPBDRigidParticleHandle* Parent)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UpdateKinematicProperties(
+		Chaos::TPBDRigidParticleHandle<float, 3>* Parent)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateKinematicProperties);
 
@@ -1422,20 +1424,20 @@ namespace Chaos
 		if (MChildren.Contains(Parent) && MChildren[Parent].Num())
 		{
 			// TQueue is a linked list, which has no preallocator.
-			TQueue<Chaos::FPBDRigidParticleHandle*> Queue;
-			for (Chaos::FPBDRigidParticleHandle* Child : MChildren[Parent])
+			TQueue<Chaos::TPBDRigidParticleHandle<float, 3>*> Queue;
+			for (Chaos::TPBDRigidParticleHandle<float, 3>* Child : MChildren[Parent])
 			{
 				Queue.Enqueue(Child);
 			}
 
-			Chaos::FPBDRigidParticleHandle* CurrentHandle;
+			Chaos::TPBDRigidParticleHandle<float, 3>* CurrentHandle;
 			while (Queue.Dequeue(CurrentHandle) && ObjectState == EObjectStateType::Dynamic)
 			{
 				// @question : Maybe we should just store the leaf node bodies in a
 				// map, that will require Memory(n*log(n))
 				if (MChildren.Contains(CurrentHandle))
 				{
-					for (Chaos::FPBDRigidParticleHandle* Child : MChildren[CurrentHandle])
+					for (Chaos::TPBDRigidParticleHandle<float, 3>* Child : MChildren[CurrentHandle])
 					{
 						Queue.Enqueue(Child);
 					}
@@ -1452,13 +1454,13 @@ namespace Chaos
 				}
 			}
 
-			Parent->SetObjectStateLowLevel(ObjectState);
+			Parent->SetObjectState(ObjectState);
 		}
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::SwapBufferedData"), STAT_SwapBufferedData, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::SwapBufferedData()
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::SwapBufferedData()
 	{
 		check(false);
 		// TODO: Ryan - this code currently uses MParticles as the only source of clustered particles.
@@ -1477,7 +1479,7 @@ namespace Chaos
 		for (auto& ClusteredParticle : NonDisabledClusteredParticles)
 		{
 			//const TArray<uint32>* Children = MChildren.Find(ClusteredParticle);
-			TArray<FPBDRigidParticleHandle*>* Children = MChildren.Find(ClusteredParticle);
+			TArray<TPBDRigidParticleHandle<T, d>*>* Children = MChildren.Find(ClusteredParticle);
 			//if (Children && ClusteredParticle->ClusterIds().Id == INDEX_NONE) //root cluster so copy children
 			if (Children && ClusteredParticle->ClusterIds().Id == nullptr) //root cluster so copy children
 			{
@@ -1485,9 +1487,9 @@ namespace Chaos
 				//BufferResource.MChildren.Add(ClusteredParticle->TransientParticleIndex(), *Children);
 				BufferResource.MChildren.Add(
 					ClusteredParticle, *Children);
-				//BufferResource.ClusterParentTransforms.Add(ClusteredParticle->TransientParticleIndex(), TRigidTransform<FReal, 3>(ClusteredParticle->X(), ClusteredParticle->R()));
+				//BufferResource.ClusterParentTransforms.Add(ClusteredParticle->TransientParticleIndex(), TRigidTransform<float, 3>(ClusteredParticle->X(), ClusteredParticle->R()));
 				BufferResource.ClusterParentTransforms.Add(
-					ClusteredParticle, TRigidTransform<FReal, 3>(ClusteredParticle->X(), ClusteredParticle->R()));
+					ClusteredParticle, TRigidTransform<float, 3>(ClusteredParticle->X(), ClusteredParticle->R()));
 			}
 		}
 
@@ -1497,9 +1499,9 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::GetActiveClusterIndex"), STAT_GetActiveClusterIndex, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	FPBDRigidParticleHandle* TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::GetActiveClusterIndex(
-		FPBDRigidParticleHandle* Child)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	TPBDRigidParticleHandle<T, d>* TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::GetActiveClusterIndex(
+		TPBDRigidParticleHandle<T, d>* Child)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_GetActiveClusterIndex);
 		while (Child && Child->Disabled())
@@ -1510,10 +1512,10 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::GenerateConnectionGraph"), STAT_GenerateConnectionGraph, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::GenerateConnectionGraph(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent,
-		const FClusterCreationParameters& Parameters)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::GenerateConnectionGraph(
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent,
+		const FClusterCreationParameters<T>& Parameters)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_GenerateConnectionGraph);
 		if (!MChildren.Contains(Parent)) 
@@ -1526,28 +1528,28 @@ namespace Chaos
 		//
 		if (Parameters.bGenerateConnectionGraph)
 		{
-			FClusterCreationParameters::EConnectionMethod LocalConnectionMethod = Parameters.ConnectionMethod;
+			typename FClusterCreationParameters<T>::EConnectionMethod LocalConnectionMethod = Parameters.ConnectionMethod;
 
-			if (LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::None ||
-				(LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::PointImplicit && 
+			if (LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::None ||
+				(LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::PointImplicit && 
 				 !Parent->CollisionParticles()))
 			{
-				LocalConnectionMethod = FClusterCreationParameters::EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation; // default method
+				LocalConnectionMethod = FClusterCreationParameters<T>::EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation; // default method
 			}
 
-			if (LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::PointImplicit ||
-				LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay)
+			if (LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::PointImplicit ||
+				LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay)
 			{
 				UpdateConnectivityGraphUsingPointImplicit(Parent, Parameters);
 			}
 
-			if (LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::DelaunayTriangulation)
+			if (LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::DelaunayTriangulation)
 			{
 				UpdateConnectivityGraphUsingDelaunayTriangulation(Parent, Parameters); // not thread safe
 			}
 
-			if (LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay ||
-				LocalConnectionMethod == FClusterCreationParameters::EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation)
+			if (LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay ||
+				LocalConnectionMethod == FClusterCreationParameters<T>::EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation)
 			{
 				FixConnectivityGraphUsingDelaunayTriangulation(Parent, Parameters);
 			}
@@ -1555,11 +1557,11 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateMassProperties"), STAT_UpdateMassProperties, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UpdateMassProperties(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent, 
-		TSet<FPBDRigidParticleHandle*>& Children, 
-		const FRigidTransform3* ForceMassOrientation)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UpdateMassProperties(
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent, 
+		TSet<TPBDRigidParticleHandle<T, d>*>& Children, 
+		const TRigidTransform<T, d>* ForceMassOrientation)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateMassProperties);
 		UpdateClusterMassProperties(
@@ -1575,12 +1577,12 @@ namespace Chaos
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateGeometry_CopyPoints"), STAT_UpdateGeometry_CopyPoints, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateGeometry_PointsBVH"), STAT_UpdateGeometry_PointsBVH, STATGROUP_Chaos);
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UpdateGeometry(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent, 
-		const TSet<FPBDRigidParticleHandle*>& Children, 
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UpdateGeometry(
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent, 
+		const TSet<TPBDRigidParticleHandle<T, d>*>& Children, 
 		TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe> ProxyGeometry,
-		const FClusterCreationParameters& Parameters)
+		const FClusterCreationParameters<T>& Parameters)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateGeometry);
 
@@ -1593,10 +1595,10 @@ namespace Chaos
 		ensure(!Parent->Geometry());
 		ensure(!Parent->DynamicGeometry());
 
-		const FRigidTransform3 ClusterWorldTM(Parent->X(), Parent->R());
+		const TRigidTransform<T, d> ClusterWorldTM(Parent->X(), Parent->R());
 
-		TArray<FVec3> OriginalPoints;
-		TArray<FPBDRigidParticleHandle*> GeomToOriginalParticlesHack;
+		TArray<TVector<T, d>> OriginalPoints;
+		TArray<TPBDRigidParticleHandle<T, d>*> GeomToOriginalParticlesHack;
 		GeomToOriginalParticlesHack.Reserve(Children.Num());
 
 		const bool bUseCollisionPoints = (ProxyGeometry || Parameters.bCopyCollisionParticles) && !Parameters.CollisionParticles;
@@ -1605,7 +1607,7 @@ namespace Chaos
 
 		// Need to extract a filter off one of the cluster children 
 		FCollisionFilterData Filter;
-		for(FPBDRigidParticleHandle* Child : Children)
+		for(TPBDRigidParticleHandle<T, d>* Child : Children)
 		{
 			bool bFilterValid = false;
 			for(const TUniquePtr<FPerShapeData>& Shape : Child->ShapesArray())
@@ -1635,39 +1637,39 @@ namespace Chaos
 			if (bUseCollisionPoints)
 			{
 				uint32 NumPoints = 0;
-				for (FPBDRigidParticleHandle* Child : Children)
+				for (TPBDRigidParticleHandle<T, d>* Child : Children)
 				{
 					NumPoints += Child->CollisionParticlesSize();
 				}
 				OriginalPoints.Reserve(NumPoints);
 			}
 
-			for (FPBDRigidParticleHandle* Child : Children)
+			for (TPBDRigidParticleHandle<T, d>* Child : Children)
 			{
-				const FRigidTransform3 ChildWorldTM(Child->X(), Child->R());
-				FRigidTransform3 Frame = ChildWorldTM.GetRelativeTransform(ClusterWorldTM);
-				FPBDRigidParticleHandle* UsedGeomChild = Child;
+				const TRigidTransform<T, d> ChildWorldTM(Child->X(), Child->R());
+				TRigidTransform<T, d> Frame = ChildWorldTM.GetRelativeTransform(ClusterWorldTM);
+				TPBDRigidParticleHandle<T, d>* UsedGeomChild = Child;
 				if (Child->Geometry())
 				{
-					FPBDRigidClusteredParticleHandle* ClusteredChild = Child->CastToClustered();
+					TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild = Child->CastToClustered();
 
 					const FMultiChildProxyId MultiChildProxyId = 
 						ClusteredChild ? ClusteredChild->MultiChildProxyId() : FMultiChildProxyId();
-					const TUniquePtr<TMultiChildProxyData<FReal,3>>& MultiChildProxyData = ClusteredChild->MultiChildProxyData();
+					const TUniquePtr<TMultiChildProxyData<T, d>>& MultiChildProxyData = ClusteredChild->MultiChildProxyData();
 
 					if (UseLevelsetCollision || MultiChildProxyId.Id == nullptr || !MultiChildProxyData)
 					{
-						Objects.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<FReal, 3>(Child->Geometry(), Frame)));
-						Objects2.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<FReal, 3>(Child->Geometry(), Frame)));
+						Objects.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<T, d>(Child->Geometry(), Frame)));
+						Objects2.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<T, d>(Child->Geometry(), Frame)));
 						GeomToOriginalParticlesHack.Add(Child);
 					}
 					else if (MultiChildProxyData->KeyChild == Child)
 					{
 						//using multi child proxy and this child is the key
-						const FRigidTransform3 ProxyWorldTM = MultiChildProxyData->RelativeToKeyChild * ChildWorldTM;
-						const FRigidTransform3 ProxyRelativeTM = ProxyWorldTM.GetRelativeTransform(ClusterWorldTM);
-						Objects.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<FReal, 3>(MultiChildProxyId.Id->Geometry(), ProxyRelativeTM)));
-						Objects2.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<FReal, 3>(MultiChildProxyId.Id->Geometry(), ProxyRelativeTM)));
+						const TRigidTransform<T, d> ProxyWorldTM = MultiChildProxyData->RelativeToKeyChild * ChildWorldTM;
+						const TRigidTransform<T, d> ProxyRelativeTM = ProxyWorldTM.GetRelativeTransform(ClusterWorldTM);
+						Objects.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<T, d>(MultiChildProxyId.Id->Geometry(), ProxyRelativeTM)));
+						Objects2.Add(TUniquePtr<FImplicitObject>(new TImplicitObjectTransformed<T, d>(MultiChildProxyId.Id->Geometry(), ProxyRelativeTM)));
 						UsedGeomChild = MultiChildProxyId.Id;
 						GeomToOriginalParticlesHack.Add(UsedGeomChild);
 						bUsingMultiChildProxy = true;
@@ -1682,7 +1684,7 @@ namespace Chaos
 				if (bUseCollisionPoints)
 				{
 					SCOPE_CYCLE_COUNTER(STAT_UpdateGeometry_GatherPoints);
-					if (const TUniquePtr<FBVHParticles>& CollisionParticles = Child->CollisionParticles())
+					if (const TUniquePtr<TBVHParticles<T,d>>& CollisionParticles = Child->CollisionParticles())
 					{
 						for (uint32 i = 0; i < CollisionParticles->Size(); ++i)
 						{
@@ -1706,7 +1708,7 @@ namespace Chaos
 				nullptr);
 		}
 
-		TArray<FVec3> CleanedPoints;
+		TArray<TVector<T, d>> CleanedPoints;
 		if (!Parameters.CollisionParticles)
 		{
 			CleanedPoints = 
@@ -1734,28 +1736,28 @@ namespace Chaos
 				ensureMsgf(false, TEXT("Checking usage with no proxy and multiple ojects with levelsets"));
 
 				FImplicitObjectUnionClustered UnionObject(MoveTemp(Objects));
-				FAABB3 Bounds = UnionObject.BoundingBox();
-				const FVec3 BoundsExtents = Bounds.Extents();
+				TAABB<T, d> Bounds = UnionObject.BoundingBox();
+				const TVector<T, d> BoundsExtents = Bounds.Extents();
 				if (BoundsExtents.Min() >= MinLevelsetSize) //make sure the object is not too small
 				{
-					TVec3<int32> NumCells = Bounds.Extents() / MinLevelsetSize;
-					for (int i = 0; i < 3; ++i)
+					TVector<int32, d> NumCells = Bounds.Extents() / MinLevelsetSize;
+					for (int i = 0; i < d; ++i)
 					{
 						NumCells[i] = FMath::Clamp(NumCells[i], MinLevelsetDimension, MaxLevelsetDimension);
 					}
 
 					FErrorReporter ErrorReporter;
-					TUniformGrid<FReal, 3> Grid(Bounds.Min(), Bounds.Max(), NumCells, LevelsetGhostCells);
-					TUniquePtr<FLevelSet> LevelSet(new FLevelSet(ErrorReporter, Grid, UnionObject));
+					TUniformGrid<T, 3> Grid(Bounds.Min(), Bounds.Max(), NumCells, LevelsetGhostCells);
+					TUniquePtr<TLevelSet<T, 3>> LevelSet(new TLevelSet<T, 3>(ErrorReporter, Grid, UnionObject));
 
 					if (!Parameters.CollisionParticles)
 					{
-						const FReal MinDepthToSurface = Grid.Dx().Max();
+						const T MinDepthToSurface = Grid.Dx().Max();
 						for (int32 Idx = CleanedPoints.Num() - 1; Idx >= 0; --Idx)
 						{
 							if (CleanedPoints.Num() > MinCleanedPointsBeforeRemovingInternals) //todo(ocohen): this whole thing should really be refactored
 							{
-								const FVec3& CleanedCollision = CleanedPoints[Idx];
+								const TVector<T, d>& CleanedCollision = CleanedPoints[Idx];
 								if (LevelSet->SignedDistance(CleanedCollision) < -MinDepthToSurface)
 								{
 									CleanedPoints.RemoveAtSwap(Idx);
@@ -1768,7 +1770,7 @@ namespace Chaos
 				else
 				{
 					Parent->SetDynamicGeometry(
-						MakeUnique<TSphere<FReal, 3>>(FVec3(0), BoundsExtents.Size() * 0.5f));
+						MakeUnique<TSphere<T, d>>(TVector<T, d>(0), BoundsExtents.Size() * 0.5f));
 				}
 			}
 			else // !UseLevelsetCollision
@@ -1807,7 +1809,7 @@ namespace Chaos
 			{
 				SCOPE_CYCLE_COUNTER(STAT_UpdateGeometry_GatherPoints);
 				Parent->CollisionParticlesInitIfNeeded();
-				TUniquePtr<FBVHParticles>& CollisionParticles = Parent->CollisionParticles();
+				TUniquePtr<TBVHParticles<T, d>>& CollisionParticles = Parent->CollisionParticles();
 				CollisionParticles->AddParticles(CleanedPoints.Num());
 				for (int32 i = 0; i < CleanedPoints.Num(); ++i)
 				{
@@ -1827,9 +1829,9 @@ namespace Chaos
 			// strange hacked initilization that seems misplaced and ill thought
 			Parent->SetHasBounds(true);
 			Parent->SetLocalBounds(Implicit->BoundingBox());
-			const Chaos::FAABB3& LocalBounds = Parent->LocalBounds();
-			const Chaos::FRigidTransform3 Xf(Parent->X(), Parent->R());
-			const Chaos::FAABB3 TransformedBBox = LocalBounds.TransformedAABB(Xf);
+			const Chaos::TAABB<float, 3>& LocalBounds = Parent->LocalBounds();
+			const Chaos::TRigidTransform<float, 3> Xf(Parent->X(), Parent->R());
+			const Chaos::TAABB<float, 3> TransformedBBox = LocalBounds.TransformedAABB(Xf);
 			Parent->SetWorldSpaceInflatedBounds(TransformedBBox);
 		}
 
@@ -1840,18 +1842,18 @@ namespace Chaos
 		}
 	}
 
-	FRealSingle MinImpulseForStrainEval = 980 * 2 * 1.f / 30.f; //ignore impulses caused by just keeping object on ground. This is a total hack, we should not use accumulated impulse directly. Instead we need to look at delta v along constraint normal
+	float MinImpulseForStrainEval = 980 * 2 * 1.f / 30.f; //ignore impulses caused by just keeping object on ground. This is a total hack, we should not use accumulated impulse directly. Instead we need to look at delta v along constraint normal
 	FAutoConsoleVariableRef CVarMinImpulseForStrainEval(TEXT("p.chaos.MinImpulseForStrainEval"), MinImpulseForStrainEval, TEXT("Minimum accumulated impulse before accumulating for strain eval "));
 
 	bool bUseContactSpeedForStrainThreshold = true;
 	FAutoConsoleVariableRef CVarUseContactSpeedForStrainEval(TEXT("p.chaos.UseContactSpeedForStrainEval"), bUseContactSpeedForStrainThreshold, TEXT("Whether to use contact speed to discard contacts when updating cluster strain (true: use speed, false: use impulse)"));
 
-	FRealSingle MinContactSpeedForStrainEval = 1.0f; // Ignore contacts where the two bodies are resting together
+	float MinContactSpeedForStrainEval = 1.0f; // Ignore contacts where the two bodies are resting together
 	FAutoConsoleVariableRef CVarMinContactSpeedForStrainEval(TEXT("p.chaos.MinContactSpeedForStrainEval"), MinContactSpeedForStrainEval, TEXT("Minimum speed at the contact before accumulating for strain eval "));
 
 	DECLARE_CYCLE_STAT(TEXT("ComputeStrainFromCollision"), STAT_ComputeStrainFromCollision, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ComputeStrainFromCollision(
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ComputeStrainFromCollision(
 		const T_FPBDCollisionConstraint& CollisionRule)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ComputeStrainFromCollision);
@@ -1861,20 +1863,20 @@ namespace Chaos
 
 		for (const Chaos::FPBDCollisionConstraintHandle* ContactHandle : CollisionRule.GetConstConstraintHandles())
 		{
-			TVector<const FGeometryParticleHandle*, 2> ConstrainedParticles = ContactHandle->GetConstrainedParticles();
-			const FPBDRigidParticleHandle* Rigid0 = ConstrainedParticles[0]->CastToRigidParticle();
-			const FPBDRigidParticleHandle* Rigid1 = ConstrainedParticles[1]->CastToRigidParticle();
+			TVector<const TGeometryParticleHandle<T, d>*, 2> ConstrainedParticles = ContactHandle->GetConstrainedParticles();
+			const TPBDRigidParticleHandle<T, d>* Rigid0 = ConstrainedParticles[0]->CastToRigidParticle();
+			const TPBDRigidParticleHandle<T, d>* Rigid1 = ConstrainedParticles[1]->CastToRigidParticle();
 
 			if(bUseContactSpeedForStrainThreshold)
 			{
 				// Get dV between the two particles and project onto the normal to get the approach speed (take PreV as V is the new velocity post-solve)
-				const FVec3 V0 = Rigid0 ? Rigid0->PreV() : FVec3(0);
-				const FVec3 V1 = Rigid1 ? Rigid1->PreV() : FVec3(0);
-				const FVec3 DeltaV = V0 - V1;
-				const FReal SpeedAlongNormal = FVec3::DotProduct(DeltaV, ContactHandle->GetContact().GetNormal());
+				const TVector<T, d> V0 = Rigid0 ? Rigid0->PreV() : TVector<T, d>(0);
+				const TVector<T, d> V1 = Rigid1 ? Rigid1->PreV() : TVector<T, d>(0);
+				const TVector<T, d> DeltaV = V0 - V1;
+				const T SpeedAlongNormal = TVector<T, d>::DotProduct(DeltaV, ContactHandle->GetContact().GetNormal());
 
 				// If we're not approaching at more than the min speed, reject the contact
-				if(SpeedAlongNormal > -MinContactSpeedForStrainEval && ContactHandle->GetAccumulatedImpulse().SizeSquared() > FReal(0))
+				if(SpeedAlongNormal > -MinContactSpeedForStrainEval && ContactHandle->GetAccumulatedImpulse().SizeSquared() > T(0))
 				{
 					continue;
 				}
@@ -1885,37 +1887,37 @@ namespace Chaos
 			}
 
 			auto ComputeStrainLambda = [&](
-				const FPBDRigidClusteredParticleHandle* Cluster, 
-				const TArray<FPBDRigidParticleHandle*>& ParentToChildren)
+				const TPBDRigidClusteredParticleHandle<T, d>* Cluster, 
+				const TArray<TPBDRigidParticleHandle<T, d>*>& ParentToChildren)
 			{
-				const FRigidTransform3 WorldToClusterTM = FRigidTransform3(Cluster->P(), Cluster->Q());
-				const FVec3 ContactLocationClusterLocal = WorldToClusterTM.InverseTransformPosition(ContactHandle->GetContactLocation());
-				FAABB3 ContactBox(ContactLocationClusterLocal, ContactLocationClusterLocal);
+				const TRigidTransform<T, d> WorldToClusterTM = TRigidTransform<T, d>(Cluster->P(), Cluster->Q());
+				const TVector<T, d> ContactLocationClusterLocal = WorldToClusterTM.InverseTransformPosition(ContactHandle->GetContactLocation());
+				TAABB<T, d> ContactBox(ContactLocationClusterLocal, ContactLocationClusterLocal);
 				ContactBox.Thicken(ClusterDistanceThreshold);
 				if (Cluster->ChildrenSpatial())
 				{
-					const TArray<FPBDRigidParticleHandle*> Intersections = Cluster->ChildrenSpatial()->FindAllIntersectingChildren(ContactBox);
-					for (FPBDRigidParticleHandle* Child : Intersections)
+					const TArray<TPBDRigidParticleHandle<FReal, 3>*> Intersections = Cluster->ChildrenSpatial()->FindAllIntersectingChildren(ContactBox);
+					for (TPBDRigidParticleHandle<FReal, 3>* Child : Intersections)
 					{
 						if (TPBDRigidClusteredParticleHandle<FReal, 3>* ClusteredChild = Child->CastToClustered())
 						{
-							const TUniquePtr<TMultiChildProxyData<FReal, 3>>& ProxyData = ClusteredChild->MultiChildProxyData();
-							const FPBDRigidParticleHandle* KeyChild = ProxyData ? ProxyData->KeyChild : nullptr;
-							const FPBDRigidClusteredParticleHandle* ClusteredKeyChild = KeyChild ? KeyChild->CastToClustered() : nullptr;
+							const TUniquePtr<TMultiChildProxyData<T, d>>& ProxyData = ClusteredChild->MultiChildProxyData();
+							const TPBDRigidParticleHandle<T, d>* KeyChild = ProxyData ? ProxyData->KeyChild : nullptr;
+							const TPBDRigidClusteredParticleHandle<T, d>* ClusteredKeyChild = KeyChild ? KeyChild->CastToClustered() : nullptr;
 							if (ClusteredKeyChild)
 							{
 								//multi child so get its children
-								const FRigidTransform3 ProxyToCluster = ProxyData->RelativeToKeyChild * ClusteredKeyChild->ChildToParent();
-								const FVec3 ContactLocationProxyLocal = ProxyToCluster.InverseTransformPosition(ContactLocationClusterLocal);
-								FAABB3 ContactBoxProxy(ContactLocationProxyLocal, ContactLocationProxyLocal);
+								const TRigidTransform<T, d> ProxyToCluster = ProxyData->RelativeToKeyChild * ClusteredKeyChild->ChildToParent();
+								const TVector<T, d> ContactLocationProxyLocal = ProxyToCluster.InverseTransformPosition(ContactLocationClusterLocal);
+								TAABB<T, d> ContactBoxProxy(ContactLocationProxyLocal, ContactLocationProxyLocal);
 								ContactBoxProxy.Thicken(ClusterDistanceThreshold);
 								if (ClusteredChild->ChildrenSpatial())
 								{
-									const TArray<FPBDRigidParticleHandle*> SubIntersections = 
+									const TArray<TPBDRigidParticleHandle<FReal, 3>*> SubIntersections = 
 										ClusteredChild->ChildrenSpatial()->FindAllIntersectingChildren(ContactBoxProxy);
-									for (FPBDRigidParticleHandle* SubChild : SubIntersections)
+									for (TPBDRigidParticleHandle<FReal, 3>* SubChild : SubIntersections)
 									{
-										if (FPBDRigidClusteredParticleHandle* ClusteredSubChild = SubChild->CastToClustered())
+										if (TPBDRigidClusteredParticleHandle<FReal, 3>* ClusteredSubChild = SubChild->CastToClustered())
 										{
 											ClusteredSubChild->CollisionImpulses() += ContactHandle->GetAccumulatedImpulse().Size();
 										}
@@ -1931,12 +1933,12 @@ namespace Chaos
 				}
 			};
 
-			if (const TArray<FPBDRigidParticleHandle*>* ChildrenPtr = MParentToChildren.Find(ConstrainedParticles[0]->CastToRigidParticle()))
+			if (const TArray<TPBDRigidParticleHandle<T, d>*>* ChildrenPtr = MParentToChildren.Find(ConstrainedParticles[0]->CastToRigidParticle()))
 			{
 				ComputeStrainLambda(ConstrainedParticles[0]->CastToClustered(), *ChildrenPtr);
 			}
 
-			if (const TArray<FPBDRigidParticleHandle*>* ChildrenPtr = MParentToChildren.Find(ConstrainedParticles[1]->CastToRigidParticle()))
+			if (const TArray<TPBDRigidParticleHandle<T, d>*>* ChildrenPtr = MParentToChildren.Find(ConstrainedParticles[1]->CastToRigidParticle()))
 			{
 				ComputeStrainLambda(ConstrainedParticles[1]->CastToClustered(), *ChildrenPtr);
 			}
@@ -1946,22 +1948,22 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("ResetCollisionImpulseArray"), STAT_ResetCollisionImpulseArray, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ResetCollisionImpulseArray()
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ResetCollisionImpulseArray()
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ResetCollisionImpulseArray);
 		if (MCollisionImpulseArrayDirty)
 		{
-			FPBDRigidsSOAs& ParticleStructures = MEvolution.GetParticles();
+			TPBDRigidsSOAs<T, d>& ParticleStructures = MEvolution.GetParticles();
 			ParticleStructures.GetGeometryCollectionParticles().CollisionImpulsesArray().Fill(0.0f);
 			ParticleStructures.GetClusteredParticles().CollisionImpulsesArray().Fill(0.0f);
 			MCollisionImpulseArrayDirty = false;
 		}
 	}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::DisableCluster(
-		FPBDRigidClusteredParticleHandle* ClusteredParticle)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::DisableCluster(
+		TPBDRigidClusteredParticleHandle<T,d>* ClusteredParticle)
 	{
 		// #note: we don't recursively descend to the children
 		MEvolution.DisableParticle(ClusteredParticle);
@@ -1980,16 +1982,16 @@ namespace Chaos
 		MActiveRemovalIndices.Remove(ClusteredParticle);
 	}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::DisableParticleWithBreakEvent(
-		Chaos::FPBDRigidParticleHandle* Particle)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::DisableParticleWithBreakEvent(
+		Chaos::TPBDRigidParticleHandle<float, 3>* Particle)
 	{
 		DisableCluster(Particle->CastToClustered());
 
 		if (DoGenerateBreakingData)
 		{
-			const int32 NewIdx = MAllClusterBreakings.Add(FBreakingData());
-			FBreakingData& ClusterBreak = MAllClusterBreakings[NewIdx];
+			const int32 NewIdx = MAllClusterBreakings.Add(TBreakingData<float, 3>());
+			TBreakingData<float, 3>& ClusterBreak = MAllClusterBreakings[NewIdx];
 			ClusterBreak.Particle = Particle;
 			ClusterBreak.ParticleProxy = nullptr;
 			ClusterBreak.Location = Particle->X();
@@ -2000,10 +2002,10 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateConnectivityGraphUsingPointImplicit"), STAT_UpdateConnectivityGraphUsingPointImplicit, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UpdateConnectivityGraphUsingPointImplicit(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent,
-		const FClusterCreationParameters& Parameters)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UpdateConnectivityGraphUsingPointImplicit(
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent,
+		const FClusterCreationParameters<T>& Parameters)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateConnectivityGraphUsingPointImplicit);
 
@@ -2012,47 +2014,47 @@ namespace Chaos
 			return;
 		}
 
-		const FReal Delta = FMath::Min(FMath::Max(Parameters.CoillisionThicknessPercent, FReal(0)), FReal(1));
-		const TArray<FPBDRigidParticleHandle*>& Children = MChildren[Parent];
+		const T Delta = FMath::Min(FMath::Max(Parameters.CoillisionThicknessPercent, (T)0), T(1));
+		const TArray<TPBDRigidParticleHandle<T, d>*>& Children = MChildren[Parent];
 		for (int32 i = 0; i < Children.Num(); ++i)
 		{
-			FPBDRigidParticleHandle* Child1 = Children[i];
+			TPBDRigidParticleHandle<T, d>* Child1 = Children[i];
 			if (!Child1->Geometry() || !Child1->Geometry()->HasBoundingBox())
 			{
 				continue;
 			}
-			const FVec3& Child1X = Child1->X();
+			const TVector<T,d>& Child1X = Child1->X();
 			if (!(ensure(!FMath::IsNaN(Child1X[0])) && ensure(!FMath::IsNaN(Child1X[1])) && ensure(!FMath::IsNaN(Child1X[2]))))
 			{
 				continue;
 			}
-			FRigidTransform3 TM1 = FRigidTransform3(Child1X, Child1->R());
+			TRigidTransform<T, d> TM1 = TRigidTransform<T, d>(Child1X, Child1->R());
 
 			const int32 Offset = i + 1;
 			const int32 NumRemainingChildren = Children.Num() - Offset;
-			typedef TPair<FPBDRigidParticleHandle*, FPBDRigidParticleHandle*> ParticlePair;
+			typedef TPair<TPBDRigidParticleHandle<T, d>*, TPBDRigidParticleHandle<T, d>*> ParticlePair;
 			typedef TArray<ParticlePair> ParticlePairArray;
 			TArray<ParticlePairArray> Connections;
 			Connections.Init(ParticlePairArray(), NumRemainingChildren);
 			PhysicsParallelFor(NumRemainingChildren, [&](int32 Idx) 
 			{
 				const int32 ChildrenIdx = Offset + Idx;
-				FPBDRigidParticleHandle* Child2 = Children[ChildrenIdx];
+				TPBDRigidParticleHandle<T, d>* Child2 = Children[ChildrenIdx];
 				if(!Child2->CollisionParticles())
 					return;
 
-				const FVec3& Child2X = Child2->X();
+				const TVector<T, d>& Child2X = Child2->X();
 				if (!(ensure(!FMath::IsNaN(Child2X[0])) && ensure(!FMath::IsNaN(Child2X[1])) && ensure(!FMath::IsNaN(Child2X[2]))))
 					return;
 
-				const FRigidTransform3 TM = TM1.GetRelativeTransform(FRigidTransform3(Child2X, Child2->R()));
+				const TRigidTransform<T, d> TM = TM1.GetRelativeTransform(TRigidTransform<T, d>(Child2X, Child2->R()));
 
 				bool bCollided = false;
 				for (uint32 CollisionIdx = 0; !bCollided && CollisionIdx < Child2->CollisionParticles()->Size(); ++CollisionIdx)
 				{
-					const FVec3 LocalPoint = 
+					const TVector<T, d> LocalPoint = 
 						TM.TransformPositionNoScale(Child2->CollisionParticles()->X(CollisionIdx));
-					const FReal Phi = Child1->Geometry()->SignedDistance(LocalPoint - (LocalPoint * Delta));
+					const T Phi = Child1->Geometry()->SignedDistance(LocalPoint - (LocalPoint * Delta));
 					if (Phi < 0.0)
 						bCollided = true;
 				}
@@ -2074,15 +2076,15 @@ namespace Chaos
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::FixConnectivityGraphUsingDelaunayTriangulation"), STAT_FixConnectivityGraphUsingDelaunayTriangulation, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::FixConnectivityGraphUsingDelaunayTriangulation(
-		Chaos::FPBDRigidClusteredParticleHandle* Parent,
-		const FClusterCreationParameters& Parameters)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::FixConnectivityGraphUsingDelaunayTriangulation(
+		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent,
+		const FClusterCreationParameters<T>& Parameters)
 	{
 		// @todo(investigate) : This is trying to set multiple connections and throwing a warning in ConnectNodes
 		SCOPE_CYCLE_COUNTER(STAT_FixConnectivityGraphUsingDelaunayTriangulation);
 
-		const TArray<FPBDRigidParticleHandle*>& Children = MChildren[Parent];
+		const TArray<TPBDRigidParticleHandle<T, d>*>& Children = MChildren[Parent];
 
 		// Compute Delaunay neighbor graph on children centers
 		TArray<FVector> Pts;
@@ -2097,10 +2099,10 @@ namespace Chaos
 		// Build a UnionFind graph to find (indirectly) connected children
 		struct UnionFindInfo
 		{
-			FPBDRigidParticleHandle* GroupId;
+			TPBDRigidParticleHandle<T, d>* GroupId;
 			int32 Size;
 		};
-		TMap<FPBDRigidParticleHandle*, UnionFindInfo> UnionInfo;
+		TMap<TPBDRigidParticleHandle<T, d>*, UnionFindInfo> UnionInfo;
 		UnionInfo.Reserve(Children.Num());
 
 		// Initialize UnionInfo:
@@ -2109,14 +2111,14 @@ namespace Chaos
 		//		2: GroupId = Children[2], Size = 1
 		//		3: GroupId = Children[3], Size = 1
 
-		for(FPBDRigidParticleHandle* Child : Children)
+		for(TPBDRigidParticleHandle<T, d>* Child : Children)
 		{
 			UnionInfo.Add(Child, { Child, 1 }); // GroupId, Size
 		}
 
-		auto FindGroup = [&](FPBDRigidParticleHandle* Id) 
+		auto FindGroup = [&](TPBDRigidParticleHandle<T, d>* Id) 
 		{
-			FPBDRigidParticleHandle* GroupId = Id;
+			TPBDRigidParticleHandle<T, d>* GroupId = Id;
 			if (GroupId)
 			{
 				int findIters = 0;
@@ -2139,10 +2141,10 @@ namespace Chaos
 		//		2: GroupId = Children[2], Size = 1
 		//		3: GroupId = Children[3], Size = 1
 
-		auto MergeGroup = [&](FPBDRigidParticleHandle* A, FPBDRigidParticleHandle* B) 
+		auto MergeGroup = [&](TPBDRigidParticleHandle<T, d>* A, TPBDRigidParticleHandle<T, d>* B) 
 		{
-			FPBDRigidParticleHandle* GroupA = FindGroup(A);
-			FPBDRigidParticleHandle* GroupB = FindGroup(B);
+			TPBDRigidParticleHandle<T, d>* GroupA = FindGroup(A);
+			TPBDRigidParticleHandle<T, d>* GroupB = FindGroup(B);
 			if (GroupA == GroupB)
 			{
 				return;
@@ -2161,9 +2163,9 @@ namespace Chaos
 		// Merge all groups with edges connecting them.
 		for (int32 i = 0; i < Children.Num(); ++i)
 		{
-			FPBDRigidParticleHandle* Child = Children[i];
-			const TArray<TConnectivityEdge<FReal>>& Edges = Child->CastToClustered()->ConnectivityEdges();
-			for (const TConnectivityEdge<FReal>& Edge : Edges)
+			TPBDRigidParticleHandle<T, d>* Child = Children[i];
+			const TArray<TConnectivityEdge<T>>& Edges = Child->CastToClustered()->ConnectivityEdges();
+			for (const TConnectivityEdge<T>& Edge : Edges)
 			{
 				if (UnionInfo.Contains(Edge.Sibling))
 				{
@@ -2176,17 +2178,17 @@ namespace Chaos
 		struct LinkCandidate
 		{
 			//int32 A, B;
-			FPBDRigidParticleHandle* A;
-			FPBDRigidParticleHandle* B;
-			FReal DistSq;
+			TPBDRigidParticleHandle<T, d>* A;
+			TPBDRigidParticleHandle<T, d>* B;
+			float DistSq;
 		};
 		TArray<LinkCandidate> Candidates;
 		Candidates.Reserve(Neighbors.Num());
 
-		const FReal AlwaysAcceptBelowDistSqThreshold = 50.f*50.f*100.f*MClusterConnectionFactor;
+		const float AlwaysAcceptBelowDistSqThreshold = 50.f*50.f*100.f*MClusterConnectionFactor;
 		for (int32 i = 0; i < Neighbors.Num(); i++)
 		{
-			FPBDRigidParticleHandle* Child1 = Children[i];
+			TPBDRigidParticleHandle<T, d>* Child1 = Children[i];
 			const TArray<int32>& Child1Neighbors = Neighbors[i];
 			for (const int32 Nbr : Child1Neighbors)
 			{
@@ -2194,9 +2196,9 @@ namespace Chaos
 				{ // assume we'll get the symmetric connection; don't bother considering this one
 					continue;
 				}
-				FPBDRigidParticleHandle* Child2 = Children[Nbr];
+				TPBDRigidParticleHandle<T, d>* Child2 = Children[Nbr];
 
-				const FReal DistSq = FVector::DistSquared(Pts[i], Pts[Nbr]);
+				const float DistSq = FVector::DistSquared(Pts[i], Pts[Nbr]);
 				if (DistSq < AlwaysAcceptBelowDistSqThreshold)
 				{ // below always-accept threshold: don't bother adding to candidates array, just merge now
 					MergeGroup(Child1, Child2);
@@ -2218,8 +2220,8 @@ namespace Chaos
 		Candidates.Sort([](const LinkCandidate& A, const LinkCandidate& B) { return A.DistSq < B.DistSq; });
 		for (const LinkCandidate& Candidate : Candidates)
 		{
-			FPBDRigidParticleHandle* Child1 = Candidate.A;
-			FPBDRigidParticleHandle* Child2 = Candidate.B;
+			TPBDRigidParticleHandle<T, d>* Child1 = Candidate.A;
+			TPBDRigidParticleHandle<T, d>* Child2 = Candidate.B;
 			if (FindGroup(Child1) != FindGroup(Child2))
 			{
 				MergeGroup(Child1, Child2);
@@ -2230,12 +2232,12 @@ namespace Chaos
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::UpdateConnectivityGraphUsingDelaunayTriangulation"), STAT_UpdateConnectivityGraphUsingDelaunayTriangulation, STATGROUP_Chaos);
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::UpdateConnectivityGraphUsingDelaunayTriangulation(Chaos::FPBDRigidClusteredParticleHandle* Parent, const FClusterCreationParameters& Parameters)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::UpdateConnectivityGraphUsingDelaunayTriangulation(Chaos::TPBDRigidClusteredParticleHandle<float, 3>* Parent, const FClusterCreationParameters<T>& Parameters)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateConnectivityGraphUsingDelaunayTriangulation);
 
-		const TArray<FPBDRigidParticleHandle*>& Children = MChildren[Parent];
+		const TArray<TPBDRigidParticleHandle<T, d>*>& Children = MChildren[Parent];
 
 		TArray<FVector> Pts;
 		Pts.AddUninitialized(Children.Num());
@@ -2246,15 +2248,15 @@ namespace Chaos
 		TArray<TArray<int>> Neighbors;
 		VoronoiNeighbors(Pts, Neighbors);
 
-		TSet<TPair<FPBDRigidParticleHandle*, FPBDRigidParticleHandle*>> UniqueEdges;
+		TSet<TPair<TPBDRigidParticleHandle<T, d>*, TPBDRigidParticleHandle<T, d>*>> UniqueEdges;
 		for (int32 i = 0; i < Neighbors.Num(); i++)
 		{
 			for (int32 j = 0; j < Neighbors[i].Num(); j++)
 			{
-				FPBDRigidParticleHandle* Child1 = Children[i];
-				FPBDRigidParticleHandle* Child2 = Children[Neighbors[i][j]];
+				TPBDRigidParticleHandle<T, d>* Child1 = Children[i];
+				TPBDRigidParticleHandle<T, d>* Child2 = Children[Neighbors[i][j]];
 				const bool bFirstSmaller = Child1 < Child2;
-				TPair<FPBDRigidParticleHandle*, FPBDRigidParticleHandle*> SortedPair(
+				TPair<TPBDRigidParticleHandle<T, d>*, TPBDRigidParticleHandle<T, d>*> SortedPair(
 					bFirstSmaller ? Child1 : Child2, 
 					bFirstSmaller ? Child2 : Child1);
 				if (!UniqueEdges.Find(SortedPair))
@@ -2267,7 +2269,7 @@ namespace Chaos
 		}
 	}
 
-	//template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
+	//template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
 	//void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::AddUniqueConnection(uint32 Index1, uint32 Index2, T Strain)
 	//{
 	//	if (Index1 != Index2)
@@ -2289,58 +2291,58 @@ namespace Chaos
 	//	}
 	//}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ConnectNodes(
-		FPBDRigidParticleHandle* Child1,
-		FPBDRigidParticleHandle* Child2)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ConnectNodes(
+		TPBDRigidParticleHandle<T, d>* Child1,
+		TPBDRigidParticleHandle<T, d>* Child2)
 	{
 		check(Child1 != Child2);
-		FPBDRigidClusteredParticleHandle* ClusteredChild1 = Child1->CastToClustered();
-		FPBDRigidClusteredParticleHandle* ClusteredChild2 = Child2->CastToClustered();
+		TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild1 = Child1->CastToClustered();
+		TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild2 = Child2->CastToClustered();
 		ConnectNodes(ClusteredChild1, ClusteredChild2);
 	}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::ConnectNodes(
-		FPBDRigidClusteredParticleHandle* ClusteredChild1,
-		FPBDRigidClusteredParticleHandle* ClusteredChild2)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::ConnectNodes(
+		TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild1,
+		TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild2)
 	{
 		check(ClusteredChild1 && ClusteredChild2);
 		if (ClusteredChild1 == ClusteredChild2)
 			return;
-		const FReal AvgStrain = (ClusteredChild1->Strains() + ClusteredChild2->Strains()) * (FReal)0.5;
-		TArray<TConnectivityEdge<FReal>>& Edges1 = ClusteredChild1->ConnectivityEdges();
-		TArray<TConnectivityEdge<FReal>>& Edges2 = ClusteredChild2->ConnectivityEdges();
+		const T AvgStrain = (ClusteredChild1->Strains() + ClusteredChild2->Strains()) * (T)0.5;
+		TArray<TConnectivityEdge<T>>& Edges1 = ClusteredChild1->ConnectivityEdges();
+		TArray<TConnectivityEdge<T>>& Edges2 = ClusteredChild2->ConnectivityEdges();
 		if (//Edges1.Num() < Parameters.MaxNumConnections && 
 			!Edges1.FindByKey(ClusteredChild2))
 		{
-			Edges1.Add(TConnectivityEdge<FReal>(ClusteredChild2, AvgStrain));
+			Edges1.Add(TConnectivityEdge<T>(ClusteredChild2, AvgStrain));
 		}
 		if (//Edges2.Num() < Parameters.MaxNumConnections && 
 			!Edges2.FindByKey(ClusteredChild1))
 		{
-			Edges2.Add(TConnectivityEdge<FReal>(ClusteredChild1, AvgStrain));
+			Edges2.Add(TConnectivityEdge<T>(ClusteredChild1, AvgStrain));
 		}
 	}
 
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::RemoveNodeConnections(
-		FPBDRigidParticleHandle* Child)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::RemoveNodeConnections(
+		TPBDRigidParticleHandle<T, d>* Child)
 	{
 		RemoveNodeConnections(Child->CastToClustered());
 	}
 
 	DECLARE_CYCLE_STAT(TEXT("TPBDRigidClustering<>::RemoveNodeConnections"), STAT_RemoveNodeConnections, STATGROUP_Chaos);
-	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint>
-	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint>::RemoveNodeConnections(
-		FPBDRigidClusteredParticleHandle* ClusteredChild)
+	template<class T_FPBDRigidsEvolution, class T_FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidClustering<T_FPBDRigidsEvolution, T_FPBDCollisionConstraint, T, d>::RemoveNodeConnections(
+		TPBDRigidClusteredParticleHandle<T, d>* ClusteredChild)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_RemoveNodeConnections);
 		check(ClusteredChild);
-		TArray<TConnectivityEdge<FReal>>& Edges = ClusteredChild->ConnectivityEdges();
-		for (TConnectivityEdge<FReal>& Edge : Edges)
+		TArray<TConnectivityEdge<T>>& Edges = ClusteredChild->ConnectivityEdges();
+		for (TConnectivityEdge<T>& Edge : Edges)
 		{
-			TArray<TConnectivityEdge<FReal>>& OtherEdges = Edge.Sibling->CastToClustered()->ConnectivityEdges();
+			TArray<TConnectivityEdge<T>>& OtherEdges = Edge.Sibling->CastToClustered()->ConnectivityEdges();
 			const int32 Idx = OtherEdges.IndexOfByKey(ClusteredChild);
 			if (Idx != INDEX_NONE)
 				OtherEdges.RemoveAtSwap(Idx);
@@ -2355,5 +2357,12 @@ namespace Chaos
 
 using namespace Chaos;
 
-template class CHAOS_API Chaos::TPBDRigidClustering<Chaos::FPBDRigidsEvolutionGBF, FPBDCollisionConstraints>;
+#define EVOLUTION_TRAIT(Trait) template class CHAOS_API Chaos::TPBDRigidClustering<Chaos::TPBDRigidsEvolutionGBF<Trait>, FPBDCollisionConstraints, float, 3>;
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
 
+
+template CHAOS_API void Chaos::UpdateClusterMassProperties<float, 3>(
+	Chaos::TPBDRigidClusteredParticleHandle<float, 3>* NewParticle,
+	TSet<TPBDRigidParticleHandle<float, 3>*>& Children,
+	const TRigidTransform<float, 3>* ForceMassOrientation);

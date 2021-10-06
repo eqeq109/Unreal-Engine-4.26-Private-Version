@@ -9,11 +9,6 @@ void ULiveLinkControllerBase::SetAttachedComponent(UActorComponent* ActorCompone
 	AttachedComponent = ActorComponent;
 }
 
-void ULiveLinkControllerBase::SetSelectedSubject(FLiveLinkSubjectRepresentation LiveLinkSubject)
-{
-	SelectedSubject = LiveLinkSubject;
-}
-
 AActor* ULiveLinkControllerBase::GetOuterActor() const
 {
 	for (UObject* Outer = GetOuter(); Outer != nullptr; Outer = Outer->GetOuter())

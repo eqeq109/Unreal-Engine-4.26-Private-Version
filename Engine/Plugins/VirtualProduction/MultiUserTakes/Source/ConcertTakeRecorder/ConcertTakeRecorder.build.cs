@@ -20,7 +20,6 @@ public class ConcertTakeRecorder : ModuleRules
 				"ConcertSyncCore",
 				"ConcertTransport",
 				"EditorStyle",
-				"InputCore",
 				"LevelSequence",
 				"Projects",
 				"Slate",

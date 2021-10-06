@@ -40,7 +40,7 @@ struct FTileDataLayer
 		}
 	}
 
-	int64 Compress(bool bParallelCompression = false);
+	int64 Compress();
 	void Decompress();
 	void AllocateForWrite();
 	static void Evict();

@@ -17,9 +17,9 @@ class UMaterial;
 
 namespace Chaos
 {
-	class FTriangleMesh;
-	class FPBDLongRangeConstraintsBase;
-	class FPBDEvolution;
+	template<class T, int d> class TPBDLongRangeConstraintsBase;
+	template<typename T> class TTriangleMesh;
+	template<typename T, int d> class TPBDEvolution;
 	class FClothingSimulationSolver;
 	class FClothingSimulationMesh;
 	class FClothingSimulationCloth;
@@ -60,6 +60,8 @@ namespace Chaos
 		// End of IClothingSimulation interface
 
 	public:
+		// Set the animation drive stiffness for all actors
+		void SetAnimDriveSpringStiffness(float InAnimDriveSpringStiffness);
 		void SetGravityOverride(const FVector& InGravityOverride);
 		void DisableGravityOverride();
 
@@ -71,19 +73,14 @@ namespace Chaos
 		void RefreshPhysicsAsset();
 
 		// IClothingSimulation interface
-		virtual void SetNumIterations(int32 NumIterations) override;
-		virtual void SetNumSubsteps(int32 NumSubsteps) override;
 		virtual int32 GetNumCloths() const override { return NumCloths; }
 		virtual int32 GetNumKinematicParticles() const override { return NumKinematicParticles; }
 		virtual int32 GetNumDynamicParticles() const override { return NumDynamicParticles; }
 		virtual int32 GetNumIterations() const override { return NumIterations; }
 		virtual int32 GetNumSubsteps() const override { return NumSubsteps; }
-		virtual FReal GetSimulationTime() const override { return SimulationTime; }
+		virtual float GetSimulationTime() const override { return SimulationTime; }
 		virtual bool IsTeleported() const override { return bIsTeleported; }
-		virtual void UpdateWorldForces(const USkeletalMeshComponent* OwnerComponent) override;
 		// End of IClothingSimulation interface
-
-		FClothingSimulationCloth* GetCloth(int32 ClothId);
 
 #if WITH_EDITOR
 		// FGCObject interface
@@ -112,7 +109,6 @@ namespace Chaos
 		CHAOSCLOTH_API void DebugDrawLongRangeConstraint(FPrimitiveDrawInterface* PDI = nullptr) const;
 		CHAOSCLOTH_API void DebugDrawWindForces(FPrimitiveDrawInterface* PDI = nullptr) const;
 		CHAOSCLOTH_API void DebugDrawLocalSpace(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawSelfCollision(FPrimitiveDrawInterface* PDI = nullptr) const;
 #endif  // #if WITH_EDITOR || CHAOS_DEBUG_DRAW
 
 	private:
@@ -146,25 +142,21 @@ namespace Chaos
 		TAtomic<int32> NumDynamicParticles;
 		TAtomic<int32> NumIterations;
 		TAtomic<int32> NumSubsteps;
-		TAtomic<FReal> SimulationTime;
+		TAtomic<float> SimulationTime;
 		TAtomic<bool> bIsTeleported;
 
 		// Overrides
 		bool bUseLocalSpaceSimulation;
 		bool bUseGravityOverride;
 		FVector GravityOverride;
-		FReal MaxDistancesMultipliers;
+		float MaxDistancesMultipliers;
+		float AnimDriveSpringStiffness;
 
 #if WITH_EDITOR
 		// Visualization material
 		UMaterial* DebugClothMaterial;
 		UMaterial* DebugClothMaterialVertex;
-#endif
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-		int32 StepCount;
-		int32 ResetCount;
-#endif
+#endif  // #if WITH_EDITOR
 	};
 } // namespace Chaos
 

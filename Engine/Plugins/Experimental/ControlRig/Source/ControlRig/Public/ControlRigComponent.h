@@ -299,10 +299,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Rendering")
 	bool bDrawBones;
 
-	/** When checked the rig's debug drawing instructions are drawn in the viewport */
-	UPROPERTY(EditAnywhere, Category = "Rendering")
-	bool bShowDebugDrawing;
-
 	/**
 	 * Returns all of the names for a given element type (Bone, Control, etc)
 	 * @param ElementType The type of elements to return the names for
@@ -616,6 +612,8 @@ private:
 	UPROPERTY(transient)
 	UControlRig* ControlRig;
 
+	FControlRigDrawInterface DrawInterface;
+
 	TMap<USkeletalMeshComponent*, FCachedSkeletalMeshComponentSettings> CachedSkeletalMeshComponentSettings;
 
 	FControlRigComponentEvent ControlRigCreatedEvent;
@@ -644,4 +642,5 @@ public:
 private:
 
 	const UControlRigComponent* ControlRigComponent;
+	const FControlRigDrawInterface& DrawInterface;
 };

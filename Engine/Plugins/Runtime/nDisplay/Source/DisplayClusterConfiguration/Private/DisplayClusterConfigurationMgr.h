@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "DisplayClusterConfigurationVersion.h"
 
 class UDisplayClusterConfigurationData;
 
@@ -14,17 +13,25 @@ class UDisplayClusterConfigurationData;
 class FDisplayClusterConfigurationMgr
 {
 protected:
-	FDisplayClusterConfigurationMgr() = default;
-	~FDisplayClusterConfigurationMgr() = default;
+	FDisplayClusterConfigurationMgr();
+	~FDisplayClusterConfigurationMgr();
 
 public:
 	// Singletone getter
 	static FDisplayClusterConfigurationMgr& Get();
 
 public:
-	EDisplayClusterConfigurationVersion GetConfigVersion(const FString& FilePath);
 	UDisplayClusterConfigurationData* LoadConfig(const FString& FilePath, UObject* Owner = nullptr);
 	bool SaveConfig(const UDisplayClusterConfigurationData* Config, const FString& FilePath);
-	bool ConfigAsString(const UDisplayClusterConfigurationData* Config, FString& OutString);
 	UDisplayClusterConfigurationData* CreateDefaultStandaloneConfigData();
+
+protected:
+	enum class EConfigFileType
+	{
+		Unknown,
+		Text,
+		Json
+	};
+
+	EConfigFileType GetConfigFileType(const FString& InConfigPath) const;
 };

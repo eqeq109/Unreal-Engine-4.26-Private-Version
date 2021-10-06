@@ -14,8 +14,7 @@ void UNiagaraDataInterfaceArray::PostInitProperties()
 	
 	if (HasAnyFlags(RF_ClassDefaultObject) && (GetClass() != UNiagaraDataInterfaceArray::StaticClass()))
 	{
-		ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable | ENiagaraTypeRegistryFlags::AllowParameter;
-		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), Flags);
+		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 
 	if (!HasAnyFlags(RF_ClassDefaultObject))
@@ -45,15 +44,13 @@ bool UNiagaraDataInterfaceArray::CopyToInternal(UNiagaraDataInterface* Destinati
 		return false;
 	}
 	UNiagaraDataInterfaceArray* OtherTyped = CastChecked<UNiagaraDataInterfaceArray>(Destination);
+	OtherTyped->MarkRenderDataDirty();
 	OtherTyped->MaxElements = MaxElements;
-	bool bCopied = true;
 	if (ensureMsgf(Impl.IsValid(), TEXT("Impl should always be valid for %s"), *GetNameSafe(GetClass())))
 	{
-		bCopied = Impl->CopyToInternal(OtherTyped->Impl.Get());
+		return Impl->CopyToInternal(OtherTyped->Impl.Get());
 	}
-
-	OtherTyped->MarkRenderDataDirty();
-	return bCopied;
+	return true;
 }
 
 bool UNiagaraDataInterfaceArray::Equals(const UNiagaraDataInterface* Other) const

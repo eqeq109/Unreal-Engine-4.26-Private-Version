@@ -34,12 +34,8 @@ struct FLuminComponentSubElement
 {
 	GENERATED_BODY()
 
-	FLuminComponentSubElement()
-		: ElementType(ELuminComponentSubElementType::Mode)
-	{}
-
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Component sub-node type"))
-	ELuminComponentSubElementType ElementType = ELuminComponentSubElementType::FileExtension;
+	ELuminComponentSubElementType ElementType;
 
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Component sub-node value"))
 	FString Value;
@@ -49,10 +45,6 @@ USTRUCT(BlueprintType)
 struct FLuminComponentElement
 {
 	GENERATED_BODY()
-
-	FLuminComponentElement()
-		: ComponentType(ELuminComponentType::Universe)
-	{}
 
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Name"))
 	FString Name;
@@ -65,7 +57,7 @@ struct FLuminComponentElement
 	FString ExecutableName;
 
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Component type"))
-	ELuminComponentType ComponentType = ELuminComponentType::Universe;
+	ELuminComponentType ComponentType;
 
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Extra sub-elements"))
 	TArray<FLuminComponentSubElement> ExtraComponentSubElements;

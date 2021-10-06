@@ -50,7 +50,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	FConcertServerSyncCommandQueue();
+	FConcertServerSyncCommandQueue() = default;
 
 	/**
 	 * Non-copyable.
@@ -73,12 +73,6 @@ public:
 	 * Set the command processing method for the given endpoint.
 	 */
 	void SetCommandProcessingMethod(const FGuid& InEndpointId, const ESyncCommandProcessingMethod InProcessingMethod);
-
-	/**
-	 * Queue a command to be run that is not attached to any particular endpoint.
-	 * the endpoint is handled within the FSyncCommand.
-	 */
-	void QueueCommand(const FSyncCommand& InCommand);
 
 	/**
 	 * Queue a command to process for the given endpoint.
@@ -115,8 +109,6 @@ public:
 	 * Reset the queue back to its empty state with no endpoints registered.
 	 */
 	void ResetQueue();
-
-	const FGuid GlobalGuid = FGuid::NewGuid();
 
 private:
 	struct FEndpointSyncCommandQueue

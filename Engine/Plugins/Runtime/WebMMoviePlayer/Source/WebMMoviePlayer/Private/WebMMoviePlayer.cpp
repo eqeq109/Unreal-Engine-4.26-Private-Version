@@ -12,7 +12,7 @@
 #endif
 
 #if WITH_WEBM_STARTUP_MOVIES
-TSharedPtr<FWebMMovieStreamer, ESPMode::ThreadSafe> WebMMovieStreamer;
+TSharedPtr<FWebMMovieStreamer> WebMMovieStreamer;
 #endif // WITH_WEBM_STARTUP_MOVIES
 
 class FWebMMoviePlayerModule : public IModuleInterface

@@ -94,14 +94,15 @@ void UOceanCollisionComponent::UpdateBodySetup(const TArray<FKConvexElem>& Conve
 	for (FKConvexElem& Elem : CachedBodySetup->AggGeom.ConvexElems)
 	{
 		int32 NumHullVerts = Elem.VertexData.Num();
-		TArray<Chaos::FVec3> ConvexVertices;
-		ConvexVertices.SetNum(NumHullVerts);
+
+		Chaos::TParticles<Chaos::FReal, 3> ConvexParticles;
+		ConvexParticles.AddParticles(NumHullVerts);
 		for (int32 VertIndex = 0; VertIndex < NumHullVerts; ++VertIndex)
 		{
-			ConvexVertices[VertIndex] = Elem.VertexData[VertIndex];
+			const FVector& HullVert = Elem.VertexData[VertIndex];
+			ConvexParticles.X(VertIndex) = FVector(HullVert.X, HullVert.Y, HullVert.Z);
 		}
-
-		TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe> ChaosConvex = MakeShared<Chaos::FConvex, ESPMode::ThreadSafe>(ConvexVertices, 0.0f);
+		TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe> ChaosConvex = MakeShared<Chaos::FConvex, ESPMode::ThreadSafe>(ConvexParticles, 0.0f);
 
 		Elem.SetChaosConvexMesh(MoveTemp(ChaosConvex));
 	}

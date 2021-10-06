@@ -136,8 +136,7 @@ void FAnimNode_RandomPlayer::Update_AnyThread(const FAnimationUpdateContext& Con
 
 	// Did we cross the play start time? Decrement the loop counter. Once we're on the last loop, we can
 	// start blending into the next animation.
-	bool bHasLooped = AdjustedPreviousPlayTime < CurrentData->PlayStartTime && CurrentData->PlayStartTime <= CurrentData->CurrentPlayTime;
-	if (bHasLooped)
+	if (AdjustedPreviousPlayTime < CurrentData->PlayStartTime && CurrentData->PlayStartTime <= CurrentData->CurrentPlayTime)
 	{
 		// We've looped, update remaining
 		--CurrentData->RemainingLoops;
@@ -160,8 +159,8 @@ void FAnimNode_RandomPlayer::Update_AnyThread(const FAnimationUpdateContext& Con
 		{
 			bool bDoBlending = false;
 
-			// Are we already blending? Continue to do so. Special case for zero blend time as alpha will always be 1.
-			if (NextSequenceEntry.BlendIn.GetBlendTime() > 0.0f && FAnimationRuntime::HasWeight(NextSequenceEntry.BlendIn.GetAlpha()))
+			// Are we already blending? Continue to do so.
+			if (FAnimationRuntime::HasWeight(NextSequenceEntry.BlendIn.GetAlpha()))
 			{
 				bDoBlending = true;
 			}
@@ -176,7 +175,7 @@ void FAnimNode_RandomPlayer::Update_AnyThread(const FAnimationUpdateContext& Con
 
 				float TimeRemaining = CurrentSequence->SequenceLength - AmountPlayedSoFar;
 
-				if (TimeRemaining <= NextSequenceEntry.BlendIn.GetBlendTime() || bHasLooped)
+				if (TimeRemaining <= NextSequenceEntry.BlendIn.GetBlendTime())
 				{
 					bDoBlending = true;
 				}
@@ -260,7 +259,6 @@ void FAnimNode_RandomPlayer::Evaluate_AnyThread(FPoseContext& Output)
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(Evaluate_AnyThread)
 	if (ValidEntries.Num() == 0)
 	{
-		Output.ResetToRefPose();
 		return;
 	}
 

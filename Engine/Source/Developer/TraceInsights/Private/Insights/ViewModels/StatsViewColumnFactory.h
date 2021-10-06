@@ -12,7 +12,6 @@ struct FStatsViewColumns
 	static const FName NameColumnID;
 	static const FName MetaGroupNameColumnID;
 	static const FName TypeColumnID;
-	static const FName DataTypeColumnID;
 	static const FName CountColumnID;
 	static const FName SumColumnID;
 	static const FName MaxColumnID;
@@ -40,7 +39,6 @@ public:
 	static TSharedRef<Insights::FTableColumn> CreateNameColumn();
 	static TSharedRef<Insights::FTableColumn> CreateMetaGroupNameColumn();
 	static TSharedRef<Insights::FTableColumn> CreateTypeColumn();
-	static TSharedRef<Insights::FTableColumn> CreateDataTypeColumn();
 	static TSharedRef<Insights::FTableColumn> CreateCountColumn();
 	static TSharedRef<Insights::FTableColumn> CreateSumColumn();
 	static TSharedRef<Insights::FTableColumn> CreateMaxColumn();

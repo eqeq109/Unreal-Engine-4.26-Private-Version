@@ -118,12 +118,12 @@ public:
 	/**
 	 * Finds all the files within the given directory, with optional file extension filter.
 	 *
-	 * @param[out] FoundFiles All the files that matched the optional FileExtension filter, or all files if none was specified.
+	 * @param Directory, the absolute path to the directory to search. Ex: "C:\UE4\Pictures"
 	 *
-	 * @param[in] Directory The absolute path to the directory to search. Ex: "C:\UE4\Pictures"
+	 * @param FileExtension, If FileExtension is NULL, or an empty string "" then all files are found.
+	 * 			Otherwise FileExtension can be of the form .EXT or just EXT and only files with that extension will be returned.
 	 *
-	 * @param[in] FileExtension If FileExtension is NULL, or an empty string "" then all files are found.
-	 *			Otherwise FileExtension can be of the form .EXT or just EXT and only files with that extension will be returned.
+	 * @return FoundFiles, All the files that matched the optional FileExtension filter, or all files if none was specified.
 	 */
 	virtual void FindFiles(TArray<FString>& FoundFiles, const TCHAR* Directory, const TCHAR* FileExtension = nullptr) = 0;
 
@@ -203,10 +203,7 @@ public:
 	virtual FDateTime GetTimeStamp( const TCHAR* Path ) = 0;
 
 	/**
-	 * @param[in] PathA The first given file
-	 * @param[in] PathB The second given file
-	 * @param[out] OutTimeStampA the modification time of the first given file (or FDateTime::MinValue() on failure)
-	 * @param[out] OutTimeStampB the modification time of the second given file (or FDateTime::MinValue() on failure)
+	* @return the modification time of the given file (or FDateTime::MinValue() on failure)
 	*/
 	virtual void GetTimeStampPair(const TCHAR* PathA, const TCHAR* PathB, FDateTime& OutTimeStampA, FDateTime& OutTimeStampB) = 0;
 
@@ -236,7 +233,7 @@ public:
 	 * 
 	 * @return	filename using absolute path
 	 */
-	virtual FString ConvertToAbsolutePathForExternalAppForRead( const TCHAR* Filename ) = 0;
+	virtual FString ConvertToAbsolutePathForExternalAppForRead( const TCHAR* AbsolutePath ) = 0;
 
 	/**
 	 * Converts passed in filename to use an absolute path (for writing)
@@ -245,7 +242,7 @@ public:
 	 * 
 	 * @return	filename using absolute path
 	 */
-	virtual FString ConvertToAbsolutePathForExternalAppForWrite( const TCHAR* Filename ) = 0;
+	virtual FString ConvertToAbsolutePathForExternalAppForWrite( const TCHAR* AbsolutePath ) = 0;
 
 	/**
 	 *	Returns the size of a file. (Thread-safe)

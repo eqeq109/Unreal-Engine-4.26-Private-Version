@@ -3,7 +3,6 @@
 #pragma once
 
 #include "NiagaraEditorDataBase.h"
-#include "NiagaraEditorData.h"
 #include "NiagaraSystemEditorData.generated.h"
 
 class UNiagaraStackEditorData;
@@ -44,7 +43,7 @@ private:
 	TArray<FGuid> ChildEmitterHandleIds;
 };
 
-/** Editor only data for systems. */
+/** Editor only UI data for systems. */
 UCLASS()
 class NIAGARAEDITOR_API UNiagaraSystemEditorData : public UNiagaraEditorDataBase
 {
@@ -53,7 +52,9 @@ class NIAGARAEDITOR_API UNiagaraSystemEditorData : public UNiagaraEditorDataBase
 public:
 	UNiagaraSystemEditorData(const FObjectInitializer& ObjectInitializer);
 
+	//~ Begin UObject Interface
 	void PostInitProperties();
+	//~ End UObject Interface
 
 	virtual void PostLoadFromOwner(UObject* InOwner) override;
 
@@ -86,13 +87,6 @@ public:
 	void SetOwningSystemIsPlaceholder(bool bInSystemIsPlaceholder, UNiagaraSystem& OwnerSystem);
 
 	void SynchronizeOverviewGraphWithSystem(UNiagaraSystem& OwnerSystem);
-
-	// If true then the preview viewport's orbit setting is saved in the asset data
-	UPROPERTY()
-	bool bSetOrbitModeByAsset = false;
-
-	UPROPERTY()
-	bool bSystemViewportInOrbitMode = true;
 
 private:
 	void UpdatePlaybackRangeFromEmitters(UNiagaraSystem& OwnerSystem);

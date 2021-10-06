@@ -32,7 +32,7 @@ public:
 		check(SessionInfo.HostAddr.IsValid());
 		// Skip SessionType (assigned at creation)
 		Ar << *SessionInfo.HostAddr;
-		Ar << *SessionInfo.SessionId;
+		Ar << SessionInfo.SessionId;
 		return Ar;
  	}
 
@@ -66,14 +66,9 @@ public:
  	friend inline FNboSerializeFromBufferSteam& operator>>(FNboSerializeFromBufferSteam& Ar, FOnlineSessionInfoSteam& SessionInfo)
  	{
 		check(SessionInfo.HostAddr.IsValid());
-
 		// Skip SessionType (assigned at creation)
 		Ar >> *SessionInfo.HostAddr;
-
-		// Create a new SessionId to avoid overwriting it for other referencees
-		SessionInfo.SessionId = FUniqueNetIdSteam::Create();
-		Ar >> *ConstCastSharedRef<FUniqueNetIdSteam>(SessionInfo.SessionId);
-
+		Ar >> SessionInfo.SessionId; 
 		return Ar;
  	}
 

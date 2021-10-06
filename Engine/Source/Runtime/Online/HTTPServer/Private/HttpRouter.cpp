@@ -13,9 +13,7 @@ bool FHttpRouter::Query(const TSharedPtr<FHttpServerRequest>& Request, const FHt
 {
 	bool bRequestHandled = false;
 
-	TArray<FHttpRequestHandler> PreprocessorsArray;
-	RequestPreprocessors.GenerateValueArray(PreprocessorsArray);
-	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar, MoveTemp(PreprocessorsArray));
+	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar);
 	while (const FHttpRequestHandler* RequestHandlerPtr = Iterator.Next())
 	{
 		(*RequestHandlerPtr).CheckCallable();
@@ -47,11 +45,6 @@ FHttpRouteHandle FHttpRouter::BindRoute(const FHttpPath& HttpPath,  const EHttpS
 
 void FHttpRouter::UnbindRoute(const FHttpRouteHandle& RouteHandle)
 {
-	if (!ensure(RouteHandle.IsValid()))
-	{
-		return;
-	}
-
 	if (FRouteQueryResult QueryResult = RequestHandlerRegistrar.QueryRoute(RouteHandle->Path, RouteHandle->Verbs))
 	{
 		// Ensure caller is unbinding a route they actually own
@@ -60,23 +53,9 @@ void FHttpRouter::UnbindRoute(const FHttpRouteHandle& RouteHandle)
 	}
 }
 
-FDelegateHandle FHttpRouter::RegisterRequestPreprocessor(FHttpRequestHandler RequestPreprocessor)
-{
-	FDelegateHandle Handle = FDelegateHandle(FDelegateHandle::GenerateNewHandle);
-	RequestPreprocessors.Add(Handle, MoveTemp(RequestPreprocessor));
-	return Handle;
-}
-
-void FHttpRouter::UnregisterRequestPreprocessor(const FDelegateHandle& RequestPreprocessorHandle)
-{
-	RequestPreprocessors.Remove(RequestPreprocessorHandle);
-}
-
 FHttpRequestHandlerIterator FHttpRouter::CreateRequestHandlerIterator(const TSharedPtr<FHttpServerRequest>& Request) const
 {
-	TArray<FHttpRequestHandler> PreprocessorsArray;
-	RequestPreprocessors.GenerateValueArray(PreprocessorsArray);
-	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar, MoveTemp(PreprocessorsArray));
+	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar);
 	return Iterator;
 }
 

@@ -22,10 +22,8 @@ namespace UnrealBuildTool.Rules
 				new string[]
 				{
 					"CurveEditor",
-					"MainFrame",
-
 				}
-			);
+	        );
 
             PrivateDependencyModuleNames.AddRange(
                 new string[]

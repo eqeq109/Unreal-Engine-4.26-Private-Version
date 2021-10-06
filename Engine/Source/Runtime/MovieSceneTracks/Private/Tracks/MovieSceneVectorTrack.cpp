@@ -2,6 +2,7 @@
 
 #include "Tracks/MovieSceneVectorTrack.h"
 #include "Sections/MovieSceneVectorSection.h"
+#include "Evaluation/MovieScenePropertyTemplates.h"
 
 
 UMovieSceneVectorTrack::UMovieSceneVectorTrack( const FObjectInitializer& ObjectInitializer )
@@ -22,4 +23,10 @@ UMovieSceneSection* UMovieSceneVectorTrack::CreateNewSection()
 	UMovieSceneVectorSection* NewSection = NewObject<UMovieSceneVectorSection>(this, NAME_None, RF_Transactional);
 	NewSection->SetChannelsUsed(NumChannelsUsed);
 	return NewSection;
+}
+
+
+FMovieSceneEvalTemplatePtr UMovieSceneVectorTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FMovieSceneVectorPropertySectionTemplate(*CastChecked<UMovieSceneVectorSection>(&InSection), *this);
 }

@@ -58,13 +58,13 @@ ELoginStatus::Type FOnlineIdentityGameCircle::GetLoginStatus(const FUniqueNetId&
 }
 
 
-FUniqueNetIdPtr FOnlineIdentityGameCircle::GetUniquePlayerId(int32 LocalUserNum) const
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGameCircle::GetUniquePlayerId(int32 LocalUserNum) const
 {
 	return UniqueNetId;
 }
 
 
-FUniqueNetIdPtr FOnlineIdentityGameCircle::CreateUniquePlayerId(uint8* Bytes, int32 Size)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGameCircle::CreateUniquePlayerId(uint8* Bytes, int32 Size)
 {
 	if( Bytes && Size == sizeof(uint64) )
 	{
@@ -72,16 +72,16 @@ FUniqueNetIdPtr FOnlineIdentityGameCircle::CreateUniquePlayerId(uint8* Bytes, in
 		if (StrLen > 0)
 		{
 			FString StrId((TCHAR*)Bytes);
-			return FUniqueNetIdGameCircle::Create(StrId);
+			return MakeShareable(new FUniqueNetIdGameCircle(StrId));
 		}
 	}
 	return NULL;
 }
 
 
-FUniqueNetIdPtr FOnlineIdentityGameCircle::CreateUniquePlayerId(const FString& Str)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGameCircle::CreateUniquePlayerId(const FString& Str)
 {
-	return FUniqueNetIdGameCircle::Create(Str);
+	return MakeShareable(new FUniqueNetIdGameCircle(Str));
 }
 
 
@@ -106,7 +106,7 @@ FString FOnlineIdentityGameCircle::GetAuthToken(int32 LocalUserNum) const
 void FOnlineIdentityGameCircle::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_IDENTITY(Display, TEXT("FOnlineIdentityGameCircle::RevokeAuthToken not implemented"));
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	MainSubsystem->ExecuteNextTick([UserIdRef, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, FOnlineError(FString(TEXT("RevokeAuthToken not implemented"))));
@@ -153,7 +153,7 @@ void FOnlineIdentityGameCircle::OnGetLocalPlayerPlayerCallback(AmazonGames::Erro
 			LocalPlayerInfo.AvatarURL = InPlayerInfo->avatarUrl;
 
 			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Received player info for local player with playerId \"%s\""), *LocalPlayerInfo.PlayerId);
-			UniqueNetId = FUniqueNetIdGameCircle::Create(LocalPlayerInfo.PlayerId);
+			UniqueNetId = MakeShareable(new FUniqueNetIdGameCircle(LocalPlayerInfo.PlayerId));
 
 			AmazonGames::PlayerClientInterface::setSignedInStateChangedListener(&SignedInStateChangeListener);
 			bIsLoggedIn = AmazonGames::PlayerClientInterface::isSignedIn();

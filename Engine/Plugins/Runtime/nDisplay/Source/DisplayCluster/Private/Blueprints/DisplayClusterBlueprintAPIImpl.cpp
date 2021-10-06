@@ -8,7 +8,9 @@
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Game/IDisplayClusterGameManager.h"
+#include "Input/IDisplayClusterInputManager.h"
 #include "Render/IDisplayClusterRenderManager.h"
+#include "Render/Device/DisplayClusterRenderViewport.h"
 #include "Render/Device/IDisplayClusterRenderDevice.h"
 #include "DisplayClusterSceneViewExtensions.h"
 
@@ -21,9 +23,9 @@
 
 #include "DisplayClusterRootActor.h"
 #include "Components/DisplayClusterCameraComponent.h"
+#include "Components/DisplayClusterMeshComponent.h"
+#include "Components/DisplayClusterSceneComponent.h"
 #include "Components/DisplayClusterScreenComponent.h"
-
-#include "Render/Projection/IDisplayClusterProjectionPolicy.h"
 
 #include "DisplayClusterConfigurationTypes.h"
 #include "DisplayClusterEnums.h"
@@ -31,9 +33,6 @@
 #include "Math/IntRect.h"
 
 #include "CineCameraComponent.h"
-
-#include "Render/Viewport/IDisplayClusterViewportManager.h"
-#include "Render/Viewport/IDisplayClusterViewport.h"
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -67,29 +66,9 @@ bool UDisplayClusterBlueprintAPIImpl::IsMaster() const
 
 bool UDisplayClusterBlueprintAPIImpl::IsSlave() const
 {
-	const bool bIsSlave = IDisplayCluster::Get().GetClusterMgr()->IsSlave();
+	const bool bIsSlave = !IsMaster();
 	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsSlave - %s"), *DisplayClusterTypesConverter::template ToString(bIsSlave));
 	return bIsSlave;
-}
-
-bool UDisplayClusterBlueprintAPIImpl::IsBackup() const
-{
-	const bool bIsBackup = IDisplayCluster::Get().GetClusterMgr()->IsBackup();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsBackup - %s"), *DisplayClusterTypesConverter::template ToString(bIsBackup));
-	return bIsBackup;
-}
-
-EDisplayClusterNodeRole UDisplayClusterBlueprintAPIImpl::GetClusterRole() const
-{
-	const EDisplayClusterNodeRole ClusterRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetClusterRole - %d"), static_cast<int32>(ClusterRole));
-	return ClusterRole;
-}
-
-void UDisplayClusterBlueprintAPIImpl::GetNodeIds(TArray<FString>& OutNodeIds) const
-{
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetNodeIds"));
-	IDisplayCluster::Get().GetClusterMgr()->GetNodeIds(OutNodeIds);
 }
 
 FString UDisplayClusterBlueprintAPIImpl::GetNodeId() const
@@ -132,24 +111,11 @@ void UDisplayClusterBlueprintAPIImpl::EmitClusterEventBinary(const FDisplayClust
 	IDisplayCluster::Get().GetClusterMgr()->EmitClusterEventBinary(Event, bMasterOnly);
 }
 
-void UDisplayClusterBlueprintAPIImpl::SendClusterEventJsonTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventJson& Event, bool bMasterOnly)
-{
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SendClusterEventJsonTo - sending json event to %s:%d"), *Address, Port);
-	UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("SendClusterEventJsonTo - sending json event to %s:%d, Category='%s' Type='%s' Name='%s'"), *Address, Port, *Event.Category, *Event.Type, *Event.Name);
-	IDisplayCluster::Get().GetClusterMgr()->SendClusterEventTo(Address, Port, Event, bMasterOnly);
-}
-
-void UDisplayClusterBlueprintAPIImpl::SendClusterEventBinaryTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly)
-{
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SendClusterEventBinaryTo - sending binary cluster event to %s:%d"), *Address, Port);
-	UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("SendClusterEventBinaryTo - sending binary event to %s:%d, EventId='%d'"), *Address, Port, Event.EventId);
-	IDisplayCluster::Get().GetClusterMgr()->SendClusterEventTo(Address, Port, Event, bMasterOnly);
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Config API
 //////////////////////////////////////////////////////////////////////////////////////////////
-UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get config"), Category = "NDisplay|Config")
+UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get config"), Category = "DisplayCluster|Config")
 UDisplayClusterConfigurationData* UDisplayClusterBlueprintAPIImpl::GetConfig() const
 {
 	return const_cast<UDisplayClusterConfigurationData*>(IDisplayCluster::Get().GetConfigMgr()->GetConfig());
@@ -167,176 +133,283 @@ ADisplayClusterRootActor* UDisplayClusterBlueprintAPIImpl::GetRootActor() const
 	return RootActor;
 }
 
-// @todo: implement new BP api
-// @todo: new BP api stuff before release
-#if 0
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-// New Render API protoype
+// Input API
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-IDisplayClusterViewport* ImplFindViewport(const FString& ViewportId)
+// Device information
+int32 UDisplayClusterBlueprintAPIImpl::GetAxisDeviceAmount() const
 {
-	IDisplayClusterRenderManager* DCRenderManager = IDisplayCluster::Get().GetRenderMgr();
-	if (DCRenderManager && DCRenderManager->GetViewportManager())
-	{
-		return DCRenderManager->GetViewportManager()->FindViewport(ViewportId);
-	}
-
-	return nullptr;
+	const int32 AxisDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetAxisDeviceAmount();
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxisDeviceAmount - %d"), AxisDevicesAmount);
+	return AxisDevicesAmount;
 }
 
-const TArrayView<IDisplayClusterViewport*> ImplGetViewports()
+int32 UDisplayClusterBlueprintAPIImpl::GetButtonDeviceAmount() const
 {
-	IDisplayClusterRenderManager* DCRenderManager = IDisplayCluster::Get().GetRenderMgr();
-	if (DCRenderManager && DCRenderManager->GetViewportManager())
-	{
-		return DCRenderManager->GetViewportManager()->GetViewports();
-	}
-
-	return TArrayView<IDisplayClusterViewport*>();
+	const int32 ButtonDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetButtonDeviceAmount();
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonDeviceAmount - %d"), ButtonDevicesAmount);
+	return ButtonDevicesAmount;
 }
 
-FDisplayClusterViewportContext ImplGetViewportContext(const IDisplayClusterViewport& Viewport)
+int32 UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceAmount() const
 {
-	FDisplayClusterViewportContext OutContext;
-
-	OutContext.ViewportID = Viewport.GetId();
-
-	OutContext.RectLocation = Viewport.GetRenderSettings().Rect.Min;
-	OutContext.RectSize     = Viewport.GetRenderSettings().Rect.Size();
-
-	const TArray<FDisplayClusterViewport_Context>& Contexts = Viewport.GetContexts();
-
-	if (Contexts.Num() > 0)
-	{
-		OutContext.ViewLocation     = Contexts[0].ViewLocation;
-		OutContext.ViewRotation     = Contexts[0].ViewRotation;
-		OutContext.ProjectionMatrix = Contexts[0].ProjectionMatrix;
-
-		OutContext.bIsRendering = Contexts[0].bDisableRender == false;
-	}
-	else
-		{
-		OutContext.bIsRendering = false;
-		}
-
-	return OutContext;
+	const int32 TrackerDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetTrackerDeviceAmount();
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerDeviceAmount - %d"), TrackerDevicesAmount);
+	return TrackerDevicesAmount;
 }
 
-FDisplayClusterViewportStereoContext ImplGetViewportStereoContext(const IDisplayClusterViewport& Viewport)
+void UDisplayClusterBlueprintAPIImpl::GetAxisDeviceIds(TArray<FString>& DeviceIDs) const
 {
-	FDisplayClusterViewportStereoContext OutContext;
+	IDisplayCluster::Get().GetInputMgr()->GetAxisDeviceIds(DeviceIDs);
 
-	OutContext.ViewportID = Viewport.GetId();
-
-	OutContext.RectLocation = Viewport.GetRenderSettings().Rect.Min;
-	OutContext.RectSize = Viewport.GetRenderSettings().Rect.Size();
-
-	const TArray<FDisplayClusterViewport_Context>& Contexts = Viewport.GetContexts();
-
-	if (Contexts.Num() > 0)
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxisDeviceIds - found %d devices"), DeviceIDs.Num());
+	for (int i = 0; i < DeviceIDs.Num(); ++i)
 	{
-		for (const FDisplayClusterViewport_Context& InContext : Contexts)
-		{
-			OutContext.ViewLocation.Add(InContext.ViewLocation);
-			OutContext.ViewRotation.Add(InContext.ViewRotation);
-			OutContext.ProjectionMatrix.Add(InContext.ProjectionMatrix);
-	}
-
-		OutContext.bIsRendering = Contexts[0].bDisableRender == false;
-	}
-	else
-	{
-		OutContext.bIsRendering = false;
-	}
-
-	return OutContext;
-}
-
-bool UDisplayClusterBlueprintAPIImpl::GetLocalViewportConfiguration(const FString& ViewportID, TWeakObjectPtr<UDisplayClusterConfigurationViewport>& ConfigurationViewport)
-	{
-	IDisplayCluster& DisplayCluster = IDisplayCluster::Get();
-
-	ADisplayClusterRootActor* RootActor = DisplayCluster.GetGameMgr()->GetRootActor();
-	if (RootActor)
-	{
-		return RootActor->GetLocalViewportConfiguration(DisplayCluster.GetConfigMgr()->GetLocalNodeId(), ViewportID, ConfigurationViewport);
-	}
-
-	return false;
-}
-
-/** Return local viewports names */
-void UDisplayClusterBlueprintAPIImpl::GetLocalViewports(TArray<FString>& ViewportIDs) const
-{
-	const TArrayView<IDisplayClusterViewport*> LocalViewports = ImplGetViewports();
-	ViewportIDs.Reserve(LocalViewports.Num());
-
-	for (const IDisplayClusterViewport* Viewport : LocalViewports)
-	{
-		if (Viewport && Viewport->GetRenderSettings().bVisible)
-		{
-			ViewportIDs.Add(Viewport->GetId());
-		}
-	}
-	}
-
-/** Return local viewports runtime contexts */
-void UDisplayClusterBlueprintAPIImpl::GetLocalViewportsContext(TArray<FDisplayClusterViewportContext>& ViewportContexts) const
-{
-	const TArrayView<IDisplayClusterViewport*> LocalViewports = ImplGetViewports();
-	ViewportContexts.Reserve(LocalViewports.Num());
-
-	for (const IDisplayClusterViewport* Viewport : LocalViewports)
-	{
-		if (Viewport && Viewport->GetRenderSettings().bVisible)
-		{
-			ViewportContexts.Add(ImplGetViewportContext(*Viewport));
-		}
+		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetAxisDeviceIds - %d: %s"), i, *DeviceIDs[i]);
 	}
 }
 
-/** Return local viewports runtime stereo contexts */
-void UDisplayClusterBlueprintAPIImpl::GetLocalViewportsStereoContext(TArray<FDisplayClusterViewportStereoContext>& ViewportStereoContexts) const
+void UDisplayClusterBlueprintAPIImpl::GetButtonDeviceIds(TArray<FString>& DeviceIDs) const
 {
-	const TArrayView<IDisplayClusterViewport*> LocalViewports = ImplGetViewports();
-	ViewportStereoContexts.Reserve(LocalViewports.Num());
+	IDisplayCluster::Get().GetInputMgr()->GetButtonDeviceIds(DeviceIDs);
 
-	for (const IDisplayClusterViewport* Viewport : LocalViewports)
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonDeviceIds - found %d devices"), DeviceIDs.Num());
+	for (int i = 0; i < DeviceIDs.Num(); ++i)
 	{
-		if (Viewport && Viewport->GetRenderSettings().bVisible)
-		{
-			ViewportStereoContexts.Add(ImplGetViewportStereoContext(*Viewport));
-		}
+		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetButtonDeviceIds - %d: %s"), i, *DeviceIDs[i]);
 	}
 }
 
-/** Return viewport runtime context (last frame viewport data) */
-bool UDisplayClusterBlueprintAPIImpl::GetLocalViewportContext(const FString& ViewportId, FDisplayClusterViewportContext& ViewportContext) const
+void UDisplayClusterBlueprintAPIImpl::GetKeyboardDeviceIds(TArray<FString>& DeviceIDs) const
 {
-	IDisplayClusterViewport* DesiredViewport = ImplFindViewport(ViewportId);
-	if (DesiredViewport)
+	IDisplayCluster::Get().GetInputMgr()->GetKeyboardDeviceIds(DeviceIDs);
+
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetKeyboardDeviceIds - found %d devices"), DeviceIDs.Num());
+	for (int i = 0; i < DeviceIDs.Num(); ++i)
 	{
-		ViewportContext = ImplGetViewportContext(*DesiredViewport);
+		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetKeyboardDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+	}
+}
+
+void UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceIds(TArray<FString>& DeviceIDs) const
+{
+	IDisplayCluster::Get().GetInputMgr()->GetTrackerDeviceIds(DeviceIDs);
+
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerDeviceIds - found %d devices"), DeviceIDs.Num());
+	for (int i = 0; i < DeviceIDs.Num(); ++i)
+	{
+		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetTrackerDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+	}
+}
+
+// Buttons
+void UDisplayClusterBlueprintAPIImpl::GetButtonState(const FString& DeviceId, int32 DeviceChannel, bool& bCurrentState, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetButtonState(DeviceId, DeviceChannel, bCurrentState);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonState - %s@%d avail=%d state=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bCurrentState ? 1 : 0);
+}
+
+void UDisplayClusterBlueprintAPIImpl::IsButtonPressed(const FString& DeviceId, int32 DeviceChannel, bool& bIsPressedCurrently, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->IsButtonPressed(DeviceId, DeviceChannel, bIsPressedCurrently);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsButtonPressed - %s@%d avail=%d pressed=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bIsPressedCurrently ? 1 : 0);
+}
+
+void UDisplayClusterBlueprintAPIImpl::IsButtonReleased(const FString& DeviceId, int32 DeviceChannel, bool& bIsReleasedCurrently, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->IsButtonReleased(DeviceId, DeviceChannel, bIsReleasedCurrently);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsButtonReleased - %s@%d avail=%d released=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bIsReleasedCurrently ? 1 : 0);
+}
+
+void UDisplayClusterBlueprintAPIImpl::WasButtonPressed(const FString& DeviceId, int32 DeviceChannel, bool& bWasPressed, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->WasButtonPressed(DeviceId, DeviceChannel, bWasPressed);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("WasButtonPressed - %s@%d avail=%d just_pressed=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bWasPressed ? 1 : 0);
+}
+
+void UDisplayClusterBlueprintAPIImpl::WasButtonReleased(const FString& DeviceId, int32 DeviceChannel, bool& bWasReleased, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->WasButtonReleased(DeviceId, DeviceChannel, bWasReleased);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("WasButtonReleased - %s@%d avail=%d just_released=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bWasReleased ? 1 : 0);
+}
+
+// Axes
+void UDisplayClusterBlueprintAPIImpl::GetAxis(const FString& DeviceId, int32 DeviceChannel, float& Value, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetAxis(DeviceId, DeviceChannel, Value);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxis - %s@%d avail=%d value=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, Value);
+}
+
+// Trackers
+void UDisplayClusterBlueprintAPIImpl::GetTrackerLocation(const FString& DeviceId, int32 DeviceChannel, FVector& Location, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetTrackerLocation(DeviceId, DeviceChannel, Location);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerLocation - %s@%d avail=%d loc=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, *DisplayClusterTypesConverter::template ToString(Location));
+}
+
+void UDisplayClusterBlueprintAPIImpl::GetTrackerQuat(const FString& DeviceId, int32 DeviceChannel, FQuat& Rotation, bool& bIsChannelAvailable) const
+{
+	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetTrackerQuat(DeviceId, DeviceChannel, Rotation);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerQuat - %s@%d avail=%d rot=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, *DisplayClusterTypesConverter::template ToString(Rotation));
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// Render API
+//////////////////////////////////////////////////////////////////////////////////////////////
+void UDisplayClusterBlueprintAPIImpl::SetViewportCamera(const FString& CameraId, const FString& ViewportId)
+{
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetViewportCamera - assigning camera '%s' to viewport '%s'"), *CameraId, *ViewportId);
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetViewportCamera - couldn't get render device interface"));
+		return;
+	}
+
+	Device->SetViewportCamera(CameraId, ViewportId);
+}
+
+bool UDisplayClusterBlueprintAPIImpl::GetBufferRatio(const FString& ViewportId, float& BufferRatio) const
+{
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		return false;
+	}
+
+	const bool bResult = (Device ? Device->GetBufferRatio(ViewportId, BufferRatio) : false);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetBufferRatio - viewport '%s' (%s) has buffer ratio %f"), *ViewportId, bResult ? DisplayClusterStrings::log::Found : DisplayClusterStrings::log::NotFound, BufferRatio);
+	return bResult;
+}
+
+bool UDisplayClusterBlueprintAPIImpl::SetBufferRatio(const FString& ViewportId, float BufferRatio)
+{
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		return false;
+	}
+
+	const bool bResult = (Device ? Device->SetBufferRatio(ViewportId, BufferRatio) : false);
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetBufferRatio - set buffer ratio %f to viewport '%s'"), BufferRatio, *ViewportId);
+	return bResult;
+}
+
+void UDisplayClusterBlueprintAPIImpl::SetStartPostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& StartPostProcessingSettings)
+{
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetStartPostProcessingSettings - id=%s"), *ViewportId);
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetStartPostProcessingSettings - couldn't get render device interface"));
+		return;
+	}
+
+	Device->SetStartPostProcessingSettings(ViewportId, StartPostProcessingSettings);
+}
+
+void UDisplayClusterBlueprintAPIImpl::SetOverridePostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& OverridePostProcessingSettings, float BlendWeight)
+{
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetOverridePostProcessingSettings - id=%s, weight=%f"), *ViewportId, BlendWeight);
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		return;
+	}
+
+	Device->SetOverridePostProcessingSettings(ViewportId, OverridePostProcessingSettings, BlendWeight);
+}
+
+void UDisplayClusterBlueprintAPIImpl::SetFinalPostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& FinalPostProcessingSettings)
+{
+	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetFinalPostProcessingSettings - id=%s"), *ViewportId);
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetFinalPostProcessingSettings - couldn't get render device interface"));
+		return;
+	}
+
+	Device->SetFinalPostProcessingSettings(ViewportId, FinalPostProcessingSettings);
+}
+
+bool UDisplayClusterBlueprintAPIImpl::GetViewportRect(const FString& ViewportId, FIntPoint& ViewportLoc, FIntPoint& ViewportSize) const
+{
+	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
+	{
+		return false;
+	}
+
+	FIntRect ViewportRect;
+	if (Device->GetViewportRect(ViewportId, ViewportRect))
+	{
+		ViewportLoc  = ViewportRect.Min;
+		ViewportSize = ViewportRect.Size();
+
+		UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetViewportRect - id=%s, loc=%s, size=%s"), *ViewportId, *DisplayClusterTypesConverter::template ToString(ViewportLoc), *DisplayClusterTypesConverter::template ToString(ViewportSize));
+
 		return true;
 	}
 
-	UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("Couldn't GetLocalViewportContext. Viewport '%s' not found"), *ViewportId);
 	return false;
 }
 
-/** Return viewport stereo contexts (last frame viewport data) */
-bool UDisplayClusterBlueprintAPIImpl::GetLocalViewportStereoContext(const FString& ViewportId, FDisplayClusterViewportStereoContext& ViewportStereoContext) const
+void UDisplayClusterBlueprintAPIImpl::GetLocalViewports(TArray<FString>& ViewportIDs, TArray<FString>& ProjectionTypes, TArray<FIntPoint>& ViewportLocations, TArray<FIntPoint>& ViewportSizes) const
 {
-	IDisplayClusterViewport* DesiredViewport = ImplFindViewport(ViewportId);
-	if (DesiredViewport)
+	const IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
+	if (!Device)
 	{
-		ViewportStereoContext = ImplGetViewportStereoContext(*DesiredViewport);
-		return true;
+		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("GetLocalViewports - couldn't get render device interface"));
+		return;
 	}
 
-	UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("Couldn't GetLocalViewportStereoContext. Viewport '%s' not found"), *ViewportId);
-	return false;
+	TArray<FDisplayClusterRenderViewport> Viewports;
+	Device->GetRenderViewports(Viewports);
+
+	// Clean output containers
+	ViewportIDs.Empty();
+	ProjectionTypes.Empty();
+	ViewportLocations.Empty();
+	ViewportSizes.Empty();
+
+	// Fill output data
+	for (const auto& Viewport : Viewports)
+	{
+		ViewportIDs.Add(Viewport.GetId());
+		ViewportLocations.Add(Viewport.GetRect().Min);
+		ViewportSizes.Add(Viewport.GetRect().Size());
+
+		FDisplayClusterConfigurationProjection CfgProjection;
+		IDisplayCluster::Get().GetConfigMgr()->GetLocalProjection(Viewport.GetId(), CfgProjection);
+		ProjectionTypes.Add(CfgProjection.Type);
+	}
 }
-#endif
+
+void UDisplayClusterBlueprintAPIImpl::SceneViewExtensionIsActiveInContextFunction(const TArray<FString>& ViewportIDs, FSceneViewExtensionIsActiveFunctor& OutIsActiveFunction) const
+{
+	OutIsActiveFunction.IsActiveFunction = [ViewportIDs](const ISceneViewExtension* SceneViewExtension, FSceneViewExtensionContext& Context) 
+	{
+		// If the context is not a known one, offer no opinion.
+		{
+			if (!Context.IsA(FDisplayClusterSceneViewExtensionContext()))
+			{
+				return TOptional<bool>();
+			}
+		}
+
+		FDisplayClusterSceneViewExtensionContext& DisplayContext = static_cast<FDisplayClusterSceneViewExtensionContext&>(Context);
+		
+		// If no nDisplay viewport ids are given, assume this Scene View Extension should apply to all viewports.
+		if (!ViewportIDs.Num())
+		{
+			return TOptional<bool>(true);
+		}
+		
+		// Return true/false depending on whether the contextual nDisplay Viewport is found in the given array of ids or not.
+		return TOptional<bool>(!!ViewportIDs.FindByKey(DisplayContext.ViewportId));
+	};
+}
+

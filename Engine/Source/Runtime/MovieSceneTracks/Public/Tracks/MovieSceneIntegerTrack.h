@@ -6,13 +6,14 @@
 #include "UObject/ObjectMacros.h"
 #include "MovieScene.h"
 #include "Tracks/MovieScenePropertyTrack.h"
+#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneIntegerTrack.generated.h"
 
 /**
  * Handles manipulation of integer properties in a movie scene
  */
 UCLASS()
-class MOVIESCENETRACKS_API UMovieSceneIntegerTrack : public UMovieScenePropertyTrack
+class MOVIESCENETRACKS_API UMovieSceneIntegerTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
 {
 	GENERATED_UCLASS_BODY()
 
@@ -20,4 +21,5 @@ public:
 	/** UMovieSceneTrack interface */
 	virtual bool SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const override;
 	virtual UMovieSceneSection* CreateNewSection() override;
+	virtual FMovieSceneEvalTemplatePtr CreateTemplateForSection(const UMovieSceneSection& InSection) const override;
 };

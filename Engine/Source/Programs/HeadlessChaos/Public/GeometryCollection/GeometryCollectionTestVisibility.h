@@ -5,5 +5,6 @@
 
 namespace GeometryCollectionTest
 {	
+	template<class T>
 	void TestHideVertices();
 }

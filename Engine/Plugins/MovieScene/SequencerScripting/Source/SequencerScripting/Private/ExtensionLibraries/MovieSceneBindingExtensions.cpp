@@ -39,10 +39,8 @@ void UMovieSceneBindingExtensions::SetDisplayName(const FSequencerBindingProxy& 
 	UMovieScene* MovieScene = InBinding.Sequence ? InBinding.Sequence->GetMovieScene() : nullptr;
 	if (MovieScene && InBinding.BindingID.IsValid())
 	{
-#if WITH_EDITORONLY_DATA
 		MovieScene->Modify();
 		MovieScene->SetObjectDisplayName(InBinding.BindingID, InDisplayName);
-#endif
 	}
 }
 

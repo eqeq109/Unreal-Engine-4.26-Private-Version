@@ -2,10 +2,6 @@
 
 #include "USDStageImportOptions.h"
 
-#include "USDSchemasModule.h"
-#include "USDSchemaTranslator.h"
-
-#include "Modules/ModuleManager.h"
 #include "UObject/UnrealType.h"
 
 UUsdStageImportOptions::UUsdStageImportOptions(const FObjectInitializer& ObjectInitializer)
@@ -17,12 +13,8 @@ UUsdStageImportOptions::UUsdStageImportOptions(const FObjectInitializer& ObjectI
 	bImportMaterials = true;
 
 	PurposesToImport = (int32) (EUsdPurpose::Default | EUsdPurpose::Proxy | EUsdPurpose::Render | EUsdPurpose::Guide);
-	IUsdSchemasModule& UsdSchemasModule = FModuleManager::Get().LoadModuleChecked< IUsdSchemasModule >( TEXT("USDSchemas") );
-	RenderContextToImport = UsdSchemasModule.GetRenderContextRegistry().GetUniversalRenderContext();
 	ImportTime = 0.0f;
-	bOverrideStageOptions = false;
-	StageOptions.MetersPerUnit = 0.01f;
-	StageOptions.UpAxis = EUsdUpAxis::ZAxis;
+	MetersPerUnit = 0.01;
 
 	bReuseIdenticalAssets = true;
 	ExistingActorPolicy = EReplaceActorPolicy::Replace;

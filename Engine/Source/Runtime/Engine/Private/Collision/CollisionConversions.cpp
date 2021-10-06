@@ -60,12 +60,12 @@ DECLARE_CYCLE_STAT(TEXT("SetHitResultFromShapeAndFaceIndex"), STAT_CollisionSetH
 
 #if ENABLE_CHECK_HIT_NORMAL
 /* Validate Normal of OutResult. We're on hunt for invalid normal */
-static void CheckHitResultNormal(const FHitResult& OutResult, const TCHAR* Message, const FVector& Start=FVector::ZeroVector, const FVector& End = FVector::ZeroVector, const FPhysicsGeometry* Geom=nullptr, const FVector& NormalPreSafeNormalize = FVector::ZeroVector)
+static void CheckHitResultNormal(const FHitResult& OutResult, const TCHAR* Message, const FVector& Start=FVector::ZeroVector, const FVector& End = FVector::ZeroVector, const FPhysicsGeometry* Geom=nullptr)
 {
 	if(!OutResult.bStartPenetrating && !OutResult.Normal.IsNormalized())
 	{
-		UE_LOG(LogPhysics, Warning, TEXT("(%s) Non-normalized OutResult.Normal from hit conversion: %s (Component- %s)"), Message, *OutResult.Normal.ToString(), *OutResult.Component->GetFullName());
-		UE_LOG(LogPhysics, Warning, TEXT("Start Loc(%s), End Loc(%s), Hit Loc(%s), ImpactNormal(%s) NormalPreSafeNormalize(%s)"), *Start.ToString(), *End.ToString(), *OutResult.Location.ToString(), *OutResult.ImpactNormal.ToString(), *NormalPreSafeNormalize.ToString() );
+		UE_LOG(LogPhysics, Warning, TEXT("(%s) Non-normalized OutResult.Normal from hit conversion: %s (Component- %s)"), Message, *OutResult.Normal.ToString(), *GetNameSafe(OutResult.Component.Get()));
+		UE_LOG(LogPhysics, Warning, TEXT("Start Loc(%s), End Loc(%s), Hit Loc(%s), ImpactNormal(%s)"), *Start.ToString(), *End.ToString(), *OutResult.Location.ToString(), *OutResult.ImpactNormal.ToString() );
 		if (Geom)
 		{
 			if (GetType(*Geom) == ECollisionShapeType::Capsule)
@@ -317,19 +317,16 @@ EConvertQueryResult ConvertQueryImpactHit(const UWorld* World, const FHitLocatio
 		return EConvertQueryResult::Invalid;
 	}
 
-	FVector OriginalNormal = bUseReturnedNormal ? HitNormal : -TraceStartToEnd;
-	FVector Normal = OriginalNormal.GetSafeNormal();
+	FVector Normal = bUseReturnedNormal ? HitNormal.GetSafeNormal() : -TraceStartToEnd.GetSafeNormal();
 	OutResult.Normal = Normal;
 	OutResult.ImpactNormal = Normal;
 
 	OutResult.TraceStart = StartLoc;
 	OutResult.TraceEnd = EndLoc;
 
-	// Fill in Actor, Component, material, etc.
-	SetHitResultFromShapeAndFaceIndex(HitShape, HitActor, InternalFaceIndex, OutResult.ImpactPoint, OutResult, bReturnPhysMat);
 
 #if ENABLE_CHECK_HIT_NORMAL
-	CheckHitResultNormal(OutResult, TEXT("Invalid Normal from ConvertQueryImpactHit"), StartLoc, EndLoc, Geom, OriginalNormal);
+	CheckHitResultNormal(OutResult, TEXT("Invalid Normal from ConvertQueryImpactHit"), StartLoc, EndLoc, Geom);
 #endif // ENABLE_CHECK_HIT_NORMAL
 
 	if (bUseReturnedNormal && !Normal.IsNormalized())
@@ -342,6 +339,9 @@ EConvertQueryResult ConvertQueryImpactHit(const UWorld* World, const FHitLocatio
 
 	const ECollisionShapeType SweptGeometryType = Geom ? GetType(*Geom) : ECollisionShapeType::None;
 	OutResult.ImpactNormal = FindGeomOpposingNormal(SweptGeometryType, Hit, TraceStartToEnd, Normal);
+
+	// Fill in Actor, Component, material, etc.
+	SetHitResultFromShapeAndFaceIndex(HitShape, HitActor, InternalFaceIndex, OutResult.ImpactPoint, OutResult, bReturnPhysMat);
 
 	ECollisionShapeType GeomType = GetGeometryType(HitShape);
 

@@ -14,18 +14,14 @@
 	"CanContainContent": true,
 	"IsBetaVersion": true,
 	"Installed": false,
-		"SupportedTargetPlatforms": [
-			"Win64",
-			"Linux"
-		],
+	"SupportedTargetPlatforms": [ "Win64" ],
 	"Modules": [
 		{
 			"Name": "DisplayCluster",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
 			]
 		},
 		{
@@ -33,8 +29,31 @@
 			"Type": "Editor",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
+			]
+		},
+		{
+			"Name": "DisplayClusterInput",
+			"Type": "Runtime",
+			"LoadingPhase": "PostDefault",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "MPCDI",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "OutputRemap",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"WhitelistPlatforms": [
+				"Win64"
 			]
 		},
 		{
@@ -42,8 +61,7 @@
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
 			]
 		},
 		{
@@ -51,17 +69,23 @@
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
 			]
 		},
 		{
-			"Name": "DisplayClusterShaders",
+			"Name": "PicpMPCDI",
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
+			]
+		},
+		{
+			"Name": "PicpProjection",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64"
 			]
 		},
 		{
@@ -77,8 +101,7 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
+				"Win64"
 			]
 		},
 		{
@@ -86,31 +109,13 @@
 			"Type": "Editor",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
-			]
-		},
-		{
-			"Name": "DisplayClusterStageMonitoring",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
 				"Win64"
 			]
 		},
 		{
-			"Name": "DisplayClusterRemoteControlInterceptor",
-			"Type": "Runtime",
+			"Name": "DisplayClusterRendering",
+			"Type": "Editor",
 			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
-				"Win64",
-				"Linux"
-			]
-		},
-		{
-			"Name": "DisplayClusterMultiUser",
-			"Type": "UncookedOnly",
-			"LoadingPhase": "PostEngineInit",
 			"WhitelistPlatforms": [
 				"Win64"
 			]
@@ -127,14 +132,6 @@
 		},
 		{
 			"Name": "TextureShare",
-			"Enabled": true
-		},
-		{
-			"Name": "RemoteControlInterception",
-			"Enabled": true
-		},
-		{
-			"Name": "ConcertSyncClient",
 			"Enabled": true
 		}
 	]

@@ -24,7 +24,7 @@
 #include "Materials/MaterialExpressionStaticSwitchParameter.h"
 #include "Materials/MaterialExpressionCustomOutput.h"
 #include "Materials/MaterialExpressionMaterialAttributeLayers.h"
-#include "Materials/MaterialExpressionRerouteBase.h"
+#include "Materials/MaterialExpressionReroute.h"
 
 #include "Toolkits/ToolkitManager.h"
 #include "MaterialEditor.h"
@@ -249,7 +249,7 @@ bool FMaterialEditorUtilities::GetStaticSwitchExpressionValue(UMaterialInstance*
 {
 	// Trace any re-route nodes between the input pin and the actual expression
 	UMaterialExpression* TracedExpression = SwitchValueExpression;
-	if (UMaterialExpressionRerouteBase* Reroute = Cast<UMaterialExpressionRerouteBase>(TracedExpression))
+	if (UMaterialExpressionReroute* Reroute = Cast<UMaterialExpressionReroute>(TracedExpression))
 	{
 		TracedExpression = Reroute->TraceInputsToRealInput().Expression;
 	}
@@ -557,21 +557,12 @@ void FMaterialEditorUtilities::GetVisibleMaterialParametersFromExpression(
 	}
 	else
 	{
-		// If this is a reroute node of any type, we trace to the first available 'real' input and traverse that single input 
-		if (const UMaterialExpressionRerouteBase* Reroute = Cast<UMaterialExpressionRerouteBase>(MaterialExpressionKey.Expression))
+		const TArray<FExpressionInput*>& ExpressionInputs = MaterialExpressionKey.Expression->GetInputs();
+		for (int32 ExpressionInputIndex = 0; ExpressionInputIndex < ExpressionInputs.Num(); ExpressionInputIndex++)
 		{
-			FExpressionInput Input = Reroute->TraceInputsToRealInput();
-			GetVisibleMaterialParametersFromExpression(FMaterialExpressionKey(Input.Expression, Input.OutputIndex), MaterialInstance, VisibleExpressions, FunctionStack);
-		}
-		else
-		{
-			const TArray<FExpressionInput*>& ExpressionInputs = MaterialExpressionKey.Expression->GetInputs();
-			for (int32 ExpressionInputIndex = 0; ExpressionInputIndex < ExpressionInputs.Num(); ExpressionInputIndex++)
-			{
-				//retrieve the expression input and then start parsing its children
-				FExpressionInput* Input = ExpressionInputs[ExpressionInputIndex];
-				GetVisibleMaterialParametersFromExpression(FMaterialExpressionKey(Input->Expression, Input->OutputIndex), MaterialInstance, VisibleExpressions, FunctionStack);
-			}
+			//retrieve the expression input and then start parsing its children
+			FExpressionInput* Input = ExpressionInputs[ExpressionInputIndex];
+			GetVisibleMaterialParametersFromExpression(FMaterialExpressionKey(Input->Expression, Input->OutputIndex), MaterialInstance, VisibleExpressions, FunctionStack);
 		}
 	}
 
@@ -712,7 +703,8 @@ void FMaterialEditorUtilities::BuildTextureStreamingData(UMaterialInterface* Upd
 		TSet<UMaterialInterface*> Materials;
 		Materials.Add(UpdatedMaterial);
 
-		if (CompileDebugViewModeShaders(DVSM_OutputMaterialTextureScales, QualityLevel, FeatureLevel, Materials, &SlowTask))
+		// Here we need a full rebuild since the shader changed. Although don't wait for previous shaders to fasten the process.
+		if (CompileDebugViewModeShaders(DVSM_OutputMaterialTextureScales, QualityLevel, FeatureLevel, true, false, Materials, &SlowTask))
 		{
 			FMaterialUtilities::FExportErrorManager ExportErrors(FeatureLevel);
 			for (UMaterialInterface* MaterialInterface : Materials)

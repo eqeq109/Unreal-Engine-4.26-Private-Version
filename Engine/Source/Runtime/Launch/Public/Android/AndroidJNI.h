@@ -71,7 +71,6 @@ public:
 	static jmethodID AndroidThunkJava_GetIntentExtrasString;
 	static jmethodID AndroidThunkJava_SetSustainedPerformanceMode;
 	static jmethodID AndroidThunkJava_PushSensorEvents;
-	static jmethodID AndroidThunkJava_SetOrientation;
 
 	// Screen capture/recording permission
 	static jmethodID AndroidThunkJava_IsScreenCaptureDisabled;
@@ -129,9 +128,6 @@ public:
 	static jmethodID AndroidThunkJava_GetNativeDisplayRefreshRate;
 	static jmethodID AndroidThunkJava_SetNativeDisplayRefreshRate;
 	static jmethodID AndroidThunkJava_GetSupportedNativeDisplayRefreshRates;
-
-	// Motion controls
-	static jmethodID AndroidThunkJava_EnableMotion;
 
 	// member fields for getting the launch notification
 	static jclass LaunchNotificationClass;

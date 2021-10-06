@@ -7,84 +7,53 @@
 #include "DMXFixtureComponentDouble.generated.h"
 
 // Component that uses 2 DMX channels
-UCLASS(ClassGroup = FixtureComponent, meta=(IsBlueprintBase = true))
+UCLASS(ClassGroup = FixtureComponent, meta=(IsBlueprintBase = true), HideCategories = ("Variable", "Tags", "Activation", "Cooking", "ComponentReplication", "AssetUserData", "Collision", "Sockets"))
 class DMXFIXTURES_API UDMXFixtureComponentDouble : public UDMXFixtureComponent
 {
 	GENERATED_BODY()
 
 public:
+
 	UDMXFixtureComponentDouble();
-		
-	/** The first dmx attribute the component handles */
+
+	// Parameters---------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DMX Channels")
 	FDMXChannelData DMXChannel1;
 
-	/** The second dmx attribute the component handles */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "DMX Channels")
 	FDMXChannelData DMXChannel2;
 
-	/** Initializes the interpolation range of the channels */
-	virtual void Initialize() override;
-	
-	/** Gets the interpolation delta value (step) for this frame */
+	// To iterate channels and avoid code duplication
+	int NumChannels;
+	TArray<FDMXChannelData*> ChannelRefs;
+
+	// Functions-----------------------------------------
 	UFUNCTION(BlueprintPure, Category = "DMX")
-	float GetDMXInterpolatedStep(int32 ChannelIndex) const;
+	float DMXInterpolatedStep(int ChannelIndex);
 
-	/** Gets the current interpolated value */
 	UFUNCTION(BlueprintPure, Category = "DMX")
-	float GetDMXInterpolatedValue(int32 ChannelIndex) const;
+	float DMXInterpolatedValue(int ChannelIndex);
 
-	/** Gets the target value towards which the component interpolates */
 	UFUNCTION(BlueprintPure, Category = "DMX")
-	float GetDMXTargetValue(int32 ChannelIndex) const;
+	float DMXTargetValue(int ChannelIndex);
 
-	/** True if the target value is reached and no interpolation is required */
 	UFUNCTION(BlueprintPure, Category = "DMX")
-	bool IsDMXInterpolationDone(int32 ChannelIndex) const;
+	bool DMXIsInterpolationDone(int ChannelIndex);
 
-	/** Maps the normalized value to the compoenent's value range */
-	float NormalizedToAbsoluteValue(int32 ChannelIndex, float Alpha) const;
+	float RemapValue(int ChannelIndex, float Alpha);
+	bool IsTargetValid(int ChannelIndex, float Target);
+	void Push(int ChannelIndex, float Target);
+	void SetTarget(int ChannelIndex, float Target);
 
-	/** Returns true, if the target value is valid */
-	bool IsTargetValid(int32 ChannelIndex, float Target);
+	// Overrides
+	virtual void InitCells(int NCells) override;
+	virtual void SetRangeValue() override;
 
-	/** Sets the target value for specified channel index. Interpolates to the value if bUseInterpolation is true. */
-	void SetTargetValue(int32 ChannelIndex, float Value);
-
-	//  Sets first value of the second channel. When interpolation is enabled this function should be called until the value is reached, else just once */
+	// Sets first value of the component
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "DMX")
-	void SetChannel1ValueNoInterp(float Channel1Value);
+	void SetComponentChannel1(float Channel1Value);
 
-	/** Sets second value of the second channel. When interpolation is enabled this function should be called until the value is reached, else just once */
+	// Sets second value of the component
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "DMX")
-	void SetChannel2ValueNoInterp(float Channel2Value);
-
-
-
-	///////////////////////////////////////
-	// DEPRECATED 4.27
-public:	
-	UE_DEPRECATED(4.27, "Replaced with SetTargetValue (handling both Push and SetTarget).")
-	void Push(int32 ChannelIndex, float Target) { SetTargetValue(ChannelIndex, Target); }
-
-	UE_DEPRECATED(4.27, "Replaced with SetTargetValue (handling both Push and SetTarget).")
-	void SetTarget(int32 ChannelIndex, float Target) { SetTargetValue(ChannelIndex, Target); }
-
-	UE_DEPRECATED(4.27, "Replaced with GetDMXInterpolatedStep")
-	float DMXInterpolatedStep(int32 ChannelIndex) { return GetDMXInterpolatedStep(ChannelIndex); }
-
-	UE_DEPRECATED(4.27, "Replaced with GetDMXInterpolatedValue")
-	float DMXInterpolatedValue(int32 ChannelIndex) { return GetDMXInterpolatedValue(ChannelIndex); }
-
-	UE_DEPRECATED(4.27, "Replaced with GetDMXTargetValue")
-	float DMXTargetValue(int32 ChannelIndex) { return GetDMXTargetValue(ChannelIndex); }
-
-	UE_DEPRECATED(4.27, "Replaced with NormalizedToAbsoluteValue")
-	float RemapValue(int32 ChannelIndex, float Alpha) { return NormalizedToAbsoluteValue(ChannelIndex, Alpha); }
-
-	UE_DEPRECATED(4.27, "Replaced with SetChannel1ValueNoInterp")
-	void SetComponentChannel1(float NewValue) { SetChannel1ValueNoInterp(NewValue); }
-
-	UE_DEPRECATED(4.27, "Replaced with SetChannel1ValueNoInterp")
-	void SetComponentChannel2(float NewValue) { SetChannel2ValueNoInterp(NewValue); }
+	void SetComponentChannel2(float Channel2Value);
 };

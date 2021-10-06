@@ -49,7 +49,6 @@ namespace UnrealGameSync
 			{
 				if(Thread != null)
 				{
-					WakeEvent.Set();
 					bStopRequested = true;
 					Thread.Join();
 					Thread = null;
@@ -105,7 +104,6 @@ namespace UnrealGameSync
 
 			this.Perforce = Perforce;
 			this.Worker = new FindChangesWorker(Perforce, PopulateChanges);
-			components.Add(Worker);
 
 			UserNameTextBox.Text = Perforce.UserName;
 			UserNameTextBox.SelectionStart = UserNameTextBox.Text.Length;
@@ -246,7 +244,10 @@ namespace UnrealGameSync
 		private void ChangesContextMenu_MoreInfo_Click(object sender, EventArgs e)
 		{
 			PerforceDescribeRecord Record = (PerforceDescribeRecord)ChangesListContextMenu.Tag;
-			Utility.SpawnP4VC(String.Format("{0} change {1}", Perforce.GetConnectionOptions(), Record.ChangeNumber));
+			if(!Utility.SpawnHiddenProcess("p4vc.exe", String.Format("-p\"{0}\" change {1}", Perforce.ServerAndPort, Record.ChangeNumber)))
+			{
+				MessageBox.Show("Unable to spawn p4vc. Check you have P4V installed.");
+			}
 		}
 
 		private void ChangeNumberTextBox_Enter(object sender, EventArgs e)

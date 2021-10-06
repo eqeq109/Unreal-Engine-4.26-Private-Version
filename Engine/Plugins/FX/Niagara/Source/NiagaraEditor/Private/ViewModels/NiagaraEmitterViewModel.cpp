@@ -15,7 +15,6 @@
 #include "NiagaraGraph.h"
 #include "NiagaraSystem.h"
 #include "NiagaraSystemInstance.h"
-#include "NiagaraParameterDefinitions.h"
 
 #include "ScopedTransaction.h"
 #include "IContentBrowserSingleton.h"
@@ -38,8 +37,10 @@ namespace NiagaraCommands
 	static FAutoConsoleVariable EmitterStatsFormat(TEXT("Niagara.EmitterStatsFormat"), 1, TEXT("0 shows the particles count, ms, mb and state. 1 shows particles count."));
 }
 
-FNiagaraEmitterViewModel::FNiagaraEmitterViewModel(bool bInIsForDataProcessingOnly)
-	: SharedScriptViewModel(MakeShareable(new FNiagaraScriptViewModel(LOCTEXT("SharedDisplayName", "Graph"), ENiagaraParameterEditMode::EditAll, bInIsForDataProcessingOnly)))
+const float Megabyte = 1024.0f * 1024.0f;
+
+FNiagaraEmitterViewModel::FNiagaraEmitterViewModel()
+	: SharedScriptViewModel(MakeShareable(new FNiagaraScriptViewModel(LOCTEXT("SharedDisplayName", "Graph"), ENiagaraParameterEditMode::EditAll)))
 	, bUpdatingSelectionInternally(false)
 	, ExecutionStateEnum(StaticEnum<ENiagaraExecutionState>())
 {	
@@ -71,7 +72,6 @@ bool FNiagaraEmitterViewModel::Initialize(UNiagaraEmitter* InEmitter, TWeakPtr<F
 {
 	SetEmitter(InEmitter);
 	SetSimulation(InSimulation);
-
 	return true;
 }
 
@@ -81,11 +81,6 @@ void FNiagaraEmitterViewModel::Reset()
 	SetSimulation(nullptr);
 }
 
-INiagaraParameterDefinitionsSubscriber* FNiagaraEmitterViewModel::GetParameterDefinitionsSubscriber()
-{
-	return GetEmitter();
-}
-
 FNiagaraEmitterViewModel::~FNiagaraEmitterViewModel()
 {
 	Cleanup();
@@ -93,6 +88,7 @@ FNiagaraEmitterViewModel::~FNiagaraEmitterViewModel()
 
 	//UE_LOG(LogNiagaraEditor, Warning, TEXT("Deleting Emitter view model %p"), this);
 }
+
 
 void FNiagaraEmitterViewModel::SetEmitter(UNiagaraEmitter* InEmitter)
 {
@@ -285,11 +281,10 @@ FText FNiagaraEmitterViewModel::GetStatsText() const
 				}
 				else
 				{
-					const double Megabyte = 1024 * 1024;
 					return FText::Format(StatsFormat,
 						FText::AsNumber(SimInstance->GetNumParticles()),
 						FText::AsNumber(SimInstance->GetTotalCPUTimeMS(), &FractionalFormatOptions),
-						FText::AsNumber(double(SimInstance->GetTotalBytesUsed()) / Megabyte, &FractionalFormatOptions),
+						FText::AsNumber(SimInstance->GetTotalBytesUsed() / Megabyte, &FractionalFormatOptions),
 						ExecutionStateEnum->GetDisplayNameTextByValue((int32)SimInstance->GetExecutionState()));
 				}
 			}
@@ -300,7 +295,7 @@ FText FNiagaraEmitterViewModel::GetStatsText() const
 		return LOCTEXT("SimulationNotReady", "Preparing simulation...");
 	}
 	
-	return LOCTEXT("NoActivePreview", "No running preview...");
+	return LOCTEXT("InvalidSimulation", "Simulation is invalid.");
 }
 
 TSharedRef<FNiagaraScriptViewModel> FNiagaraEmitterViewModel::GetSharedScriptViewModel()
@@ -338,7 +333,7 @@ void FNiagaraEmitterViewModel::AddEventHandler(FNiagaraEventScriptProperties& Ev
 	EventScriptProperties.Script = NewObject<UNiagaraScript>(GetEmitter(), MakeUniqueObjectName(GetEmitter(), UNiagaraScript::StaticClass(), "EventScript"), EObjectFlags::RF_Transactional);
 	EventScriptProperties.Script->SetUsage(ENiagaraScriptUsage::ParticleEventScript);
 	EventScriptProperties.Script->SetUsageId(FGuid::NewGuid());
-	EventScriptProperties.Script->SetLatestSource(GetSharedScriptViewModel()->GetGraphViewModel()->GetScriptSource());
+	EventScriptProperties.Script->SetSource(GetSharedScriptViewModel()->GetGraphViewModel()->GetScriptSource());
 	Emitter->AddEventHandler(EventScriptProperties);
 	if (bResetGraphForOutput)
 	{
@@ -452,7 +447,7 @@ void FNiagaraEmitterViewModel::OnVMCompiled(UNiagaraEmitter* InEmitter)
 			SharedScriptViewModel->UpdateCompileStatus(AggregateStatus, AggregateErrors, CompileStatuses, CompileErrors, CompilePaths, Scripts);
 		}
 	}
-	OnScriptCompiled().Broadcast(nullptr, FGuid());
+	OnScriptCompiled().Broadcast();
 }
 
 ENiagaraScriptCompileStatus FNiagaraEmitterViewModel::GetLatestCompileStatus()
@@ -512,7 +507,7 @@ void FNiagaraEmitterViewModel::AddScriptEventHandlers()
 		Emitter->GetScripts(Scripts, false);
 		for (UNiagaraScript* Script : Scripts)
 		{
-			UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetLatestSource());
+			UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetSource());
 			FDelegateHandle OnGraphChangedHandle = ScriptSource->NodeGraph->AddOnGraphChangedHandler(
 				FOnGraphChanged::FDelegate::CreateSP<FNiagaraEmitterViewModel, const UNiagaraScript&>(this->AsShared(), &FNiagaraEmitterViewModel::ScriptGraphChanged, *Script));
 			FDelegateHandle OnGraphNeedRecompileHandle = ScriptSource->NodeGraph->AddOnGraphNeedsRecompileHandler(
@@ -540,14 +535,14 @@ void FNiagaraEmitterViewModel::RemoveScriptEventHandlers()
 			FDelegateHandle* OnGraphChangedHandle = ScriptToOnGraphChangedHandleMap.Find(FObjectKey(Script));
 			if (OnGraphChangedHandle != nullptr)
 			{
-				UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetLatestSource());
+				UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetSource());
 				ScriptSource->NodeGraph->RemoveOnGraphChangedHandler(*OnGraphChangedHandle);
 			}
 
 			FDelegateHandle* OnGraphRecompileHandle = ScriptToRecompileHandleMap.Find(FObjectKey(Script));
 			if (OnGraphRecompileHandle != nullptr)
 			{
-				UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetLatestSource());
+				UNiagaraScriptSource* ScriptSource = CastChecked<UNiagaraScriptSource>(Script->GetSource());
 				ScriptSource->NodeGraph->RemoveOnGraphNeedsRecompileHandler(*OnGraphRecompileHandle);
 			}
 

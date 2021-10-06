@@ -50,26 +50,18 @@ void SMoviePipelineConfigPanel::Construct(const FArguments& InArgs, TSubclassOf<
 {
 	ConfigAssetType = InConfigType;
 
-	if (!InArgs._AssetToEdit)
-	{
-		// Allocate a transient preset automatically so they can start editing without having to create an asset.
-		TransientPreset = AllocateTransientPreset();
+	// Allocate a transient preset automatically so they can start editing without having to create an asset.
+	TransientPreset = AllocateTransientPreset();
 
-		// Copy the base preset into the transient preset if it was provided.
-		if (InArgs._BasePreset)
-		{
-			TransientPreset->CopyFrom(InArgs._BasePreset);
-			PresetUsedIfNotModified = InArgs._BasePreset;
-		}
-		else if (InArgs._BaseConfig)
-		{
-			TransientPreset->CopyFrom(InArgs._BaseConfig);
-		}
-	}
-	else
+	// Copy the base preset into the transient preset if it was provided.
+	if (InArgs._BasePreset)
 	{
-		// If they want to edit an asset directly, we don't copy from other sources
-		TransientPreset = InArgs._AssetToEdit;
+		TransientPreset->CopyFrom(InArgs._BasePreset);
+		PresetUsedIfNotModified = InArgs._BasePreset;
+	}
+	else if (InArgs._BaseConfig)
+	{
+		TransientPreset->CopyFrom(InArgs._BaseConfig);
 	}
 
 	// Listen for modificatiosn to our edited configuration so we can determine if they've modified the preset
@@ -86,17 +78,12 @@ void SMoviePipelineConfigPanel::Construct(const FArguments& InArgs, TSubclassOf<
 	.PipelineConfig(this, &SMoviePipelineConfigPanel::GetPipelineConfig)
 	.OwningJob(this, &SMoviePipelineConfigPanel::GetOwningJob);
 
-	TSharedRef<SVerticalBox> VerticalBox = SNew(SVerticalBox);
 	ChildSlot
 	[
-		VerticalBox
-	];
+		SNew(SVerticalBox)
 
-	// Direct editing of assets doesn't support 'transient' preset management toolbars.
-	if (!InArgs._AssetToEdit)
-	{
 		// Create the toolbar for adding new stuff, choosing/saving a preset and resetting to the preset defaults.
-		VerticalBox->AddSlot()
+		+ SVerticalBox::Slot()
 		.Padding(FMargin(0.f, 1.0f))
 		.AutoHeight()
 		[
@@ -146,49 +133,44 @@ void SMoviePipelineConfigPanel::Construct(const FArguments& InArgs, TSubclassOf<
 						.AutoWidth()
 						[
 							SNew(SImage)
-							.Image(FEditorStyle::Get().GetBrush("AssetEditor.SaveAsset.Greyscale"))
+							.Image(FSlateIconFinder::FindIconBrushForClass(UMoviePipelineConfigBase::StaticClass()))
 						]
 
 						+ SHorizontalBox::Slot()
 						.Padding(0, 1, 0, 0)
 						[
 							SNew(STextBlock)
-							.Text(LOCTEXT("PresetsToolbarButton", "Load/Save Preset"))
+							.Text(LOCTEXT("PresetsToolbarButton", "Presets"))
 						]
 					]
 				]
 			]
-		];
-	}
-
-	// Large Label Telling You What You're Editing
-	VerticalBox->AddSlot()
-	.AutoHeight()
-	.HAlign(HAlign_Right)
-	[
-		SNew(STextBlock)
-		.TextStyle(FMovieRenderPipelineStyle::Get(), "MovieRenderPipeline.Config.TypeLabel")
-		.Text(this, &SMoviePipelineConfigPanel::GetConfigTypeLabel)
-		.Visibility(EVisibility::Collapsed)
-	];
-
-		
-	// Main Editor 
-	VerticalBox->AddSlot()
-	.FillHeight(1.0f)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		[
-			MoviePipelineEditorWidget.ToSharedRef()
 		]
-	];
 
-	// Direct editing of assets doesn't support 'transient' preset management footers.
-	if (!InArgs._AssetToEdit)
-	{
+		// Large Label Telling You What You're Editing
+		+SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Right)
+		[
+			SNew(STextBlock)
+			.TextStyle(FMovieRenderPipelineStyle::Get(), "MovieRenderPipeline.Config.TypeLabel")
+			.Text(this, &SMoviePipelineConfigPanel::GetConfigTypeLabel)
+			.Visibility(EVisibility::Collapsed)
+		]
+
+		// Main Editor 
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			[
+				MoviePipelineEditorWidget.ToSharedRef()
+			]
+		]
+
 		// Footer Bar
-		VerticalBox->AddSlot()
+		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
 			SNew(SBorder)
@@ -245,10 +227,11 @@ void SMoviePipelineConfigPanel::Construct(const FArguments& InArgs, TSubclassOf<
 						.ToolTipText(LOCTEXT("ConfirmChangesButton_Tooltip", "Accepts the changes made and applies them to the particular job instance."))
 						.Margin(FMargin(4, 0, 4, 0))
 					]
+
 				]
 			]
-		];
-	}
+		]
+	];
 }
 
 PRAGMA_ENABLE_OPTIMIZATION
@@ -377,8 +360,8 @@ TSharedRef<SWidget> SMoviePipelineConfigPanel::OnGeneratePresetsMenu()
 		AssetPickerConfig.bShowPathInColumnView = true;
 		AssetPickerConfig.bShowTypeInColumnView = false;
 		AssetPickerConfig.bSortByPathInColumnView = false;
-		AssetPickerConfig.bForceShowEngineContent = false;
-		AssetPickerConfig.bForceShowPluginContent = false;
+		AssetPickerConfig.bForceShowEngineContent = true;
+		AssetPickerConfig.bForceShowPluginContent = true;
 
 		AssetPickerConfig.AssetShowWarningText = LOCTEXT("NoPresets_Warning", "No Presets Found");
 		AssetPickerConfig.Filter.ClassNames.Add(ConfigAssetType->GetFName());
@@ -565,6 +548,8 @@ void SMoviePipelineConfigPanel::OnImportPreset(const FAssetData& InPresetAsset)
 void SMoviePipelineConfigPanel::AddReferencedObjects(FReferenceCollector& Collector)
 {
 	Collector.AddReferencedObject(TransientPreset);
+	// Collector.AddReferencedObject(SuppliedLevelSequence);
+	// Collector.AddReferencedObject(RecordingLevelSequence);
 }
 
 UMoviePipelineConfigBase* SMoviePipelineConfigPanel::GetPipelineConfig() const
@@ -582,8 +567,4 @@ UMoviePipelineExecutorShot* SMoviePipelineConfigPanel::GetOwningShot() const
 	return WeakShot.Get();
 }
 
-TSharedRef<SWidget> SMoviePipelineConfigPanel::MakeSettingsWidget()
-{
-	return MoviePipelineEditorWidget->MakeAddSettingButton();
-}
 #undef LOCTEXT_NAMESPACE // SMoviePipelinePanel

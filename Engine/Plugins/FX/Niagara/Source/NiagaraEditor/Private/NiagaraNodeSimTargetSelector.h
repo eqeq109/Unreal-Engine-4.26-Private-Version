@@ -19,12 +19,12 @@ public:
 
 	//~ Begin UNiagaraNode Interface
 	virtual void Compile(class FHlslNiagaraTranslator* Translator, TArray<int32>& Outputs) override;
-	virtual void BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive = true, bool bFilterForCompilation = true) const override;
+	void BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive = true, bool bFilterForCompilation = true) const override;
 	virtual UEdGraphPin* GetPassThroughPin(const UEdGraphPin* LocallyOwnedOutputPin, ENiagaraScriptUsage MasterUsage) const override;
 	//~ End UNiagaraNode Interface
 
 protected:
 	//~ Begin UNiagaraNodeUsageSelector Interface
-	virtual FString GetInputCaseName(int32 Case) const override;
+	virtual void InsertInputPinsFor(const FNiagaraVariable& Var) override;
 	//~ End UNiagaraNodeUsageSelector Interface
 };

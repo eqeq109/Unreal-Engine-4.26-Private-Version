@@ -5,7 +5,6 @@
 #if USE_USD_SDK
 #include "UnrealUSDWrapper.h"
 #include "USDMemory.h"
-#include "USDStageOptions.h"
 
 #include <string>
 
@@ -15,7 +14,6 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 	class GfMatrix4d;
-	class GfQuatf;
 	class GfVec2f;
 	class GfVec3f;
 	class GfVec4f;
@@ -50,7 +48,6 @@ namespace UsdToUnreal
 
 	USDUTILITIES_API FString ConvertToken( const pxr::TfToken& Token );
 
-	/** Assumes the input color is in linear space */
 	USDUTILITIES_API FLinearColor ConvertColor( const pxr::GfVec3f& InValue );
 	USDUTILITIES_API FLinearColor ConvertColor( const pxr::GfVec4f& InValue );
 
@@ -58,11 +55,12 @@ namespace UsdToUnreal
 	USDUTILITIES_API FVector ConvertVector( const pxr::GfVec3f& InValue );
 	USDUTILITIES_API FVector ConvertVector( const FUsdStageInfo& StageInfo, const pxr::GfVec3f& InValue );
 
+	USDUTILITIES_API FTransform ConvertTransform( bool bZUp, FTransform Transform );
+
 	USDUTILITIES_API FMatrix ConvertMatrix( const pxr::GfMatrix4d& Matrix );
 	USDUTILITIES_API FTransform ConvertMatrix( const FUsdStageInfo& StageInfo, const pxr::GfMatrix4d& InMatrix );
 
-	/** Returns a distance in "UE units" (i.e. cm) */
-	USDUTILITIES_API float ConvertDistance( const FUsdStageInfo& StageInfo, float InValue );
+	USDUTILITIES_API float ConvertDistance( const FUsdStageInfo& StageInfo, const float InValue );
 }
 
 namespace UnrealToUsd
@@ -75,10 +73,7 @@ namespace UnrealToUsd
 
 	USDUTILITIES_API TUsdStore< pxr::TfToken > ConvertToken( const TCHAR* InString );
 
-	/** Assumes the input color is in linear space. Returns a color in linear space */
 	USDUTILITIES_API pxr::GfVec4f ConvertColor( const FLinearColor& InValue );
-
-	/** Assumes the input color is in sRGB space. Returns a color in linear space */
 	USDUTILITIES_API pxr::GfVec4f ConvertColor( const FColor& InValue );
 
 	USDUTILITIES_API pxr::GfVec2f ConvertVector( const FVector2D& InValue );
@@ -87,16 +82,9 @@ namespace UnrealToUsd
 
 	USDUTILITIES_API pxr::GfMatrix4d ConvertMatrix( const FMatrix& Matrix );
 
-	USDUTILITIES_API pxr::GfQuatf ConvertQuat( const FQuat& InValue );
-
 	USDUTILITIES_API pxr::GfMatrix4d ConvertTransform( const FUsdStageInfo& StageInfo, const FTransform& Transform );
 
-	/** Returns a distance in USD units (depends on metersPerUnit) */
-	USDUTILITIES_API float ConvertDistance( const FUsdStageInfo& StageInfo, float InValue );
+	USDUTILITIES_API float ConvertDistance( const FUsdStageInfo& StageInfo, const float& InValue );
 }
 
-namespace UsdUtils
-{
-	FTransform ConvertAxes( const bool bZUp, const FTransform Transform );
-}
 #endif // #if USE_USD_SDK

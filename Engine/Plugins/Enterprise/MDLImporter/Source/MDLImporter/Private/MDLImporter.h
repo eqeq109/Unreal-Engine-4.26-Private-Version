@@ -37,9 +37,10 @@ public:
 	// Returns any logged messages and clears them afterwards.
 	const TArray<MDLImporterLogging::FLogMessage>& GetLogMessages() const;
 
+	void SetTextureFactory(UTextureFactory* Factory);
+
 	// Imports materials from an MDL file.
 	bool OpenFile(const FString& InFileName, const UMDLImporterOptions& InImporterOptions, Mdl::FMaterialCollection& OutMaterials);
-	bool LoadModule(const FString& InModuleName, const UMDLImporterOptions& InImporterOptions, Mdl::FMaterialCollection& OutMaterials);
 
 	// Finalize import process and create the materials.
 	bool ImportMaterials(UObject* ParentPackage, EObjectFlags Flags, Mdl::FMaterialCollection& Materials, FProgressFunc ProgressFunc = nullptr);
@@ -49,11 +50,7 @@ public:
 
 	void CleanUp();
 
-	void AddSearchPath(const FString& SearchPath);
-	void RemoveSearchPath(const FString& SearchPath);
-
 private:
-	void SetTextureFactory(UTextureFactory* Factory);
 	bool DistillMaterials(const TMap<FString, UMaterial*>& MaterialsMap, Mdl::FMaterialCollection& Materials, FProgressFunc ProgressFunc);
 
 	void ConvertUnsuportedVirtualTextures() const;
@@ -65,7 +62,6 @@ private:
 	TUniquePtr<FMDLMaterialFactory>                MaterialFactory;
 	TUniquePtr<FMDLMapHandler>                     DistillationMapHandler;
 	FString                                        ActiveFilename;
-	FString                                        ActiveModuleName;
 
 #endif
 	mutable TArray<MDLImporterLogging::FLogMessage> LogMessages;

@@ -55,7 +55,7 @@ struct FRigUnit_SpringIK_WorkData
 	}
 
 	UPROPERTY(transient)
-	TArray<FCachedRigElement> CachedBones;
+	TArray<FCachedRigElement> BoneIndices;
 
 	UPROPERTY()
 	FCachedRigElement CachedPoleVector;

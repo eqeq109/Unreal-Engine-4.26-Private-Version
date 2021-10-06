@@ -13,6 +13,7 @@
 
 namespace GeometryCollectionTest
 {
+	template<class T>
 	void TestHideVertices()
 	{
 		TSharedPtr<FGeometryCollection> Collection = GeometryCollection::MakeCubeElement(FTransform(FQuat::MakeFromEuler(FVector(0.f, 0.f, 0.f)), FVector(0.f, 0.f, 0.f)), FVector(1.0));
@@ -90,6 +91,9 @@ namespace GeometryCollectionTest
 			}
 		}
 	}
+	template void TestHideVertices<float>();
+
+	
 
 }
 

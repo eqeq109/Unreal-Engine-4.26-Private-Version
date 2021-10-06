@@ -537,6 +537,8 @@ bool PlatformBlitToViewport(FPlatformOpenGLDevice* Device,
 			SDL_GL_SwapWindow( Context->hWnd );
 
 			glEnable(GL_FRAMEBUFFER_SRGB);
+			REPORT_GL_END_BUFFER_EVENT_FOR_FRAME_DUMP();
+//			INITIATE_GL_FRAME_DUMP_EVERY_X_CALLS( 1000 );
 		}
 	}
 	return true;

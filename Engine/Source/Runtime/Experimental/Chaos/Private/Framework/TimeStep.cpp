@@ -23,7 +23,6 @@ namespace Chaos
 		ActualDt = TargetDt;
 	}
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	void FFixedTimeStep::Update()
 	{
 		CurrentTime = FPlatformTime::Seconds();
@@ -44,7 +43,6 @@ namespace Chaos
 
 		LastTime = FPlatformTime::Seconds();
 	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	float FFixedTimeStep::GetCalculatedDt() const
 	{

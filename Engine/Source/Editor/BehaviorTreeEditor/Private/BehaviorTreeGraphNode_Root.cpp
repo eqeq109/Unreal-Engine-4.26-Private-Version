@@ -17,7 +17,7 @@ void UBehaviorTreeGraphNode_Root::PostPlacedNewNode()
 	Super::PostPlacedNewNode();
 
 	// pick first available blackboard asset, hopefully something will be loaded...
-	for (FThreadSafeObjectIterator It(UBlackboardData::StaticClass()); It; ++It)
+	for (FObjectIterator It(UBlackboardData::StaticClass()); It; ++It)
 	{
 		UBlackboardData* TestOb = (UBlackboardData*)*It;
 		if (!TestOb->HasAnyFlags(RF_ClassDefaultObject))

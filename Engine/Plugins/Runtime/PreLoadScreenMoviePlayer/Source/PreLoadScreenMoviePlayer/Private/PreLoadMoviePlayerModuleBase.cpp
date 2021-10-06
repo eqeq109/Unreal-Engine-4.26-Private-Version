@@ -7,7 +7,7 @@
 #include "PreLoadMoviePlayerScreenBase.h"
 
 
-void FPreLoadMoviePlayerScreenModuleBase::RegisterMovieStreamer(TSharedPtr<class IMovieStreamer, ESPMode::ThreadSafe> InMovieStreamer)
+void FPreLoadMoviePlayerScreenModuleBase::RegisterMovieStreamer(TSharedPtr<class IMovieStreamer> InMovieStreamer)
 {
     if (MoviePreLoadScreen.IsValid())
     {
@@ -17,7 +17,7 @@ void FPreLoadMoviePlayerScreenModuleBase::RegisterMovieStreamer(TSharedPtr<class
     }
 }
 
-void FPreLoadMoviePlayerScreenModuleBase::UnRegisterMovieStreamer(TSharedPtr<class IMovieStreamer, ESPMode::ThreadSafe> InMovieStreamer)
+void FPreLoadMoviePlayerScreenModuleBase::UnRegisterMovieStreamer(TSharedPtr<class IMovieStreamer> InMovieStreamer)
 {
     CleanUpMovieStreamer();
 }

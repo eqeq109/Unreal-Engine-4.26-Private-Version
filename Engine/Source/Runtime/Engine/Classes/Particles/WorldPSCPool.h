@@ -78,19 +78,20 @@ struct FPSCPool
 	UPROPERTY(transient)
 	TArray<FPSCPoolElem> FreeElements;
 
-#if ENABLE_PSC_POOL_DEBUGGING
 	//Array of currently in flight components that will auto release.
-	TArray<TWeakObjectPtr<UParticleSystemComponent>> InUseComponents_Auto;
+	UPROPERTY(transient)
+	TArray<UParticleSystemComponent*> InUseComponents_Auto;
 
 	//Array of currently in flight components that need manual release.
-	TArray<TWeakObjectPtr<UParticleSystemComponent>> InUseComponents_Manual;
+	UPROPERTY(transient)
+	TArray<UParticleSystemComponent*> InUseComponents_Manual;
 	
 	/** Keeping track of max in flight systems to help inform any future pre-population we do. */
-	int32 MaxUsed = 0;
-#endif
+	int32 MaxUsed;
 
 public:
 
+	FPSCPool();
 	void Cleanup();
 
 	/** Gets a PSC from the pool ready for use. */
@@ -122,13 +123,16 @@ public:
 	FWorldPSCPool();
 	~FWorldPSCPool();
 
-	void Cleanup(UWorld* World);
+	void Cleanup();
 
 	UParticleSystemComponent* CreateWorldParticleSystem(UParticleSystem* Template, UWorld* World, EPSCPoolMethod PoolingMethod);
 
 	/** Called when an in-use particle component is finished and wishes to be returned to the pool. */
 	void ReclaimWorldParticleSystem(UParticleSystemComponent* PSC);
 
+	/** Call if you want to halt & reclaim all active particle systems and return them to their respective pools. */
+	void ReclaimActiveParticleSystems();
+	
 	/** Dumps the current state of the pool to the log. */
 	void Dump();
 };

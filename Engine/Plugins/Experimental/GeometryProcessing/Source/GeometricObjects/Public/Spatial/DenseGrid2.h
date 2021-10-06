@@ -42,16 +42,6 @@ public:
 		return DimensionX * DimensionY;
 	}
 
-	int64 Width() const
-	{
-		return DimensionX;
-	}
-
-	int64 Height() const
-	{
-		return DimensionY;
-	}
-
 	FVector2i GetDimensions() const
 	{
 		return FVector2i((int32)DimensionX, (int32)DimensionY);
@@ -122,11 +112,6 @@ public:
 	constexpr const ElemType& At(int64 X, int64 Y) const
 	{
 		return Buffer[X + DimensionX * Y];
-	}
-
-	const TArray64<ElemType>& GridValues() const
-	{
-		return Buffer;
 	}
 
 

@@ -66,7 +66,7 @@ BuildLibCxx()
     set +x
 
     make -j ${CORES} cxxabi cxx
-    make install-cxx-headers
+    make install-libcxx-headers
 
     mkdir -p ${INSTALL_DIR}/lib/Linux/${ARCH}
     cp lib/libc++.a ${INSTALL_DIR}/lib/Linux/${ARCH}

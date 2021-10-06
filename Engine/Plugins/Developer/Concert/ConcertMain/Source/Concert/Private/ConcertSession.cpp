@@ -105,9 +105,8 @@ void FConcertSessionCommonImpl::CommonClearCustomEventHandler(const FName& Event
 
 void FConcertSessionCommonImpl::CommonHandleCustomEvent(const FConcertMessageContext& Context)
 {
-	SCOPED_CONCERT_TRACE(ConcertSession_HandleCustomEvent);
-
 	const FConcertSession_CustomEvent* Message = Context.GetMessage<FConcertSession_CustomEvent>();
+
 	FConcertScratchpadPtr SenderScratchpad = CommonGetClientScratchpad(Message->SourceEndpointId);
 
 	// Attempt to deserialize the payload

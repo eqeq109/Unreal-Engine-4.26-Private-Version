@@ -14,20 +14,16 @@ namespace UnrealBuildTool.Rules
 				{
 					"Core",
 					"CoreUObject",
-					"Engine",
-					"Slate",
-					"SlateCore"
+					"Engine"
 				}
-			);
+				);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"DeveloperSettings",
-					"InputCore",
-					"Json", // To read/write plugInfo.json files from UnrealUSDWrapper.cpp
+					"DeveloperSettings"
 				}
-			);
+				);
 		}
 	}
 }

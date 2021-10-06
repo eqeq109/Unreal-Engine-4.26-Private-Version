@@ -5,7 +5,6 @@
 #if MEMPRO_ENABLED
 #include "Misc/CString.h"
 #include "Misc/CoreDelegates.h"
-#include "Misc/Parse.h"
 #include "HAL/IConsoleManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMemPro, Log, All);

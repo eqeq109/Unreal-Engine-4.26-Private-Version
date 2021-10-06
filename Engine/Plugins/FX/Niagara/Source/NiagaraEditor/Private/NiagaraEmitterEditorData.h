@@ -19,7 +19,7 @@ public:
 
 	virtual void PostLoad() override;
 
-	NIAGARAEDITOR_API UNiagaraStackEditorData& GetStackEditorData() const;
+	UNiagaraStackEditorData& GetStackEditorData() const;
 
 	TRange<float> GetPlaybackRange() const;
 

@@ -7,39 +7,42 @@ public class MovieSceneTracks : ModuleRules
 	public MovieSceneTracks(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PrivateIncludePaths.AddRange(new string[]
-			{ 
-				"Runtime/MovieSceneTracks/Private",
-				"Runtime/MovieSceneTracks/Private/Sections",
-				"Runtime/MovieSceneTracks/Private/Tracks",
-			});
+        { 
+            "Runtime/MovieSceneTracks/Private",
+			"Runtime/MovieSceneTracks/Private/Sections",
+			"Runtime/MovieSceneTracks/Private/Tracks",
+        });
 
-		PublicDependencyModuleNames.AddRange(new string[]
-			{
+		PublicDependencyModuleNames.AddRange(
+			new string[] {
 				"Core",
 				"CoreUObject",
 				"Engine",
 				"MovieScene",
 				"TimeManagement",
-				"AnimationCore",
-			});
+                "AnimationCore",
+            }
+		);
 
-		PrivateDependencyModuleNames.AddRange(new string[]
-			{
+		PrivateDependencyModuleNames.AddRange(
+			new string[] {
 				"SlateCore",
-				"AnimGraphRuntime",
-				"PropertyPath"
-			});
+                "AnimGraphRuntime"
+			}
+		);
 
 		if (Target.bBuildWithEditorOnlyData && Target.bBuildEditor)
 		{
-			PublicDependencyModuleNames.AddRange(new string[]
-				{
-					"BlueprintGraph"
-				});
-			PrivateDependencyModuleNames.AddRange(new string[]
-				{
-					"UnrealEd"
-				});
-		}
+            PublicDependencyModuleNames.AddRange(
+                new string[] {
+                    "BlueprintGraph"
+                }
+            );
+            PrivateDependencyModuleNames.AddRange(
+                new string[] {
+                    "UnrealEd"
+                }
+            );
+        }
 	}
 }

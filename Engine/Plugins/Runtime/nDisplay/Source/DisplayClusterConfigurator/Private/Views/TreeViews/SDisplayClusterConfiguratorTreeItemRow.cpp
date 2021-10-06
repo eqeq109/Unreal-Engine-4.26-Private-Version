@@ -88,7 +88,7 @@ void SDisplayClusterConfiguratorTreeItemRow::HandleDragLeave(const FDragDropEven
 
 TOptional<EItemDropZone> SDisplayClusterConfiguratorTreeItemRow::HandleCanAcceptDrop(const FDragDropEvent& DragDropEvent, EItemDropZone DropZone, TSharedPtr<IDisplayClusterConfiguratorTreeItem> TargetItem)
 {
-	return Item.Pin()->HandleCanAcceptDrop(DragDropEvent, DropZone, TargetItem);
+	return TOptional<EItemDropZone>(EItemDropZone::OntoItem);
 }
 
 FReply SDisplayClusterConfiguratorTreeItemRow::HandleAcceptDrop(const FDragDropEvent& DragDropEvent, EItemDropZone DropZone, TSharedPtr<IDisplayClusterConfiguratorTreeItem> TargetItem)
@@ -103,7 +103,30 @@ FReply SDisplayClusterConfiguratorTreeItemRow::HandleDrop(FDragDropEvent const& 
 
 TSharedRef<SWidget> SDisplayClusterConfiguratorTreeItemRow::GenerateWidgetForColumn(const FName& ColumnName)
 {
-	return Item.Pin()->GenerateWidgetForColumn(ColumnName, SharedThis(this), FilterText, FIsSelected::CreateSP(this, &STableRow::IsSelectedExclusively));
+	if ( ColumnName == IDisplayClusterConfiguratorViewTree::Columns::Item )
+	{
+		TSharedPtr< SHorizontalBox > RowBox;
+
+		SAssignNew( RowBox, SHorizontalBox )
+			.Visibility_Lambda([this]()
+			{
+				return Item.Pin()->GetFilterResult() == EDisplayClusterConfiguratorTreeFilterResult::ShownDescendant ? EVisibility::Collapsed : EVisibility::Visible;
+			});
+
+		RowBox->AddSlot()
+			.AutoWidth()
+			[
+				SNew( SExpanderArrow, SharedThis(this) )
+			];
+
+		Item.Pin()->GenerateWidgetForItemColumn( RowBox, FilterText, FIsSelected::CreateSP(this, &STableRow::IsSelectedExclusively ) );
+
+		return RowBox.ToSharedRef();
+	}
+	else
+	{
+		return Item.Pin()->GenerateWidgetForGroupColumn(ColumnName);
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

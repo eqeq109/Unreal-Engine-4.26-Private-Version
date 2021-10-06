@@ -1,5 +1,4 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
-// Copyright Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -241,13 +240,13 @@ namespace AutomationTool
             this.DDCGraph = InParams.DDCGraph;
             this.InternationalizationPreset = InParams.InternationalizationPreset;
             this.CulturesToCook = InParams.CulturesToCook;
-			this.OriginalReleaseVersion = InParams.OriginalReleaseVersion;
-			this.BasedOnReleaseVersion = InParams.BasedOnReleaseVersion;
+            this.BasedOnReleaseVersion = InParams.BasedOnReleaseVersion;
             this.CreateReleaseVersion = InParams.CreateReleaseVersion;
             this.GeneratePatch = InParams.GeneratePatch;
 			this.AddPatchLevel = InParams.AddPatchLevel;
 			this.StageBaseReleasePaks = InParams.StageBaseReleasePaks;
 			this.DLCFile = InParams.DLCFile;
+			this.GenerateRemaster = InParams.GenerateRemaster;
 			this.DiscVersion = InParams.DiscVersion;
             this.DLCIncludeEngineContent = InParams.DLCIncludeEngineContent;
 			this.DLCActLikePatch = InParams.DLCActLikePatch;
@@ -284,7 +283,6 @@ namespace AutomationTool
 			this.Pak = InParams.Pak;
 			this.IgnorePaksFromDifferentCookSource = InParams.IgnorePaksFromDifferentCookSource;
 			this.IoStore = InParams.IoStore;
-			this.GenerateOptimizationData = InParams.GenerateOptimizationData;
 			this.SignPak = InParams.SignPak;
 			this.SignedPak = InParams.SignedPak;
 			this.PakAlignForMemoryMapping = InParams.PakAlignForMemoryMapping;
@@ -306,7 +304,6 @@ namespace AutomationTool
             this.StageDirectoryParam = InParams.StageDirectoryParam;
 			this.Manifests = InParams.Manifests;
             this.CreateChunkInstall = InParams.CreateChunkInstall;
-			this.SkipEncryption = InParams.SkipEncryption;
 			this.UE4Exe = InParams.UE4Exe;
 			this.NoDebugInfo = InParams.NoDebugInfo;
 			this.SeparateDebugInfo = InParams.SeparateDebugInfo;
@@ -349,8 +346,7 @@ namespace AutomationTool
 			this.ClientConfigsToBuild = InParams.ClientConfigsToBuild;
 			this.ServerConfigsToBuild = InParams.ServerConfigsToBuild;
 			this.NumClients = InParams.NumClients;
-			this.Compressed = InParams.Compressed;
-			this.ForceUncompressed = InParams.ForceUncompressed;
+            this.Compressed = InParams.Compressed;
 			this.AdditionalPakOptions = InParams.AdditionalPakOptions;
 			this.AdditionalIoStoreOptions = InParams.AdditionalIoStoreOptions;
 			this.Archive = InParams.Archive;
@@ -413,8 +409,7 @@ namespace AutomationTool
 			bool? Run = null,
 			bool? SkipServer = null,
 			bool? Clean = null,
-			bool? Compressed = null,
-			bool? ForceUncompressed = null,
+            bool? Compressed = null,
 			string AdditionalPakOptions = null,
 			string AdditionalIoStoreOptions = null,
             bool? IterativeCooking = null,
@@ -434,14 +429,14 @@ namespace AutomationTool
 			bool? SkipCookingEditorContent = null,
             int? NumCookersToSpawn = null,
             string AdditionalCookerOptions = null,
-			string OriginalReleaseVersion = null,
-			string BasedOnReleaseVersion = null,
+            string BasedOnReleaseVersion = null,
             string CreateReleaseVersion = null,
 			string CreateReleaseVersionBasePath = null,
 			string BasedOnReleaseVersionBasePath = null,
             bool? GeneratePatch = null,
 			bool? AddPatchLevel = null,
 			bool? StageBaseReleasePaks = null,
+			bool? GenerateRemaster = null,
             string DiscVersion = null,
             string DLCName = null,
             string DiffCookedContentPath = null,
@@ -470,7 +465,6 @@ namespace AutomationTool
 			bool? IgnorePaksFromDifferentCookSource = null,
 			bool? IoStore = null,
 			bool? SkipIoStore = null,
-			bool? GenerateOptimizationData = null,
 			bool? Prereqs = null,
 			string AppLocalDirectory = null,
 			bool? NoBootstrapExe = null,
@@ -490,7 +484,6 @@ namespace AutomationTool
 			bool? Stage = null,
 			bool? Manifests = null,
             bool? CreateChunkInstall = null,
-			bool? SkipEncryption = null,
 			bool? Unattended = null,
 			int? NumClients = null,
 			bool? Archive = null,
@@ -597,12 +590,12 @@ namespace AutomationTool
 			this.Cook = GetParamValueIfNotSpecified(Command, Cook, this.Cook, "cook");
 			this.CreateReleaseVersionBasePath = ParseParamValueIfNotSpecified(Command, CreateReleaseVersionBasePath, "createreleaseversionroot", String.Empty);
 			this.BasedOnReleaseVersionBasePath = ParseParamValueIfNotSpecified(Command, BasedOnReleaseVersionBasePath, "basedonreleaseversionroot", String.Empty);
-			this.OriginalReleaseVersion = ParseParamValueIfNotSpecified(Command, OriginalReleaseVersion, "originalreleaseversion", String.Empty);
-			this.CreateReleaseVersion = ParseParamValueIfNotSpecified(Command, CreateReleaseVersion, "createreleaseversion", String.Empty);
+            this.CreateReleaseVersion = ParseParamValueIfNotSpecified(Command, CreateReleaseVersion, "createreleaseversion", String.Empty);
             this.BasedOnReleaseVersion = ParseParamValueIfNotSpecified(Command, BasedOnReleaseVersion, "basedonreleaseversion", String.Empty);
             this.GeneratePatch = GetParamValueIfNotSpecified(Command, GeneratePatch, this.GeneratePatch, "GeneratePatch");
             this.AddPatchLevel = GetParamValueIfNotSpecified(Command, AddPatchLevel, this.AddPatchLevel, "AddPatchLevel");
 			this.StageBaseReleasePaks = GetParamValueIfNotSpecified(Command, StageBaseReleasePaks, this.StageBaseReleasePaks, "StageBaseReleasePaks");
+			this.GenerateRemaster = GetParamValueIfNotSpecified(Command, GenerateRemaster, this.GenerateRemaster, "GenerateRemaster");
 			this.DiscVersion = ParseParamValueIfNotSpecified(Command, DiscVersion, "DiscVersion", String.Empty);
 			this.AdditionalCookerOptions = ParseParamValueIfNotSpecified(Command, AdditionalCookerOptions, "AdditionalCookerOptions", String.Empty);
 
@@ -648,8 +641,6 @@ namespace AutomationTool
 			this.IgnorePaksFromDifferentCookSource = GetParamValueIfNotSpecified(Command, IgnorePaksFromDifferentCookSource, this.IgnorePaksFromDifferentCookSource, "IgnorePaksFromDifferentCookSource");
 			this.IoStore = GetParamValueIfNotSpecified(Command, IoStore, this.IoStore, "iostore");
 			this.SkipIoStore = GetParamValueIfNotSpecified(Command, SkipIoStore, this.SkipIoStore, "skipiostore");
-			this.GenerateOptimizationData = GetParamValueIfNotSpecified(Command, GenerateOptimizationData, this.GenerateOptimizationData, "makebinaryconfig");
-			
 			this.SkipPak = GetParamValueIfNotSpecified(Command, SkipPak, this.SkipPak, "skippak");
 			if (this.SkipPak)
 			{
@@ -678,8 +669,7 @@ namespace AutomationTool
             {
                 this.NumCookersToSpawn = Command.ParseParamInt("NumCookersToSpawn");
             }
-			this.Compressed = GetParamValueIfNotSpecified(Command, Compressed, this.Compressed, "compressed");
-			this.ForceUncompressed = GetParamValueIfNotSpecified(Command, ForceUncompressed, this.ForceUncompressed, "ForceUncompressed");
+            this.Compressed = GetParamValueIfNotSpecified(Command, Compressed, this.Compressed, "compressed");
 			this.AdditionalPakOptions = ParseParamValueIfNotSpecified(Command, AdditionalPakOptions, "AdditionalPakOptions");
 			this.AdditionalIoStoreOptions = ParseParamValueIfNotSpecified(Command, AdditionalIoStoreOptions, "AdditionalIoStoreOptions");
 			this.IterativeCooking = GetParamValueIfNotSpecified(Command, IterativeCooking, this.IterativeCooking, new string[] { "iterativecooking", "iterate" });
@@ -733,7 +723,6 @@ namespace AutomationTool
 			this.bUseExtraFlavor = GetParamValueIfNotSpecified(Command, UseExtraFlavor, false, "UseExtraFlavor");
 			this.Manifests = GetParamValueIfNotSpecified(Command, Manifests, this.Manifests, "manifests");
             this.CreateChunkInstall = GetParamValueIfNotSpecified(Command, CreateChunkInstall, this.CreateChunkInstall, "createchunkinstall");
-			this.SkipEncryption = GetParamValueIfNotSpecified(Command, SkipEncryption, this.SkipEncryption, "skipencryption");
 			this.ChunkInstallDirectory = ParseParamValueIfNotSpecified(Command, ChunkInstallDirectory, "chunkinstalldirectory", String.Empty, true);
 			this.ChunkInstallVersionString = ParseParamValueIfNotSpecified(Command, ChunkInstallVersionString, "chunkinstallversion", String.Empty, true);
             this.ChunkInstallReleaseString = ParseParamValueIfNotSpecified(Command, ChunkInstallReleaseString, "chunkinstallrelease", String.Empty, true);
@@ -1233,12 +1222,6 @@ namespace AutomationTool
 		public bool IoStore { private set; get; }
 
 		/// <summary>
-		/// Shared: True if optimization data is generated during staging that can improve loadtimes
-		/// </summary>
-		[Help("makebinaryconfig", "generate optimized config data during staging to improve loadtimes")]
-		public bool GenerateOptimizationData { private set; get; }
-
-		/// <summary>
 		/// 
 		/// </summary>
 		public bool UsePak(Platform PlatformToCheck)
@@ -1324,9 +1307,6 @@ namespace AutomationTool
         /// </summary>
         [Help("createchunkinstall", "generate streaming install data from manifest when cooking data, requires -stage & -manifests")]
         public bool CreateChunkInstall { private set; get; }
-
-		[Help("skipencryption", "skips encrypting pak files even if crypto keys are provided")]
-		public bool SkipEncryption { private set; get; }
 
 		/// <summary>
 		/// Shared: Directory to use for built chunk install data, command line: -chunkinstalldirectory=
@@ -1548,6 +1528,11 @@ namespace AutomationTool
         public string InternationalizationPreset;
 
         /// <summary>
+        /// Cook: Create a cooked release version.  Also, the version. e.g. 1.0
+        /// </summary>
+        public string CreateReleaseVersion;
+
+        /// <summary>
 		/// Cook: While cooking clean up packages as we go along rather then cleaning everything (and potentially having to reload some of it) when we run out of space
 		/// </summary>
 		[Help("CookPartialgc", "while cooking clean up packages as we are done with them rather then cleaning everything up when we run out of space")]
@@ -1565,23 +1550,13 @@ namespace AutomationTool
 		public string CookOutputDir;
 
 		/// <summary>
-		/// Cook: Create a cooked release version.  Also, the version. e.g. 1.0
-		/// </summary>
-		public string CreateReleaseVersion;
-
-		/// <summary>
 		/// Cook: Base this cook of a already released version of the cooked data
 		/// </summary>
 		public string BasedOnReleaseVersion;
 
 		/// <summary>
-		/// The version of the originally released build. This is required by some platforms when generating patches.
-		/// </summary>
-		public string OriginalReleaseVersion;
-
-		/// <summary>
-		/// Cook: Path to the root of the directory where we store released versions of the game for a given version
-		/// </summary>
+        /// Cook: Path to the root of the directory where we store released versions of the game for a given version
+        /// </summary>
 		public string BasedOnReleaseVersionBasePath;
 
 		/// <summary>
@@ -1589,12 +1564,19 @@ namespace AutomationTool
 		/// </summary>
 		public string CreateReleaseVersionBasePath;
 
-		/// <summary>
-		/// Are we generating a patch, generate a patch from a previously released version of the game (use CreateReleaseVersion to create a release). 
+        /// <summary>
+        /// Are we generating a patch, generate a patch from a previously released version of the game (use CreateReleaseVersion to create a release). 
+        /// this requires BasedOnReleaseVersion
+        /// see also CreateReleaseVersion, BasedOnReleaseVersion
+        /// </summary>
+        public bool GeneratePatch;
+
+        /// <summary>
+		/// Are we generating a remaster, generate a patch from a previously released version of the game (use CreateReleaseVersion to create a release). 
 		/// this requires BasedOnReleaseVersion
 		/// see also CreateReleaseVersion, BasedOnReleaseVersion
 		/// </summary>
-		public bool GeneratePatch;
+		public bool GenerateRemaster;
 
 		/// <summary>
 		/// Required when building remaster package
@@ -1650,11 +1632,6 @@ namespace AutomationTool
         /// Compress packages during cook.
         /// </summary>
         public bool Compressed;
-
-		/// <summary>
-		/// Do not compress packages during cook, override game ProjectPackagingSettings to force it off
-		/// </summary>
-		public bool ForceUncompressed;
 
 		/// <summary>
 		/// Additional parameters when generating the PAK file
@@ -1771,15 +1748,10 @@ namespace AutomationTool
 		/// </summary>
 		public ParamList<string> ExtraTargetsToStageWithClient = new ParamList<string>();
 
-		/// <summary>
-		/// Stage: Optional callback that a build script can use to modify a deployment context immediately after it is created
-		/// </summary>
-		public Action<ProjectParams, DeploymentContext> PreModifyDeploymentContextCallback = null;
-
-		/// <summary>
-		/// Stage: Optional callback that a build script can use to modify a deployment context before it is applied
-		/// </summary>
-		public Action<ProjectParams, DeploymentContext> ModifyDeploymentContextCallback = null;
+        /// <summary>
+        /// Stage: Optional callback that a build script can use to modify a deployment context before it is applied
+        /// </summary>
+        public Action<ProjectParams, DeploymentContext> ModifyDeploymentContextCallback = null;
 
         /// <summary>
         /// On Windows, adds an executable to the root of the staging directory which checks for prerequisites being 
@@ -2065,33 +2037,6 @@ namespace AutomationTool
 			}
 		}
 
-		private void SelectDefaultEditorTarget(List<string> AvailableEditorTargets, ref string EditorTarget)
-		{
-			string DefaultEditorTarget;
-
-			if (EngineConfigs[BuildHostPlatform.Current.Platform].GetString("/Script/BuildSettings.BuildSettings", "DefaultEditorTarget", out DefaultEditorTarget))
-			{
-				if (!AvailableEditorTargets.Contains(DefaultEditorTarget))
-				{
-					throw new AutomationException(string.Format("A default editor target '{0}' was specified in engine.ini but does not exist", DefaultEditorTarget));
-				}
-
-				EditorTarget = DefaultEditorTarget;
-			}
-			else
-			{
-				if (AvailableEditorTargets.Count > 1)
-				{
-					throw new AutomationException("Project contains multiple editor targets but no DefaultEditorTarget is set in the [/Script/BuildSettings.BuildSettings] section of DefaultEngine.ini");
-				}
-
-				if (AvailableEditorTargets.Count > 0)
-				{
-					EditorTarget = AvailableEditorTargets.First();
-				}
-			}
-		}
-
 		private void AutodetectSettings(bool bReset)
 		{
 			if (bReset)
@@ -2202,7 +2147,15 @@ namespace AutomationTool
 				}
 
 				// Find the editor target name
-				SelectDefaultEditorTarget(TargetNamesOfType(TargetType.Editor), ref EditorTarget);
+				List<SingleTargetProperties> EditorTargets = Properties.Targets.Where(x => x.Rules.Type == TargetType.Editor).ToList();
+				if (EditorTargets.Count == 1)
+				{
+					EditorTarget = EditorTargets[0].TargetName;
+				}
+				else if (EditorTargets.Count > 1)
+				{
+					throw new AutomationException("There can be only one Editor target per project.");
+				}
 			}
 			else if (!CommandUtils.IsNullOrEmpty(Properties.Targets))
 			{
@@ -2223,33 +2176,35 @@ namespace AutomationTool
 				{
 					if (AvailableGameTargets.Count > 1)
 					{
-						string TargetMessage = "";
-						List<SingleTargetProperties> Targets = DetectedTargets.FindAll(Target => Target.Rules.Type == TargetType.Game);
-						foreach (SingleTargetProperties Target in Targets)
-						{
-							// search the list of script files to see if we can find a likely source for this class
-							// {TargetName}.Target.cs is expected to contain a definition for a class {TargetName}Target
-							// So we can do an imperfect reverse-lookup, and try to find a source file that has the expected pattern.
-
-							List<FileReference> PossibleScriptFiles = Properties.TargetScripts.FindAll(File => String.Equals(File.GetFileNameWithoutAnyExtensions(), Target.TargetName));
-
-							if (PossibleScriptFiles.Count > 0)
-							{
-								TargetMessage += $"Target \"{Target.TargetName}\" from class {Target.TargetClassName}, which may be defined in:\n {String.Join(", or\n", PossibleScriptFiles)}\n";
-							}
-							else
-							{
-								TargetMessage += $"Target \"{Target.TargetName}\" from class {Target.TargetClassName}, source file undetermined.\n";
-							}
-						}
-
-						throw new AutomationException("More than one Game project found for project: \n" + TargetMessage);
+						throw new AutomationException("There can be only one Game target per project.");
 					}
 
 					GameTarget = AvailableGameTargets.First();
 				}
 
-				SelectDefaultEditorTarget(AvailableEditorTargets, ref EditorTarget);
+				if (AvailableEditorTargets.Count > 0)
+				{
+					string DefaultEditorTarget;
+
+					if (EngineConfigs[BuildHostPlatform.Current.Platform].GetString("/Script/BuildSettings.BuildSettings", "DefaultEditorTarget", out DefaultEditorTarget))
+					{
+						if (!AvailableEditorTargets.Contains(DefaultEditorTarget))
+						{
+							throw new AutomationException(string.Format("A default editor target '{0}' was specified in engine.ini but does not exist", DefaultEditorTarget));
+						}
+
+						EditorTarget = DefaultEditorTarget;
+					}
+					else
+					{
+						if (AvailableEditorTargets.Count > 1)
+						{
+							throw new AutomationException("Project contains multiple editor targets but no DefaultEditorTarget is set in the [/Script/BuildSettings.BuildSettings] section of DefaultEngine.ini");
+						}
+
+						EditorTarget = AvailableEditorTargets.First();
+					}
+				}
 
 				if (AvailableServerTargets.Count > 0 && (DedicatedServer || Cook || CookOnTheFly)) // only if server is needed
 				{
@@ -2429,22 +2384,12 @@ namespace AutomationTool
             get { return !String.IsNullOrEmpty(InternationalizationPreset); }
         }
 
-		public bool HasCreateReleaseVersion
-        {
-            get { return !String.IsNullOrEmpty(CreateReleaseVersion); }
-        }
-
         public bool HasBasedOnReleaseVersion
         {
             get { return !String.IsNullOrEmpty(BasedOnReleaseVersion); }
         }
 
-		public bool HasOriginalReleaseVersion
-		{
-			get { return !String.IsNullOrEmpty(OriginalReleaseVersion); }
-		}
-
-		public bool HasAdditionalCookerOptions
+        public bool HasAdditionalCookerOptions
         {
             get { return !String.IsNullOrEmpty(AdditionalCookerOptions); }
         }
@@ -2457,6 +2402,11 @@ namespace AutomationTool
         public bool HasDiffCookedContentPath
         {
             get { return !String.IsNullOrEmpty(DiffCookedContentPath); }
+        }
+
+        public bool HasCreateReleaseVersion
+        {
+            get { return !String.IsNullOrEmpty(CreateReleaseVersion); }
         }
 
         public bool HasCulturesToCook
@@ -2558,12 +2508,19 @@ namespace AutomationTool
 				BasePath = CommandUtils.CombinePaths(BasePath, BasedOnReleaseVersion, Platform);
 			}
 
+            /*if ( TitleID != null && TitleID.Count == 1 )
+            {
+                BasePath = CommandUtils.CombinePaths( BasePath, TitleID[0]);
+            }*/
+
 			return BasePath;
 		}
 
 		/// <summary>
 		/// Get the path to the target directory for creating a new release version
 		/// </summary>
+		/// <param name="SC"></param>
+		/// <returns></returns>
 		public String GetCreateReleaseVersionPath(DeploymentContext SC, bool bIsClientOnly)
 		{
 			String BasePath = CreateReleaseVersionBasePath;
@@ -2577,33 +2534,18 @@ namespace AutomationTool
 				BasePath = CommandUtils.CombinePaths(BasePath, CreateReleaseVersion, Platform);
 			}
 
-			return BasePath;
-		}
-
-		/// <summary>
-		/// Get the path to the directory of the originally released version we're using to generate a patch.
-		/// Only required by some platforms.
-		/// </summary>				
-		public String GetOriginalReleaseVersionPath(DeploymentContext SC, bool bIsClientOnly)
-		{
-			String BasePath = BasedOnReleaseVersionBasePath;
-			String Platform = SC.StageTargetPlatform.GetCookPlatform(SC.DedicatedServer, bIsClientOnly);
-			if (String.IsNullOrEmpty(BasePath))
-			{
-				BasePath = CommandUtils.CombinePaths(SC.ProjectRoot.FullName, "Releases", OriginalReleaseVersion, Platform);
-			}
-			else
-			{
-				BasePath = CommandUtils.CombinePaths(BasePath, OriginalReleaseVersion, Platform);
-			}
+            /*if (TitleID != null && TitleID.Count == 1)
+            {
+                BasePath = CommandUtils.CombinePaths(BasePath, TitleID[0]);
+            }*/
 
 			return BasePath;
 		}
 
-		/// <summary>
-		/// True if we are generating a patch
-		/// </summary>
-		public bool IsGeneratingPatch
+        /// <summary>
+        /// True if we are generating a patch
+        /// </summary>
+        public bool IsGeneratingPatch
         {
             get { return GeneratePatch; }
         }
@@ -2623,6 +2565,14 @@ namespace AutomationTool
         {
             get { return StageBaseReleasePaks; }
         }
+
+		/// <summary>
+		/// True if we are generating a patch
+		/// </summary>
+		public bool IsGeneratingRemaster
+		{
+			get { return GenerateRemaster; }
+		}
 
 		public List<Platform> ClientTargetPlatformInstances
 		{
@@ -2841,6 +2791,11 @@ namespace AutomationTool
 			{
 				throw new AutomationException("-createchunkinstall must specify the chunk install data version string with -chunkinstallversion=");
 			}
+
+			/*if(IsGeneratingRemaster && string.IsNullOrEmpty(DiscVersion))
+			{
+				throw new AutomationException("DiscVersion is required for generating remaster package.");
+			}*/
 		}
 
 		protected bool bLogged = false;
@@ -2868,7 +2823,6 @@ namespace AutomationTool
 				CommandUtils.LogLog("ClientCookedTargets={0}", ClientCookedTargets.ToString());
 				CommandUtils.LogLog("ClientTargetPlatform={0}", string.Join(",", ClientTargetPlatforms));
 				CommandUtils.LogLog("Compressed={0}", Compressed);
-				CommandUtils.LogLog("ForceUncompressed={0}", ForceUncompressed);
 				CommandUtils.LogLog("AdditionalPakOptions={0}", AdditionalPakOptions);
 				CommandUtils.LogLog("AdditionalIoStoreOptions={0}", AdditionalIoStoreOptions);
 				CommandUtils.LogLog("CookOnTheFly={0}", CookOnTheFly);
@@ -2879,11 +2833,11 @@ namespace AutomationTool
                 CommandUtils.LogLog("GeneratePatch={0}", GeneratePatch);
 				CommandUtils.LogLog("AddPatchLevel={0}", AddPatchLevel);
 				CommandUtils.LogLog("StageBaseReleasePaks={0}", StageBaseReleasePaks);
+				CommandUtils.LogLog("GenerateRemaster={0}", GenerateRemaster);
 				CommandUtils.LogLog("DiscVersion={0}", DiscVersion);
 				CommandUtils.LogLog("CreateReleaseVersion={0}", CreateReleaseVersion);
                 CommandUtils.LogLog("BasedOnReleaseVersion={0}", BasedOnReleaseVersion);
-				CommandUtils.LogLog("OriginalReleaseVersion={0}", OriginalReleaseVersion);
-				CommandUtils.LogLog("DLCFile={0}", DLCFile);
+                CommandUtils.LogLog("DLCFile={0}", DLCFile);
                 CommandUtils.LogLog("DLCIncludeEngineContent={0}", DLCIncludeEngineContent);
 				CommandUtils.LogLog("DLCPakPluginFile={0}", DLCPakPluginFile);
                 CommandUtils.LogLog("DiffCookedContentPath={0}", DiffCookedContentPath);
@@ -2922,8 +2876,6 @@ namespace AutomationTool
 				CommandUtils.LogLog("IgnorePaksFromDifferentCookSource={0}", IgnorePaksFromDifferentCookSource);
 				CommandUtils.LogLog("IoStore={0}", IoStore);
 				CommandUtils.LogLog("SkipIoStore={0}", SkipIoStore);
-				CommandUtils.LogLog("SkipEncryption={0}", SkipEncryption);
-				CommandUtils.LogLog("GenerateOptimizationData={0}", GenerateOptimizationData);
 				CommandUtils.LogLog("SkipPackage={0}", SkipPackage);
 				CommandUtils.LogLog("Package={0}", Package);
 				CommandUtils.LogLog("ForcePackageData={0}", ForcePackageData);

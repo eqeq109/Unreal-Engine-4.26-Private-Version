@@ -600,13 +600,12 @@ static void AddHairVisibilityGBufferWritePass(
 
 void RenderHairComposition(
 	FRDGBuilder& GraphBuilder,
-	const FViewInfo& View,
-	const int32 ViewIndex,
+	const TArray<FViewInfo>& Views,
 	const FHairStrandsRenderingData* HairDatas,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture)
 {
-	if (!HairDatas || HairDatas->HairVisibilityViews.HairDatas.Num() == 0 || ViewIndex < 0)
+	if (!HairDatas || HairDatas->HairVisibilityViews.HairDatas.Num() == 0 || Views.Num() == 0)
 		return;
 
 	const FHairStrandsVisibilityViews& HairVisibilityViews = HairDatas->HairVisibilityViews;
@@ -615,7 +614,9 @@ void RenderHairComposition(
 	RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsComposition");
 	RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsComposition);
 
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
+		const FViewInfo& View = Views[ViewIndex];
 		if (View.Family)
 		{
 			if (ViewIndex < HairVisibilityViews.HairDatas.Num())
@@ -625,7 +626,7 @@ void RenderHairComposition(
 
 				if (!VisibilityData.CategorizationTexture)
 				{
-					return; // Automatically skip for any view not rendering hair
+					continue; // Automatically skip for any view not rendering hair
 				}
 
 				// todo: rehook the diffusion pass
@@ -722,29 +723,6 @@ void RenderHairComposition(
 					}
 				}
 			}
-		}
-	}
-}
-
-void RenderHairComposition(
-	FRDGBuilder& GraphBuilder,
-	const TArray<FViewInfo>& Views,
-	const FHairStrandsRenderingData* HairDatas,
-	FRDGTextureRef SceneColorTexture,
-	FRDGTextureRef SceneDepthTexture)
-{
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-		if (View.Family)
-		{
-			RenderHairComposition(
-				GraphBuilder,
-				View,
-				ViewIndex,
-				HairDatas,
-				SceneColorTexture,
-				SceneDepthTexture);
 		}
 	}
 }

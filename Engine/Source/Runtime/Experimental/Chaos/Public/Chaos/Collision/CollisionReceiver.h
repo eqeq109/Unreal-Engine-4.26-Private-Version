@@ -22,11 +22,13 @@ namespace Chaos
 		{
 			TArray<FRigidBodyPointContactConstraint> Single;
 			TArray<FRigidBodySweptPointContactConstraint> SingleSwept;
+			TArray<FRigidBodyMultiPointContactConstraint> Multi;
 
 			void Reset()
 			{
 				Single.Reset();
 				SingleSwept.Reset();
+				Multi.Reset();
 			}
 		};
 
@@ -35,6 +37,7 @@ namespace Chaos
 			, ResimCache(InResimCache)
 			, NumSingle(0)
 			, NumSingleSwept(0)
+			, NumMulti(0)
 		{
 		}
 
@@ -49,9 +52,11 @@ namespace Chaos
 
 			NumSingle.fetch_add(Constraints.SinglePointConstraints.Num(), std::memory_order_relaxed);
 			NumSingleSwept.fetch_add(Constraints.SinglePointSweptConstraints.Num(), std::memory_order_relaxed);
+			NumMulti.fetch_add(Constraints.MultiPointConstraints.Num(), std::memory_order_relaxed);
 
 			Data.Single = MoveTemp(Constraints.SinglePointConstraints);
 			Data.SingleSwept = MoveTemp(Constraints.SinglePointSweptConstraints);
+			Data.Multi = MoveTemp(Constraints.MultiPointConstraints);
 		}
 
 		/**
@@ -67,9 +72,11 @@ namespace Chaos
 
 			NumSingle.fetch_add(Constraints.SinglePointConstraints.Num(), std::memory_order_relaxed);
 			NumSingleSwept.fetch_add(Constraints.SinglePointSweptConstraints.Num(), std::memory_order_relaxed);
+			NumMulti.fetch_add(Constraints.MultiPointConstraints.Num(), std::memory_order_relaxed);
 
 			Data.Single.Append(Constraints.SinglePointConstraints);
 			Data.SingleSwept.Append(Constraints.SinglePointSweptConstraints);
+			Data.Multi.Append(Constraints.MultiPointConstraints);
 		}
 
 		/**
@@ -82,6 +89,7 @@ namespace Chaos
 			{
 				AppendHelper.ReserveSingle(NumSingle.load(std::memory_order_relaxed));
 				AppendHelper.ReserveSingleSwept(NumSingleSwept.load(std::memory_order_relaxed));
+				AppendHelper.ReserveMulti(NumMulti.load(std::memory_order_relaxed));
 			}
 
 			{
@@ -89,6 +97,7 @@ namespace Chaos
 				{
 					AppendHelper.Append(MoveTemp(Data.Single));
 					AppendHelper.Append(MoveTemp(Data.SingleSwept));
+					AppendHelper.Append(MoveTemp(Data.Multi));
 					Data.Reset();
 				}
 			}
@@ -99,6 +108,7 @@ namespace Chaos
 
 				NumSingle.store(0, std::memory_order_relaxed);
 				NumSingleSwept.store(0, std::memory_order_relaxed);
+				NumMulti.store(0, std::memory_order_relaxed);
 			}
 
 			if(ResimCache)
@@ -128,6 +138,7 @@ namespace Chaos
 		TArray<FPerParticleData> ParticleCache;
 		std::atomic<int32> NumSingle;
 		std::atomic<int32> NumSingleSwept;
+		std::atomic<int32> NumMulti;
 	};
 
 

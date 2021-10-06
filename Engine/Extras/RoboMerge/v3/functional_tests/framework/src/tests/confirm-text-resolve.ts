@@ -85,10 +85,7 @@ export class ConfirmTextResolve extends FunctionalTest {
 		}]
 	}
 
-	verify() {
-		return Promise.all([
-			this.checkHeadRevision('Main', 'textfile.txt', 2),
-			this.checkDescriptionContainsEdit('Main', ['second revision'])
-		])
+	async verify() {
+		await this.checkHeadRevision('Main', 'textfile.txt', 2)
 	}
 }

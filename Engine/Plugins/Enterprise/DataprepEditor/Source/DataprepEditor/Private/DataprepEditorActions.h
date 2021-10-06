@@ -31,6 +31,7 @@ public:
 	/**  */
 	TSharedPtr< FUICommandInfo > SaveScene;
 	TSharedPtr< FUICommandInfo > ShowDatasmithSceneSettings;
+	TSharedPtr< FUICommandInfo > BuildWorld;
 	TSharedPtr< FUICommandInfo > ExecutePipeline;
 	TSharedPtr< FUICommandInfo > CommitWorld;
 

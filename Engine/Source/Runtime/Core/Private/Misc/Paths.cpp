@@ -385,10 +385,10 @@ FString FPaths::SourceConfigDir()
 
 FString FPaths::GeneratedConfigDir()
 {
-#if PLATFORM_MAC // @todo, move this to Mac FPlatformMisc.
+#if PLATFORM_MAC
 	return FPlatformProcess::UserPreferencesDir();
 #else
-	return FPlatformMisc::GeneratedConfigDir();
+	return FPaths::ProjectSavedDir() + TEXT("Config/");
 #endif
 }
 
@@ -997,7 +997,7 @@ bool FPaths::IsDrive(const FString& InPath)
 		if (CheckPath.Len() > 0)
 		{
 			// Replace any remaining '\\' instances with '\'
-			CheckPath.ReplaceInline(TEXT("\\\\"), TEXT("\\"), ESearchCase::CaseSensitive);
+			CheckPath.Replace(TEXT("\\\\"), TEXT("\\"), ESearchCase::CaseSensitive);
 
 			int32 CheckCount = 0;
 			int32 SlashIndex = CheckPath.Find(TEXT("\\"), ESearchCase::CaseSensitive);

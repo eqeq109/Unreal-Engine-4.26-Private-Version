@@ -12,16 +12,16 @@ struct FVirtualTextureBuildSettings
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	int32 TileSize = 0;
+	int32 TileSize;
 
 	UPROPERTY()
-	int32 TileBorderSize = 0;
+	int32 TileBorderSize;
 
 	UPROPERTY()
-	bool bEnableCompressCrunch = false;
+	bool bEnableCompressCrunch;
 
 	UPROPERTY()
-	bool bEnableCompressZlib = false;
+	bool bEnableCompressZlib;
 
 	/** Initialize with the default build settings. These are defined by the current project setup. */
 	ENGINE_API void Init();

@@ -256,9 +256,9 @@ TArray<TSharedPtr<FUserOnlineAccount> > FOnlineIdentityGoogleCommon::GetAllUserA
 	return Result;
 }
 
-FUniqueNetIdPtr FOnlineIdentityGoogleCommon::GetUniquePlayerId(int32 LocalUserNum) const
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGoogleCommon::GetUniquePlayerId(int32 LocalUserNum) const
 {
-	const FUniqueNetIdPtr* FoundId = UserIds.Find(LocalUserNum);
+	const TSharedPtr<const FUniqueNetId>* FoundId = UserIds.Find(LocalUserNum);
 	if (FoundId != nullptr)
 	{
 		return *FoundId;
@@ -416,19 +416,19 @@ void FOnlineIdentityGoogleCommon::MeUser_HttpRequestComplete(FHttpRequestPtr Htt
 	InCompletionDelegate.ExecuteIfBound(InLocalUserNum, bResult, ErrorStr);
 }
 
-FUniqueNetIdPtr FOnlineIdentityGoogleCommon::CreateUniquePlayerId(uint8* Bytes, int32 Size)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGoogleCommon::CreateUniquePlayerId(uint8* Bytes, int32 Size)
 {
 	if (Bytes != nullptr && Size > 0)
 	{
 		FString StrId(Size, (TCHAR*)Bytes);
-		return FUniqueNetIdGoogle::Create(StrId);
+		return MakeShareable(new FUniqueNetIdGoogle(StrId));
 	}
 	return nullptr;
 }
 
-FUniqueNetIdPtr FOnlineIdentityGoogleCommon::CreateUniquePlayerId(const FString& Str)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityGoogleCommon::CreateUniquePlayerId(const FString& Str)
 {
-	return FUniqueNetIdGoogle::Create(Str);
+	return MakeShareable(new FUniqueNetIdGoogle(Str));
 }
 
 bool FOnlineIdentityGoogleCommon::AutoLogin(int32 LocalUserNum)
@@ -438,7 +438,7 @@ bool FOnlineIdentityGoogleCommon::AutoLogin(int32 LocalUserNum)
 
 ELoginStatus::Type FOnlineIdentityGoogleCommon::GetLoginStatus(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		return GetLoginStatus(*UserId);
@@ -460,7 +460,7 @@ ELoginStatus::Type FOnlineIdentityGoogleCommon::GetLoginStatus(const FUniqueNetI
 
 FString FOnlineIdentityGoogleCommon::GetPlayerNickname(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		return GetPlayerNickname(*UserId);
@@ -481,7 +481,7 @@ FString FOnlineIdentityGoogleCommon::GetPlayerNickname(const FUniqueNetId& UserI
 
 FString FOnlineIdentityGoogleCommon::GetAuthToken(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		TSharedPtr<FUserOnlineAccount> UserAccount = GetUserAccount(*UserId);
@@ -520,7 +520,7 @@ FString FOnlineIdentityGoogleCommon::GetAuthType() const
 void FOnlineIdentityGoogleCommon::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_IDENTITY(Display, TEXT("FOnlineIdentityGoogleCommon::RevokeAuthToken not implemented"));
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	GoogleSubsystem->ExecuteNextTick([UserIdRef, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, FOnlineError(FString(TEXT("RevokeAuthToken not implemented"))));

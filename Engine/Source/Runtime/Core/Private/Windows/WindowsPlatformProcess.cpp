@@ -1320,11 +1320,6 @@ void FWindowsPlatformProcess::SleepInfinite()
 	::Sleep(INFINITE);
 }
 
-void FWindowsPlatformProcess::YieldThread()
-{
-	::SwitchToThread();
-}
-
 #include "WindowsEvent.h"
 
 FEvent* FWindowsPlatformProcess::CreateSynchEvent(bool bIsManualReset)
@@ -1359,7 +1354,7 @@ bool FEventWin::Wait(uint32 WaitTime, const bool bIgnoreThreadIdleStats /*= fals
 	WaitForStats();
 
 	SCOPE_CYCLE_COUNTER( STAT_EventWait );
-	CSV_SCOPED_WAIT(WaitTime);
+	CSV_SCOPED_WAIT_CONDITIONAL(WaitTime > 0 && IsInGameThread());
 	check(Event);
 
 	FThreadIdleStats::FScopeIdle Scope( bIgnoreThreadIdleStats );

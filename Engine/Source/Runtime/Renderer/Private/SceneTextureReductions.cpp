@@ -42,7 +42,7 @@ class FHZBBuildPS : public FGlobalShader
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return true;
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -80,7 +80,8 @@ class FHZBBuildCS : public FGlobalShader
 			return false;
 		}
 
-		return true;
+
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
 
@@ -95,7 +96,7 @@ static bool RequireClosestDepthHZB(const FViewInfo& View)
 	return ShouldRenderScreenSpaceDiffuseIndirect(View);
 }
 
-void BuildHZB(FRDGBuilder& GraphBuilder, FRDGTextureRef InSceneDepthTexture, FViewInfo& View)
+void BuildHZB(FRDGBuilder& GraphBuilder, const FSceneTextureParameters& SceneTextures, FViewInfo& View)
 {
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_BuildHZB);
 
@@ -113,13 +114,6 @@ void BuildHZB(FRDGBuilder& GraphBuilder, FRDGTextureRef InSceneDepthTexture, FVi
 
 	bool bReduceClosestDepth = RequireClosestDepthHZB(View);
 	bool bUseCompute = bReduceClosestDepth || CVarHZBBuildUseCompute.GetValueOnRenderThread();
-
-	// The PF_R16F UAV is not supported on mobile devices.
-	if (RHIHasTiledGPU(View.GetShaderPlatform()))
-	{
-		bUseCompute = false;
-		bReduceClosestDepth = false;
-	}
 
 	FRDGTextureDesc HZBDesc = FRDGTextureDesc::Create2D(
 		HZBSize, PF_R16F,
@@ -213,9 +207,9 @@ void BuildHZB(FRDGBuilder& GraphBuilder, FRDGTextureRef InSceneDepthTexture, FVi
 
 	// Reduce first mips Closesy and furtherest are done at same time.
 	{
-		FIntPoint SrcSize = InSceneDepthTexture->Desc.Extent;
+		FIntPoint SrcSize = SceneTextures.SceneDepthTexture->Desc.Extent;
 
-		FRDGTextureSRVRef ParentTextureMip = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(InSceneDepthTexture));
+		FRDGTextureSRVRef ParentTextureMip = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(SceneTextures.SceneDepthTexture));
 
 		FVector4 DispatchThreadIdToBufferUV;
 		DispatchThreadIdToBufferUV.X = 2.0f / float(SrcSize.X);

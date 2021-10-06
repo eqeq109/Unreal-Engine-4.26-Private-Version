@@ -4,12 +4,9 @@
 #include "WaterBodyActor.h"
 #include "GerstnerWaterWaveViewExtension.h"
 
-void FWaterBodyManager::Initialize(UWorld* World)
+void FWaterBodyManager::Initialize()
 {
-	if (World != nullptr)
-	{
-		GerstnerWaterWaveViewExtension = FSceneViewExtensions::NewExtension<FGerstnerWaterWaveViewExtension>(World);
-	}
+	GerstnerWaterWaveViewExtension = FSceneViewExtensions::NewExtension<FGerstnerWaterWaveViewExtension>();
 }
 
 void FWaterBodyManager::Deinitialize()

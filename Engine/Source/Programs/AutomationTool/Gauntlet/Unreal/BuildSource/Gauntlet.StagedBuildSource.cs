@@ -89,25 +89,13 @@ namespace Gauntlet
 			Installed
 		}
 
-		class Install
-		{
-			public InstallStatus Status;
-			public string Path;
-
-			public Install(InstallStatus InStatus, string InPath)
-			{
-				Status = InStatus;
-				Path = InPath;
-			}
-		}
-
-		static Dictionary<StagedBuild, Install> LocalInstalls = new Dictionary<StagedBuild, Install>();
+		static Dictionary<StagedBuild, InstallStatus> LocalInstalls = new Dictionary<StagedBuild, InstallStatus>();
 
 		/// <summary>
 		/// When running parallel tests using staged builds, local desktop devices only need one copy of client/server 
 		/// this method is used to coordinate the copy across multiple local devices
 		/// </summary>
-		public static string InstallBuildParallel(UnrealAppConfig AppConfig, StagedBuild InBuild, string BuildPath, string DestPath, string Desc)
+		public static void InstallBuildParallel(UnrealAppConfig AppConfig, StagedBuild InBuild, string BuildPath, string DestPath, string Desc)
 		{
 			// In parallel tests, we only want to copy the client/server once
 			bool Install = false;
@@ -118,13 +106,11 @@ namespace Gauntlet
 				if (!LocalInstalls.ContainsKey(InBuild))
 				{
 					Install = true;
-					Status = InstallStatus.Installing;
-					LocalInstalls[InBuild] = new Install(Status, DestPath);
+					LocalInstalls[InBuild] = Status = InstallStatus.Installing;
 				}
 				else
 				{
-					Status = LocalInstalls[InBuild].Status;
-					DestPath = LocalInstalls[InBuild].Path;
+					Status = LocalInstalls[InBuild];
 				}
 			}
 
@@ -146,7 +132,7 @@ namespace Gauntlet
 				{
 					lock (Globals.MainLock)
 					{
-						LocalInstalls[InBuild].Status = InstallStatus.Error;
+						LocalInstalls[InBuild] = InstallStatus.Error;
 					}
 
 					throw Ex;
@@ -154,7 +140,7 @@ namespace Gauntlet
 
 				lock (Globals.MainLock)
 				{
-					LocalInstalls[InBuild].Status = InstallStatus.Installed;
+					LocalInstalls[InBuild] = InstallStatus.Installed;
 				}
 
 			}
@@ -172,7 +158,7 @@ namespace Gauntlet
 
 					lock (Globals.MainLock)
 					{
-						Status = LocalInstalls[InBuild].Status;
+						Status = LocalInstalls[InBuild];
 					}
 
 					// install process failed in other thread, disk full, etc
@@ -189,7 +175,6 @@ namespace Gauntlet
 				}
 			}
 
-			return DestPath;
 		}
 
 		public static IEnumerable<T> CreateFromPath<T>(UnrealTargetPlatform InPlatform, string InProjectName, string InPath, string InExecutableExtension)
@@ -202,7 +187,7 @@ namespace Gauntlet
 			// Turn FooGame into just Foo as we need to check for client/server builds too
 			string ShortName = Regex.Replace(InProjectName, "Game", "", RegexOptions.IgnoreCase);
 
-			string ContentPath = Path.Combine(InPath, InProjectName, "Content");
+			string ContentPath = Path.Combine(InPath, InProjectName, "Content", "Paks");
 
 			if (Directory.Exists(ContentPath))
 			{
@@ -224,8 +209,8 @@ namespace Gauntlet
 				string[] ExecutablePaths = new string[]
 				{
 					Path.Combine(InPath, InProjectName, "Binaries", InPlatform.ToString()),
+					//Path.Combine(InPath),
 					Path.Combine(InPath, "Engine", "Binaries", InPlatform.ToString()),
-					InPath,
 				};
 
 				List<FileSystemInfo> Binaries = new List<FileSystemInfo>();
@@ -250,7 +235,7 @@ namespace Gauntlet
 					UnrealTargetConfiguration Config = UnrealHelpers.GetConfigurationFromExecutableName(InProjectName, App.Name);
 					UnrealTargetRole Role = UnrealHelpers.GetRoleFromExecutableName(InProjectName, App.Name);
 
-					if (Config != UnrealTargetConfiguration.Unknown && Role != UnrealTargetRole.Unknown && !DiscoveredBuilds.Any(B => B.Configuration == Config))
+					if (Config != UnrealTargetConfiguration.Unknown && Role != UnrealTargetRole.Unknown)
 					{
 						// store the exe path as relative to the staged dir path
 						T NewBuild = Activator.CreateInstance(typeof(T), new object[] { InPlatform, Config, Role, InPath, Utils.SystemHelpers.MakePathRelative(App.FullName, InPath) }) as T;

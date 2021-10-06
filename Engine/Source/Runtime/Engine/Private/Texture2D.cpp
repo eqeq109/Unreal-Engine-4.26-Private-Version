@@ -161,7 +161,7 @@ uint32 FTexture2DMipMap::StoreInDerivedDataCache(const FString& InDerivedDataKey
 		BulkData.Unlock();
 	}
 	const uint32 Result = DerivedData.Num();
-	GetDerivedDataCacheRef().Put(*InDerivedDataKey, DerivedData, TextureName, /*bPutEvenIfExists*/ true);
+	GetDerivedDataCacheRef().Put(*InDerivedDataKey, DerivedData, TextureName);
 	DerivedDataKey = InDerivedDataKey;
 	BulkData.RemoveBulkData();
 	return Result;
@@ -682,7 +682,7 @@ void UTexture2D::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
 
 	if (IsCurrentlyVirtualTextured())
 	{
-		CumulativeResourceSize.AddUnknownMemoryBytes(PlatformData->VTData->GetMemoryFootprint());
+		CumulativeResourceSize.AddUnknownMemoryBytes(PlatformData->VTData->GetDiskMemoryFootprint());
 	}
 	else
 	{

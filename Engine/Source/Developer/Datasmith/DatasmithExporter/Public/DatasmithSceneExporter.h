@@ -48,9 +48,6 @@ public:
 	/** Sets the name of the scene to export. The resulting file and folder will use this name. */
     void SetName(const TCHAR* InName);
 
-	/** Gets the name of the scene to export. */
-	const TCHAR* GetName() const;
-
 	/**
 	 * Sets the output path to where this scene will be exported.
 	 */

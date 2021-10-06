@@ -6,7 +6,6 @@
 #include "HAL/PlatformProcess.h"
 #include "Containers/StringView.h"
 #include "ContentBrowserItemData.h"
-#include "UObject/StructOnScope.h"
 
 struct FContentBrowserDataFilter;
 
@@ -17,16 +16,7 @@ namespace ContentBrowserFileData
 		DECLARE_DELEGATE_RetVal_ThreeParams(bool, FCanCreate, const FName /*InDestFolderPath*/, const FString& /*InDestFolder*/, FText* /*OutErrorMsg*/);
 		FCanCreate CanCreate;
 
-		/** 
-		 * Queries user for arbitrary creation settings
-		 * @param OutFileBasename outputs a file basename suggestion (no path, no extension) which can be empty
-		 * @param OutCreationConfig outputs opaque creation settings
-		 * @return false if creation gets canceled.
-		 */
-		DECLARE_DELEGATE_RetVal_TwoParams(bool, FConfigureCreation, FString& /*OutFileBasename*/, FStructOnScope& /*OutCreationConfig*/);
-		FConfigureCreation ConfigureCreation;
-
-		DECLARE_DELEGATE_RetVal_ThreeParams(bool, FCreate, const FName /*InFilePath*/, const FString& /*InFilename*/, const FStructOnScope& /*CreationConfig*/);
+		DECLARE_DELEGATE_RetVal_TwoParams(bool, FCreate, const FName /*InFilePath*/, const FString& /*InFilename*/);
 		FCreate Create;
 
 		DECLARE_DELEGATE_RetVal_ThreeParams(bool, FCanDelete, const FName /*InFilePath*/, const FString& /*InFilename*/, FText* /*OutErrorMsg*/);
@@ -195,23 +185,4 @@ public:
 private:
 	/** The source file that we're duplicating */
 	FString SourceFilename;
-};
-
-
-class CONTENTBROWSERFILEDATASOURCE_API FContentBrowserFileItemDataPayload_Creation : public FContentBrowserFileItemDataPayload
-{
-public:
-	FContentBrowserFileItemDataPayload_Creation(const FName InInternalPath, const FString& InFilename, TWeakPtr<const ContentBrowserFileData::FFileActions> InFileActions, FStructOnScope&& InCreationConfig)
-		: FContentBrowserFileItemDataPayload(InInternalPath, InFilename, MoveTemp(InFileActions))
-		, CreationConfig(MoveTemp(InCreationConfig))
-	{
-	}
-
-	const FStructOnScope& GetCreationConfig() const
-	{
-		return CreationConfig;
-	}
-
-private:
-	FStructOnScope CreationConfig;
 };

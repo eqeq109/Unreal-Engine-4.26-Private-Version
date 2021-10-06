@@ -99,23 +99,11 @@ void FRHICommandWaitForTemporalEffect::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIWaitForTemporalEffect)(EffectName);
 }
 
-template <> void FRHICommandBroadcastTemporalEffect<FRHITexture>::Execute(FRHICommandListBase& CmdList)
+void FRHICommandBroadcastTemporalEffect::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(BroadcastTemporalEffect);
-	INTERNAL_DECORATOR(RHIBroadcastTemporalEffect)(EffectName, Resources);
+	INTERNAL_DECORATOR(RHIBroadcastTemporalEffect)(EffectName, { Textures, NumTextures });
 }
-template <> void FRHICommandBroadcastTemporalEffect<FRHIVertexBuffer>::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(BroadcastTemporalEffect);
-	INTERNAL_DECORATOR(RHIBroadcastTemporalEffect)(EffectName, Resources);
-}
-
-void FRHICommandTransferTextures::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(TransferTextures);
-	INTERNAL_DECORATOR_COMPUTE(RHITransferTextures)(Params);
-}
-
 #endif // WITH_MGPU
 
 void FRHICommandSetStencilRef::Execute(FRHICommandListBase& CmdList)
@@ -256,18 +244,6 @@ void FRHICommandEndRenderPass::Execute(FRHICommandListBase& CmdList)
 	INTERNAL_DECORATOR(RHIEndRenderPass)();
 }
 
-void FRHICommandBeginLateLatching::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(BeginLateLatching);
-	INTERNAL_DECORATOR(RHIBeginLateLatching)(FrameNumber);
-}
-
-void FRHICommandEndLateLatching::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(EndLateLatching);
-	INTERNAL_DECORATOR(RHIEndLateLatching)();
-}
-
 void FRHICommandNextSubpass::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(NextSubpass);
@@ -359,7 +335,7 @@ void FRHICommandSetShadingRate::Execute(FRHICommandListBase& CmdList)
 void FRHICommandSetShadingRateImage::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SetShadingRateImage);
-	checkf(false, TEXT("RHISetShadingRateImage API is deprecated. Use the ShadingRateImage attachment in the RHISetRenderTargetsInfo struct instead."));
+	INTERNAL_DECORATOR(RHISetShadingRateImage)(RateImageTexture, Combiner);
 }
 
 void FRHICommandSetDepthBounds::Execute(FRHICommandListBase& CmdList)
@@ -515,12 +491,6 @@ void FRHICommandSubmitCommandsHint::Execute(FRHICommandListBase& CmdList)
 {
 	RHISTAT(SubmitCommandsHint);
 	INTERNAL_DECORATOR_COMPUTE(RHISubmitCommandsHint)();
-}
-
-void FRHICommandPostExternalCommandsReset::Execute(FRHICommandListBase& CmdList)
-{
-	RHISTAT(PostExternalCommandsReset);
-	INTERNAL_DECORATOR(RHIPostExternalCommandsReset)();
 }
 
 void FRHICommandPollOcclusionQueries::Execute(FRHICommandListBase& CmdList)

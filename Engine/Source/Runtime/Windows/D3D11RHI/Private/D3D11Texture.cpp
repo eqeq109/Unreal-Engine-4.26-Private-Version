@@ -2295,22 +2295,9 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateTextureFromResource(b
 	TArray<TRefCountPtr<ID3D11RenderTargetView> > RenderTargetViews;
 	TRefCountPtr<ID3D11DepthStencilView> DepthStencilViews[FExclusiveDepthStencil::MaxIndex];
 
-	bool bCreateRTV = (TextureDesc.BindFlags & D3D11_BIND_RENDER_TARGET) != 0;
-	bool bCreateDSV = (TextureDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL) != 0;
-	bool bCreateShaderResource = (TextureDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) != 0;
-
-	// DXGI_FORMAT_NV12 allows us to create RTV and SRV but only with other formats, so we should block creation here.
-	// @todo: Should this be a check? Seems wrong to just silently change what the caller asked for.
-	if (Format == PF_NV12)
-	{
-		checkSlow(!bCreateRTV && !bCreateShaderResource);
-		bCreateRTV = false;
-		bCreateShaderResource = false;
-	}
-
 	bool bCreatedRTVPerSlice = false;
 
-	if(bCreateRTV)
+	if(TextureDesc.BindFlags & D3D11_BIND_RENDER_TARGET)
 	{
 		// Create a render target view for each mip
 		for (uint32 MipIndex = 0; MipIndex < TextureDesc.MipLevels; MipIndex++)
@@ -2389,7 +2376,7 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateTextureFromResource(b
 		}
 	}
 
-	if(bCreateDSV)
+	if(TextureDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL)
 	{
 		// Create a depth-stencil-view for the texture.
 		D3D11_DEPTH_STENCIL_VIEW_DESC DSVDesc;
@@ -2445,7 +2432,7 @@ TD3D11Texture2D<BaseResourceType>* FD3D11DynamicRHI::CreateTextureFromResource(b
 	}
 
 	// Create a shader resource view for the texture.
-	if (bCreateShaderResource)
+	if (TextureDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
 	{
 		{
 			D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc;

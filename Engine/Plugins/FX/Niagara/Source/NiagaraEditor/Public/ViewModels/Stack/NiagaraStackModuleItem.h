@@ -23,7 +23,6 @@ class NIAGARAEDITOR_API UNiagaraStackModuleItem : public UNiagaraStackItem
 
 public:
 	DECLARE_DELEGATE_OneParam(FOnRequestDeprecationRecommended, UNiagaraStackModuleItem*);
-	DECLARE_DELEGATE_OneParam(FOnNoteModeSet, bool);
 
 	UNiagaraStackModuleItem();
 
@@ -70,8 +69,6 @@ public:
 
 	/** Reassigns the function script for the module without resetting the inputs. */
 	void ReassignModuleScript(UNiagaraScript* ModuleScript);
-	
-	void ChangeScriptVersion(FGuid NewScriptVersion);
 
 	void SetInputValuesFromClipboardFunctionInputs(const TArray<const UNiagaraClipboardFunctionInput*>& ClipboardFunctionInputs);
 
@@ -107,22 +104,6 @@ public:
 		SetIsEnabledInternal(bEnabled);
 	}
 
-	void SetNoteMode(bool bEnabled)
-	{
-		bIsNoteModeActive = bEnabled;
-		OnNoteModeSet().ExecuteIfBound(bIsNoteModeActive);
-	}
-
-	bool GetNoteMode() const
-	{
-		return bIsNoteModeActive;
-	}
-
-	bool IsDebugDrawEnabled() const;
-	void SetDebugDrawEnabled(bool bInEnabled);
-
-	FOnNoteModeSet& OnNoteModeSet() { return OnNoteModeSetDelegate;}
-	
 protected:
 	FOnRequestDeprecationRecommended DeprecationDelegate;
 
@@ -141,13 +122,11 @@ private:
 	void RefreshIssues(TArray<FStackIssue>& NewIssues);
 	void RefreshIsEnabled();
 	void OnMessageManagerRefresh(const TArray<TSharedRef<const INiagaraMessage>>& NewMessages);
-	FStackIssueFixDelegate GetUpgradeVersionFix();
 
 private:
 	UNiagaraNodeOutput* OutputNode;
 	UNiagaraNodeFunctionCall* FunctionCallNode;
 	mutable TOptional<bool> bCanMoveAndDeleteCache;
-	mutable TOptional<FText> DisplayNameCache;
 	bool bIsEnabled;
 	bool bCanRefresh;
 
@@ -164,8 +143,6 @@ private:
 
 	mutable TOptional<bool> bIsScratchModuleCache;
 
-	bool bIsNoteModeActive = false;
-	
 	bool bIsModuleScriptReassignmentPending;
 
 	FGuid MessageManagerRegistrationKey;
@@ -174,6 +151,4 @@ private:
 	TArray<FStackIssue> MessageManagerIssues;
 
 	FGuid MessageLogGuid;
-	
-	FOnNoteModeSet OnNoteModeSetDelegate;
 };

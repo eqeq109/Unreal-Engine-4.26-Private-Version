@@ -86,7 +86,7 @@ struct FLevelSequencePlayerSnapshot
 	FLevelSequenceSnapshotSettings Settings;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "General")
-	ULevelSequence* ActiveShot = nullptr;
+	ULevelSequence* ActiveShot;
 
 	UPROPERTY()
 	FMovieSceneSequenceID ShotID;
@@ -141,18 +141,18 @@ public:
 	 * @param Settings The desired playback settings
 	 * @param OutActor The level sequence actor created to play this sequence.
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequencer|Player", meta=(WorldContext="WorldContextObject", DynamicOutputParam="OutActor"))
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic", meta=(WorldContext="WorldContextObject", DynamicOutputParam="OutActor"))
 	static ULevelSequencePlayer* CreateLevelSequencePlayer(UObject* WorldContextObject, ULevelSequence* LevelSequence, FMovieSceneSequencePlaybackSettings Settings, ALevelSequenceActor*& OutActor);
 
 	/** Set the settings used to capture snapshots with */
 	void SetSnapshotSettings(const FLevelSequenceSnapshotSettings& InSettings) { SnapshotSettings = InSettings; }
 
 	/** Event triggered when there is a camera cut */
-	UPROPERTY(BlueprintAssignable, Category="Sequencer|Player")
+	UPROPERTY(BlueprintAssignable, Category="Game|Cinematic")
 	FOnLevelSequencePlayerCameraCutEvent OnCameraCut;
 
 	/** Get the active camera cut camera */
-	UFUNCTION(BlueprintCallable, Category="Sequencer|Player")
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	UCameraComponent* GetActiveCameraComponent() const { return CachedCameraComponent.Get(); }
 
 public:

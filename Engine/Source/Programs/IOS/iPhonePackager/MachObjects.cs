@@ -435,8 +435,8 @@ namespace MachObjectHandling
 			else
 			{
 				byte[] Buffer = BitConverter.GetBytes(Value);
-				Array.Reverse(Buffer, 0, 8);
-				SW.Write(Buffer, 0, 8);
+				Array.Reverse(Buffer, 0, 4);
+				SW.Write(Buffer, 0, 4);
 			}
 		}
 
@@ -2097,7 +2097,6 @@ namespace MachObjectHandling
 	public class CodeDirectoryBlob : AbstractBlob
 	{
 		public const UInt32 cVersion2 = 0x20200;
-		public const UInt32 cVersion3 = 0x20400;
 
 		public UInt32 Version;
 		UInt32 Flags;
@@ -2120,13 +2119,6 @@ namespace MachObjectHandling
 
 		string Team;
 
-		UInt32 Spare3;
-		UInt64 CodeLimit64;
-
-		UInt64 ExecSegBase;
-		UInt64 ExecSegLimit;
-		UInt64 ExecSegFlags;
-
 		// Special slot index for Info.plist
 		public const int cdInfoSlot = 1;
 
@@ -2148,13 +2140,12 @@ namespace MachObjectHandling
 		/// <summary>
 		/// Hash provider (SHA1)
 		/// </summary>
-		protected SHA256CryptoServiceProvider HashProvider2 = new SHA256CryptoServiceProvider();
+		protected SHA1CryptoServiceProvider HashProvider = new SHA1CryptoServiceProvider();
 
 		protected override void UnpackageData(ReadingContext SR, UInt32 Length)
 		{
 			long StartOfBlob = SR.Position - sizeof(UInt32) * 2;
 
-			// Reference: https://llvm.org/doxygen/BinaryFormat_2MachO_8h_source.html
 			Version = SR.ReadUInt32();
 			Flags = SR.ReadUInt32();
 			UInt32 HashOffset = SR.ReadUInt32();
@@ -2168,21 +2159,28 @@ namespace MachObjectHandling
 			LogPageSize = SR.ReadByte();
 			Spare2 = SR.ReadUInt32();
 			ScatterCount = SR.ReadUInt32();
-			UInt32 TeamStringOffset = SR.ReadUInt32();
-			Spare3 = SR.ReadUInt32();
-			CodeLimit64 = SR.ReadUInt64();
-			ExecSegBase = SR.ReadUInt64();
-			ExecSegLimit = SR.ReadUInt64();
-			ExecSegFlags = SR.ReadUInt64();
 
-			// Read the identifier string
-			SR.PushPositionAndJump(StartOfBlob + IdentifierStringOffset);
-			Identifier = SR.ReadASCIIZ();
-			SR.PopPosition();
-			// Read the team string
-			SR.PushPositionAndJump(StartOfBlob + TeamStringOffset);
-			Team = SR.ReadASCIIZ();
-			SR.PopPosition();
+			if (Version == cVersion2)
+			{
+				UInt32 TeamStringOffset = SR.ReadUInt32();
+
+				// Read the identifier string
+				SR.PushPositionAndJump(StartOfBlob + IdentifierStringOffset);
+				Identifier = SR.ReadASCIIZ();
+				SR.PopPosition();
+
+				// Read the team string
+				SR.PushPositionAndJump(StartOfBlob + TeamStringOffset);
+				Team = SR.ReadASCIIZ();
+				SR.PopPosition();
+			}
+			else
+			{
+				// Read the identifier string
+				SR.PushPositionAndJump(StartOfBlob + IdentifierStringOffset);
+				Identifier = SR.ReadASCIIZ();
+				SR.PopPosition();
+			}
 
 			// Read the hashes
 			long TotalNumHashes = SpecialSlotCount + CodeSlotCount;
@@ -2235,24 +2233,28 @@ namespace MachObjectHandling
 			SW.Write(Spare2);
 			SW.Write(ScatterCount);
 
-			OffsetFieldU32or64 TeamStringOffset = SW.WriteDeferredOffsetFrom(StartPos, Bits.Num._32);
-			SW.Write(Spare3);
+			if (Version == cVersion2)
+			{
+				OffsetFieldU32or64 TeamStringOffset = SW.WriteDeferredOffsetFrom(StartPos, Bits.Num._32);
 
-			SW.Write(CodeLimit64);
-			SW.Write(ExecSegBase);
-			SW.Write(ExecSegLimit);
-			SW.Write(ExecSegFlags);
+				// Write the identifier
+				SW.CommitDeferredField(IdentifierStringOffset);
+				byte[] IdentifierOutput = Utilities.CreateASCIIZ(Identifier);
+				SW.Write(IdentifierOutput);
 
-			// Write the identifier
-			SW.CommitDeferredField(IdentifierStringOffset);
-			byte[] IdentifierOutput = Utilities.CreateASCIIZ(Identifier);
-			SW.Write(IdentifierOutput);
+				// Write the team identifier
+				SW.CommitDeferredField(TeamStringOffset);
+				byte[] TeamOutput = Utilities.CreateASCIIZ(Team);
+				SW.Write(TeamOutput);
+			}
+			else
+			{
+				// Write the identifier
+				SW.CommitDeferredField(IdentifierStringOffset);
+				byte[] IdentifierOutput = Utilities.CreateASCIIZ(Identifier);
+				SW.Write(IdentifierOutput);
+			}
 
-			// Write the team identifier
-			SW.CommitDeferredField(TeamStringOffset);
-			byte[] TeamOutput = Utilities.CreateASCIIZ(Team);
-			SW.Write(TeamOutput);
-		
 			// Write the hashes
 			SW.CommitDeferredField(HashOffset);
 			SW.Write(Hashes);
@@ -2276,7 +2278,7 @@ namespace MachObjectHandling
 		/// </summary>
 		public void GenerateSpecialSlotHash(int SpecialSlotIndex, byte[] SourceData)
 		{
-			byte[] Hash = HashProvider2.ComputeHash(SourceData);
+			byte[] Hash = HashProvider.ComputeHash(SourceData);
 			Array.Copy(
 				Hash, 0,
 				Hashes, (SpecialSlotCount - SpecialSlotIndex) * BytesPerHash,
@@ -2296,40 +2298,33 @@ namespace MachObjectHandling
 			}
 		}
 
-		public static CodeDirectoryBlob Create(string ApplicationID, string TeamID, int SignedFileLength, UInt64 InExecSegBase, UInt64 InExecSegLimit)
+		public static CodeDirectoryBlob Create(string ApplicationID, string TeamID, int SignedFileLength, uint Version = cVersion2)
 		{
 			CodeDirectoryBlob Blob = new CodeDirectoryBlob();
-			Blob.Allocate(ApplicationID, TeamID, SignedFileLength, InExecSegBase, InExecSegLimit);
+			Blob.Allocate(ApplicationID, TeamID, SignedFileLength);
 
 			return Blob;
 		}
 
-		public void Allocate(string ApplicationID, string TeamID, int SignedFileLength, UInt64 InExecSegBase, UInt64 InExecSegLimit)
+		public void Allocate(string ApplicationID, string TeamID, int SignedFileLength, uint InVersion = cVersion2)
 		{
 			Identifier = ApplicationID;
 			Team = TeamID;
 
-			Version = cVersion3;
+			Version = InVersion;
 			Flags = 0;
 			Spare1 = 0;
 			Spare2 = 0;
-			Spare3 = 0;
 			ScatterCount = 0;
-
-			CodeLimit64 = 0;
-
-			ExecSegBase = InExecSegBase;
-			ExecSegLimit = InExecSegLimit;
-			ExecSegFlags = 17;
 
 			// 4 KB pages
 			LogPageSize = 12;
 			int PageSize = 1 << LogPageSize;
 
-			// 32 byte SHA256 hashes
-			HashType = 2;
-			BytesPerHash = (byte)(HashProvider2.HashSize / 8);
-			Debug.Assert(BytesPerHash == 32);
+			// 20 byte SHA1 hashes
+			HashType = 1;
+			BytesPerHash = (byte)(HashProvider.HashSize / 8);
+			Debug.Assert(BytesPerHash == 20);
 
 			// Allocate space for the hashes
 			MainImageSignatureLimit = (UInt32)SignedFileLength;
@@ -2348,7 +2343,7 @@ namespace MachObjectHandling
 			{
 				int StartOffset = i * PageSize;
 				int LengthRemaining = (int)MainImageSignatureLimit - StartOffset;
-				byte[] PageHash = HashProvider2.ComputeHash(SignedFileData, StartOffset, Math.Min(LengthRemaining, PageSize)); 
+				byte[] PageHash = HashProvider.ComputeHash(SignedFileData, StartOffset, Math.Min(LengthRemaining, PageSize)); 
 				Array.Copy(PageHash, 0, Hashes, (SpecialSlotCount + i) * BytesPerHash, BytesPerHash);
 			}
 		}

@@ -12,6 +12,4 @@
 class IDisplayClusterEditor :
 	public IModuleInterface
 {
-public:
-	virtual ~IDisplayClusterEditor() = default;
 };

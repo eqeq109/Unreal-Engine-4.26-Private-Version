@@ -5,27 +5,33 @@
 #include "CoreMinimal.h"
 #include "DMXProtocolConstants.h"
 
-class FDMXInputPort;
-class FDMXOutputPort;
+class FBufferArchive;
+class FJsonObject;
+class FArrayReader;
 class IDMXProtocol;
-class FDMXPort;
+class IDMXProtocolFactory;
+class IDMXProtocolRDM;
+class IDMXProtocolUniverse;
+class IDMXProtocolSender;
+class IDMXProtocolReceiver;
 class FDMXSignal;
 
+template<class TUniverse>
+class FDMXProtocolUniverseManager;
+class FDMXProtocolPackager;
 
-// Protocol
+struct FDMXBuffer;
+struct FDMXPacket;
+struct IDMXProtocolPacket;
+
+using IDMXFragmentMap = TMap<uint32, uint8>;
+using IDMXUniverseSignalMap = TMap<int32, TSharedPtr<FDMXSignal>>;
+
+using FArrayReaderPtr = TSharedPtr<FArrayReader, ESPMode::ThreadSafe>;
+using FDMXPacketPtr = TSharedPtr<FDMXPacket, ESPMode::ThreadSafe>;
+using FDMXBufferPtr = TSharedPtr<FDMXBuffer, ESPMode::ThreadSafe>;
+using IDMXProtocolUniversePtr = TSharedPtr<IDMXProtocolUniverse, ESPMode::ThreadSafe>;
 using IDMXProtocolPtr = TSharedPtr<IDMXProtocol, ESPMode::ThreadSafe>;
 using IDMXProtocolPtrWeak = TWeakPtr<IDMXProtocol, ESPMode::ThreadSafe>;
 
-// Ports
-using FDMXPortSharedPtr = TSharedPtr<class FDMXPort, ESPMode::ThreadSafe>;
-using FDMXPortSharedRef = TSharedRef<class FDMXPort, ESPMode::ThreadSafe>;
-
-using FDMXInputPortSharedPtr = TSharedPtr<FDMXInputPort, ESPMode::ThreadSafe>;
-using FDMXInputPortSharedRef = TSharedRef<FDMXInputPort, ESPMode::ThreadSafe>;
-
-using FDMXOutputPortSharedPtr = TSharedPtr<FDMXOutputPort, ESPMode::ThreadSafe>;
-using FDMXOutputPortSharedRef = TSharedRef<FDMXOutputPort, ESPMode::ThreadSafe>;
-
-// Signal
-using FDMXSignalSharedPtr = TSharedPtr<FDMXSignal, ESPMode::ThreadSafe>;
-using FDMXSignalSharedRef = TSharedRef<FDMXSignal, ESPMode::ThreadSafe>;
+enum class EDMXSendResult : uint8;

@@ -15,7 +15,7 @@ namespace ChaosInterface
 {
 	struct FActorShape
 	{
-		Chaos::FGeometryParticle* Actor;
+		Chaos::TGeometryParticle<float, 3>* Actor;
 		const Chaos::FPerShapeData* Shape;
 
 		void Serialize(Chaos::FChaosArchive& Ar);

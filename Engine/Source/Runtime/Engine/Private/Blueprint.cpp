@@ -739,8 +739,7 @@ void UBlueprint::PostLoad()
 	for (int32 i = 0; i < Breakpoints.Num(); ++i)
 	{
 		UBreakpoint* Breakpoint = Breakpoints[i];
-		const UEdGraphNode* const Location = Breakpoint ? Breakpoint->GetLocation() : nullptr;
-		if (!Location || !Location->IsIn(this))
+		if (!Breakpoint || !Breakpoint->GetLocation())
 		{
 			Breakpoints.RemoveAt(i);
 			--i;
@@ -750,9 +749,9 @@ void UBlueprint::PostLoad()
 	// Make sure we have an SCS and ensure it's transactional
 	if( FBlueprintEditorUtils::SupportsConstructionScript(this) )
 	{
-		if(SimpleConstructionScript == nullptr)
+		if(SimpleConstructionScript == NULL)
 		{
-			check(nullptr != GeneratedClass);
+			check(NULL != GeneratedClass);
 			SimpleConstructionScript = NewObject<USimpleConstructionScript>(GeneratedClass);
 			SimpleConstructionScript->SetFlags(RF_Transactional);
 
@@ -948,13 +947,11 @@ bool UBlueprint::CanRecompileWhilePlayingInEditor() const
 void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 {
 	// We use Generated instead of Skeleton because the CDO data is more accurate on Generated
-	UObject* BlueprintCDO = nullptr;
 	if (GeneratedClass)
 	{
-		BlueprintCDO = GeneratedClass->GetDefaultObject();
-		if (BlueprintCDO)
+		if (UObject* CDO = GeneratedClass->GetDefaultObject())
 		{
-			BlueprintCDO->GetAssetRegistryTags(OutTags);
+			CDO->GetAssetRegistryTags(OutTags);
 		}
 	}
 
@@ -986,7 +983,7 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 	}
 	else
 	{
-		NativeParentClassName = ParentClassName = TEXT("None");
+		NativeParentClassName = ParentClassName = ("None");
 	}
 
 
@@ -1041,10 +1038,10 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 	{
 		// Determine how many inherited native components exist
 		int32 NumNativeComponents = 0;
-		if (BlueprintCDO != nullptr)
+		if (BlueprintClass != nullptr)
 		{
 			TArray<UObject*> PotentialComponents;
-			BlueprintCDO->GetDefaultSubobjects(/*out*/ PotentialComponents);
+			BlueprintClass->GetDefaultObjectSubobjects(/*out*/ PotentialComponents);
 
 			for (UObject* TestSubObject : PotentialComponents)
 			{
@@ -1063,7 +1060,7 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 			const UBlueprint* AssociatedBP = Cast<const UBlueprint>(TestBPClass->ClassGeneratedBy);
 			if (AssociatedBP && AssociatedBP->SimpleConstructionScript != nullptr)
 			{
-				NumAddedComponents += AssociatedBP->SimpleConstructionScript->GetAllNodes().Num();
+				NumAddedComponents += AssociatedBP->SimpleConstructionScript->GetAllNodesConst().Num();
 			}
 		}
 		OutTags.Add(FAssetRegistryTag(FBlueprintTags::NumBlueprintComponents, FString::FromInt(NumAddedComponents), UObject::FAssetRegistryTag::TT_Numerical));
@@ -1550,7 +1547,7 @@ UBlueprint* UBlueprint::GetBlueprintFromClass(const UClass* InClass)
 
 bool UBlueprint::GetBlueprintHierarchyFromClass(const UClass* InClass, TArray<UBlueprint*>& OutBlueprintParents)
 {
-	OutBlueprintParents.Reset();
+	OutBlueprintParents.Empty();
 
 	bool bNoErrors = true;
 	const UClass* CurrentClass = InClass;
@@ -1563,48 +1560,14 @@ bool UBlueprint::GetBlueprintHierarchyFromClass(const UClass* InClass, TArray<UB
 #endif // #if WITH_EDITORONLY_DATA
 
 		// If valid, use stored ParentClass rather than the actual UClass::GetSuperClass(); handles the case when the class has not been recompiled yet after a reparent operation.
-		if (BP->ParentClass)
+		if(const UClass* ParentClass = BP->ParentClass)
 		{
-			CurrentClass = BP->ParentClass;
+			CurrentClass = ParentClass;
 		}
 		else
 		{
 			check(CurrentClass);
 			CurrentClass = CurrentClass->GetSuperClass();
-		}
-	}
-
-	return bNoErrors;
-}
-
-bool UBlueprint::GetBlueprintHierarchyFromClass(const UClass* InClass, TArray<UBlueprintGeneratedClass*>& OutBlueprintParents)
-{
-	OutBlueprintParents.Reset();
-
-	bool bNoErrors = true;
-	UBlueprintGeneratedClass* CurrentClass = Cast<UBlueprintGeneratedClass>(const_cast<UClass*>(InClass));
-	while (CurrentClass)
-	{
-		OutBlueprintParents.Add(CurrentClass);
-
-		UBlueprint* BP = UBlueprint::GetBlueprintFromClass(CurrentClass);
-
-#if WITH_EDITORONLY_DATA
-		if (BP)
-		{
-			bNoErrors &= (BP->Status != BS_Error);
-		}
-#endif // #if WITH_EDITORONLY_DATA
-
-		// If valid, use stored ParentClass rather than the actual UClass::GetSuperClass(); handles the case when the class has not been recompiled yet after a reparent operation.
-		if (BP && BP->ParentClass)
-		{
-			CurrentClass = Cast<UBlueprintGeneratedClass>(BP->ParentClass);
-		}
-		else
-		{
-			check(CurrentClass);
-			CurrentClass = Cast<UBlueprintGeneratedClass>(CurrentClass->GetSuperClass());
 		}
 	}
 

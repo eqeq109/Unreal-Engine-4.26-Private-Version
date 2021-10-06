@@ -24,6 +24,3 @@ struct FAmbientOcclusionMobileOutputs
 };
 
 extern FAmbientOcclusionMobileOutputs GAmbientOcclusionMobileOutputs;
-
-bool IsMobileAmbientOcclusionEnabled(EShaderPlatform ShaderPlatform);
-bool IsUsingMobileAmbientOcclusion(EShaderPlatform ShaderPlatform);

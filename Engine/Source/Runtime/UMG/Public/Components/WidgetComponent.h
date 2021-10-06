@@ -98,7 +98,6 @@ class UMG_API UWidgetComponent : public UMeshComponent
 public:
 	//UObject interface
 	virtual void Serialize(FArchive& Ar) override;
-	virtual bool CanBeInCluster() const override;
 	//~ End UObject Interface
 
 	/** UActorComponent Interface */
@@ -194,7 +193,8 @@ public:
 	TSharedPtr<SWindow> GetSlateWindow() const;
 
 	/**  
-	 *  Gets the widget that is used by this Widget Component. It will be null if a Slate Widget was set using SetSlateWidget function.
+	 *  Sets the widget to use directly. This function will keep track of the widget till the next time it's called
+	 *	with either a newer widget or a nullptr
 	 */ 
 	UFUNCTION(BlueprintCallable, Category=UserInterface)
 	virtual UUserWidget* GetWidget() const;
@@ -248,12 +248,8 @@ public:
 	void SetDrawSize(FVector2D Size);
 
 	/** Requests that the widget be redrawn.  */
-	UFUNCTION(BlueprintCallable, Category=UserInterface, meta = (DeprecatedFunction, DeprecationMessage = "Use RequestRenderUpdate instead"))
+	UFUNCTION(BlueprintCallable, Category=UserInterface)
 	virtual void RequestRedraw();
-
-	/** Requests that the widget have it's render target updated, if TickMode is disabled, this will force a tick to happen to update the render target. */
-	UFUNCTION(BlueprintCallable, Category = UserInterface)
-	virtual void RequestRenderUpdate();
 
 	/** Gets the blend mode for the widget. */
 	EWidgetBlendMode GetBlendMode() const { return BlendMode; }

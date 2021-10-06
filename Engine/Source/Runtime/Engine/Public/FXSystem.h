@@ -9,7 +9,6 @@
 #include "CoreMinimal.h"
 #include "HAL/IConsoleManager.h"
 #include "RenderUtils.h"
-#include "RenderGraphDefinitions.h"
 
 class FCanvas;
 class FGPUSpriteResources;
@@ -102,6 +101,7 @@ inline bool SupportsGPUParticles(EShaderPlatform Platform)
 inline bool RHISupportsGPUParticles()
 {
 	return FXConsoleVariables::bAllowGPUParticles
+		&& GSupportsMultipleRenderTargets 
 		&& GSupportsWideMRT
 		&& GPixelFormats[PF_G32R32F].Supported 
 		&& GSupportsTexture3D 
@@ -198,17 +198,9 @@ public:
 
 	/**
 	 * Draw desired debug information related to the effects system on the render thread.
-	 * This is called at the end of the rendering when
-	 * @param GraphBuilder Render Graph Builder to use
-	 * @param View The view we are rendering for
-	 * @param Output The output buffer information
+	 * @param Canvas The canvas on which to draw.
 	 */
 	virtual void DrawDebug_RenderThread(class FRDGBuilder& GraphBuilder, const class FViewInfo& View, const struct FScreenPassRenderTarget& Output) {}
-
-	/**
-	 * Call to handle debug drawing to the scene (i.e. where depth is available)
-	 */
-	virtual void DrawSceneDebug_RenderThread(class FRDGBuilder& GraphBuilder, const class FViewInfo& View, FRDGTextureRef SceneColor, FRDGTextureRef SceneDepth) {}
 
 	/**
 	 * Add a vector field to the FX system.

@@ -381,23 +381,23 @@ class UMaterialInstance : public UMaterialInterface
 	}
 
 	/** Scalar parameters. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance, meta = (EditFixedOrder))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance)
 	TArray<struct FScalarParameterValue> ScalarParameterValues;
 
 	/** Vector parameters. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance, meta = (EditFixedOrder))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance)
 	TArray<struct FVectorParameterValue> VectorParameterValues;
 
 	/** Texture parameters. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance, meta = (EditFixedOrder))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance)
 	TArray<struct FTextureParameterValue> TextureParameterValues;
 
 	/** RuntimeVirtualTexture parameters. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = MaterialInstance, meta = (EditFixedOrder))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = MaterialInstance)
 	TArray<struct FRuntimeVirtualTextureParameterValue> RuntimeVirtualTextureParameterValues;
 
 	/** Font parameters. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance, meta = (EditFixedOrder))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=MaterialInstance)
 	TArray<struct FFontParameterValue> FontParameterValues;
 
 #if WITH_EDITORONLY_DATA
@@ -509,8 +509,8 @@ public:
 	virtual ENGINE_API bool CheckMaterialUsage(const EMaterialUsage Usage) override;
 	virtual ENGINE_API bool CheckMaterialUsage_Concurrent(const EMaterialUsage Usage) const override;
 #if WITH_EDITORONLY_DATA
-	virtual ENGINE_API bool GetStaticSwitchParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutValue, FGuid& OutExpressionGuid, bool bOveriddenOnly = false, bool bCheckParent = true) const override;
-	virtual ENGINE_API bool GetStaticComponentMaskParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, bool& R, bool& G, bool& B, bool& A, FGuid& OutExpressionGuid, bool bOveriddenOnly = false, bool bCheckParent = true) const override;
+	virtual ENGINE_API bool GetStaticSwitchParameterValues(FStaticParamEvaluationContext& EvalContext, TBitArray<>& OutValues, FGuid* OutExpressionGuids, bool bCheckParent = true) const override;
+	virtual ENGINE_API bool GetStaticComponentMaskParameterValues(FStaticParamEvaluationContext& EvalContext, TBitArray<>& OutRGBAOrderedValues, FGuid* OutExpressionGuids, bool bCheckParent = true) const override;
 	virtual ENGINE_API bool GetMaterialLayersParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FMaterialLayersFunctions& OutLayers, FGuid &OutExpressionGuid, bool bCheckParent = true) const override;
 #endif // WITH_EDITORONLY_DATA
 	virtual ENGINE_API bool GetTerrainLayerWeightParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, int32& OutWeightmapIndex, FGuid &OutExpressionGuid) const override;
@@ -594,7 +594,6 @@ public:
 	ENGINE_API void UpdateStaticPermutation(FMaterialUpdateContext* MaterialUpdateContext = nullptr);
 
 	ENGINE_API void SwapLayerParameterIndices(int32 OriginalIndex, int32 NewIndex);
-	ENGINE_API void RemoveLayerParameterIndex(int32 Index);
 
 #endif // WITH_EDITOR
 
@@ -604,7 +603,7 @@ public:
 	 * Recompiles static permutations if necessary.
 	 * Note: This modifies material variables used for rendering and is assumed to be called within a FMaterialUpdateContext!
 	 */
-	ENGINE_API void InitStaticPermutation(EMaterialShaderPrecompileMode PrecompileMode = EMaterialShaderPrecompileMode::Default);
+	ENGINE_API void InitStaticPermutation();
 
 	ENGINE_API void UpdateOverridableBaseProperties();
 
@@ -614,7 +613,7 @@ public:
 	 * The results will be applied to this FMaterial in the renderer when they are finished compiling.
 	 * Note: This modifies material variables used for rendering and is assumed to be called within a FMaterialUpdateContext!
 	 */
-	void CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, TArray<FMaterialResource*>& OutCachedMaterialResources, EMaterialShaderPrecompileMode PrecompileMode = EMaterialShaderPrecompileMode::Default, const ITargetPlatform* TargetPlatform = nullptr);
+	void CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, TArray<FMaterialResource*>& OutCachedMaterialResources, const ITargetPlatform* TargetPlatform = nullptr);
 
 	/** 
 	 * Gathers actively used shader maps from all material resources used by this material instance
@@ -720,7 +719,6 @@ public:
 #if WITH_EDITOR
 	void BeginAllowCachingStaticParameterValues();
 	void EndAllowCachingStaticParameterValues();
-	void AppendReferencedParameterCollectionIdsTo(TArray<FGuid>& OutIds) const;
 #endif // WITH_EDITOR
 
 protected:
@@ -777,11 +775,13 @@ protected:
 	 * The results will be applied to this FMaterial in the renderer when they are finished compiling.
 	 * Note: This modifies material variables used for rendering and is assumed to be called within a FMaterialUpdateContext!
 	 */
-	void CacheResourceShadersForRendering(EMaterialShaderPrecompileMode PrecompileMode = EMaterialShaderPrecompileMode::Default);
-	void CacheResourceShadersForRendering(EMaterialShaderPrecompileMode PrecompileMode, FMaterialResourceDeferredDeletionArray& OutResourcesToFree);
+	void CacheResourceShadersForRendering();
+	void CacheResourceShadersForRendering(FMaterialResourceDeferredDeletionArray& OutResourcesToFree);
+
+	void DeleteDeferredResources(FMaterialResourceDeferredDeletionArray& ResourcesToFree);
 
 	/** Caches shader maps for an array of material resources. */
-	void CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, EMaterialShaderPrecompileMode PrecompileMode = EMaterialShaderPrecompileMode::Default, const ITargetPlatform* TargetPlatform = nullptr);
+	void CacheShadersForResources(EShaderPlatform ShaderPlatform, const TArray<FMaterialResource*>& ResourcesToCache, const ITargetPlatform* TargetPlatform = nullptr);
 
 	/** 
 	 * Copies over material instance parameters from the base material given a material interface.

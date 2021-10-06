@@ -30,6 +30,12 @@ namespace CADLibrary
 		BodyOnly,
 	};
 
+	//enum class ERetessellationRule : uint8
+	//{
+	//	All = 0,
+	//	SkipDeletedSurfaces,
+	//};
+
 	struct FImportParameters
 	{
 		double MetricUnit = 0.001;
@@ -43,7 +49,7 @@ namespace CADLibrary
 		EDisplayPreference DisplayPreference = EDisplayPreference::MaterialPrefered;
 		bool bScaleUVMap = true;
 		bool bEnableCacheUsage = true;
-		bool bEnableTimeControl = true;
+		//ERetessellationRule RetessellationRule = ERetessellationRule::All;
 
 		uint32 GetHash() const
 		{

@@ -328,14 +328,7 @@ void FCrashReportClient::FinalizeDiagnoseReportWorker()
 	FString CallstackString = FPrimaryCrashProperties::Get()->CallStack.AsString();
 	if (CallstackString.IsEmpty())
 	{
-		if (FPrimaryCrashProperties::Get()->PCallStackHash.IsEmpty())
-		{
-			DiagnosticText = LOCTEXT( "NoCallstack", "The system failed to capture the callstack for this crash." );
-		}
-		else
-		{
-			DiagnosticText = LOCTEXT( "NoDebuggingSymbols", "You do not have any debugging symbols required to display the callstack for this crash." );
-		}
+		DiagnosticText = LOCTEXT( "NoDebuggingSymbols", "You do not have any debugging symbols required to display the callstack for this crash." );
 	}
 	else
 	{

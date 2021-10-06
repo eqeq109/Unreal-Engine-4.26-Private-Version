@@ -765,7 +765,7 @@ void UMovieSceneControlRigParameterSection::PostEditImport()
 	Super::PostEditImport();
 	if (UMovieSceneControlRigParameterTrack* Track = Cast< UMovieSceneControlRigParameterTrack>(GetOuter()))
 	{
-		SetControlRig(Track->GetControlRig());
+		ControlRig = Track->GetControlRig();
 	}
 	ReconstructChannelProxy(true);
 }
@@ -1690,7 +1690,7 @@ float UMovieSceneControlRigParameterSection::GetTotalWeightValue(FFrameTime InTi
 
 void UMovieSceneControlRigParameterSection::RecreateWithThisControlRig(UControlRig* InControlRig, bool bSetDefault)
 {
-	SetControlRig(InControlRig);
+	ControlRig = InControlRig;
 	/* Don't delete old tracks but eventually show that they aren't associated.. but
 	then how to delete?
 	BoolParameterNamesAndCurves.Empty();
@@ -1823,12 +1823,6 @@ void UMovieSceneControlRigParameterSection::RecreateWithThisControlRig(UControlR
 		}
 	}
 	ReconstructChannelProxy(true);
-}
-
-void UMovieSceneControlRigParameterSection::SetControlRig(UControlRig* InControlRig)
-{
-	ControlRig = InControlRig;
-	ControlRigClass = ControlRig ? ControlRig->GetClass() : nullptr;
 }
 
 #if WITH_EDITOR
@@ -2065,7 +2059,7 @@ void UMovieSceneControlRigParameterSection::RecordControlRigKey(FFrameNumber Fra
 }
 
 bool UMovieSceneControlRigParameterSection::LoadAnimSequenceIntoThisSection(UAnimSequence* AnimSequence, UMovieScene* MovieScene,USkeleton* Skeleton,
-	bool bKeyReduce, float Tolerance, FFrameNumber InStartFrame)
+	bool bKeyReduce, float Tolerance)
 {
 	UFKControlRig* AutoRig = Cast<UFKControlRig>(ControlRig);
 	if (!AutoRig && !ControlRig->SupportsEvent(FRigUnit_InverseExecution::EventName))
@@ -2086,7 +2080,7 @@ bool UMovieSceneControlRigParameterSection::LoadAnimSequenceIntoThisSection(UAni
 	float Length = AnimSequence->GetPlayLength();
 	float FrameRate = AnimSequence->GetFrameRate();
 
-	FFrameNumber StartFrame = UE::MovieScene::DiscreteInclusiveLower(MovieScene->GetPlaybackRange()) + InStartFrame;
+	FFrameNumber StartFrame = UE::MovieScene::DiscreteInclusiveLower(MovieScene->GetPlaybackRange());
 	FFrameNumber EndFrame = TickResolution.AsFrameNumber(Length) + StartFrame;
 
 	Modify();

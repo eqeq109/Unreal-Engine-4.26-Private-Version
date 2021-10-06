@@ -163,9 +163,9 @@ void FOnlineVoiceOculus::ProcessRemoteVoicePackets()
 	auto CurrentTime = FPlatformTime::Seconds();
 
 	// Set the talking state for remote talkers
-	for (FRemoteTalker& RemoteTalker : RemoteTalkers)
+	for (auto &RemoteTalker : RemoteTalkers)
 	{
-		const FUniqueNetIdOculus& RemoteTalkerId = FUniqueNetIdOculus::Cast(*RemoteTalker.TalkerId);
+		auto RemoteTalkerId = static_cast<const FUniqueNetIdOculus>(*RemoteTalker.TalkerId);
 
 		auto BufferSize = ovr_Voip_GetOutputBufferMaxSize();
 
@@ -175,7 +175,7 @@ void FOnlineVoiceOculus::ProcessRemoteVoicePackets()
 
 		if (MutedRemoteTalkers.Contains(RemoteTalkerId))
 		{
-			auto RemoteData = RemoteTalkerBuffers.Find(RemoteTalkerId.AsShared());
+			auto RemoteData = RemoteTalkerBuffers.Find(RemoteTalkerId);
 			// Throw away the whole packet and dump the whole talker
 			if (RemoteData && RemoteData->AudioComponent)
 			{
@@ -201,7 +201,7 @@ void FOnlineVoiceOculus::ProcessRemoteVoicePackets()
 				TriggerOnPlayerTalkingStateChangedDelegates(RemoteTalker.TalkerId.ToSharedRef(), true);
 			}
 
-			FRemoteTalkerDataOculus& QueuedData = RemoteTalkerBuffers.FindOrAdd(RemoteTalkerId.AsShared());
+			FRemoteTalkerDataOculus& QueuedData = RemoteTalkerBuffers.FindOrAdd(RemoteTalkerId);
 
 			QueuedData.LastSeen = CurrentTime;
 
@@ -231,7 +231,7 @@ void FOnlineVoiceOculus::ProcessRemoteVoicePackets()
 		else if (RemoteTalker.bIsTalking)
 		{
 			// Remove the user if the user is done talking
-			auto RemoteData = RemoteTalkerBuffers.Find(RemoteTalkerId.AsShared());
+			auto RemoteData = RemoteTalkerBuffers.Find(RemoteTalkerId);
 			if (RemoteData && CurrentTime - RemoteData->LastSeen >= 1.0)
 			{
 				// Dump the whole talker
@@ -274,7 +274,7 @@ FString FOnlineVoiceOculus::GetVoiceDebugState() const
 	
 	for (auto const &RemoteTalker : RemoteTalkers)
 	{
-		const FUniqueNetIdOculus& RemoteTalkerId = (RemoteTalker.TalkerId.IsValid()) ? FUniqueNetIdOculus::Cast(*RemoteTalker.TalkerId) : *FUniqueNetIdOculus::EmptyId();
+		auto RemoteTalkerId = (RemoteTalker.TalkerId.IsValid()) ? static_cast<const FUniqueNetIdOculus>(*RemoteTalker.TalkerId) : FUniqueNetIdOculus();
 		auto bIsRemoteTalkerMuted = (RemoteTalker.TalkerId.IsValid()) ? IsMuted(0, *RemoteTalker.TalkerId) : false;
 		Output += FString::Printf(
 			TEXT("UserId: %s:\nIsTalking: %d\nIsMuted: %d\nPCM Size: %d\n\n"), 
@@ -325,7 +325,7 @@ void FOnlineVoiceOculus::OnVoipStateChange(ovrMessageHandle Message, bool bIsErr
 		UE_LOG_ONLINE_VOICE(Warning, TEXT("%llu is in an unknown state"), PeerID);
 	}
 
-	const FUniqueNetIdOculusRef OculusPeerID = FUniqueNetIdOculus::Create(PeerID);
+	auto OculusPeerID = new FUniqueNetIdOculus(PeerID);
 
 	auto Index = IndexOfRemoteTalker(*OculusPeerID);
 	if (Index == INDEX_NONE)
@@ -335,7 +335,7 @@ void FOnlineVoiceOculus::OnVoipStateChange(ovrMessageHandle Message, bool bIsErr
 			UE_LOG_ONLINE_VOICE(Verbose, TEXT("Adding %llu to remote talker list"), PeerID);
 			int32 AddIndex = RemoteTalkers.AddZeroed();
 			auto RemoteTalker = &RemoteTalkers[AddIndex];
-			RemoteTalker->TalkerId = OculusPeerID;
+			RemoteTalker->TalkerId = MakeShareable(OculusPeerID);
 		}
 	}
 	else
@@ -344,9 +344,9 @@ void FOnlineVoiceOculus::OnVoipStateChange(ovrMessageHandle Message, bool bIsErr
 		{
 			UE_LOG_ONLINE_VOICE(Verbose, TEXT("Removing %llu from remote talker list"), PeerID);
 			RemoteTalkers.RemoveAtSwap(Index);
-			FRemoteTalkerDataOculus RemoteData;
-			if (RemoteTalkerBuffers.RemoveAndCopyValue(OculusPeerID, RemoteData))
+			if (RemoteTalkerBuffers.Contains(*OculusPeerID))
 			{
+				auto RemoteData = RemoteTalkerBuffers.FindAndRemoveChecked(*OculusPeerID);
 				if (RemoteData.AudioComponent)
 				{
 					RemoteData.AudioComponent->Stop();
@@ -358,12 +358,12 @@ void FOnlineVoiceOculus::OnVoipStateChange(ovrMessageHandle Message, bool bIsErr
 
 void FOnlineVoiceOculus::OnAudioFinished(UAudioComponent* AC)
 {
-	for (FRemoteTalkerDataMap::TIterator It(RemoteTalkerBuffers); It; ++It)
+	for (FRemoteTalkerData::TIterator It(RemoteTalkerBuffers); It; ++It)
 	{
 		FRemoteTalkerDataOculus& RemoteData = It.Value();
 		if (RemoteData.AudioComponent->IsPendingKill() || AC == RemoteData.AudioComponent)
 		{
-			UE_LOG_ONLINE_VOICE(Log, TEXT("Removing VOIP AudioComponent for Id: %s"), *It.Key()->ToDebugString());
+			UE_LOG_ONLINE_VOICE(Log, TEXT("Removing VOIP AudioComponent for Id: %s"), *It.Key().ToDebugString());
 			RemoteData.AudioComponent->RemoveFromRoot(); // Let the GC clean this up
 			RemoteData.AudioComponent = nullptr;
 			break;

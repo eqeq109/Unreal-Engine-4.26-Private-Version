@@ -11,18 +11,18 @@
 template<typename T>
 struct TMediaOptionalValue
 {
-	TMediaOptionalValue() : bValueIsSet(false) {}
-	TMediaOptionalValue(const T& v) : OptionalValue(v), bValueIsSet(true) {}
-	TMediaOptionalValue(const TMediaOptionalValue& rhs) : OptionalValue(rhs.OptionalValue), bValueIsSet(rhs.bValueIsSet) {}
-	void Set(const T& v) { OptionalValue = v; bValueIsSet = true; }
+	TMediaOptionalValue() : ValueSet(false) {}
+	TMediaOptionalValue(const T& v) : OptionalValue(v), ValueSet(true) {}
+	TMediaOptionalValue(const TMediaOptionalValue& rhs) : OptionalValue(rhs.OptionalValue), ValueSet(rhs.ValueSet) {}
+	void Set(const T& v) { OptionalValue = v; ValueSet = true; }
 	void SetIfNot(const T& v) { if (!IsSet()) Set(v); }
-	bool IsSet() const { return bValueIsSet; }
-	const T& Value() const { return OptionalValue; }
-	T GetWithDefault(const T& Default) const { return bValueIsSet ? OptionalValue : Default; }
-	void Reset() { bValueIsSet = false; }
+	bool IsSet(void) const { return(ValueSet); }
+	const T& Value(void) const { return(OptionalValue); }
+	T GetWithDefault(const T& Default) const { return ValueSet ? OptionalValue : Default; }
+	void Reset(void) { ValueSet = false; }
 private:
 	// Hide assignment from public view
 	TMediaOptionalValue& operator = (const T& v) { Set(v); return(*this); }
 	T		OptionalValue;
-	bool	bValueIsSet;
+	bool	ValueSet;
 };

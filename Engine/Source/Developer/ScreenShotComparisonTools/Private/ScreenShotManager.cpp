@@ -2,7 +2,6 @@
 
 #include "ScreenShotManager.h"
 #include "AutomationWorkerMessages.h"
-#include "Async/ParallelFor.h"
 #include "Async/Async.h"
 #include "HAL/FileManager.h"
 #include "MessageEndpointBuilder.h"
@@ -76,11 +75,16 @@ FString FScreenShotManager::GetPathComponentForPlatformAndRHI(const FAutomationS
 }
 
 /**
- * Images are now preferred to be under MapOrContext/ImageName/Plat/RHI etc
+ * Images are now preferred to be under MapOrContext/TestName/ImageName/Plat/RHI etc
  */
 FString FScreenShotManager::GetPathComponentForTestImages(const FAutomationScreenshotMetadata& MetaData) const
 {
-	return FPaths::Combine(MetaData.Context, *MetaData.ScreenShotName);
+	//if (bUseLegacyFormat)
+	{
+		return FPaths::Combine(MetaData.Context, *MetaData.ScreenShotName);
+	}
+
+	//return FPaths::Combine(MetaData.Context, MetaData.TestName, MetaData.ScreenShotName);
 }
 
 FString FScreenShotManager::GetApprovedFolderForImageWithOptions(const FAutomationScreenshotMetadata& MetaData, EApprovedFolderOptions InOptions) const
@@ -91,7 +95,7 @@ FString FScreenShotManager::GetApprovedFolderForImageWithOptions(const FAutomati
 
 	bool bUsePlatformPath = PlatInfo.bIsConfidential && (InOptions & EApprovedFolderOptions::UsePlatformFolders) == 0;
 
-	// Test folder will be MapOrContext/ImageName
+	// Test folder will be either Map/Map_ImageName/ for legacy or Map/Test/ImageName/
 	FString TestFolder = GetPathComponentForTestImages(MetaData);
 
 	FString OutPath = FPaths::ProjectDir();
@@ -480,27 +484,30 @@ FImageComparisonResult FScreenShotManager::CompareScreenshot(const FString& InUn
 	return ComparisonResult;
 }
 
+TFuture<FScreenshotExportResults> FScreenShotManager::ExportComparisonResultsAsync(FString ExportPath)
+{
+	return Async(EAsyncExecution::Thread, [=] () { return ExportComparisonResults(ExportPath); });
+}
 
-FScreenshotExportResult FScreenShotManager::ExportScreenshotComparisonResult(FString ScreenshotName, FString RootExportFolder)
+FScreenshotExportResults FScreenShotManager::ExportComparisonResults(FString RootExportFolder)
 {
 	FPaths::NormalizeDirectoryName(RootExportFolder);
 
-	if (RootExportFolder.IsEmpty())
+	if ( RootExportFolder.IsEmpty() )
 	{
 		RootExportFolder = GetDefaultExportDirectory();
 	}
 
-	FScreenshotExportResult Results;
+	FScreenshotExportResults Results;
 	Results.Success = false;
 	Results.ExportPath = RootExportFolder / FString::FromInt(FEngineVersion::Current().GetChangelist());
 
-	FString Destination = Results.ExportPath / ScreenshotName;
-	if (!IFileManager::Get().MakeDirectory(*Destination, /*Tree =*/true))
+	if ( !IFileManager::Get().MakeDirectory(*Results.ExportPath, /*Tree =*/true) )
 	{
 		return Results;
 	}
 
-	CopyDirectory(Destination, ScreenshotResultsFolder / ScreenshotName);
+	CopyDirectory(Results.ExportPath, ScreenshotResultsFolder);
 
 	Results.Success = true;
 	return Results;
@@ -563,13 +570,13 @@ void FScreenShotManager::CopyDirectory(const FString& DestDir, const FString& Sr
 	FPaths::NormalizeDirectoryName(NormalizedSrc);
 
 	IFileManager::Get().FindFilesRecursive(FilesToCopy, *SrcDir, TEXT("*"), /*Files=*/true, /*Directories=*/false);
+	for ( const FString& File : FilesToCopy )
+	{
+		const FString& SourceFilePath = File;
+		FString DestFilePath = FPaths::Combine(DestDir, SourceFilePath.RightChop(SrcDir.Len()));
 
-	ParallelFor(FilesToCopy.Num(), [&](int32 Index)
-		{
-			const FString& SourceFilePath = FilesToCopy[Index];
-			FString DestFilePath = FPaths::Combine(DestDir, SourceFilePath.RightChop(SrcDir.Len()));
-			IFileManager::Get().Copy(*DestFilePath, *SourceFilePath, true, true);
-		});
+		IFileManager::Get().Copy(*DestFilePath, *File, true, true);
+	}
 }
 
 void FScreenShotManager::BuildFallbackPlatformsListFromConfig(const UScreenShotComparisonSettings* InSettings)

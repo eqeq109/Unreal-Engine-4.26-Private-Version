@@ -29,7 +29,7 @@ public:
 
 	TArray< uint32 > FaceSmoothingMasks;
 
-	TIndirectArray< FDatasmithMesh > LODs;
+	TArray< FDatasmithMesh > LODs;
 
 	TArray< FColor > IndicesColor;
 
@@ -403,12 +403,12 @@ uint32 FDatasmithMesh::GetFaceSmoothingMask(int32 Index) const
 
 void FDatasmithMesh::AddLOD( const FDatasmithMesh& InLODMesh )
 {
-	Impl->LODs.Add( new FDatasmithMesh( InLODMesh ) );
+	Impl->LODs.Add( InLODMesh );
 }
 
 void FDatasmithMesh::AddLOD( FDatasmithMesh&& InLODMesh )
 {
-	Impl->LODs.Add( new FDatasmithMesh( MoveTemp( InLODMesh ) ) );
+	Impl->LODs.Add( MoveTemp( InLODMesh ) );
 }
 
 int32 FDatasmithMesh::GetLODsCount() const
@@ -416,24 +416,14 @@ int32 FDatasmithMesh::GetLODsCount() const
 	return Impl->LODs.Num();
 }
 
-FDatasmithMesh* FDatasmithMesh::GetLOD( int32 Index )
+FDatasmithMesh& FDatasmithMesh::GetLOD( int32 Index )
 {
-	if (Impl->LODs.IsValidIndex(Index))
-	{
-		return &Impl->LODs[Index];
-	}
-
-	return nullptr;
+	return Impl->LODs[ Index ];
 }
 
-const FDatasmithMesh* FDatasmithMesh::GetLOD( int32 Index ) const
+const FDatasmithMesh& FDatasmithMesh::GetLOD( int32 Index ) const
 {
-	if (Impl->LODs.IsValidIndex(Index))
-	{
-		return &Impl->LODs[Index];
-	}
-
-	return nullptr;
+	return Impl->LODs[ Index ];
 }
 
 void FDatasmithMesh::SetLightmapSourceUVChannel(int32 Channel)

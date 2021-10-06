@@ -13,7 +13,6 @@
 #include <ThirdParty/GTEngine/Mathematics/GteOrientedBox.h>
 #include <thread>
 #include <type_traits>
-#include <Util/ProgressCancel.h>
 
 // Compute a minimum-volume oriented box containing the specified points.  The
 // algorithm is really about computing the minimum-volume box containing the
@@ -56,22 +55,17 @@ public:
     // choose 'threadProcessEdges' to 'true'.
     MinimumVolumeBox3(unsigned int numThreads = 1, bool threadProcessEdges = false);
 
-	// The points are arbitrary, so we must compute the convex hull from
-	// them in order to compute the minimum-area box.  The input parameters
-	// are necessary for using ConvexHull3.
-	OrientedBox3<InputType> operator()(int numPoints,
-									   Vector3<InputType> const* points,
-									   FProgressCancel* Progress,
-									   bool useRotatingCalipers = !std::is_floating_point<ComputeType>::value);
+    // The points are arbitrary, so we must compute the convex hull from
+    // them in order to compute the minimum-area box.  The input parameters
+    // are necessary for using ConvexHull3.
+    OrientedBox3<InputType> operator()(int numPoints, Vector3<InputType> const* points,
+        bool useRotatingCalipers = !std::is_floating_point<ComputeType>::value);
 
-	// The points form a nondegenerate convex polyhedron.  The indices input
-	// must be nonnull and specify the triangle faces.
-	OrientedBox3<InputType> operator()(int numPoints,
-									   Vector3<InputType> const* points,
-									   int numIndices,
-									   int const* indices,
-									   FProgressCancel* Progress,
-									   bool useRotatingCalipers = !std::is_floating_point<ComputeType>::value);
+    // The points form a nondegenerate convex polyhedron.  The indices input
+    // must be nonnull and specify the triangle faces.
+    OrientedBox3<InputType> operator()(int numPoints, Vector3<InputType> const* points,
+        int numIndices, int const* indices,
+        bool useRotatingCalipers = !std::is_floating_point<ComputeType>::value);
 
     // Member access.
     inline int GetNumPoints() const;
@@ -94,7 +88,7 @@ private:
     };
 
     // Compute the minimum-volume box relative to each hull face.
-    void ProcessFaces(ETManifoldMesh const& mesh, Box& minBox, FProgressCancel* Progress = nullptr);
+    void ProcessFaces(ETManifoldMesh const& mesh, Box& minBox);
 
     // Compute the minimum-volume box for each triple of orthgonal hull edges.
     void ProcessEdges(ETManifoldMesh const& mesh, Box& minBox);
@@ -202,7 +196,7 @@ MinimumVolumeBox3<InputType, ComputeType>::MinimumVolumeBox3(unsigned int numThr
 
 template <typename InputType, typename ComputeType>
 OrientedBox3<InputType> MinimumVolumeBox3<InputType, ComputeType>::operator()(
-    int numPoints, Vector3<InputType> const* points, FProgressCancel* Progress, bool useRotatingCalipers)
+    int numPoints, Vector3<InputType> const* points, bool useRotatingCalipers)
 {
     mNumPoints = numPoints;
     mPoints = points;
@@ -357,8 +351,8 @@ OrientedBox3<InputType> MinimumVolumeBox3<InputType, ComputeType>::operator()(
 
 template <typename InputType, typename ComputeType>
 OrientedBox3<InputType> MinimumVolumeBox3<InputType, ComputeType>::operator()(
-	int numPoints, Vector3<InputType> const* points, int numIndices,
-	int const* indices, FProgressCancel* Progress, bool useRotatingCalipers)
+    int numPoints, Vector3<InputType> const* points, int numIndices,
+    int const* indices, bool useRotatingCalipers)
 {
     mNumPoints = numPoints;
     mPoints = points;
@@ -420,12 +414,7 @@ OrientedBox3<InputType> MinimumVolumeBox3<InputType, ComputeType>::operator()(
     else
     {
         ProcessEdges(mesh, minBoxEdges);
-        ProcessFaces(mesh, minBox, Progress);
-
-		if (Progress && Progress->Cancelled())
-		{
-			return itMinBox;
-		}
+        ProcessFaces(mesh, minBox);
     }
 
     if (minBoxEdges.volume != mNegOne && minBoxEdges.volume < minBox.volume)
@@ -465,7 +454,7 @@ InputType MinimumVolumeBox3<InputType, ComputeType>::GetVolume() const
 }
 
 template <typename InputType, typename ComputeType>
-void MinimumVolumeBox3<InputType, ComputeType>::ProcessFaces(ETManifoldMesh const& mesh, Box& minBox, FProgressCancel* Progress)
+void MinimumVolumeBox3<InputType, ComputeType>::ProcessFaces(ETManifoldMesh const& mesh, Box& minBox)
 {
     // Get the mesh data structures.
     auto const& tmap = mesh.GetTriangles();
@@ -552,11 +541,6 @@ void MinimumVolumeBox3<InputType, ComputeType>::ProcessFaces(ETManifoldMesh cons
         {
             auto const& supportTri = element.second;
             ProcessFace(supportTri, normal, triNormalMap, emap, minBox);
-
-			if (Progress && Progress->Cancelled())
-			{
-				return;
-			}
         }
     }
 }

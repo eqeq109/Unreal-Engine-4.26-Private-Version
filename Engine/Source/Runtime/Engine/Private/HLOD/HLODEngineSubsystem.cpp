@@ -161,23 +161,21 @@ void UHLODEngineSubsystem::OnPreSaveWorld(uint32 InSaveFlags, UWorld* InWorld)
 	// When cooking, make sure that the LODActors are not transient
 	if (InWorld && InWorld->PersistentLevel && GIsCookerLoadingPackage)
 	{
-		for (AActor* Actor : InWorld->PersistentLevel->Actors)
+		for (TActorIterator<ALODActor> It(InWorld); It; ++It)
 		{
-			if (ALODActor* LODActor = Cast<ALODActor>(Actor))
+			ALODActor* LODActor = *It;
+			if (LODActor->WasBuiltFromHLODDesc())
 			{
-				if (LODActor->WasBuiltFromHLODDesc())
+				EObjectFlags TransientFlags = EObjectFlags::RF_Transient | EObjectFlags::RF_DuplicateTransient;
+				if (LODActor->HasAnyFlags(TransientFlags))
 				{
-					EObjectFlags TransientFlags = EObjectFlags::RF_Transient | EObjectFlags::RF_DuplicateTransient;
-					if (LODActor->HasAnyFlags(TransientFlags))
-					{
-						LODActor->ClearFlags(TransientFlags);
+					LODActor->ClearFlags(TransientFlags);
 
-						const bool bIncludeNestedObjects = true;
-						ForEachObjectWithOuter(LODActor, [TransientFlags](UObject* Subobject)
-						{
-							Subobject->ClearFlags(TransientFlags);
-						}, bIncludeNestedObjects);
-					}
+					const bool bIncludeNestedObjects = true;
+					ForEachObjectWithOuter(LODActor, [TransientFlags](UObject* Subobject)
+					{
+						Subobject->ClearFlags(TransientFlags);
+					}, bIncludeNestedObjects);
 				}
 			}
 		}

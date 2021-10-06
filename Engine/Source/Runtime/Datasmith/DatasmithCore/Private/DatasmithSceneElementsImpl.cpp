@@ -957,16 +957,6 @@ void FDatasmithMetaDataElementImpl::AddProperty( const TSharedPtr< IDatasmithKey
 	}
 }
 
-void FDatasmithMetaDataElementImpl::RemoveProperty( const TSharedPtr<IDatasmithKeyValueProperty>& Property )
-{
-	Properties.Edit().Remove( Property );
-}
-
-void FDatasmithMetaDataElementImpl::ResetProperties()
-{
-	Properties.Edit().Reset();
-}
-
 FDatasmithDecalActorElementImpl::FDatasmithDecalActorElementImpl( const TCHAR* InName )
 	: FDatasmithCustomActorElementImpl( InName, EDatasmithElementType::Decal )
 {

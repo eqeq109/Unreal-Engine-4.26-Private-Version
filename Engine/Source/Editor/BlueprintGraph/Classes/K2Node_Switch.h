@@ -11,8 +11,8 @@
 #include "Textures/SlateIcon.h"
 #include "K2Node_Switch.generated.h"
 
-UCLASS(abstract)
-class BLUEPRINTGRAPH_API UK2Node_Switch : public UK2Node
+UCLASS(MinimalAPI, abstract)
+class UK2Node_Switch : public UK2Node
 {
 	GENERATED_UCLASS_BODY()
 
@@ -29,55 +29,53 @@ class BLUEPRINTGRAPH_API UK2Node_Switch : public UK2Node
 	TSubclassOf<class UObject> FunctionClass;
 
 	// UObject interface
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+	BLUEPRINTGRAPH_API virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 	// End of UObject interface
 
 	// UEdGraphNode interface
-	virtual void AllocateDefaultPins() override;
-	virtual FLinearColor GetNodeTitleColor() const override;
-	virtual FSlateIcon GetIconAndTint(FLinearColor& OutColor) const override;
+	BLUEPRINTGRAPH_API virtual void AllocateDefaultPins() override;
+	BLUEPRINTGRAPH_API virtual FLinearColor GetNodeTitleColor() const override;
+	BLUEPRINTGRAPH_API virtual FSlateIcon GetIconAndTint(FLinearColor& OutColor) const override;
 	// End of UEdGraphNode interface
 
 	// UK2Node interface
-	virtual ERedirectType DoPinsMatchForReconstruction(const UEdGraphPin* NewPin, int32 NewPinIndex, const UEdGraphPin* OldPin, int32 OldPinIndex) const override;
-	virtual class FNodeHandlingFunctor* CreateNodeHandler(class FKismetCompilerContext& CompilerContext) const override;
-	virtual FText GetMenuCategory() const override;
+	BLUEPRINTGRAPH_API virtual ERedirectType DoPinsMatchForReconstruction(const UEdGraphPin* NewPin, int32 NewPinIndex, const UEdGraphPin* OldPin, int32 OldPinIndex) const override;
+	BLUEPRINTGRAPH_API virtual class FNodeHandlingFunctor* CreateNodeHandler(class FKismetCompilerContext& CompilerContext) const override;
+	BLUEPRINTGRAPH_API virtual FText GetMenuCategory() const override;
 	virtual bool CanEverRemoveExecutionPin() const override { return true; }
 	// End of UK2Node interface
 
 	// UK2Node_Switch interface
 
-	virtual FString GetExportTextForPin(const UEdGraphPin* Pin) const;
-
 	/** Gets a unique pin name, the next in the sequence */
 	virtual FName GetUniquePinName() { return NAME_None; }
 
 	/** Gets the pin type from the schema for the subclass */
-	virtual FEdGraphPinType GetPinType() const PURE_VIRTUAL(UK2Node_Switch::GetPinType, return FEdGraphPinType();)
+	virtual FEdGraphPinType GetPinType() const { check(false); return FEdGraphPinType(); }
 
-	virtual FEdGraphPinType GetInnerCaseType() const;
+	BLUEPRINTGRAPH_API virtual FEdGraphPinType GetInnerCaseType() const;
 
 	/**
 	 * Adds a new execution pin to a switch node
 	 */
-	virtual void AddPinToSwitchNode();
+	BLUEPRINTGRAPH_API virtual void AddPinToSwitchNode();
 
 	/**
 	 * Removes the specified execution pin from an switch node
 	 *
 	 * @param	TargetPin	The pin to remove from the node
 	 */
-	virtual void RemovePinFromSwitchNode(UEdGraphPin* TargetPin);
+	BLUEPRINTGRAPH_API virtual void RemovePinFromSwitchNode(UEdGraphPin* TargetPin);
 
 	/** Whether an execution pin can be removed from the node or not */
-	virtual bool CanRemoveExecutionPin(UEdGraphPin* TargetPin) const;
+	BLUEPRINTGRAPH_API virtual bool CanRemoveExecutionPin(UEdGraphPin* TargetPin) const;
 
 	/** Getting pin access */
-	UEdGraphPin* GetSelectionPin() const;
-	UEdGraphPin* GetDefaultPin() const;
-	UEdGraphPin* GetFunctionPin() const;
+	BLUEPRINTGRAPH_API UEdGraphPin* GetSelectionPin() const;
+	BLUEPRINTGRAPH_API UEdGraphPin* GetDefaultPin() const;
+	BLUEPRINTGRAPH_API UEdGraphPin* GetFunctionPin() const;
 
-	static FName GetSelectionPinName();
+	BLUEPRINTGRAPH_API static FName GetSelectionPinName();
 
 	virtual FName GetPinNameGivenIndex(int32 Index) const;
 

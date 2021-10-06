@@ -8,7 +8,7 @@
 #include "Misc/Attribute.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 
 class SDisplayClusterConfiguratorViewBase
 	: public IDisplayClusterConfiguratorViewBase
@@ -27,10 +27,10 @@ public:
 	SLATE_END_ARGS()
 
 public:
-	void Construct(const FArguments& InArgs, const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit);
+	void Construct(const FArguments& InArgs, const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit);
 
 	virtual void ConstructChildren(const TAttribute<FMargin>& InPadding, const TSharedRef<SWidget>& InContent) override;
 
 protected:
-	TWeakPtr<FDisplayClusterConfiguratorBlueprintEditor> ToolkitPtr;
+	TWeakPtr<FDisplayClusterConfiguratorToolkit> ToolkitPtr;
 };

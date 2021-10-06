@@ -133,6 +133,7 @@ void FParticleMemoryStatManager::DumpParticleMemoryStats(FOutputDevice& Ar)
 	Ar.Logf(TEXT("Largest single GT allocation,%d"), DynamicEmitterGTMem_Largest_MAX);
 	Ar.Logf(TEXT("Largest single RT allocation,%d"), LargestRTParticleData_MAX);
 
+	GParticleVertexFactoryPool.DumpInfo(Ar);
 	GParticleOrderPool.DumpInfo(Ar);
 }
 

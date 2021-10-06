@@ -25,7 +25,7 @@ TAutoConsoleVariable<int32> CVarChaosThreadEnabled(
 	TEXT("0: Disabled")
 	TEXT("1: Enabled"));
 
-TAutoConsoleVariable<Chaos::FRealSingle> CVarDedicatedThreadDesiredHz(
+TAutoConsoleVariable<float> CVarDedicatedThreadDesiredHz(
 	TEXT("p.Chaos.Thread.DesiredHz"),
 	60.0f,
 	TEXT("Desired update rate of the dedicated physics thread in Hz/FPS (Default 60.0f)"));
@@ -180,24 +180,24 @@ void FChaosSolversModule::SyncTask(bool bForceBlockingSync /*= false*/)
 #endif
 }
 
-Chaos::FPBDRigidsSolver* FChaosSolversModule::CreateSolver(UObject* InOwner, Chaos::EThreadingMode InThreadingMode
+template <typename Traits>
+Chaos::TPBDRigidsSolver<Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner, Chaos::EThreadingMode InThreadingMode
 #if CHAOS_CHECKED
 	, const FName& DebugName
 #endif
 )
 {
 	LLM_SCOPE(ELLMTag::Chaos);
-	using namespace Chaos;
 
 	FChaosScopeSolverLock SolverScopeLock;
 	
-	EMultiBufferMode SolverBufferMode = InThreadingMode == EThreadingMode::SingleThread ? EMultiBufferMode::Single : EMultiBufferMode::Double;
+	Chaos::EMultiBufferMode SolverBufferMode = InThreadingMode == Chaos::EThreadingMode::SingleThread ? Chaos::EMultiBufferMode::Single : Chaos::EMultiBufferMode::Double;
 	
-	auto* NewSolver = new FPBDRigidsSolver(SolverBufferMode,InOwner);
+	auto* NewSolver = new Chaos::TPBDRigidsSolver<Traits>(SolverBufferMode,InOwner);
 	AllSolvers.Add(NewSolver);
 
 	// Add The solver to the owner list
-	TArray<FPhysicsSolverBase*>& OwnerSolverList = SolverMap.FindOrAdd(InOwner);
+	TArray<Chaos::FPhysicsSolverBase*>& OwnerSolverList = SolverMap.FindOrAdd(InOwner);
 	OwnerSolverList.Add(NewSolver);
 
 #if CHAOS_CHECKED
@@ -208,12 +208,13 @@ Chaos::FPBDRigidsSolver* FChaosSolversModule::CreateSolver(UObject* InOwner, Cha
 
 	// Set up the material lists on the new solver, copying from the current master list
 	{
-		FPhysicalMaterialManager& Manager =	Chaos::FPhysicalMaterialManager::Get();
-		FPhysicsSceneGuardScopedWrite ScopedWrite(NewSolver->GetExternalDataLock_External());
-		NewSolver->QueryMaterials_External = Manager.GetMasterMaterials_External();
-		NewSolver->QueryMaterialMasks_External = Manager.GetMasterMaterialMasks_External();
-		NewSolver->SimMaterials = Manager.GetMasterMaterials_External();
-		NewSolver->SimMaterialMasks = Manager.GetMasterMaterialMasks_External();
+		Chaos::FPhysicalMaterialManager& Manager =	Chaos::FPhysicalMaterialManager::Get();
+		NewSolver->QueryMaterialLock.WriteLock();
+		NewSolver->QueryMaterials = Manager.GetMasterMaterials();
+		NewSolver->QueryMaterialMasks = Manager.GetMasterMaterialMasks();
+		NewSolver->SimMaterials = Manager.GetMasterMaterials();
+		NewSolver->SimMaterialMasks = Manager.GetMasterMaterialMasks();
+		NewSolver->QueryMaterialLock.WriteUnlock();
 	}
 
 	return NewSolver;
@@ -349,7 +350,7 @@ void FChaosSolversModule::DumpHierarchyStats(int32* OutOptMaxCellElements)
 	{
 		Chaos::FPhysicsSolverBase* Solver = AllSolvers[SolverIndex];
 #if TODO_REIMPLEMENT_SPATIAL_ACCELERATION_ACCESS
-		if(const Chaos::ISpatialAcceleration<Chaos::FReal,3>* SpatialAcceleration = Solver->GetSpatialAcceleration())
+		if(const Chaos::ISpatialAcceleration<float,3>* SpatialAcceleration = Solver->GetSpatialAcceleration())
 		{
 #if !UE_BUILD_SHIPPING
 			SpatialAcceleration->DumpStats();
@@ -359,14 +360,14 @@ void FChaosSolversModule::DumpHierarchyStats(int32* OutOptMaxCellElements)
 #endif
 #if 0
 
-		const TArray<Chaos::FAABB3>& Boxes = Hierarchy->GetWorldSpaceBoxes();
+		const TArray<Chaos::TAABB<float, 3>>& Boxes = Hierarchy->GetWorldSpaceBoxes();
 
 		if(Boxes.Num() > 0)
 		{
 			FString OutputString = TEXT("\n\n");
 			OutputString += FString::Printf(TEXT("Solver %d - Hierarchy Stats\n"));
 
-			const Chaos::TUniformGrid<Chaos::FReal, 3>& Grid = Hierarchy->GetGrid();
+			const Chaos::TUniformGrid<float, 3>& Grid = Hierarchy->GetGrid();
 
 			const int32 NumCells = Grid.GetNumCells();
 			const FVector Min = Grid.MinCorner();
@@ -420,7 +421,7 @@ void FChaosSolversModule::DumpHierarchyStats(int32* OutOptMaxCellElements)
 				(*OutOptMaxCellElements) = MaxElements;
 			}
 
-			const Chaos::FReal AveragePopulatedCount = (Chaos::FReal)TotalElems / (Chaos::FReal)CellsL0;
+			const float AveragePopulatedCount = (float)TotalElems / (float)CellsL0;
 
 			OutputString += FString::Printf(TEXT("\n\tL0: %d\n\tAvg elements per populated cell: %.5f\n\tTotal elems: %d"),
 				CellsL0,
@@ -437,13 +438,13 @@ void FChaosSolversModule::DumpHierarchyStats(int32* OutOptMaxCellElements)
 			}
 
 			const int32 MaxChars = 20;
-			const Chaos::FReal CountPerCharacter = (Chaos::FReal)MaxBucketCount / (Chaos::FReal)MaxChars;
+			const float CountPerCharacter = (float)MaxBucketCount / (float)MaxChars;
 
 			OutputString += TEXT("\n\nElement Count Distribution:\n");
 
 			for(int32 BucketIndex = 1; BucketIndex < NumBuckets; ++BucketIndex)
 			{
-				const int32 NumChars = (Chaos::FReal)BucketCounts[BucketIndex] / (Chaos::FReal)CountPerCharacter;
+				const int32 NumChars = (float)BucketCounts[BucketIndex] / (float)CountPerCharacter;
 
 				if(BucketIndex < (NumBuckets - 1))
 				{
@@ -496,8 +497,8 @@ void FChaosSolversModule::UpdateStats()
 
 	if(PhysStats.NumUpdates > 0)
 	{
-		AverageUpdateTime = PhysStats.AccumulatedTime / (FReal)PhysStats.NumUpdates;
-		TotalAverageUpdateTime = PhysStats.ActualAccumulatedTime / (FReal)PhysStats.NumUpdates;
+		AverageUpdateTime = PhysStats.AccumulatedTime / (float)PhysStats.NumUpdates;
+		TotalAverageUpdateTime = PhysStats.ActualAccumulatedTime / (float)PhysStats.NumUpdates;
 		Fps = 1.0f / AverageUpdateTime;
 		EffectiveFps = 1.0f / TotalAverageUpdateTime;
 	}
@@ -526,8 +527,8 @@ void FChaosSolversModule::UpdateStats()
 #if FRAMEPRO_ENABLED
 
 	// Custom framepro stats for graphs
-	const Chaos::FRealSingle AvgUpdateMs = AverageUpdateTime * 1000.f;
-	const Chaos::FRealSingle AvgEffectiveUpdateMs = TotalAverageUpdateTime * 1000.0f;
+	const float AvgUpdateMs = AverageUpdateTime * 1000.f;
+	const float AvgEffectiveUpdateMs = TotalAverageUpdateTime * 1000.0f;
 
 	FRAMEPRO_CUSTOM_STAT("Chaos_Thread_Fps", Fps, "ChaosThread", "FPS", FRAMEPRO_COLOUR(255,255,255));
 	FRAMEPRO_CUSTOM_STAT("Chaos_Thread_EffectiveFps", EffectiveFps, "ChaosThread", "FPS", FRAMEPRO_COLOUR(255,255,255));
@@ -545,7 +546,7 @@ void FChaosSolversModule::UpdateStats()
 	{
 		Chaos::PBDRigidsSolver* Solver = AllSolvers[SolverIndex];
 
-		const Chaos::TBoundingVolume<Chaos::FPBDRigidParticles>* Hierarchy = Solver->GetSpatialAcceleration();
+		const Chaos::TBoundingVolume<Chaos::TPBDRigidParticles<float, 3>, float, 3>* Hierarchy = Solver->GetSpatialAcceleration();
 
 		if(Hierarchy)
 		{
@@ -735,3 +736,14 @@ const IChaosSettingsProvider& FChaosSolversModule::GetSettingsProvider() const
 {
 	return SettingsProvider ? *SettingsProvider : Chaos::GDefaultChaosSettings;
 }
+
+#if CHAOS_CHECKED
+#define EVOLUTION_TRAIT(Traits)\
+template Chaos::TPBDRigidsSolver<Chaos::Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner, Chaos::EThreadingMode InFlags, const FName& DebugName);
+#else
+#define EVOLUTION_TRAIT(Traits)\
+template Chaos::TPBDRigidsSolver<Chaos::Traits>* FChaosSolversModule::CreateSolver(UObject* InOwner,Chaos::EThreadingMode InFlags);
+#endif
+
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT

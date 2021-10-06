@@ -49,19 +49,12 @@ void LexFromString(ERemoteSessionChannelMode& Value, const TCHAR* String)
 	}
 }
 
-// Simple struct use to establish a cancellation token for async tasks.
-//
-struct FRemoteSessionRoleCancellationToken
-{
-};
-
 FRemoteSessionRole::FRemoteSessionRole()
 {
 }
 
 FRemoteSessionRole::~FRemoteSessionRole()
 {
-	RemoveRouteDelegates();
 	CloseConnections();
 }
 
@@ -252,47 +245,26 @@ void FRemoteSessionRole::RemoveAllDelegates(void* UserObject)
 	ReceiveChannelListDelegate.RemoveAll(UserObject);
 }
 
-void FRemoteSessionRole::RemoveRouteDelegates()
-{
-	if (!BackChannelConnection.IsValid())
-	{
-		return;
-	}
-	TBackChannelSharedPtr<IBackChannelConnection> InConnection = BackChannelConnection.Pin();
-
-	InConnection->RemoveRouteDelegate(kHelloEndPoint, RouteDelegates.Hello);
-	InConnection->RemoveRouteDelegate(kGoodbyeEndPoint, RouteDelegates.Goodbye);
-	InConnection->RemoveRouteDelegate(kPingEndPoint, RouteDelegates.Ping);
-	InConnection->RemoveRouteDelegate(kPongEndPoint, RouteDelegates.Pong);
-	InConnection->RemoveRouteDelegate(kLegacyVersionEndPoint, RouteDelegates.LegacyReceive);
-	InConnection->RemoveRouteDelegate(kChangeChannelEndPoint, RouteDelegates.ChangeChannel);
-
-	BackChannelConnection = {};
-}
 
 void FRemoteSessionRole::BindEndpoints(TBackChannelSharedPtr<IBackChannelConnection> InConnection)
 {
-	RemoveRouteDelegates();
-
 	auto Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceiveHello);
-	RouteDelegates.Hello = InConnection->AddRouteDelegate(kHelloEndPoint, Delegate);
+	InConnection->AddRouteDelegate(kHelloEndPoint, Delegate);
 
 	Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceiveGoodbye);
-	RouteDelegates.Goodbye = InConnection->AddRouteDelegate(kGoodbyeEndPoint, Delegate);
+	InConnection->AddRouteDelegate(kGoodbyeEndPoint, Delegate);
 
 	Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceivePing);
-	RouteDelegates.Ping = InConnection->AddRouteDelegate(kPingEndPoint, Delegate);
+	InConnection->AddRouteDelegate(kPingEndPoint, Delegate);
 
 	Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceivePong);
-	RouteDelegates.Pong = InConnection->AddRouteDelegate(kPongEndPoint, Delegate);
+	InConnection->AddRouteDelegate(kPongEndPoint, Delegate);
 
 	Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceiveLegacyVersion);
-	RouteDelegates.LegacyReceive = InConnection->AddRouteDelegate(kLegacyVersionEndPoint, Delegate);
+	InConnection->AddRouteDelegate(kLegacyVersionEndPoint, Delegate);
 
 	Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionRole::OnReceiveChangeChannel);
-	RouteDelegates.ChangeChannel = InConnection->AddRouteDelegate(kChangeChannelEndPoint, Delegate);
-
-	BackChannelConnection = InConnection;
+	InConnection->AddRouteDelegate(kChangeChannelEndPoint, Delegate);
 }
 
 void FRemoteSessionRole::SendLegacyVersionCheck()
@@ -440,23 +412,13 @@ void FRemoteSessionRole::OnReceiveGoodbye(IBackChannelPacket& Message)
 	Message.Read(TEXT("Reason"), Reason);
 
 	UE_LOG(LogRemoteSession, Display, TEXT("FRemoteSessionRole: Closing due to goodbye from peer. '%s'"), *Reason);
-	CancelCloseToken = MakeShared<FRemoteSessionRoleCancellationToken>();
-	TWeakPtr<FRemoteSessionRoleCancellationToken> WeakCloseToken = CancelCloseToken;
 
-	// Messages are received on a background thread and role operations should occur on
-	// the main thread. Channels must be created on the main thread.
-	AsyncTask(ENamedThreads::GameThread, [this, WeakCloseToken, Reason] {
-		// We use a weak pointer to track the lifetime of this.  It is possible for this
-		// to delete before the async class completes so we check the weak pointer to see
-		// if it is valid. If it is not then we know the lifetime of this has expired and
-		// we should not perform the block.
-		//
-		if (WeakCloseToken.IsValid())
-		{
-			ErrorMessage = Reason;
-			CloseConnections();
-			CancelCloseToken = {};
-		}
+	// note messages are received on a background thread and role operations should occur on
+	// the main thread
+	// Need to create channels on the main thread
+	AsyncTask(ENamedThreads::GameThread, [this, Reason] {
+		ErrorMessage = Reason;
+		CloseConnections();
 	});
 }
 

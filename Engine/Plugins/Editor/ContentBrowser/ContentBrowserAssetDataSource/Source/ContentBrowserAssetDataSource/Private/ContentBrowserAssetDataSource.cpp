@@ -24,7 +24,6 @@
 #include "NewAssetContextMenu.h"
 #include "AssetFolderContextMenu.h"
 #include "AssetFileContextMenu.h"
-#include "ContentBrowserDataSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "ContentBrowserAssetDataSource"
 
@@ -192,17 +191,6 @@ void UContentBrowserAssetDataSource::Shutdown()
 	Super::Shutdown();
 }
 
-void UContentBrowserAssetDataSource::EnumerateRootPaths(const FContentBrowserDataFilter& InFilter, TFunctionRef<void(FName)> InCallback)
-{
-	for (const FString& RootContentPath : RootContentPaths)
-	{
-		if (RootContentPath.Len() > 1)
-		{
-			InCallback(FName(RootContentPath.Len() - 1, *RootContentPath));
-		}
-	}
-}
-
 void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FContentBrowserDataFilter& InFilter, FContentBrowserDataCompiledFilter& OutCompiledFilter)
 {
 	const FContentBrowserDataObjectFilter* ObjectFilter = InFilter.ExtraFilters.FindFilter<FContentBrowserDataObjectFilter>();
@@ -234,10 +222,12 @@ void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FCo
 		return;
 	}
 
-	TSet<FName> InternalPaths;
-	TMap<FName, TArray<FName>> VirtualPaths;
-	FName SingleInternalPath;
-	ExpandVirtualPath(InPath, InFilter, SingleInternalPath, InternalPaths, VirtualPaths);
+	// Convert the virtual path - if it doesn't exist in this data source then the filter won't include anything
+	FName InternalPath;
+	if (!TryConvertVirtualPathToInternal(InPath, InternalPath))
+	{
+		return;
+	}
 
 	auto GetExcludedPathsForItemAttributeFilter = [this](const EContentBrowserItemAttributeFilter& InItemAttributeFilter) -> TSet<FName>
 	{
@@ -339,67 +329,21 @@ void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FCo
 		if (InFilter.bRecursivePaths)
 		{
 			AssetDataFilter.bRunFolderQueryOnDemand = true;
-			for (const FName It : InternalPaths)
-			{
-				AssetDataFilter.PathsToScanOnDemand.Add(It.ToString());
-			}
+			AssetDataFilter.PathToScanOnDemandStr = InternalPath.ToString();
 		}
 		else
 		{
-			for (const FName InternalPath : InternalPaths)
+			AssetRegistry->EnumerateSubPaths(InternalPath, [&AssetDataFilter](FName SubPath)
 			{
-				AssetRegistry->EnumerateSubPaths(InternalPath, [&AssetDataFilter](FName SubPath)
-				{
-					const bool bPassesCompiledFilter = ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(AssetDataFilter, SubPath);
+				const bool bPassesCompiledFilter = ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(AssetDataFilter, SubPath);
 
-					if (bPassesCompiledFilter)
-					{
-						AssetDataFilter.CachedSubPaths.Add(SubPath);
-					}
+				if (bPassesCompiledFilter)
+				{
+					AssetDataFilter.CachedSubPaths.Add(SubPath);
+				}
 			
-					return true;
-				}, false);
-			}
-		}
-
-		FContentBrowserCompiledVirtualFolderFilter* VirtualFolderFilter = nullptr;
-		for (const auto& It : VirtualPaths)
-		{
-			const FName VirtualSubPath = It.Key;
-			const TArray<FName>& InternalRootPaths = It.Value;
-
-			// Determine if any of the internal paths under this virtual path will be shown
-			bool bPassesCompiledFilter = false;
-			for (const FName InternalRootPath : InternalRootPaths)
-			{
-				if (ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(AssetDataFilter, InternalRootPath))
-				{
-					bPassesCompiledFilter = true;
-					break;
-				}
-			}
-
-			if (bPassesCompiledFilter)
-			{
-				if (!VirtualFolderFilter)
-				{
-					VirtualFolderFilter = &FilterList.FindOrAddFilter<FContentBrowserCompiledVirtualFolderFilter>();
-				}
-
-				if (!VirtualFolderFilter->CachedSubPaths.Contains(VirtualSubPath))
-				{
-					FName InternalPath;
-					if (TryConvertVirtualPathToInternal(VirtualSubPath, InternalPath))
-					{
-						VirtualFolderFilter->CachedSubPaths.Add(VirtualSubPath, CreateAssetFolderItem(InternalPath));
-					}
-					else
-					{
-						const FString MountLeafName = FPackageName::GetShortName(VirtualSubPath);
-						VirtualFolderFilter->CachedSubPaths.Add(VirtualSubPath, FContentBrowserItemData(this, EContentBrowserItemFlags::Type_Folder, VirtualSubPath, *MountLeafName, FText(), nullptr));
-					}
-				}
-			}
+				return true;
+			}, false);
 		}
 	}
 
@@ -416,20 +360,9 @@ void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FCo
 	}
 
 	// If we are filtering out this path, then we can bail now as it won't return any content
-	if (PathBlacklist && !InFilter.bRecursivePaths)
+	if (PathBlacklist && !PathBlacklist->PassesStartsWithFilter(InternalPath) && !InFilter.bRecursivePaths)
 	{
-		for (auto It = InternalPaths.CreateIterator(); It; ++It)
-		{
-			if (!PathBlacklist->PassesStartsWithFilter(*It))
-			{
-				It.RemoveCurrent();
-			}
-		}
-
-		if (InternalPaths.Num() == 0)
-		{
-			return;
-		}
+		return;
 	}
 
 	const bool bWasTemporaryCachingModeEnabled = AssetRegistry->GetTemporaryCachingMode();
@@ -480,10 +413,7 @@ void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FCo
 			FARCompiledFilter CompiledInternalPathFilter;
 			{
 				FARFilter InternalPathFilter;
-				for (const FName InternalPath : InternalPaths)
-				{
-					InternalPathFilter.PackagePaths.Add(InternalPath);
-				}
+				InternalPathFilter.PackagePaths.Add(InternalPath);
 				InternalPathFilter.bRecursivePaths = InFilter.bRecursivePaths;
 				AssetRegistry->CompileFilter(InternalPathFilter, CompiledInternalPathFilter);
 			}
@@ -679,10 +609,7 @@ void UContentBrowserAssetDataSource::CompileFilter(const FName InPath, const FCo
 	if (bIncludeFolders && InFilter.bRecursivePaths)
 	{
 		AssetDataFilter.CachedSubPaths = CompiledInclusiveFilter.PackagePaths;
-		for (const FName InternalPath : InternalPaths)
-		{
-			AssetDataFilter.CachedSubPaths.Remove(InternalPath); // Remove the root as it's not a sub-path
-		}
+		AssetDataFilter.CachedSubPaths.Remove(InternalPath); // Remove the root as it's not a sub-path
 		AssetDataFilter.CachedSubPaths.Sort(FNameLexicalLess()); // Sort as we enumerate these in parent->child order
 	}
 
@@ -729,31 +656,26 @@ void UContentBrowserAssetDataSource::EnumerateItemsMatchingFilter(const FContent
 		{
 			// Handle recursion manually so that we can cull out entire sub-trees once we fail to match a folder
 			TArray<FName, TInlineAllocator<16>> PathsToScan;
-
-			for (const FString& It : AssetDataFilter->PathsToScanOnDemand)
+			PathsToScan.Add(*AssetDataFilter->PathToScanOnDemandStr);
+			while (PathsToScan.Num() > 0)
 			{
-				PathsToScan.Reset();
-				PathsToScan.Add(*It);
-				while (PathsToScan.Num() > 0)
+				const FName PathToScan = PathsToScan.Pop(/*bAllowShrinking*/false);
+				AssetRegistry->EnumerateSubPaths(PathToScan, [this, &InCallback, &AssetDataFilter, &PathsToScan](FName SubPath)
 				{
-					const FName PathToScan = PathsToScan.Pop(/*bAllowShrinking*/false);
-					AssetRegistry->EnumerateSubPaths(PathToScan, [this, &InCallback, &AssetDataFilter, &PathsToScan](FName SubPath)
+					const bool bPassesCompiledFilter = ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(*AssetDataFilter, SubPath);
+			
+					if (bPassesCompiledFilter)
 					{
-						const bool bPassesCompiledFilter = ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(*AssetDataFilter, SubPath);
-			
-						if (bPassesCompiledFilter)
+						if (!InCallback(CreateAssetFolderItem(SubPath)))
 						{
-							if (!InCallback(CreateAssetFolderItem(SubPath)))
-							{
-								return false;
-							}
-
-							PathsToScan.Add(SubPath);
+							return false;
 						}
+
+						PathsToScan.Add(SubPath);
+					}
 			
-						return true;
-					}, false);
-				}
+					return true;
+				}, false);
 			}
 		}
 		else
@@ -888,15 +810,13 @@ bool UContentBrowserAssetDataSource::CanCreateFolder(const FName InPath, FText* 
 
 bool UContentBrowserAssetDataSource::CreateFolder(const FName InPath, FContentBrowserItemDataTemporaryContext& OutPendingItem)
 {
-	const FString ParentPath = FPackageName::GetLongPackagePath(InPath.ToString());
-	FName InternalParentPath;
-	if (!TryConvertVirtualPathToInternal(*ParentPath, InternalParentPath))
+	FName InternalPath;
+	if (!TryConvertVirtualPathToInternal(InPath, InternalPath))
 	{
 		return false;
 	}
 
-	const FString FolderItemName = FPackageName::GetShortName(InPath);
-	FString InternalPathString = InternalParentPath.ToString() + TEXT("/") + FolderItemName;
+	const FString FolderItemName = FPackageName::GetShortName(InternalPath);
 
 	FContentBrowserItemData NewItemData(
 		this,
@@ -904,7 +824,7 @@ bool UContentBrowserAssetDataSource::CreateFolder(const FName InPath, FContentBr
 		InPath,
 		*FolderItemName,
 		FText::AsCultureInvariant(FolderItemName),
-		MakeShared<FContentBrowserAssetFolderItemDataPayload>(*InternalPathString)
+		MakeShared<FContentBrowserAssetFolderItemDataPayload>(InternalPath)
 		);
 
 	OutPendingItem = FContentBrowserItemDataTemporaryContext(
@@ -943,25 +863,7 @@ bool UContentBrowserAssetDataSource::DoesItemPassFilter(const FContentBrowserIte
 					FolderPayload->GetInternalPath().ToString(FolderInternalPathStr);
 					FStringView FolderInternalPathStrView = FolderInternalPathStr;
 
-					bool bIsUnderSearchPath = false;
-					for (const FString& It : AssetDataFilter->PathsToScanOnDemand)
-					{
-						if (It == TEXT("/"))
-						{
-							bIsUnderSearchPath = true;
-							break;
-						}
-
-						if (FolderInternalPathStrView.StartsWith(It))
-						{
-							if ((FolderInternalPathStrView.Len() <= It.Len()) || (FolderInternalPathStrView[It.Len()] == TEXT('/')))
-							{
-								bIsUnderSearchPath = true;
-								break;
-							}
-						}
-					}
-
+					const bool bIsUnderSearchPath = AssetDataFilter->PathToScanOnDemandStr == TEXT("/") || (FolderInternalPathStrView.StartsWith(AssetDataFilter->PathToScanOnDemandStr) && (FolderInternalPathStrView.Len() <= AssetDataFilter->PathToScanOnDemandStr.Len() || FolderInternalPathStrView[AssetDataFilter->PathToScanOnDemandStr.Len()] == TEXT('/')));
 					const bool bPassesCompiledFilter = ContentBrowserAssetDataSource::PathPassesCompiledDataFilter(*AssetDataFilter, FolderPayload->GetInternalPath());
 
 					return bIsUnderSearchPath && bPassesCompiledFilter;
@@ -1305,7 +1207,7 @@ bool UContentBrowserAssetDataSource::CanHandleDragDropEvent(const FContentBrowse
 		if (TSharedPtr<FExternalDragOperation> ExternalDragDropOp = InDragDropEvent.GetOperationAs<FExternalDragOperation>())
 		{
 			TOptional<EMouseCursor::Type> NewDragCursor;
-			if (!ExternalDragDropOp->HasFiles() || !ContentBrowserAssetData::CanModifyPath(AssetTools, FolderPayload->GetInternalPath(), nullptr))
+			if (!ContentBrowserAssetData::CanModifyPath(AssetTools, FolderPayload->GetInternalPath(), nullptr))
 			{
 				NewDragCursor = EMouseCursor::SlashedCircle;
 			}
@@ -1340,7 +1242,7 @@ bool UContentBrowserAssetDataSource::HandleDragDropOnItem(const FContentBrowserI
 		if (TSharedPtr<FExternalDragOperation> ExternalDragDropOp = InDragDropEvent.GetOperationAs<FExternalDragOperation>())
 		{
 			FText ErrorMsg;
-			if (ExternalDragDropOp->HasFiles() && ContentBrowserAssetData::CanModifyPath(AssetTools, FolderPayload->GetInternalPath(), &ErrorMsg))
+			if (ContentBrowserAssetData::CanModifyPath(AssetTools, FolderPayload->GetInternalPath(), &ErrorMsg))
 			{
 				// Delay import until next tick to avoid blocking the process that files were dragged from
 				GEditor->GetEditorSubsystem<UImportSubsystem>()->ImportNextTick(ExternalDragDropOp->GetFiles(), FolderPayload->GetInternalPath().ToString());
@@ -1550,8 +1452,7 @@ void UContentBrowserAssetDataSource::OnAssetUpdated(const FAssetData& InAssetDat
 
 void UContentBrowserAssetDataSource::OnAssetLoaded(UObject* InAsset)
 {
-	if (InAsset && !InAsset->GetOutermost()->HasAnyPackageFlags(PKG_ForDiffing) &&
-		!UE::AssetRegistry::FFiltering::ShouldSkipAsset(InAsset))
+	if (InAsset && !InAsset->GetOutermost()->HasAnyPackageFlags(PKG_ForDiffing))
 	{
 		FAssetData AssetData(InAsset);
 		if (ContentBrowserAssetData::IsPrimaryAsset(AssetData))

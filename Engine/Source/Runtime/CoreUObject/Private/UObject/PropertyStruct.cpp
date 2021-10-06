@@ -276,10 +276,11 @@ const TCHAR* FStructProperty::ImportText_Internal(const TCHAR* InBuffer, void* D
 	FScopedPlaceholderPropertyTracker ImportPropertyTracker(this);
 
 	uint32 PropagatedLoadFlags = 0;
-	if (FLinkerLoad* Linker = GetLinker())
-	{
-		PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
-	}
+	// @todo: FProps
+	//if (FLinkerLoad* Linker = GetLinker())
+	//{
+	//	PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
+	//}
 
 	uint32 OldFlags = 0;
 	FLinkerLoad* StructLinker = Struct->GetLinker();

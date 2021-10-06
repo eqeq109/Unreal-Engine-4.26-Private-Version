@@ -70,10 +70,10 @@ struct FBTCompositeChild
 
 	/** child node */
 	UPROPERTY()
-	UBTCompositeNode* ChildComposite = nullptr;
+	UBTCompositeNode* ChildComposite;
 
 	UPROPERTY()
-	UBTTaskNode* ChildTask = nullptr;
+	UBTTaskNode* ChildTask;
 
 	/** execution decorators */
 	UPROPERTY()

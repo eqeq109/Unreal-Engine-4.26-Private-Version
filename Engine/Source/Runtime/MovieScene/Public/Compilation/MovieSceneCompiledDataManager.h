@@ -19,18 +19,11 @@ struct FGatherParameters;
 struct FMovieSceneBinding;
 struct FCompileOnTheFlyData;
 struct FTrackGatherParameters;
+struct FMovieSceneRootOverridePath;
 struct FMovieSceneGatheredCompilerData;
 
 class UMovieSceneSubTrack;
 class UMovieSceneSequence;
-
-namespace UE
-{
-namespace MovieScene
-{
-	struct FSubSequencePath;
-}
-}
 
 enum class EMovieSceneSequenceCompilerMask : uint8
 {
@@ -83,26 +76,6 @@ struct FMovieSceneSequenceCompilerMaskStruct
 	uint8 bEvaluationTemplateField : 1;
 	UPROPERTY()
 	uint8 bEntityComponentField : 1;
-};
-
-/** Flags generated at compile time for a given sequence */
-USTRUCT()
-struct FMovieSceneCompiledSequenceFlagStruct
-{
-	GENERATED_BODY()
-
-	FMovieSceneCompiledSequenceFlagStruct()
-		: bParentSequenceRequiresLowerFence(0)
-		, bParentSequenceRequiresUpperFence(0)
-	{}
-
-	/** True if this sequence should include a fence on the lower bound of any sub sequence's that include it */
-	UPROPERTY()
-	uint8 bParentSequenceRequiresLowerFence : 1;
-
-	/** True if this sequence should include a fence on the upper bound of any sub sequence's that include it */
-	UPROPERTY()
-	uint8 bParentSequenceRequiresUpperFence : 1;
 };
 
 
@@ -159,9 +132,6 @@ private:
 	/** 1 Byte */
 	UPROPERTY()
 	EMovieSceneSequenceFlags AccumulatedFlags;
-
-	/** 1 Byte */
-	FMovieSceneCompiledSequenceFlagStruct CompiledFlags;
 };
 
 
@@ -187,13 +157,7 @@ struct FMovieSceneCompiledDataEntry
 	EMovieSceneSequenceFlags AccumulatedFlags;
 
 	/** 1 Byte */
-	EMovieSceneSequenceCompilerMask AllocatedMask;
-
-	/** 1 Byte */
 	EMovieSceneSequenceCompilerMask AccumulatedMask;
-
-	/** 1 Byte */
-	FMovieSceneCompiledSequenceFlagStruct CompiledFlags;
 };
 
 UCLASS()
@@ -205,23 +169,13 @@ public:
 
 	UMovieSceneCompiledDataManager();
 
-#if WITH_EDITOR
-	static UMovieSceneCompiledDataManager* GetPrecompiledData(EMovieSceneServerClientMask EmulatedMask = EMovieSceneServerClientMask::All);
-#else
 	static UMovieSceneCompiledDataManager* GetPrecompiledData();
-#endif
 
 	UMovieSceneCompiledData* MakeCompiledData(UMovieSceneSequence* Sequence) const;
 
-	void SetEmulatedNetworkMask(EMovieSceneServerClientMask NewMask);
-
 	void Reset(UMovieSceneSequence* Sequence);
 
-	void DestroyAllData();
-
 	FMovieSceneCompiledDataID GetDataID(UMovieSceneSequence* Sequence);
-
-	FMovieSceneCompiledDataID FindDataID(UMovieSceneSequence* Sequence) const;
 
 	void DestroyTemplate(FMovieSceneCompiledDataID DataID);
 
@@ -231,11 +185,7 @@ public:
 
 	bool IsDirty(const FMovieSceneCompiledDataEntry& Entry) const;
 
-	/**
-	 * Return a reference to a compiled data entry.
-	 * WARNING: This reference will become invalid if any sequence in this manager is (re)compiled
-	 */
-	const FMovieSceneCompiledDataEntry& GetEntryRef(FMovieSceneCompiledDataID DataID) const
+	FMovieSceneCompiledDataEntry GetEntry(FMovieSceneCompiledDataID DataID) const
 	{
 		check(CompiledDataEntries.IsValidIndex(DataID.Value));
 		return CompiledDataEntries[DataID.Value];
@@ -264,7 +214,7 @@ public:
 
 	void Compile(FMovieSceneCompiledDataID DataID, UMovieSceneSequence* Sequence);
 
-	static bool CompileHierarchy(UMovieSceneSequence* Sequence, FMovieSceneSequenceHierarchy* InOutHierarchy, EMovieSceneServerClientMask NetworkMask);
+	static bool CompileHierarchy(UMovieSceneSequence* Sequence, FMovieSceneSequenceHierarchy* InOutHierarchy);
 
 	void CopyCompiledData(UMovieSceneSequence* Sequence);
 	void LoadCompiledData(UMovieSceneSequence* Sequence);
@@ -281,15 +231,9 @@ private:
 
 	static bool CompileHierarchy(UMovieSceneSequence* Sequence, const FGatherParameters& Params, FMovieSceneSequenceHierarchy* InOutHierarchy);
 
-	static bool CompileHierarchyImpl(UMovieSceneSequence* Sequence, const FGatherParameters& Params, const FMovieSceneEvaluationOperand& Operand, UE::MovieScene::FSubSequencePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
+	static bool CompileHierarchyImpl(UMovieSceneSequence* Sequence, const FGatherParameters& Params, const FMovieSceneEvaluationOperand& Operand, FMovieSceneRootOverridePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
 
-	static bool GenerateSubSequenceData(UMovieSceneSequence* SubSequence, const FGatherParameters& Params, const FMovieSceneEvaluationOperand& Operand, UE::MovieScene::FSubSequencePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
-	static bool GenerateSubSequenceData(UMovieSceneSubTrack* SubTrack, const FGatherParameters& Params, const FMovieSceneEvaluationOperand& Operand, UE::MovieScene::FSubSequencePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
-
-	static void PopulateSubSequenceTree(UMovieSceneSequence* SubSequence, const FGatherParameters& Params, UE::MovieScene::FSubSequencePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
-	static void PopulateSubSequenceTree(UMovieSceneSubTrack* SubTrack, const FGatherParameters& Params, UE::MovieScene::FSubSequencePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
-
-	static TOptional<FFrameNumber> GetLoopingSubSectionEndTime(const UMovieSceneSequence* InRootSequence, const UMovieSceneSubSection* SubSection, const FGatherParameters& Params);
+	static bool CompileSubTrackHierarchy(UMovieSceneSubTrack* SubTrack, const FGatherParameters& Params, const FMovieSceneEvaluationOperand& Operand, FMovieSceneRootOverridePath* RootPath, FMovieSceneSequenceHierarchy* InOutHierarchy);
 
 	void CompileTrackTemplateField(FMovieSceneCompiledDataEntry* OutEntry, const FMovieSceneSequenceHierarchy& Hierarchy, FMovieSceneGatheredCompilerData* InCompilerData);
 
@@ -301,13 +245,10 @@ private:
 
 	void ProcessSubTrack(FMovieSceneCompiledDataEntry* OutEntry, UMovieSceneSubTrack* SubTrack, const FGuid& ObjectBindingId, const FTrackGatherParameters& Params, FMovieSceneGatheredCompilerData* OutCompilerData);
 
-	void DestroyData(FMovieSceneCompiledDataID DataID);
-
 private:
 
 	FMovieSceneCompiledDataEntry* GetEntryPtr(FMovieSceneCompiledDataID DataID)
 	{
-		check(CompiledDataEntries.IsValidIndex(DataID.Value));
 		return &CompiledDataEntries[DataID.Value];
 	}
 
@@ -338,8 +279,6 @@ private:
 	FGuid CompilerVersion;
 
 	uint32 ReallocationVersion;
-
-	EMovieSceneServerClientMask NetworkMask;
 };
 
 

@@ -699,7 +699,7 @@ public:
 	friend class FObjectRecord::FWriter;
 };
 
-UCLASS(abstract, transient)
+UCLASS(transient)
 class UNREALED_API UTransactor : public UObject
 {
     GENERATED_UCLASS_BODY()

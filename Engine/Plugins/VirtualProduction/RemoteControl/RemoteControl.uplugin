@@ -10,16 +10,12 @@
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
-	"CanContainContent": true,
+	"CanContainContent": false,
 	"IsBetaVersion": true,
 	"Installed": false,
 	"Plugins": [
 		{
 			"Name": "WebSocketNetworking",
-			"Enabled": true
-		},
-		{
-			"Name": "RemoteControlInterception",
 			"Enabled": true
 		}
 	],
@@ -41,22 +37,7 @@
 			]
 		},
 		{
-			"Name": "RemoteControlCommon",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
 			"Name": "RemoteControlUI",
-			"Type": "Editor",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "RemoteControlProtocol",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "RemoteControlProtocolWidgets",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}

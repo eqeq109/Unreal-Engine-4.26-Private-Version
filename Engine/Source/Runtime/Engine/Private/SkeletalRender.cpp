@@ -205,6 +205,14 @@ void UpdateRefToLocalMatricesInner(TArray<FMatrix>& ReferenceToLocal, const TArr
 {
 	const FSkeletalMeshLODRenderData& LOD = InSkeletalMeshRenderData->LODRenderData[LODIndex];
 
+	check(RefBasesInvMatrix->Num() != 0);
+
+	if (ReferenceToLocal.Num() != RefBasesInvMatrix->Num())
+	{
+		ReferenceToLocal.Reset();
+		ReferenceToLocal.AddUninitialized(RefBasesInvMatrix->Num());
+	}
+
 	const TArray<FBoneIndexType>* RequiredBoneSets[3] = { &LOD.ActiveBoneIndices, ExtraRequiredBoneIndices, NULL };
 
 	const bool bBoneVisibilityStatesValid = BoneVisibilityStates.Num() == ComponentTransform.Num();
@@ -310,13 +318,13 @@ void UpdateRefToLocalMatrices( TArray<FMatrix>& ReferenceToLocal, const USkinned
 	const USkinnedMeshComponent* const MasterComp = InMeshComponent->MasterPoseComponent.Get();
 	const FSkeletalMeshLODRenderData& LOD = InSkeletalMeshRenderData->LODRenderData[LODIndex];
 
-	const FReferenceSkeleton& RefSkeleton = ThisMesh->GetRefSkeleton();
+	const FReferenceSkeleton& RefSkeleton = ThisMesh->RefSkeleton;
 	const TArray<int32>& MasterBoneMap = InMeshComponent->GetMasterBoneMap();
-	const bool bIsMasterCompValid = MasterComp && MasterBoneMap.Num() == ThisMesh->GetRefSkeleton().GetNum();
+	const bool bIsMasterCompValid = MasterComp && MasterBoneMap.Num() == ThisMesh->RefSkeleton.GetNum();
 	const TArray<FTransform>& ComponentTransform = (bIsMasterCompValid)? MasterComp->GetComponentSpaceTransforms() : InMeshComponent->GetComponentSpaceTransforms();
 	const TArray<uint8>& BoneVisibilityStates = (bIsMasterCompValid) ? MasterComp->GetBoneVisibilityStates() : InMeshComponent->GetBoneVisibilityStates();
 	// Get inv ref pose matrices
-	const TArray<FMatrix>* RefBasesInvMatrix = &ThisMesh->GetRefBasesInvMatrix();
+	const TArray<FMatrix>* RefBasesInvMatrix = &ThisMesh->RefBasesInvMatrix;
 
 	// Check if there is an override (and it's the right size)
 	if( InMeshComponent->GetRefPoseOverride() && 
@@ -333,23 +341,6 @@ void UpdateRefToLocalMatrices( TArray<FMatrix>& ReferenceToLocal, const USkinned
 		ReferenceToLocal.AddUninitialized(RefBasesInvMatrix->Num());
 	}
 
-	if (!InSkeletalMeshRenderData->LODRenderData.IsValidIndex(LODIndex))
-	{
-		UE_LOG(LogSkeletalMesh, Error,
-			TEXT("Mesh %s : Invalid LODIndex [count %d, index %d], streaming[Ready(%d), F(%d), P(%d)], \
-			ExtraRequiredBoneIndices is (%d), and total number is (%d)"), *GetNameSafe(ThisMesh),
-			InSkeletalMeshRenderData->LODRenderData.Num(), LODIndex, InSkeletalMeshRenderData->bReadyForStreaming,
-			InSkeletalMeshRenderData->CurrentFirstLODIdx, InSkeletalMeshRenderData->PendingFirstLODIdx,
-			(ExtraRequiredBoneIndices) ? 1 : 0, (ExtraRequiredBoneIndices) ? ExtraRequiredBoneIndices->Num() : 0);
-
-		for (int32 Index = 0; Index < ReferenceToLocal.Num(); ++Index)
-		{
-			ReferenceToLocal[Index] = FMatrix::Identity;
-		}
-
-		return;
-	}
-
 	UpdateRefToLocalMatricesInner(ReferenceToLocal, ComponentTransform, BoneVisibilityStates, (bIsMasterCompValid)? &MasterBoneMap : nullptr, RefBasesInvMatrix, RefSkeleton, InSkeletalMeshRenderData, LODIndex, ExtraRequiredBoneIndices);
 }
 
@@ -359,13 +350,13 @@ void UpdatePreviousRefToLocalMatrices(TArray<FMatrix>& ReferenceToLocal, const U
 	const USkinnedMeshComponent* const MasterComp = InMeshComponent->MasterPoseComponent.Get();
 	const FSkeletalMeshLODRenderData& LOD = InSkeletalMeshRenderData->LODRenderData[LODIndex];
 
-	const FReferenceSkeleton& RefSkeleton = ThisMesh->GetRefSkeleton();
+	const FReferenceSkeleton& RefSkeleton = ThisMesh->RefSkeleton;
 	const TArray<int32>& MasterBoneMap = InMeshComponent->GetMasterBoneMap();
-	const bool bIsMasterCompValid = MasterComp && MasterBoneMap.Num() == ThisMesh->GetRefSkeleton().GetNum();
+	const bool bIsMasterCompValid = MasterComp && MasterBoneMap.Num() == ThisMesh->RefSkeleton.GetNum();
 	const TArray<FTransform>& ComponentTransform = (bIsMasterCompValid) ? MasterComp->GetPreviousComponentTransformsArray() : InMeshComponent->GetPreviousComponentTransformsArray();
 	const TArray<uint8>& BoneVisibilityStates = (bIsMasterCompValid) ? MasterComp->GetPreviousBoneVisibilityStates() : InMeshComponent->GetPreviousBoneVisibilityStates();
 	// Get inv ref pose matrices
-	const TArray<FMatrix>* RefBasesInvMatrix = &ThisMesh->GetRefBasesInvMatrix();
+	const TArray<FMatrix>* RefBasesInvMatrix = &ThisMesh->RefBasesInvMatrix;
 	// Check if there is an override (and it's the right size)
 	if (InMeshComponent->GetRefPoseOverride() &&
 		InMeshComponent->GetRefPoseOverride()->RefBasesInvMatrix.Num() == RefBasesInvMatrix->Num())
@@ -381,22 +372,6 @@ void UpdatePreviousRefToLocalMatrices(TArray<FMatrix>& ReferenceToLocal, const U
 		ReferenceToLocal.AddUninitialized(RefBasesInvMatrix->Num());
 	}
 
-	if (!InSkeletalMeshRenderData->LODRenderData.IsValidIndex(LODIndex))
-	{
-		UE_LOG(LogSkeletalMesh, Error,
-			TEXT("Mesh %s : Invalid LODIndex [count %d, index %d], streaming[Ready(%d), F(%d), P(%d)], \
-			ExtraRequiredBoneIndices is (%d), and total number is (%d)"), *GetNameSafe(ThisMesh),
-			InSkeletalMeshRenderData->LODRenderData.Num(), LODIndex, InSkeletalMeshRenderData->bReadyForStreaming,
-			InSkeletalMeshRenderData->CurrentFirstLODIdx, InSkeletalMeshRenderData->PendingFirstLODIdx,
-			(ExtraRequiredBoneIndices) ? 1 : 0, (ExtraRequiredBoneIndices) ? ExtraRequiredBoneIndices->Num() : 0);
-
-		for (int32 Index = 0; Index < ReferenceToLocal.Num(); ++Index)
-		{
-			ReferenceToLocal[Index] = FMatrix::Identity;
-		}
-
-		return;
-	}
 	UpdateRefToLocalMatricesInner(ReferenceToLocal, ComponentTransform, BoneVisibilityStates, (bIsMasterCompValid) ? &MasterBoneMap : nullptr, RefBasesInvMatrix, RefSkeleton, InSkeletalMeshRenderData, LODIndex, ExtraRequiredBoneIndices);
 }
 

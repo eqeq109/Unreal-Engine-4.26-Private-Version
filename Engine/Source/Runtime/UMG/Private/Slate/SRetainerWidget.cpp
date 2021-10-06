@@ -24,14 +24,6 @@ FAutoConsoleVariableRef EnableRetainedRendering(
 	TEXT("Whether to attempt to render things in SRetainerWidgets to render targets first.") 
 );
 
-/** True if we allow the transform to be modify to render in local space. */
-bool GSlateEnableRenderWithLocalTransform = true;
-FAutoConsoleVariableRef CVarGlateEnableRenderWithLocalTransform(
-	TEXT("Slate.EnableRetainedRenderingWithLocalTransform"),
-	GSlateEnableRenderWithLocalTransform,
-	TEXT("Whether to render with the local transform or the one passed down from the parent widget.")
-);
-
 static bool IsRetainedRenderingEnabled()
 {
 	return GEnableRetainedRendering != 0;
@@ -191,7 +183,6 @@ void SRetainerWidget::Construct(const FArguments& InArgs)
 
 	bEnableRetainedRenderingDesire = true;
 	bEnableRetainedRendering = false;
-	bEnableRenderWithLocalTransform = InArgs._RenderWithLocalTransform;
 
 	RefreshRenderingMode();
 	bRenderRequested = true;
@@ -280,7 +271,7 @@ void SRetainerWidget::RefreshRenderingMode()
 	if ( bEnableRetainedRendering != bShouldBeRenderingOffscreen )
 	{
 		bEnableRetainedRendering = bShouldBeRenderingOffscreen;
-		InvalidateRootChildOrder();
+		InvalidateChildOrder();
 	}
 }
 
@@ -332,7 +323,7 @@ void SRetainerWidget::SetWorld(UWorld* World)
 
 FChildren* SRetainerWidget::GetChildren()
 {
-	if (bEnableRetainedRendering)
+	if (bEnableRetainedRendering && !GSlateEnableGlobalInvalidation && !NeedsPrepass())
 	{
 		return &EmptyChildSlot;
 	}
@@ -356,7 +347,7 @@ void SRetainerWidget::SetRenderingPhase(int32 InPhase, int32 InPhaseCount)
 void SRetainerWidget::RequestRender()
 {
 	bRenderRequested = true;
-	InvalidateRootChildOrder();
+	InvalidateRoot();
 }
 
 bool SRetainerWidget::PaintRetainedContent(const FSlateInvalidationContext& Context, const FGeometry& AllottedGeometry)
@@ -372,41 +363,15 @@ SRetainerWidget::EPaintRetainedContentResult SRetainerWidget::PaintRetainedConte
 		if (LastTickedFrame != GFrameCounter && (GFrameCounter % PhaseCount) == Phase)
 		{
 			// If doing some phase based invalidation, just redraw everything again
-			RequestRender();
+			InvalidateRoot();
+			bRenderRequested = true;
 		}
 	}
-
-	const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
-	const FVector2D RenderSize = PaintGeometry.GetLocalSize() * PaintGeometry.GetAccumulatedRenderTransform().GetMatrix().GetScale().GetVector();
 
 	if (RenderOnInvalidation)
 	{
 		// the invalidation root will take care of whether or not we actually rendered
 		bRenderRequested = true;
-
-		// Aggressively repaint when a base state changes.
-		const FVector2D ClipRectSize = Context.CullingRect.GetSize().RoundToVector();
-		const TOptional<FSlateClippingState> ClippingState = Context.WindowElementList->GetClippingState();
-		const FLinearColor ColorAndOpacityTint = Context.WidgetStyle.GetColorAndOpacityTint();
-		if (RenderSize != PreviousRenderSize
-			|| AllottedGeometry != PreviousAllottedGeometry
-			|| ClipRectSize != PreviousClipRectSize
-			|| ClippingState != PreviousClippingState
-			|| ColorAndOpacityTint != PreviousColorAndOpacity)
-		{
-			PreviousRenderSize = RenderSize;
-			PreviousAllottedGeometry = AllottedGeometry;
-			PreviousClipRectSize = ClipRectSize;
-			PreviousClippingState = ClippingState;
-			PreviousColorAndOpacity = ColorAndOpacityTint;
-
-			RequestRender();
-		}
-	}
-	else if (RenderSize != PreviousRenderSize)
-	{
-		RequestRender();
-		PreviousRenderSize = RenderSize;
 	}
 
 	if (Shared_MaxRetainerWorkPerFrame > 0)
@@ -416,6 +381,15 @@ SRetainerWidget::EPaintRetainedContentResult SRetainerWidget::PaintRetainedConte
 			Shared_WaitingToRender.AddUnique(this);
 			return EPaintRetainedContentResult::Queued;
 		}
+	}
+	
+	const FPaintGeometry PaintGeometry = AllottedGeometry.ToPaintGeometry();
+	const FVector2D RenderSize = PaintGeometry.GetLocalSize() * PaintGeometry.GetAccumulatedRenderTransform().GetMatrix().GetScale().GetVector();
+
+	if (RenderSize != PreviousRenderSize)
+	{
+		PreviousRenderSize = RenderSize;
+		bRenderRequested = true;
 	}
 
 	if (bRenderRequested)
@@ -563,7 +537,6 @@ int32 SRetainerWidget::OnPaint(const FPaintArgs& Args, const FGeometry& Allotted
 		else
 		{
 			UTextureRenderTarget2D* RenderTarget = RenderingResources->RenderTarget;
-			check(RenderTarget);
 
 			if (RenderTarget->GetSurfaceWidth() >= 1 && RenderTarget->GetSurfaceHeight() >= 1)
 			{
@@ -618,7 +591,7 @@ FVector2D SRetainerWidget::ComputeDesiredSize(float LayoutScaleMuliplier) const
 
 void SRetainerWidget::OnGlobalInvalidationToggled(bool bGlobalInvalidationEnabled)
 {
-	InvalidateRootChildOrder();
+	InvalidateRoot();
 
 	ClearAllFastPathData(true);
 }
@@ -627,19 +600,9 @@ bool SRetainerWidget::CustomPrepass(float LayoutScaleMultiplier)
 {
 	if (bEnableRetainedRendering)
 	{
-		// The InvalidationRoot that own this retainer will call the ProcessInvalidation.
-		//ProcessInvalidation will only be called when the GlobalInvalidation is off and the Retainer is not inside another InvalidationRoot.
-		if (!GetProxyHandle().HasValidInvalidationRootOwnership(this))
-		{
-			ProcessInvalidation();
-		}
+		ProcessInvalidation();
 
-		if (NeedsPrepass())
-		{
-			FChildren* Children = SCompoundWidget::GetChildren();
-			Prepass_ChildLoop(LayoutScaleMultiplier, Children);
-		}
-		return false;
+		return NeedsPrepass();
 	}
 	else
 	{
@@ -647,22 +610,10 @@ bool SRetainerWidget::CustomPrepass(float LayoutScaleMultiplier)
 	}
 }
 
-TSharedRef<SWidget> SRetainerWidget::GetRootWidget()
-{
-	return bEnableRetainedRendering ? SCompoundWidget::GetChildren()->GetChildAt(0) : EmptyChildSlot.GetChildAt(0);
-}
-
 int32 SRetainerWidget::PaintSlowPath(const FSlateInvalidationContext& Context)
 {
-	if (bEnableRenderWithLocalTransform && GSlateEnableRenderWithLocalTransform)
-	{
-		FGeometry OriginalPaintSpaceGeometry = GetPaintSpaceGeometry();
-		FSlateRenderTransform SimplifiedRenderTransform(OriginalPaintSpaceGeometry.GetAccumulatedRenderTransform().GetMatrix().GetScale(), OriginalPaintSpaceGeometry.GetAccumulatedRenderTransform().GetTranslation());
-		const FGeometry NewPaintSpaceGeometry = FGeometry::MakeRoot(OriginalPaintSpaceGeometry.GetLocalSize(), FSlateLayoutTransform()).MakeChild(SimplifiedRenderTransform, FVector2D::ZeroVector);
-		return SCompoundWidget::OnPaint(*Context.PaintArgs, NewPaintSpaceGeometry, Context.CullingRect, *Context.WindowElementList, Context.IncomingLayerId, Context.WidgetStyle, Context.bParentEnabled);
-	}
-	else
-	{
-		return SCompoundWidget::OnPaint(*Context.PaintArgs, GetPaintSpaceGeometry(), Context.CullingRect, *Context.WindowElementList, Context.IncomingLayerId, Context.WidgetStyle, Context.bParentEnabled);
-	}
+	FGeometry OriginalPaintSpaceGeometry = GetPaintSpaceGeometry();
+	FSlateRenderTransform SimplifiedRenderTransform(OriginalPaintSpaceGeometry.GetAccumulatedRenderTransform().GetMatrix().GetScale(), OriginalPaintSpaceGeometry.GetAccumulatedRenderTransform().GetTranslation());
+	const FGeometry NewPaintSpaceGeometry = FGeometry::MakeRoot(OriginalPaintSpaceGeometry.GetLocalSize(), FSlateLayoutTransform()).MakeChild(SimplifiedRenderTransform, FVector2D::ZeroVector);
+	return SCompoundWidget::OnPaint(*Context.PaintArgs, NewPaintSpaceGeometry, Context.CullingRect, *Context.WindowElementList, Context.IncomingLayerId, Context.WidgetStyle, Context.bParentEnabled);
 }

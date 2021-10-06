@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "NetworkPredictionCheck.h"
 
 template<typename TestType, typename UnderlyingType=TestType>
 struct TConditionalState

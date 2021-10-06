@@ -23,13 +23,11 @@ UGeometryCacheComponent::UGeometryCacheComponent(const FObjectInitializer& Objec
 	ElapsedTime = 0.0f;
 	bRunning = true;
 	bLooping = true;
-	bExtrapolateFrames = true;
 	PlayDirection = 1.0f;
 	StartTimeOffset = 0.0f;
 	PlaybackSpeed = 1.0f;
 	Duration = 0.0f;
 	bManualTick = false;
-	MotionVectorScale = 1.f;
 }
 
 void UGeometryCacheComponent::BeginDestroy()
@@ -132,11 +130,10 @@ void UGeometryCacheComponent::TickComponent(float DeltaTime, enum ELevelTick Tic
 			bool bInLooping = IsLooping();
 			bool bIsPlayingBackwards = IsPlayingReversed();
 			float InPlaybackSpeed = ActualPlaybackSpeed;
-			float InMotionVectorScale = GetMotionVectorScale();
 			ENQUEUE_RENDER_COMMAND(FGeometryCacheUpdateAnimation)(
-				[InSceneProxy, AnimationTime, bInLooping, bIsPlayingBackwards, InPlaybackSpeed, ActualPlaybackSpeed, InMotionVectorScale](FRHICommandList& RHICmdList)
+				[InSceneProxy, AnimationTime, bInLooping, bIsPlayingBackwards, InPlaybackSpeed, ActualPlaybackSpeed](FRHICommandList& RHICmdList)
 				{
-					InSceneProxy->UpdateAnimation(AnimationTime, bInLooping, bIsPlayingBackwards, InPlaybackSpeed, InMotionVectorScale);
+					InSceneProxy->UpdateAnimation(AnimationTime, bInLooping, bIsPlayingBackwards, InPlaybackSpeed);
 				});
 		}
 	}
@@ -189,11 +186,10 @@ void UGeometryCacheComponent::TickAtThisTime(const float Time, bool bInIsRunning
 			FGeometryCacheSceneProxy* InSceneProxy = CastedProxy;
 			float AnimationTime = Time;
 			float InPlaybackSpeed = ActualPlaybackSpeed;
-			float InMotionVectorScale = GetMotionVectorScale();
 			ENQUEUE_RENDER_COMMAND(FGeometryCacheUpdateAnimation)(
-				[InSceneProxy, AnimationTime, bInIsLooping, bInBackwards, InPlaybackSpeed, InMotionVectorScale](FRHICommandList& RHICmdList)
+				[InSceneProxy, AnimationTime, bInIsLooping, bInBackwards, InPlaybackSpeed](FRHICommandList& RHICmdList)
 				{
-					InSceneProxy->UpdateAnimation(AnimationTime, bInIsLooping, bInBackwards, InPlaybackSpeed, InMotionVectorScale);
+					InSceneProxy->UpdateAnimation(AnimationTime, bInIsLooping, bInBackwards, InPlaybackSpeed);
 				});
 		}
 	}
@@ -353,16 +349,6 @@ void UGeometryCacheComponent::SetLooping(const bool bNewLooping)
 	bLooping = bNewLooping;
 }
 
-bool UGeometryCacheComponent::IsExtrapolatingFrames() const
-{
-	return bExtrapolateFrames;
-}
-
-void UGeometryCacheComponent::SetExtrapolateFrames(const bool bNewExtrapolating)
-{
-	bExtrapolateFrames = bNewExtrapolating;
-}
-
 bool UGeometryCacheComponent::IsPlayingReversed() const
 {
 	return FMath::IsNearlyEqual( PlayDirection, -1.0f );
@@ -377,16 +363,6 @@ void UGeometryCacheComponent::SetPlaybackSpeed(const float NewPlaybackSpeed)
 {
 	// Currently only positive play back speeds are supported
 	PlaybackSpeed = FMath::Clamp( NewPlaybackSpeed, 0.0f, 512.0f );
-}
-
-float UGeometryCacheComponent::GetMotionVectorScale() const
-{
-	return FMath::Clamp(MotionVectorScale, 0.0f, 100.0f);
-}
-
-void UGeometryCacheComponent::SetMotionVectorScale(const float NewMotionVectorScale)
-{
-	MotionVectorScale = FMath::Clamp(NewMotionVectorScale, 0.0f, 100.0f);
 }
 
 bool UGeometryCacheComponent::SetGeometryCache(UGeometryCache* NewGeomCache)
@@ -406,8 +382,6 @@ bool UGeometryCacheComponent::SetGeometryCache(UGeometryCache* NewGeomCache)
 		return false;
 	}
 
-	IGeometryCacheStreamingManager::Get().RemoveStreamingComponent(this);
-
 	ReleaseResources();
 	DetachFence.Wait();
 
@@ -417,7 +391,7 @@ bool UGeometryCacheComponent::SetGeometryCache(UGeometryCache* NewGeomCache)
 	SetupTrackData();
 
 	// This will cause us to prefetch the new data which is needed by the render state creation
-	IGeometryCacheStreamingManager::Get().AddStreamingComponent(this);
+	IGeometryCacheStreamingManager::Get().PrefetchData(this);
 
 	// Need to send this to render thread at some point
 	MarkRenderStateDirty();

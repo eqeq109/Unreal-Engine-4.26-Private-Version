@@ -25,7 +25,7 @@ class FMDLImporterModule : public IMDLImporterModule
 public:
 	virtual FMDLImporter& GetMDLImporter() override;
 
-	virtual TUniquePtr<IMdlFileImporter> CreateFileImporter() override
+	virtual IMdlFileImporter* CreateFileImporter() override
 	{
 		return IMdlFileImporter::Create();
 	}

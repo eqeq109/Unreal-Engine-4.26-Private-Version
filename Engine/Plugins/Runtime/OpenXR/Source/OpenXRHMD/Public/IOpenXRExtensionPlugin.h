@@ -8,7 +8,6 @@
 #include "ARTextures.h"
 #include "ARTraceResult.h"
 #include "DefaultSpectatorScreenController.h"
-#include "UObject/SoftObjectPath.h"
 
 #include <openxr/openxr.h>
 
@@ -117,19 +116,9 @@ public:
 	* It is common to do this in StartupModule of your IModuleInterface class (which may also be the class that implements this interface).
 	* The module's LoadingPhase must be PostInitConfig or earlier because OpenXRHMD will look for these after it is loaded in that phase.
 	*/
-	void RegisterOpenXRExtensionModularFeature()
+	virtual void RegisterOpenXRExtensionModularFeature()
 	{
 		IModularFeatures::Get().RegisterModularFeature(GetModularFeatureName(), this);
-	}
-
-	void UnregisterOpenXRExtensionModularFeature()
-	{
-		IModularFeatures::Get().UnregisterModularFeature(GetModularFeatureName(), this);
-	}
-
-	virtual FString GetDisplayName()
-	{
-		return FString(TEXT("OpenXRExtensionPlugin"));
 	}
 
 	/**
@@ -139,25 +128,6 @@ public:
 	{
 		return false;
 	}
-
-	/**
-	* Indicates that the device we're currently running does not support a spectator view.
-	* This will only be called once at initialization and should only return a result based for the current device the engine is running on.
-	*/
-	virtual bool IsStandaloneStereoOnlyDevice()
-	{
-		return false;
-	}
-	
-	/**
-	* Optionally provide a custom render bridge for the OpenXR plugin.
-	* Note: this returns a pointer to a new instance allocated with "new".  Calling code is responsible for eventually deleting it.
-	*/
-	virtual class FOpenXRRenderBridge* GetCustomRenderBridge(XrInstance InInstance, XrSystemId InSystem)
-	{
-		return nullptr;
-	}
-
 
 	/**
 	* Fill the array with extensions required by the plugin
@@ -183,27 +153,6 @@ public:
 	virtual bool GetInteractionProfile(XrInstance InInstance, FString& OutKeyPrefix, XrPath& OutPath, bool& OutHasHaptics)
 	{
 		return false;
-	}
-
-	/**
-	 * Set the output parameters to provide a path to an asset in the plugin content folder that visualizes
-	 * the controller in the hand represented by the user path.
-	 * While it's possible to provide controller models for other interaction profiles, you should only provide
-	 * controller models for the interaction profile provided by the plugin.
-	 * 
-	 * NOTE: All models that can be returned also need to be returned in GetControllerModels() so they're included
-	 * when cooking a project. If this is skipped the controllers won't show up in packaged projects
-	 */
-	virtual bool GetControllerModel(XrInstance InInstance, XrPath InInteractionProfile, XrPath InDevicePath, FSoftObjectPath& OutPath)
-	{
-		return false;
-	}
-
-	/**
-	 * Add all asset paths that need to be packaged for cooking.
-	 */
-	virtual void GetControllerModelsForCooking(TArray<FSoftObjectPath>& OutPaths)
-	{
 	}
 
 	/**
@@ -236,17 +185,6 @@ public:
 
 	/** Get custom capture interface if provided by this extension. */
 	virtual IOpenXRCustomCaptureSupport* GetCustomCaptureSupport(const EARCaptureType CaptureType) { return nullptr; }
-
-	virtual void* OnEnumerateViewConfigurationViews(XrInstance InInstance, XrSystemId InSystem, XrViewConfigurationType InViewConfigurationType, uint32_t InViewIndex, void* InNext)
-	{
-		return InNext;
-	}
-
-	virtual const void* OnLocateViews(XrSession InSession, XrTime InDisplayTime, const void* InNext)
-	{
-		return InNext;
-	}
-
 	/**
 	* Callback to provide extra view configurations that should be rendered in the main render pass
 	*/
@@ -271,10 +209,6 @@ public:
 		return InNext;
 	}
 
-	virtual void PostCreateInstance(XrInstance InInstance)
-	{
-	}
-
 	virtual const void* OnGetSystem(XrInstance InInstance, const void* InNext)
 	{
 		return InNext;
@@ -289,10 +223,6 @@ public:
 		return InNext;
 	}
 
-	virtual void PostCreateSession(XrSession InSession)
-	{
-	}
-
 	virtual const void* OnBeginSession(XrSession InSession, const void* InNext)
 	{
 		return InNext;
@@ -304,12 +234,7 @@ public:
 		return InNext;
 	}
 
-	// OpenXRHMD::OnBeginRendering_RenderThread, before acquiring swapchain
-	virtual void OnAcquireSwapchainImage(XrSession InSession)
-	{
-	}
-
-	// OpenXRHMD::OnBeginRendering_RHIThread
+	// OpenXRHMD::OnBeginRendering_RenderThread
 	virtual const void* OnBeginFrame(XrSession InSession, XrTime DisplayTime, const void* InNext)
 	{
 		return InNext;

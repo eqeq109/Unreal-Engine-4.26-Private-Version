@@ -294,11 +294,10 @@ public:
 
 	// FTextureRenderTargetResource interface
 	
-	virtual class FTextureRenderTarget2DResource* GetTextureRenderTarget2DResource() { return nullptr; }
-	virtual class FTextureRenderTarget2DArrayResource* GetTextureRenderTarget2DArrayResource() { return nullptr; }
-	virtual class FTextureRenderTargetVolumeResource* GetTextureRenderTargetVolumeResource() { return nullptr; }
-	virtual class FTextureRenderTargetCubeResource* GetTextureRenderTargetCubeResource() { return nullptr; }
-
+	virtual class FTextureRenderTarget2DResource* GetTextureRenderTarget2DResource()
+	{
+		return NULL;
+	}
 	virtual void ClampSize(int32 SizeX,int32 SizeY) {}
 
 	// FRenderTarget interface.
@@ -312,30 +311,6 @@ public:
 	 * @return display gamma expected for rendering to this render target 
 	 */
 	virtual float GetDisplayGamma() const;
-
-	virtual FRHIGPUMask GetGPUMask(FRHICommandListImmediate& RHICmdList) const final override
-	{
-		return GPUMask & ActiveGPUMask;
-	}
-
-	// Changes the GPUMask used when updating the texture in AFR.
-	void SetActiveGPUMask(FRHIGPUMask InGPUMask)
-	{
-		check(IsInRenderingThread());
-		check(GPUMask.ContainsAll(InGPUMask));
-		ActiveGPUMask = InGPUMask;
-	}
-
-protected:
-	void SetGPUMask(FRHIGPUMask InGPUMask)
-	{
-		check(IsInRenderingThread());
-		ActiveGPUMask = GPUMask = InGPUMask;
-	}
-
-private:
-	FRHIGPUMask GPUMask;
-	FRHIGPUMask ActiveGPUMask; // In AFR we need to change which GPUs are rendered to every frame.
 };
 
 /**
@@ -421,12 +396,6 @@ public:
 	 * @return TextureRHI for rendering 
 	 */
 	FTexture2DRHIRef GetTextureRHI() { return Texture2DRHI; }
-
-	/**
-	 * @return UnorderedAccessView for rendering
-	 */
-	FUnorderedAccessViewRHIRef GetUnorderedAccessViewRHI() { return UnorderedAccessViewRHI; }
-
 protected:
 	/**
 	 * Updates (resolves) the render target texture.
@@ -442,8 +411,6 @@ private:
 	const class UTextureRenderTarget2D* Owner;
 	/** Texture resource used for rendering with and resolving to */
 	FTexture2DRHIRef Texture2DRHI;
-	/** Optional Unordered Access View for the resource, automatically created if bCanCreateUAV is true */
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
 	/** the color the texture is cleared to */
 	FLinearColor ClearColor;
 	EPixelFormat Format;
@@ -513,11 +480,6 @@ public:
 	 */
 	FTextureCubeRHIRef GetTextureRHI() { return TextureCubeRHI; }
 
-	/**
-	 * @return UnorderedAccessView for rendering
-	 */
-	FUnorderedAccessViewRHIRef GetUnorderedAccessViewRHI() { return UnorderedAccessViewRHI; }
-
 	/** 
 	* Render target resource should be sampled in linear color space
 	*
@@ -549,7 +511,6 @@ protected:
 	* Optionally clears each face of the render target to green.
 	* This is only called by the rendering thread.
 	*/
-	friend class UTextureRenderTargetCube;
 	virtual void UpdateDeferredResource(FRHICommandListImmediate& RHICmdList, bool bClearRenderTarget=true) override;
 
 private:
@@ -562,9 +523,6 @@ private:
 
 	/** Represents the current render target (from one of the cube faces)*/
 	FTextureCubeRHIRef RenderTargetCubeRHI;
-
-	/** Optional Unordered Access View for the resource, automatically created if bCanCreateUAV is true */
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
 
 	/** Face currently used for target surface */
 	ECubeFace CurrentTargetFace;

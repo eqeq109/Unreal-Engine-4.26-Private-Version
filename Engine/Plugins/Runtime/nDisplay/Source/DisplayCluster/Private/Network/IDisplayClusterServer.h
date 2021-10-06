@@ -11,7 +11,8 @@
 class IDisplayClusterServer
 {
 public:
-	virtual ~IDisplayClusterServer() = default;
+	virtual ~IDisplayClusterServer() = 0
+	{ }
 
 public:
 	// Start server

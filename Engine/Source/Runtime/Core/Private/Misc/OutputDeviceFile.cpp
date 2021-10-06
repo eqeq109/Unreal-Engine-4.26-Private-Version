@@ -286,10 +286,9 @@ struct FOutputDeviceFile::FCategoryInclusionInternal
  * @param InFilename		Filename to use, can be NULL
  * @param bInDisableBackup	If true, existing files will not be backed up
  */
-FOutputDeviceFile::FOutputDeviceFile( const TCHAR* InFilename, bool bInDisableBackup, bool bInAppendIfExists, bool bCreateWriterLazily, TFunction<void(const TCHAR*)> FileOpenedCallback)
+FOutputDeviceFile::FOutputDeviceFile( const TCHAR* InFilename, bool bInDisableBackup, bool bInAppendIfExists, bool bCreateWriterLazily)
 : AsyncWriter(nullptr)
 , WriterArchive(nullptr)
-, OnFileOpenedFn(MoveTemp(FileOpenedCallback))
 , AppendIfExists(bInAppendIfExists)
 , Dead(false)
 , CategoryInclusionInternal(nullptr)
@@ -456,18 +455,11 @@ bool FOutputDeviceFile::CreateWriter(uint32 MaxAttempts)
 		WriterArchive = Ar;
 		AsyncWriter = new FAsyncWriter(*WriterArchive);
 		WriteByteOrderMarkToArchive(EByteOrderMark::UTF8);
-		if (OnFileOpenedFn)
-		{
-			OnFileOpenedFn(Filename);
-		}
 
 		if (!bSuppressEventTag)
 		{
 			Logf(TEXT("Log file open, %s"), FPlatformTime::StrTimestamp());
 		}
-
-		IFileManager::Get().SetTimeStamp(Filename, FDateTime::UtcNow());
-
 		return true;
 	}
 	else

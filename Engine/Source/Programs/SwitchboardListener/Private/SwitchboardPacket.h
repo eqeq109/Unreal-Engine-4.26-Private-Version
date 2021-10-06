@@ -98,7 +98,7 @@ struct FSwitchboardProgramStdout : public FSwitchboardPacket
 	FSwitchboardStateRunningProcess Process;
 
 	UPROPERTY()
-	FString PartialStdoutB64;
+	TArray<uint8> PartialStdout;
 };
 
 USTRUCT()
@@ -119,7 +119,7 @@ struct FSwitchboardProgramEnded : public FSwitchboardPacket
 	int32 Returncode;
 
 	UPROPERTY()
-	FString StdoutB64;
+	FString Output;
 };
 
 USTRUCT()

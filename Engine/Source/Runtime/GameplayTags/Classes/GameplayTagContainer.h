@@ -194,7 +194,7 @@ struct GAMEPLAYTAGS_API FGameplayTag
 	bool SerializeFromMismatchedTag(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot);
 
 	/** Sets from a ImportText string, used in asset registry */
-	void FromExportString(const FString& ExportString, int32 PortFlags = 0);
+	void FromExportString(const FString& ExportString);
 
 	/** Handles importing tag strings without (TagName=) in it */
 	bool ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText);
@@ -253,8 +253,6 @@ protected:
 	FName TagName;
 
 	friend class UGameplayTagsManager;
-	friend class FGameplayTagRedirectors;
-	friend class FNativeGameplayTag;
 	friend struct FGameplayTagContainer;
 	friend struct FGameplayTagNode;
 };
@@ -577,7 +575,7 @@ struct GAMEPLAYTAGS_API FGameplayTagContainer
 	FString ToString() const;
 
 	/** Sets from a ImportText string, used in asset registry */
-	void FromExportString(const FString& ExportString, int32 PortFlags = 0);
+	void FromExportString(const FString& ExportString);
 
 	/** Returns abbreviated human readable Tag list without parens or property names. If bQuoted is true it will quote each tag */
 	FString ToStringSimple(bool bQuoted = false) const;
@@ -836,7 +834,7 @@ protected:
 	void AddParentsForTag(const FGameplayTag& Tag);
 
 	/** Array of gameplay tags */
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category=GameplayTags, SaveGame)
+	UPROPERTY(BlueprintReadWrite, Category=GameplayTags, SaveGame) // Change to VisibleAnywhere after fixing up games
 	TArray<FGameplayTag> GameplayTags;
 
 	/** Array of expanded parent tags, in addition to GameplayTags. Used to accelerate parent searches. May contain duplicates in some cases */
@@ -844,7 +842,6 @@ protected:
 	TArray<FGameplayTag> ParentTags;
 
 	friend class UGameplayTagsManager;
-	friend class FGameplayTagRedirectors;
 	friend struct FGameplayTagQuery;
 	friend struct FGameplayTagQueryExpression;
 	friend struct FGameplayTagNode;

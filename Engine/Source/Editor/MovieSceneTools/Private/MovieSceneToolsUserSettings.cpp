@@ -34,11 +34,8 @@ UMovieSceneUserImportFBXSettings::UMovieSceneUserImportFBXSettings(const FObject
 	bMatchByNameOnly = true;
 	bForceFrontXAxis = false;
 	bCreateCameras = true;
-	bReplaceTransformTrack = true;
 	bReduceKeys = true;
 	ReduceKeysTolerance = 0.001f;
-	bConvertSceneUnit = true;
-	ImportUniformScale = 1.0f;
 }
 
 
@@ -46,8 +43,6 @@ UMovieSceneUserImportFBXControlRigSettings::UMovieSceneUserImportFBXControlRigSe
 	: Super(Initializer)
 {
 	bForceFrontXAxis = false;
-	bConvertSceneUnit = true;
-	ImportUniformScale = 1.0f;
 	bSpecifyTimeRange = false;
 	StartTimeRange = 0;
 	EndTimeRange = 0;

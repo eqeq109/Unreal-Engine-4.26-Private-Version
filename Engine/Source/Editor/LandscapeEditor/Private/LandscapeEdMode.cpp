@@ -4054,14 +4054,6 @@ ALandscape* FEdModeLandscape::ChangeComponentSetting(int32 NumComponentsX, int32
 
 			NewLandscape->Import(FGuid::NewGuid(), NewMinX, NewMinY, NewMaxX, NewMaxY, NumSubsections, SubsectionSizeQuads, HeightDataPerLayers, *OldLandscape->ReimportHeightmapFilePath, ImportMaterialLayerInfosPerLayers, ELandscapeImportAlphamapType::Additive, LandscapeLayers);
 
-			// Find the new layer that corresponds to the splines reserved layer in the original, if any, and setup the new Guid : 
-			if (const FLandscapeLayer* OldSplinesReservedLayer = OldLandscape->GetLandscapeSplinesReservedLayer())
-			{
-				const FLandscapeLayer* NewSplinesReservedLayer = NewLandscape->GetLayer(OldSplinesReservedLayer->Name);
-				check(NewSplinesReservedLayer != nullptr);
-				NewLandscape->LandscapeSplinesTargetLayerGuid = NewSplinesReservedLayer->Guid;
-			}
-
 			ULandscapeInfo* NewLandscapeInfo = NewLandscape->GetLandscapeInfo();
 			check(NewLandscapeInfo);
 
@@ -4413,7 +4405,7 @@ void FEdModeLandscape::AddBrushToCurrentLayer(ALandscapeBlueprintBrushBase* InBr
 	RefreshDetailPanel();
 }
 
-void FEdModeLandscape::RemoveBrushFromCurrentLayer(int32 InBrushIndex)
+void FEdModeLandscape::RemoveBrushFromCurrentLayer(ALandscapeBlueprintBrushBase* InBrush)
 {
 	ALandscape* Landscape = GetLandscape();
 
@@ -4422,11 +4414,11 @@ void FEdModeLandscape::RemoveBrushFromCurrentLayer(int32 InBrushIndex)
 		return;
 	}
 
-	Landscape->RemoveBrushFromLayer(GetCurrentLayerIndex(), InBrushIndex);
+	Landscape->RemoveBrushFromLayer(GetCurrentLayerIndex(), InBrush);
 	RefreshDetailPanel();
 }
 
-ALandscapeBlueprintBrushBase* FEdModeLandscape::GetBrushForCurrentLayer(int32 InBrushIndex) const
+ALandscapeBlueprintBrushBase* FEdModeLandscape::GetBrushForCurrentLayer(int8 InBrushIndex) const
 {
 	if (ALandscape* Landscape = GetLandscape())
 	{

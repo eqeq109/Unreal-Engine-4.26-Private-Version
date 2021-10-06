@@ -23,9 +23,10 @@
 
 namespace GeometryCollectionTest
 {
+	template<typename Traits>
 	void RigidBodies_Streaming_StartSolverEmpty()
 	{
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 		
 		// no floor
 		UnitTest.Initialize();
@@ -46,21 +47,21 @@ namespace GeometryCollectionTest
 				Params.ImplicitType = EImplicitTypeEnum::Chaos_Implicit_Box;
 				Params.Simulating = true;				
 
-				FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->As<FGeometryCollectionWrapper>();
+				TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->As<TGeometryCollectionWrapper<Traits>>();
 				UnitTest.AddSimulationObject(Collection);
 							
 				// todo: this is crashing
 				UnitTest.Solver->RegisterObject(Collection->PhysObject);
 				UnitTest.Solver->AddDirtyProxy(Collection->PhysObject);
-				Collection->PhysObject->Initialize(UnitTest.Solver->GetEvolution());
+				Collection->PhysObject->Initialize();
 			}
 		}
 		
 		EXPECT_EQ(UnitTest.PhysicsObjects.Num(), 9);
 		for (int32 i = 0; i < UnitTest.PhysicsObjects.Num() - 1; i++)
 		{
-			FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[i]->As<FGeometryCollectionWrapper>();
-			FGeometryCollectionWrapper* GCW2 = UnitTest.PhysicsObjects[i + 1]->As<FGeometryCollectionWrapper>();
+			TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[i]->As<TGeometryCollectionWrapper<Traits>>();
+			TGeometryCollectionWrapper<Traits>* GCW2 = UnitTest.PhysicsObjects[i + 1]->As<TGeometryCollectionWrapper<Traits>>();
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_EQ(GCW2->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_LT(GCW->PhysObject->GetSolverParticleHandles()[0]->X().Z, GCW2->PhysObject->GetSolverParticleHandles()[0]->X().Z);
@@ -68,9 +69,10 @@ namespace GeometryCollectionTest
 	}
 
 
+	template<typename Traits>
 	void RigidBodies_Streaming_BulkInitialization()
 	{
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 
 		// no floor
 		UnitTest.Initialize();
@@ -92,13 +94,13 @@ namespace GeometryCollectionTest
 				Params.Simulating = true;
 				Params.CollisionGroup = -1;
 
-				FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->As<FGeometryCollectionWrapper>();
+				TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->As<TGeometryCollectionWrapper<Traits>>();
 				UnitTest.AddSimulationObject(Collection);
 
 				// todo: this is crashing
 				UnitTest.Solver->RegisterObject(Collection->PhysObject);
 				UnitTest.Solver->AddDirtyProxy(Collection->PhysObject);
-				Collection->PhysObject->Initialize(UnitTest.Solver->GetEvolution());
+				Collection->PhysObject->Initialize();
 			}
 		}
 		
@@ -116,8 +118,8 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(UnitTest.PhysicsObjects.Num(), 9);
 		for (int32 i = 0; i < UnitTest.PhysicsObjects.Num() - 1; i++)
 		{
-			FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[i]->As<FGeometryCollectionWrapper>();
-			FGeometryCollectionWrapper* GCW2 = UnitTest.PhysicsObjects[i + 1]->As<FGeometryCollectionWrapper>();
+			TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[i]->As<TGeometryCollectionWrapper<Traits>>();
+			TGeometryCollectionWrapper<Traits>* GCW2 = UnitTest.PhysicsObjects[i + 1]->As<TGeometryCollectionWrapper<Traits>>();
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_EQ(GCW2->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_LT(FMath::Abs(GCW->PhysObject->GetSolverParticleHandles()[0]->X().Z - GCW2->PhysObject->GetSolverParticleHandles()[0]->X().Z), KINDA_SMALL_NUMBER);
@@ -126,9 +128,10 @@ namespace GeometryCollectionTest
 
 
 
+	template<typename Traits>
 	void RigidBodies_Streaming_DeferedClusteringInitialization()
 	{
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 
 		// no floor
 		UnitTest.Initialize();
@@ -153,13 +156,13 @@ namespace GeometryCollectionTest
 				Params.EnableClustering = true;
 				Params.ClusterGroupIndex = 1;
 
-				FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->As<FGeometryCollectionWrapper>();
+				TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->As<TGeometryCollectionWrapper<Traits>>();
 				UnitTest.AddSimulationObject(Collection);
 
 				// todo: this is crashing
 				UnitTest.Solver->RegisterObject(Collection->PhysObject);
 				UnitTest.Solver->AddDirtyProxy(Collection->PhysObject);
-				Collection->PhysObject->Initialize(UnitTest.Solver->GetEvolution());
+				Collection->PhysObject->Initialize();
 			}
 		}
 	
@@ -167,7 +170,7 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(UnitTest.PhysicsObjects.Num(), 9);
 		for (int32 i = 0; i < UnitTest.PhysicsObjects.Num(); i++)
 		{
-			FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[i]->As<FGeometryCollectionWrapper>();
+			TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[i]->As<TGeometryCollectionWrapper<Traits>>();
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles()[0]->Disabled(), true);
 		}
@@ -182,7 +185,7 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(UnitTest.PhysicsObjects.Num(), 9);
 		for (int32 i = 0; i < UnitTest.PhysicsObjects.Num(); i++)
 		{
-			FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[i]->As<FGeometryCollectionWrapper>();
+			TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[i]->As<TGeometryCollectionWrapper<Traits>>();
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles()[0]->Disabled(), false);
 		}
@@ -198,11 +201,11 @@ namespace GeometryCollectionTest
 		EXPECT_EQ(UnitTest.PhysicsObjects.Num(), 10);
 		for (int32 i = 0; i < UnitTest.PhysicsObjects.Num() - 1; i++)
 		{
-			FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[i]->As<FGeometryCollectionWrapper>();
+			TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[i]->As<TGeometryCollectionWrapper<Traits>>();
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles().Num(), 1);
 			EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles()[0]->Disabled(), true);
 		}
-		FGeometryCollectionWrapper* GCW = UnitTest.PhysicsObjects[UnitTest.PhysicsObjects.Num() - 1]->As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* GCW = UnitTest.PhysicsObjects[UnitTest.PhysicsObjects.Num() - 1]->As<TGeometryCollectionWrapper<Traits>>();
 		EXPECT_EQ(GCW->PhysObject->GetSolverParticleHandles()[0]->Disabled(), false);
 
 		EXPECT_LT(GCW->PhysObject->GetSolverParticleHandles()[0]->X().Z, -1.f);					

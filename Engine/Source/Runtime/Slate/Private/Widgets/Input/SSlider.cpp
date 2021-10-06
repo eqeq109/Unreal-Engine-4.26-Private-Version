@@ -265,7 +265,7 @@ FReply SSlider::OnMouseButtonDown( const FGeometry& MyGeometry, const FPointerEv
 {
 	if ((MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton) && !IsLocked())
 	{
-		CachedCursor = GetCursor().Get(EMouseCursor::Default);
+		CachedCursor = Cursor.Get().Get(EMouseCursor::Default);
 		OnMouseCaptureBegin.ExecuteIfBound();
 		CommitValue(PositionToValue(MyGeometry, MouseEvent.GetLastScreenSpacePosition()));
 		
@@ -283,6 +283,7 @@ FReply SSlider::OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerEven
 	if ((MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton) && HasMouseCaptureByUser(MouseEvent.GetUserIndex(), MouseEvent.GetPointerIndex()))
 	{
 		SetCursor(CachedCursor);
+		OnMouseCaptureEnd.ExecuteIfBound();
 		
 		// Release capture for controller/keyboard when switching to mouse.
 		ResetControllerState();
@@ -291,12 +292,6 @@ FReply SSlider::OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerEven
 	}
 
 	return FReply::Unhandled();
-}
-
-void SSlider::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
-{
-	OnMouseCaptureEnd.ExecuteIfBound();
-	SLeafWidget::OnMouseCaptureLost(CaptureLostEvent);
 }
 
 FReply SSlider::OnMouseMove( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent )
@@ -345,7 +340,7 @@ FReply SSlider::OnTouchMoved(const FGeometry& MyGeometry, const FPointerEvent& I
 	{
 		if (FSlateApplication::Get().HasTraveledFarEnoughToTriggerDrag(InTouchEvent, PressedScreenSpaceTouchDownPosition, Orientation))
 		{
-			CachedCursor = GetCursor().Get(EMouseCursor::Default);
+			CachedCursor = Cursor.Get().Get(EMouseCursor::Default);
 			OnMouseCaptureBegin.ExecuteIfBound();
 
 			CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetScreenSpacePosition()));

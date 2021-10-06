@@ -8,6 +8,7 @@
 #include "USDStageImporter.h"
 #include "USDStageImporterModule.h"
 #include "USDStageImportOptions.h"
+#include "USDStageImportOptionsWindow.h"
 
 #include "ActorFactories/ActorFactoryStaticMesh.h"
 #include "AssetImportTask.h"
@@ -37,7 +38,7 @@ UUsdStageAssetImportFactory::UUsdStageAssetImportFactory(const FObjectInitialize
 
 	for ( const FString& Extension : UnrealUSDWrapper::GetAllSupportedFileFormats() )
 	{
-		Formats.Add(FString::Printf(TEXT("%s; Universal Scene Description files"), *Extension));
+		Formats.Add(FString::Printf(TEXT("%s; Universal Scene Descriptor files"), *Extension));
 	}
 }
 
@@ -55,11 +56,6 @@ UObject* UUsdStageAssetImportFactory::FactoryCreateFile(UClass* InClass, UObject
 {
 	UObject* ImportedObject = nullptr;
 
-	if ( AssetImportTask && IsAutomatedImport() )
-	{
-		ImportContext.ImportOptions = Cast<UUsdStageImportOptions>( AssetImportTask->Options );
-	}
-
 	const FString InitialPackagePath = InParent ? InParent->GetName() : TEXT( "/Game/" );
 	const bool bIsReimport = false;
 	const bool bAllowActorImport = false;
@@ -75,7 +71,7 @@ UObject* UUsdStageAssetImportFactory::FactoryCreateFile(UClass* InClass, UObject
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostImport(this, ImportContext.SceneActor);
 		GEditor->BroadcastLevelActorListChanged();
 
-		ImportedObject = ImportContext.ImportedAsset ? ImportContext.ImportedAsset : Cast<UObject>(ImportContext.SceneActor);
+		ImportedObject = ImportContext.ImportedPackage ? Cast<UObject>(ImportContext.ImportedPackage) : Cast<UObject>(ImportContext.SceneActor);
 	}
 	else
 	{

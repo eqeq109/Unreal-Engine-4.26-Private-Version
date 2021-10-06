@@ -15,11 +15,11 @@ struct FChunkDependency
 
 	/** The child chunk */
 	UPROPERTY(EditAnywhere, Category = ChunkInfo)
-	int32 ChunkID = 0;
+	int32 ChunkID;
 
 	/** Parent chunk, anything in both Parent and Child is only placed into Parent */
 	UPROPERTY(EditAnywhere, Category = ChunkInfo)
-	int32 ParentChunkID = 0;
+	int32 ParentChunkID;
 
 	bool operator== (const FChunkDependency& RHS) 
 	{

@@ -41,8 +41,8 @@
 #include "unix/PsUnixTrigConstants.h"
 #include "unix/PsUnixInlineAoS.h"
 #elif PX_XBOXONE
-#include "PsXboxTrigConstants.h" //@epic: change path
-#include "PsXboxInlineAoS.h" //@epic: change path
+#include "XboxOne/PsXboxOneTrigConstants.h"
+#include "XboxOne/PsXboxOneInlineAoS.h"
 #else
 #error "Platform not supported!"
 #endif

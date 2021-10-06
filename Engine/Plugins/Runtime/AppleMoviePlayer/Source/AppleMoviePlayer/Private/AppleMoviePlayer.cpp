@@ -7,7 +7,7 @@
 
 #include "Misc/CoreDelegates.h"
 
-TSharedPtr<FAVPlayerMovieStreamer, ESPMode::ThreadSafe> AppleMovieStreamer;
+TSharedPtr<FAVPlayerMovieStreamer> AppleMovieStreamer;
 
 class FAppleMoviePlayerModule : public IModuleInterface
 {

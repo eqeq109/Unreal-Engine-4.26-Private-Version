@@ -7,8 +7,8 @@
 #include "VirtualCamera.h"
 
 
-UDEPRECATED_VirtualCameraConcertCameraComponent::UDEPRECATED_VirtualCameraConcertCameraComponent(const FObjectInitializer& ObjectInitializer)
-{ 
+UVirtualCameraConcertCameraComponent::UVirtualCameraConcertCameraComponent(const FObjectInitializer& ObjectInitializer)
+{
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickGroup = TG_DuringPhysics;
 	PrimaryComponentTick.bTickEvenWhenPaused = true;
@@ -17,7 +17,7 @@ UDEPRECATED_VirtualCameraConcertCameraComponent::UDEPRECATED_VirtualCameraConcer
 }
 
 
-void UDEPRECATED_VirtualCameraConcertCameraComponent::BeginPlay()
+void UVirtualCameraConcertCameraComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -45,7 +45,7 @@ void UDEPRECATED_VirtualCameraConcertCameraComponent::BeginPlay()
 }
 
 
-void UDEPRECATED_VirtualCameraConcertCameraComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
+void UVirtualCameraConcertCameraComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 

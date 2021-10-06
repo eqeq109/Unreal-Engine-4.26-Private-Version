@@ -126,7 +126,6 @@ FEditorDelegates::FOnEditorCameraMoved					FEditorDelegates::OnEditorCameraMoved
 FEditorDelegates::FOnDollyPerspectiveCamera				FEditorDelegates::OnDollyPerspectiveCamera;
 FSimpleMulticastDelegate								FEditorDelegates::OnShutdownPostPackagesSaved;
 FEditorDelegates::FOnAssetsCanDelete					FEditorDelegates::OnAssetsCanDelete;
-FEditorDelegates::FOnAssetsAddExtraObjectsToDelete			FEditorDelegates::OnAssetsAddExtraObjectsToDelete;
 FEditorDelegates::FOnAssetsPreDelete					FEditorDelegates::OnAssetsPreDelete;
 FEditorDelegates::FOnAssetsDeleted						FEditorDelegates::OnAssetsDeleted;
 FEditorDelegates::FOnAssetDragStarted					FEditorDelegates::OnAssetDragStarted;
@@ -580,7 +579,7 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 		//If user ignore those asset just not add them to CopyOfSelectedAssets
 	}
 
-	FReimportManager::Instance()->ReimportMultiple(CopyOfSelectedAssets, /*bAskForNewFileIfMissing=*/false, bShowNotification, TEXT(""), nullptr, SourceFileIndex, /*bForceNewFile=*/false, bAutomated);
+	FReimportManager::Instance()->ReimportMultiple(CopyOfSelectedAssets, /*bAskForNewFileIfMissing=*/false, bShowNotification, TEXT(""), nullptr, SourceFileIndex, bForceNewFile, bAutomated);
 }
 
 void FReimportManager::AddReferencedObjects( FReferenceCollector& Collector )

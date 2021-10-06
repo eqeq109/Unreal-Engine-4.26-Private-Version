@@ -176,7 +176,6 @@ UMovieSceneEntitySystem::UMovieSceneEntitySystem(const FObjectInitializer& ObjIn
 {
 	using namespace UE::MovieScene;
 
-	bSystemIsEnabled = true;
 	SystemExclusionContext = EEntitySystemContext::None;
 
 	Phase = ESystemPhase::Evaluation;
@@ -191,7 +190,7 @@ UMovieSceneEntitySystem::UMovieSceneEntitySystem(const FObjectInitializer& ObjIn
 		GlobalDependencyGraphID = MAX_uint16;
 	}
 
-#if STATS || ENABLE_STATNAMEDEVENTS
+#if STATS
 	const TStatId* ExistingStat = SystemStats.Find(GetClass()->GetFName());
 
 	if (ExistingStat)
@@ -200,13 +199,7 @@ UMovieSceneEntitySystem::UMovieSceneEntitySystem(const FObjectInitializer& ObjIn
 	}
 	else
 	{
-#if STATS
 		TStatId NewStatID = FDynamicStats::CreateStatId<STAT_GROUP_TO_FStatGroup(STATGROUP_MovieSceneECS)>(GetClass()->GetName());
-#else
-		// Just use the base UObject stat ID if we only have named events
-		TStatId NewStatID = GetStatID(true /* bForDeferredUse */);
-#endif
-
 		StatID = NewStatID;
 		SystemStats.Add(GetClass()->GetFName(), NewStatID);
 	}
@@ -298,16 +291,6 @@ void UMovieSceneEntitySystem::ConditionalLinkSystemImpl(UMovieSceneEntitySystemL
 	}
 }
 
-void UMovieSceneEntitySystem::Enable()
-{
-	bSystemIsEnabled = true;
-}
-
-void UMovieSceneEntitySystem::Disable()
-{
-	bSystemIsEnabled = false;
-}
-
 void UMovieSceneEntitySystem::TagGarbage()
 {
 	OnTagGarbage();
@@ -338,12 +321,7 @@ void UMovieSceneEntitySystem::FinishDestroy()
 
 void UMovieSceneEntitySystem::Run(FSystemTaskPrerequisites& InPrerequisites, FSystemSubsequentTasks& Subsequents)
 {
-	if (!bSystemIsEnabled)
-	{
-		return;
-	}
-
-#if STATS || ENABLE_STATNAMEDEVENTS
+#if STATS
 	FScopeCycleCounter Scope(StatID);
 #endif
 

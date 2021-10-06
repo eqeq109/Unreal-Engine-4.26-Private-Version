@@ -655,8 +655,9 @@ void GenerateEncodedHDRTextureCube(UMapBuildDataRegistry* Registry, FReflectionC
 {
 #if WITH_EDITOR
 	UTextureFactory* TextureFactory = NewObject<UTextureFactory>();
+	TextureFactory->SuppressImportOverwriteDialog();
 
-	TextureFactory->CompressionSettings = TC_EncodedReflectionCapture;
+	TextureFactory->CompressionSettings = TC_ReflectionCapture;
 	UTextureCube* TextureCube = TextureFactory->CreateTextureCube(Registry, FName(TextureName), RF_Public);
 
 	if (TextureCube)
@@ -682,7 +683,7 @@ void GenerateEncodedHDRTextureCube(UMapBuildDataRegistry* Registry, FReflectionC
 			bIsCompressed = CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::Default ? bIsReflectionCaptureCompressionProjectSetting : CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::On;
 		}
 
-		TextureCube->CompressionSettings = TC_EncodedReflectionCapture;
+		TextureCube->CompressionSettings = TC_ReflectionCapture;
 		TextureCube->CompressionNone = !bIsCompressed;
 		TextureCube->CompressionQuality = TCQ_Highest;
 		TextureCube->Filter = TF_Trilinear;
@@ -1021,7 +1022,7 @@ void UReflectionCaptureComponent::MarkDirtyForRecapture()
 
 void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldToUpdate, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing, bool bCapturingForMobile)
 {
-	if (WorldToUpdate && WorldToUpdate->Scene
+	if (WorldToUpdate->Scene 
 		// Don't capture and read back capture contents if we are currently doing async shader compiling
 		// This will keep the update requests in the queue until compiling finishes
 		// Note: this will also prevent uploads of cubemaps from DDC, which is unintentional

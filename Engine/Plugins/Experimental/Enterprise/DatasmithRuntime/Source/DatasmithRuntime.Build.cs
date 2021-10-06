@@ -1,7 +1,5 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-using System;
-using System.IO;
 using UnrealBuildTool;
 
 public class DatasmithRuntime : ModuleRules
@@ -37,8 +35,6 @@ public class DatasmithRuntime : ModuleRules
 				"MeshUtilitiesCommon",
 				"RawMesh",
 				"RHI",
-				"PhysicsCore",
-				"RuntimePhysXCooking",
 				"RenderCore",
 				"SlateCore",
 				"StaticMeshDescription",
@@ -51,16 +47,8 @@ public class DatasmithRuntime : ModuleRules
 				new string[] {
 					"DesktopPlatform",
 					"MessageLog",
-					"UnrealEd",
 				}
 			);
-		}
-
-		// Set environment variable DIRECTLINK_LOG to get DirectLink logging
-		string DirectLog = System.Environment.GetEnvironmentVariable("DIRECTLINK_LOG");
-		if (DirectLog != null)
-		{
-			PublicDefinitions.Add("DIRECTLINK_LOG");
 		}
 	}
 }

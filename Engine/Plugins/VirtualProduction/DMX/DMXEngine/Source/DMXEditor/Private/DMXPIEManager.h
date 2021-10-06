@@ -3,16 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/SharedPointer.h"
 
 
-class FDMXPIEManager
+class FDMXPIEManager :
+	public TSharedFromThis<FDMXPIEManager>
 {
 public:
 	/** Constructor */
 	FDMXPIEManager();
 
 	/** Destructor */
-	~FDMXPIEManager();
+	virtual ~FDMXPIEManager();
 
 private:
 	/** Called when play in editor starts */
@@ -20,4 +22,7 @@ private:
 
 	/** Called when play in editor ends */
 	void OnEndPIE(const bool bIsSimulating);
+
+	/** Clears DMX Buffers */
+	void ZeroAllBuffers();
 };

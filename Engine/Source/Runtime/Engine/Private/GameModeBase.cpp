@@ -382,9 +382,7 @@ APlayerController* AGameModeBase::ProcessClientTravel(FString& FURL, FGuid NextM
 			if (Cast<UNetConnection>(PlayerController->Player) != nullptr)
 			{
 				// Remote player
-				PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				PlayerController->ClientTravel(FURL, TRAVEL_Relative, bSeamless, NextMapGuid);
-				PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			}
 			else
 			{
@@ -462,15 +460,11 @@ void AGameModeBase::ProcessServerTravel(const FString& URL, bool bAbsolute)
 	// Compute the next URL, and pull the map out of it. This handles short->long package name conversion
 	FURL NextURL = FURL(&WorldContext.LastURL, *URL, bAbsolute ? TRAVEL_Absolute : TRAVEL_Relative);
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	FGuid NextMapGuid = UEngine::GetPackageGuid(FName(*NextURL.Map), GetWorld()->IsPlayInEditor());
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	// Notify clients we're switching level and give them time to receive.
 	FString URLMod = NextURL.ToString();
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	APlayerController* LocalPlayer = ProcessClientTravel(URLMod, NextMapGuid, bSeamless, bAbsolute);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	World->NextURL = URLMod;
 	ENetMode NetMode = GetNetMode();
@@ -636,7 +630,7 @@ void AGameModeBase::GameWelcomePlayer(UNetConnection* Connection, FString& Redir
 void AGameModeBase::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
 {
 	// Login unique id must match server expected unique id type OR No unique id could mean game doesn't use them
-	const bool bUniqueIdCheckOk = (!UniqueId.IsValid() || UOnlineEngineInterface::Get()->IsCompatibleUniqueNetId(*UniqueId));
+	const bool bUniqueIdCheckOk = (!UniqueId.IsValid() || (UniqueId.GetType() == UOnlineEngineInterface::Get()->GetDefaultOnlineSubsystemName()));
 	if (bUniqueIdCheckOk)
 	{
 		ErrorMessage = GameSession->ApproveLogin(Options);

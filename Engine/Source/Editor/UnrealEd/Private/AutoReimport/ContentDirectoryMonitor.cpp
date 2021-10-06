@@ -360,33 +360,30 @@ void FContentDirectoryMonitor::ProcessAdditions(const DirectoryWatcher::FTimeLim
 
 				// Verify if the package still exists after the import (it may have been cleaned up by the factory if the import was canceled).
 				NewPackage = FindObject<UPackage>(nullptr, *PackagePath);
-				if (NewPackage)
+				// If we didn't create an asset and the package was not cleaned up, unload and delete the package we just created
+				if (!NewAsset && NewPackage)
 				{
-					// If we didn't create an asset and the package was not cleaned up, unload and delete the package we just created
-					if (!NewAsset)
+					TArray<UPackage*> Packages;
+					Packages.Add(NewPackage);
+
+					TGuardValue<bool> SuppressSlowTaskMessages(Context.bSuppressSlowTaskMessages, true);
+
+					FText ErrorMessage;
+					if (!UPackageTools::UnloadPackages(Packages, ErrorMessage))
 					{
-						TArray<UPackage*> Packages;
-						Packages.Add(NewPackage);
-
-						TGuardValue<bool> SuppressSlowTaskMessages(Context.bSuppressSlowTaskMessages, true);
-
-						FText ErrorMessage;
-						if (!UPackageTools::UnloadPackages(Packages, ErrorMessage))
-						{
-							Context.AddMessage(EMessageSeverity::Error, FText::Format(LOCTEXT("Error_UnloadingPackage", "There was an error unloading a package: {0}."), ErrorMessage));
-						}
-
-						// Just add the message to the message log rather than add it to the UI
-						// Factories may opt not to import the file, so we let them report errors if they do
-						Context.GetMessageLog().Message(EMessageSeverity::Info, FText::Format(LOCTEXT("Info_FailedToImportAsset", "Failed to import file {0}."), FText::FromString(FullFilename)));
+						Context.AddMessage(EMessageSeverity::Error, FText::Format(LOCTEXT("Error_UnloadingPackage", "There was an error unloading a package: {0}."), ErrorMessage));
 					}
-					else if (!bCancelled)
-					{
-						FAssetRegistryModule::AssetCreated(NewAsset);
-						GEditor->BroadcastObjectReimported(NewAsset);
 
-						OutPackagesToSave.Add(NewPackage);
-					}
+					// Just add the message to the message log rather than add it to the UI
+					// Factories may opt not to import the file, so we let them report errors if they do
+					Context.GetMessageLog().Message(EMessageSeverity::Info, FText::Format(LOCTEXT("Info_FailedToImportAsset", "Failed to import file {0}."), FText::FromString(FullFilename)));
+				}
+				else if (!bCancelled)
+				{
+					FAssetRegistryModule::AssetCreated(NewAsset);
+					GEditor->BroadcastObjectReimported(NewAsset);
+
+					OutPackagesToSave.Add(NewPackage);
 				}
 
 				// Refresh the supported class.  Some factories (e.g. FBX) only resolve their type after reading the file
@@ -471,10 +468,7 @@ void FContentDirectoryMonitor::ProcessModifications(const DirectoryWatcher::FTim
 
 						if (!bAssetWasDirty)
 						{
-							if (UPackage* NewPackage = Asset->GetOutermost())
-							{
-								OutPackagesToSave.Add(NewPackage);
-							}
+							OutPackagesToSave.Add(Asset->GetOutermost());
 						}
 					}
 				}
@@ -526,10 +520,7 @@ void FContentDirectoryMonitor::ReimportAsset(UObject* Asset, const FString& Full
 		Context.AddMessage(EMessageSeverity::Info, FText::Format(LOCTEXT("Success_CreatedNewAsset", "Reimported asset {0} from {1}."), FText::FromString(Asset->GetName()), FText::FromString(FullFilename)));
 		if (!bAssetWasDirty)
 		{
-			if (UPackage* NewPackage = Asset->GetOutermost())
-			{
-				OutPackagesToSave.Add(NewPackage);
-			}
+			OutPackagesToSave.Add(Asset->GetOutermost());
 		}
 	}
 }

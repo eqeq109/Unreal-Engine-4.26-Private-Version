@@ -10,6 +10,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogInGamePerformanceTracker, Log, All);
 
 void FInGameCycleHistory::NextFrame()
 {
+	check(FrameCycles.Num() >= ValidFrames);
 	check(FrameIdx < FrameCycles.Num());
 
 	//Replace the current frame cycles with the existing frame in the history.
@@ -19,7 +20,7 @@ void FInGameCycleHistory::NextFrame()
 	CurrFrameCycles = 0;
 
 	FrameIdx = (FrameIdx + 1) % FrameCycles.Num();
-	CachedAverageCycles = TotalCycles / FrameCycles.Num();
+	ValidFrames += IsValid() ? 0 : 1;
 }
 
 //////////////////////////////////////////////////////////////////////////

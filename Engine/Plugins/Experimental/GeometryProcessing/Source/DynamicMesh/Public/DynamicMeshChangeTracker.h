@@ -84,8 +84,7 @@ protected:
 typedef TDynamicMeshAttributeChange<float,2> FDynamicMeshUVChange;
 /** Standard Normal overlay change type - 3-element float */
 typedef TDynamicMeshAttributeChange<float,3> FDynamicMeshNormalChange;
-/** Standard per-triangle integer attribute change type */
-typedef FDynamicMeshTriangleAttributeChange<int32,1> FDynamicMeshTriGroupChange;
+
 
 /**
  * FDynamicMeshAttributeChangeSet stores a set of UV and Normal changes for a FDynamicMesh3
@@ -98,8 +97,7 @@ public:
 
 	TArray<FDynamicMeshUVChange> UVChanges;
 	TArray<FDynamicMeshNormalChange> NormalChanges;
-	TOptional<FDynamicMeshTriGroupChange> MaterialIDAttribChange;
-	TArray<FDynamicMeshTriGroupChange> PolygroupChanges;
+	TOptional<FDynamicMeshTriangleAttributeChange<int32, 1>> MaterialIDAttribChange;
 	TArray<TUniquePtr<FDynamicMeshAttributeChangeBase>> RegisteredAttributeChanges;
 
 	/** call ::Apply() on all the UV and Normal changes */
@@ -383,10 +381,10 @@ void FDynamicMeshChangeTracker::SaveTrianglesAndNeighbourTris(EnumerableType Tri
 
 void FDynamicMeshChangeTracker::SaveVertexOneRingTriangles(int32 VertexID, bool bSaveVertices)
 {
-	Mesh->EnumerateVertexTriangles(VertexID, [this, bSaveVertices](int32 TriangleID)
+	for (int32 TriangleID : Mesh->VtxTrianglesItr(VertexID))
 	{
 		SaveTriangle(TriangleID, bSaveVertices);
-	});
+	}
 }
 
 template<typename EnumerableType>

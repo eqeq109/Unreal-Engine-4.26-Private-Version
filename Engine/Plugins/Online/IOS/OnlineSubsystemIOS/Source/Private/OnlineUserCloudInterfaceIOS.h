@@ -98,7 +98,7 @@ private:
 	FDelegateHandle OnDeleteUserCloudFileCompleteDelegateHandle;
 	
 	/** Cache the UserId */
-	FUniqueNetIdIOSPtr UniqueNetId;
+	TSharedPtr<FUniqueNetIdIOS> UniqueNetId;
 
 	/**
 	 *	Delegate triggered when all user files have been enumerated

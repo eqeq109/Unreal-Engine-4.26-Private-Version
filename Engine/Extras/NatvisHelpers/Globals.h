@@ -2,7 +2,7 @@
 
 #pragma once
 
-typedef unsigned char uint8;
+struct FNameEntry;
 class FChunkedFixedUObjectArray;
 
 extern uint8** GNameBlocksDebug;

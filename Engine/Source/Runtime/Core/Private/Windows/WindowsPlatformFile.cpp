@@ -24,22 +24,22 @@
 
 #include "Windows/AllowWindowsPlatformTypes.h"
 
-#include "Microsoft/MicrosoftAsyncIO.h"
+#include "WindowsAsyncIO.h"
 #include "Async/MappedFileHandle.h"
 
-TLockFreePointerListUnordered<void, PLATFORM_CACHE_LINE_SIZE> MicrosoftAsyncIOEventPool;
-bool GTriggerFailedMicrosoftRead = false;
+TLockFreePointerListUnordered<void, PLATFORM_CACHE_LINE_SIZE> WindowsAsyncIOEventPool;
+bool GTriggerFailedWindowsRead = false;
 
 #if !UE_BUILD_SHIPPING
-static void TriggerFailedMicrosoftRead(const TArray<FString>& Args)
+static void TriggerFailedWindowsRead(const TArray<FString>& Args)
 {
-	GTriggerFailedMicrosoftRead = true;
+	GTriggerFailedWindowsRead = true;
 }
 
-static FAutoConsoleCommand TriggerFailedMicrosoftReadCmd(
+static FAutoConsoleCommand TriggerFailedWindowsReadCmd(
 	TEXT("TriggerFailedWindowsRead"),
-	TEXT("Tests low level IO errors on Windows"),
-	FConsoleCommandWithArgsDelegate::CreateStatic(&TriggerFailedMicrosoftRead)
+	TEXT("Tests low level IO errors on XB and Windows"),
+	FConsoleCommandWithArgsDelegate::CreateStatic(&TriggerFailedWindowsRead)
 );
 #endif
 
@@ -115,7 +115,7 @@ namespace
 /**
  * This file reader uses overlapped i/o and double buffering to asynchronously read from files
  */
-class FAsyncBufferedFileReaderWindows : public IFileHandle
+class CORE_API FAsyncBufferedFileReaderWindows : public IFileHandle
 {
 protected:
 	enum {DEFAULT_BUFFER_SIZE = 64 * 1024};
@@ -159,19 +159,6 @@ protected:
 	 * Tracks which buffer has the async read outstanding (0 = first read after create/seek, 1 = streaming buffer)
 	 */
 	int32 CurrentAsyncReadBuffer;
-	/**
-	 * Desired access as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle.
-	 */
-	uint32 DesiredAccess;
-	/**
-	 * Share mode as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle.
-	 */
-	uint32 ShareMode;
-	/**
-	 * Flags as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle.
-	 * NOTE: This is constrained to a subset of flags/attributes as noted on the ReOpenFile Windows API documentation.
-	 */
-	uint32 Flags;
 	/**
 	 * The overlapped IO struct to use for determining async state
 	 */
@@ -310,7 +297,7 @@ protected:
 	}
 
 public:
-	FAsyncBufferedFileReaderWindows(HANDLE InHandle, uint32 InDesiredAccess, uint32 InShareMode, uint32 InFlags, int32 InBufferSize = DEFAULT_BUFFER_SIZE) :
+	FAsyncBufferedFileReaderWindows(HANDLE InHandle, int32 InBufferSize = DEFAULT_BUFFER_SIZE) :
 		Handle(InHandle),
 		FilePos(0),
 		OverlappedFilePos(0),
@@ -319,9 +306,6 @@ public:
 		StreamBuffer(1),
 		SerializePos(0),
 		CurrentAsyncReadBuffer(0),
-		DesiredAccess(InDesiredAccess),
-		ShareMode(InShareMode),
-		Flags(InFlags),
 		bIsAtEOF(false),
 		bHasReadOutstanding(false)
 	{
@@ -491,23 +475,13 @@ public:
 		// Reader only, so don't need to support truncation
 		return false;
 	}
-
-	virtual void ShrinkBuffers() override
-	{
-		if (IsValid())
-		{
-			HANDLE NewFileHandle = ReOpenFile(Handle, DesiredAccess, ShareMode, Flags);
-			CloseHandle(Handle);
-			Handle = NewFileHandle;
-		}
-	}
 };
 
 /** 
  * Windows file handle implementation
 **/
 
-class FFileHandleWindows : public IFileHandle
+class CORE_API FFileHandleWindows : public IFileHandle
 {
 	enum { READWRITE_SIZE = 1024 * 1024 };
 	HANDLE FileHandle;
@@ -517,15 +491,6 @@ class FFileHandleWindows : public IFileHandle
 	int64 FilePos;
 	/** Need the file size for seek from end */
 	int64 FileSize;
-	/** Desired access as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle. */
-	uint32 DesiredAccess;
-	/** Share mode as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle. */
-	uint32 ShareMode;
-	/**
-	 * Flags as passed to the Windows API when opening the file handle.  To be used in ShrinkBuffers to re-open the file handle.
-	 * NOTE: This is constrained to a subset of flags/attributes as noted on the ReOpenFile Windows API documentation.
-	 */
-	uint32 Flags;
 
 	FORCEINLINE bool IsValid()
 	{
@@ -555,13 +520,10 @@ class FFileHandleWindows : public IFileHandle
 	}
 
 public:
-	FFileHandleWindows(HANDLE InFileHandle, uint32 InDesiredAccess, uint32 InShareMode, uint32 InFlags)
+	FFileHandleWindows(HANDLE InFileHandle = NULL)
 		: FileHandle(InFileHandle)
 		, FilePos(0)
 		, FileSize(0)
-		, DesiredAccess(InDesiredAccess)
-		, ShareMode(InShareMode)
-		, Flags(InFlags)
 	{
 		if (IsValid())
 		{
@@ -729,15 +691,6 @@ public:
 			return true;
 		}
 		return false;
-	}
-	virtual void ShrinkBuffers() override
-	{
-		if (IsValid())
-		{
-			HANDLE NewFileHandle = ReOpenFile(FileHandle, DesiredAccess, ShareMode, Flags);
-			CloseHandle(FileHandle);
-			FileHandle = NewFileHandle;
-		}
 	}
 };
 
@@ -1117,7 +1070,7 @@ public:
 #endif
 
 		// we can't really fail here because this is intended to be an async open
-		return new FMicrosoftAsyncReadFileHandle(Handle, *NormalizedFilename);
+		return new FWindowsAsyncReadFileHandle(Handle, *NormalizedFilename);
 
 	}
 #endif
@@ -1135,14 +1088,14 @@ public:
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
 			TRACE_PLATFORMFILE_END_OPEN(Handle);
-			return new FAsyncBufferedFileReaderWindows(Handle, Access, WinFlags, FILE_FLAG_OVERLAPPED);
+			return new FAsyncBufferedFileReaderWindows(Handle);
 		}
 #else
 		HANDLE Handle = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
 			TRACE_PLATFORMFILE_END_OPEN(Handle);
-			return new FFileHandleWindows(Handle, Access, WinFlags, 0);
+			return new FFileHandleWindows(Handle);
 		}
 #endif
 		else
@@ -1162,7 +1115,7 @@ public:
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
 			TRACE_PLATFORMFILE_END_OPEN(Handle);
-			return new FFileHandleWindows(Handle, Access, WinFlags, FILE_FLAG_OVERLAPPED);
+			return new FFileHandleWindows(Handle);
 		}
 		else
 		{
@@ -1181,7 +1134,7 @@ public:
 		if(Handle != INVALID_HANDLE_VALUE)
 		{
 			TRACE_PLATFORMFILE_END_OPEN(Handle);
-			FFileHandleWindows *PlatformFileHandle = new FFileHandleWindows(Handle, Access, WinFlags, 0);
+			FFileHandleWindows *PlatformFileHandle = new FFileHandleWindows(Handle);
 			if (bAppend)
 			{
 				PlatformFileHandle->SeekFromEnd(0);
@@ -1336,22 +1289,23 @@ public:
 	}
 	bool IterateDirectoryCommon(const TCHAR* Directory, const TFunctionRef<bool(const WIN32_FIND_DATAW&)>& Visitor)
 	{
-		bool bResult = true;
+		bool Result = false;
 		WIN32_FIND_DATAW Data;
 		FString SearchWildcard = FString(Directory) / TEXT("*.*");
 		HANDLE Handle = FindFirstFileW(*(WindowsNormalizedFilename(*SearchWildcard)), &Data);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
+			Result = true;
 			do
 			{
 				if (FCString::Strcmp(Data.cFileName, TEXT(".")) && FCString::Strcmp(Data.cFileName, TEXT("..")))
 				{
-					bResult = Visitor(Data);
+					Result = Visitor(Data);
 				}
-			} while (bResult && FindNextFileW(Handle, &Data));
+			} while (Result && FindNextFileW(Handle, &Data));
 			FindClose(Handle);
 		}
-		return bResult;
+		return Result;
 	}
 };
 

@@ -15,7 +15,7 @@ class USoundControlBus;
 
 
 USTRUCT(BlueprintType)
-struct AUDIOMODULATION_API FSoundControlBusMixStage
+struct FSoundControlBusMixStage
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -46,12 +46,12 @@ protected:
 	void SaveMixToProfile();
 
 	// Solos this mix, deactivating all others and activating this
-	// (if its not already active), while testing in-editor in all
+	// (if its not already active) while testing in-editor in all
 	// active worlds
 	UFUNCTION(Category = Mix, meta = (CallInEditor = "true"))
 	void SoloMix();
 
-	// Activates this mix in all active worlds
+	// Deactivates this mix in all active worlds
 	UFUNCTION(Category = Mix, meta = (CallInEditor = "true"))
 	void ActivateMix();
 

@@ -55,15 +55,7 @@ EHairVisibilityVendor GetVendor();
 uint32 GetVendorOptimalGroupSize1D();
 FIntPoint GetVendorOptimalGroupSize2D();
 
-enum class  EHairStrandsCompositionType : uint8
-{
-	BeforeTranslucent,
-	AfterTranslucent,
-	AfterSeparateTranslucent,
-	AfterTranslucentTranslucentBeforeAfterDOF
-};
-
-EHairStrandsCompositionType GetHairStrandsComposition();
+bool IsHairStrandsComposeAfterTranslucency();
 
 FVector4 PackHairRenderInfo(
 	float PrimaryRadiusAtDepth1,

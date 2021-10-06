@@ -13,7 +13,7 @@ class HandlerComponent;
 /**
  * A UObject alternative for loading HandlerComponents without strict module dependency
  */
-UCLASS(abstract)
+UCLASS()
 class PACKETHANDLER_API UHandlerComponentFactory : public UObject
 {
 	GENERATED_UCLASS_BODY()

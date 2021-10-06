@@ -145,7 +145,7 @@ const FPluginDescriptor& FPlugin::GetDescriptor() const
 
 bool FPlugin::UpdateDescriptor(const FPluginDescriptor& NewDescriptor, FText& OutFailReason)
 {
-	if(!NewDescriptor.UpdatePluginFile(FileName, OutFailReason))
+	if(!NewDescriptor.Save(FileName, OutFailReason))
 	{
 		return false;
 	}
@@ -153,13 +153,6 @@ bool FPlugin::UpdateDescriptor(const FPluginDescriptor& NewDescriptor, FText& Ou
 	Descriptor = NewDescriptor;
 	return true;
 }
-
-#if WITH_EDITOR
-const TSharedPtr<FJsonObject>& FPlugin::GetDescriptorJson()
-{
-	return Descriptor.CachedJson;
-}
-#endif // WITH_EDITOR
 
 FPluginManager::FPluginManager()
 {
@@ -579,73 +572,6 @@ public:
 	}
 };
 
-bool FPluginManager::IntegratePluginsIntoConfig(FConfigCacheIni& ConfigSystem, const TCHAR* EngineIniName, const TCHAR* PlatformName, const TCHAR* StagedPluginsFile)
-{
-	TArray<FString> PluginList;
-	if (!FFileHelper::LoadFileToStringArray(PluginList, StagedPluginsFile))
-	{
-		return false;
-	}
-
-	// track which plugins were staged and are in the binary config - so at runtime, we will still look at other 
-	TArray<FString> IntegratedPlugins;
-
-	// loop over each one
-	for (FString PluginFile : PluginList)
-	{
-		FPaths::MakeStandardFilename(PluginFile);
-
-		FPluginDescriptor Descriptor;
-		FText FailureReason;
-		if (Descriptor.Load(PluginFile, FailureReason))
-		{
-			// @todo: The type isn't quite right here
-			FPlugin Plugin(PluginFile, Descriptor, FPaths::IsUnderDirectory(PluginFile, FPaths::EngineDir()) ? EPluginType::Engine : EPluginType::Project);
-
-			// we perform Mod plugin processing at runtime
-			if (Plugin.GetType() == EPluginType::Mod)
-			{
-				continue;
-			}
-
-			// mark that we have processed this plugin, so runtime will not scan it again
-			IntegratedPlugins.Add(Plugin.Name);
-
-			FString PluginConfigDir = FPaths::GetPath(Plugin.FileName) / TEXT("Config/");
-
-			// override config cache entries with plugin configs (Engine.ini, Game.ini, etc in <PluginDir>\Config\)
-			TArray<FString> PluginConfigs;
-			IFileManager::Get().FindFiles(PluginConfigs, *PluginConfigDir, TEXT("ini"));
-			for (const FString& ConfigFile : PluginConfigs)
-			{
-				// Use GetDestIniFilename to find the proper config file to combine into, since it manages command line overrides and path sanitization
-				FString PluginConfigFilename = FConfigCacheIni::GetDestIniFilename(*FPaths::GetBaseFilename(ConfigFile), PlatformName, *FPaths::GeneratedConfigDir());
-				FConfigFile* FoundConfig = ConfigSystem.Find(PluginConfigFilename, false);
-				if (FoundConfig != nullptr)
-				{
-					UE_LOG(LogPluginManager, Log, TEXT("Found config from plugin[%s] %s"), *Plugin.GetName(), *PluginConfigFilename);
-
-					FoundConfig->AddDynamicLayerToHeirarchy(FPaths::Combine(PluginConfigDir, ConfigFile));
-				}
-			}
-
-			if (Descriptor.bCanContainContent)
-			{
-				// we need to look up the section each time because other loops could add entries
-				FConfigFile* EngineConfigFile = ConfigSystem.Find(EngineIniName, false);
-				FConfigSection* CoreSystemSection = EngineConfigFile->FindOrAddSection(TEXT("Core.System"));
-				CoreSystemSection->AddUnique("Paths", Plugin.GetContentDir());
-			}
-		}
-	}
-
-	// record in the config that the plugin inis have been inserted (so we can know at runtime if we have to load plugins or not)
-	FConfigFile* EngineConfigFile = ConfigSystem.Find(EngineIniName, false);
-	EngineConfigFile->SetArray(TEXT("BinaryConfig"), TEXT("BinaryConfigPlugins"), IntegratedPlugins);
-
-	return true;
-}
-
 bool FPluginManager::ConfigureEnabledPlugins()
 {
 #if (WITH_ENGINE && !IS_PROGRAM) || WITH_PLUGIN_SUPPORT
@@ -813,25 +739,21 @@ bool FPluginManager::ConfigureEnabledPlugins()
 			bool bAllowEnginePluginsEnabledByDefault = true;
 			// Find all the plugin references in the project file
 			const FProjectDescriptor* ProjectDescriptor = IProjectManager::Get().GetCurrentProject();
+			if (ProjectDescriptor != nullptr)
 			{
-				SCOPED_BOOT_TIMING("ConfigureEnabledPluginForCurrentTarget");
-				if (ProjectDescriptor != nullptr)
+				bAllowEnginePluginsEnabledByDefault = !ProjectDescriptor->bDisableEnginePluginsByDefault;
+
+				// Copy the plugin references, since we may modify the project if any plugins are missing
+				TArray<FPluginReferenceDescriptor> PluginReferences(ProjectDescriptor->Plugins);
+				for (const FPluginReferenceDescriptor& PluginReference : PluginReferences)
 				{
-
-					bAllowEnginePluginsEnabledByDefault = !ProjectDescriptor->bDisableEnginePluginsByDefault;
-
-					// Copy the plugin references, since we may modify the project if any plugins are missing
-					TArray<FPluginReferenceDescriptor> PluginReferences(ProjectDescriptor->Plugins);
-					for (const FPluginReferenceDescriptor& PluginReference : PluginReferences)
+					if(!ConfiguredPluginNames.Contains(PluginReference.Name))
 					{
-						if (!ConfiguredPluginNames.Contains(PluginReference.Name))
+						if (!ConfigureEnabledPluginForCurrentTarget(PluginReference, EnabledPlugins))
 						{
-							if (!ConfigureEnabledPluginForCurrentTarget(PluginReference, EnabledPlugins))
-							{
-								return false;
-							}
-							ConfiguredPluginNames.Add(PluginReference.Name);
+							return false;
 						}
+						ConfiguredPluginNames.Add(PluginReference.Name);
 					}
 				}
 			}
@@ -857,7 +779,7 @@ bool FPluginManager::ConfigureEnabledPlugins()
 
 		for (const FString& PluginName : ProgramPluginNames)
 		{
-			if (!ConfiguredPluginNames.Contains(PluginName))
+			if(!ConfiguredPluginNames.Contains(PluginName))
 			{
 				if (!ConfigureEnabledPluginForCurrentTarget(FPluginReferenceDescriptor(PluginName, true), EnabledPlugins))
 				{
@@ -895,72 +817,25 @@ bool FPluginManager::ConfigureEnabledPlugins()
 		// If we made it here, we have all the required plugins
 		bHaveAllRequiredPlugins = true;
 
-		// check if the config already contais the plugin inis - if so, we don't need to scan anything, just use the ini to find paks to mount
-		TArray<FString> BinaryConfigPlugins;
-		if (GConfig->GetArray(TEXT("BinaryConfig"), TEXT("BinaryConfigPlugins"), BinaryConfigPlugins, GEngineIni) && BinaryConfigPlugins.Num() > 0)
+		// Mount all the enabled plugins
+		for (const FString& PluginName : PluginsToConfigure)
 		{
-			SCOPED_BOOT_TIMING("QuickMountingPaks");
-
-			TArray<FString> PluginPaks;
-			GConfig->GetArray(TEXT("Core.System"), TEXT("PluginPaks"), PluginPaks, GEngineIni);
-			if (FCoreDelegates::MountPak.IsBound())
+			const FPlugin& Plugin = *AllPlugins.FindChecked(PluginName);
+			if (Plugin.bEnabled && !Plugin.Descriptor.bExplicitlyLoaded)
 			{
-				for (FString& PakPathEntry : PluginPaks)
-				{
-					int32 PipeLocation;
-					if (PakPathEntry.FindChar(TEXT('|'), PipeLocation))
-					{
-						// split the string in twain
-						FString PluginName = PakPathEntry.Left(PipeLocation);
-						FString PakPath = PakPathEntry.Mid(PipeLocation + 1);
-
-						// look for the existing plugin
-						FPlugin* FoundPlugin = EnabledPlugins.FindRef(PluginName);
-						if (FoundPlugin != nullptr)
-						{
-							PluginsWithPakFile.AddUnique(TSharedRef<IPlugin>(FoundPlugin));
-							// and finally mount the plugin's pak
-							FCoreDelegates::MountPak.Execute(PakPath, 0);
-						}
-						
-					}
-				}
-			}
-			else
-			{
-				UE_LOG(LogPluginManager, Warning, TEXT("Plugin Pak files could not be mounted because MountPak is not bound"));
-			}
-		}
-
-
-		// even if we had plugins in the Config already, we need to process Mod plugins
-		{
-			SCOPED_BOOT_TIMING("ParallelPluginEnabling");
-
-			// generate optimal list of plugins to process
-			TArray<TSharedRef<FPlugin>> PluginsArray;
-			for (const FString& PluginName : PluginsToConfigure)
-			{
-				TSharedRef<FPlugin> Plugin = AllPlugins.FindChecked(PluginName);
-				// check all plugins that were not in a BinaryConfig
-				if (!BinaryConfigPlugins.Contains(PluginName))
-				{
-					// only process enabled plugins
-					if (Plugin->bEnabled && !Plugin->Descriptor.bExplicitlyLoaded)
-					{
-						PluginsArray.Add(Plugin);
-					}
-				}
-			}
-
-			FCriticalSection ConfigCS;
-			FCriticalSection PluginPakCS;
-			// Mount all the enabled plugins
-			ParallelFor(PluginsArray.Num(), [&PluginsArray, &ConfigCS, &PluginPakCS, this](int32 Index)
-			{
-				FString PlatformName = FPlatformProperties::PlatformName();
-				FPlugin& Plugin = *PluginsArray[Index];
 				UE_LOG(LogPluginManager, Log, TEXT("Mounting plugin %s"), *Plugin.GetName());
+
+				// Build the list of content folders
+				if (Plugin.Descriptor.bCanContainContent)
+				{
+					if (FConfigFile* EngineConfigFile = GConfig->Find(GEngineIni, false))
+					{
+						if (FConfigSection* CoreSystemSection = EngineConfigFile->Find(TEXT("Core.System")))
+						{
+							CoreSystemSection->AddUnique("Paths", Plugin.GetContentDir());
+						}
+					}
+				}
 
 				// Load <PluginName>.ini config file if it exists
 				FString PluginConfigDir = FPaths::GetPath(Plugin.FileName) / TEXT("Config/");
@@ -977,19 +852,15 @@ bool FPluginManager::ConfigureEnabledPlugins()
 					SourceConfigDir = PluginConfigDir;
 				}
 
-				FString PluginConfigFilename = FString::Printf(TEXT("%s%s/%s.ini"), *FPaths::GeneratedConfigDir(), *PlatformName, *Plugin.Name);
+				FString PluginConfigFilename = FString::Printf(TEXT("%s%s/%s.ini"), *FPaths::GeneratedConfigDir(), ANSI_TO_TCHAR(FPlatformProperties::PlatformName()), *Plugin.Name);
 				FPaths::MakeStandardFilename(PluginConfigFilename); // This needs to match what we do in ConfigCacheIni.cpp's GetDestIniFilename method. Otherwise, the hash results will differ and the plugin's version will be overwritten later.
+				FConfigFile& PluginConfig = GConfig->Add(PluginConfigFilename, FConfigFile());
+
+				// This will write out an ini to PluginConfigFilename
+				if (!FConfigCacheIni::LoadExternalIniFile(PluginConfig, *Plugin.Name, *EngineConfigDir, *SourceConfigDir, true, nullptr, false, true))
 				{
-					FScopeLock Locker(&ConfigCS);
-
-					FConfigFile& PluginConfig = GConfig->Add(PluginConfigFilename, FConfigFile());
-
-					// This will write out an ini to PluginConfigFilename
-					if (!FConfigCacheIni::LoadExternalIniFile(PluginConfig, *Plugin.Name, *EngineConfigDir, *SourceConfigDir, true, nullptr, false, true))
-					{
-						// Nothing to add, remove from map
-						GConfig->Remove(PluginConfigFilename);
-					}
+					// Nothing to add, remove from map
+					GConfig->Remove(PluginConfigFilename);
 				}
 
 				//@note: This function is called too early for `GIsEditor` to be true and hence not go through this scope
@@ -1000,69 +871,30 @@ bool FPluginManager::ConfigureEnabledPlugins()
 					IFileManager::Get().FindFiles(PluginConfigs, *PluginConfigDir, TEXT("ini"));
 					for (const FString& ConfigFile : PluginConfigs)
 					{
+						FString PlaformName = FPlatformProperties::PlatformName();
 						// Use GetDestIniFilename to find the proper config file to combine into, since it manages command line overrides and path sanitization
-						PluginConfigFilename = FConfigCacheIni::GetDestIniFilename(*FPaths::GetBaseFilename(ConfigFile), *PlatformName, *FPaths::GeneratedConfigDir());
+						PluginConfigFilename = FConfigCacheIni::GetDestIniFilename(*FPaths::GetBaseFilename(ConfigFile), *PlaformName, *FPaths::GeneratedConfigDir());
+						FConfigFile* FoundConfig = GConfig->Find(PluginConfigFilename, false);
+						if (FoundConfig != nullptr)
 						{
-							FScopeLock Locker(&ConfigCS);
-							FConfigFile* FoundConfig = GConfig->Find(PluginConfigFilename, false);
-							if (FoundConfig != nullptr)
-							{
-								UE_LOG(LogPluginManager, Log, TEXT("Found config from plugin[%s] %s"), *Plugin.GetName(), *PluginConfigFilename);
+							UE_LOG(LogPluginManager, Log, TEXT("Found config from plugin[%s] %s"), *Plugin.GetName(), *PluginConfigFilename);
 
-								FoundConfig->AddDynamicLayerToHeirarchy(FPaths::Combine(PluginConfigDir, ConfigFile));
+							FoundConfig->AddDynamicLayerToHeirarchy(FPaths::Combine(PluginConfigDir, ConfigFile));
 
 #if ALLOW_INI_OVERRIDE_FROM_COMMANDLINE
-								// Don't allow plugins to stomp command line overrides, so re-apply them
-								FConfigFile::OverrideFromCommandline(FoundConfig, PluginConfigFilename);
+							// Don't allow plugins to stomp command line overrides
+							FConfigFile::OverrideFromCommandline(FoundConfig, PluginConfigFilename);
 #endif // ALLOW_INI_OVERRIDE_FROM_COMMANDLINE
-							}
 						}
 					}
 				}
-
-				// Build the list of content folders
-				if (Plugin.Descriptor.bCanContainContent)
-				{
-					{
-						FScopeLock Locker(&ConfigCS);
-
-						// we need to look up the section each time because other loops could add entries
-						if (FConfigFile* EngineConfigFile = GConfig->Find(GEngineIni, false))
-						{
-							if (FConfigSection* CoreSystemSection = EngineConfigFile->Find(TEXT("Core.System")))
-							{
-								CoreSystemSection->AddUnique("Paths", Plugin.GetContentDir());
-							}
-						}
-					}
-
-					TArray<FString>	FoundPaks;
-					FPakFileSearchVisitor PakVisitor(FoundPaks);
-					IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-
-					// Pak files are loaded from <PluginName>/Content/Paks/<PlatformName>
-					if (FPlatformProperties::RequiresCookedData())
-					{
-						PlatformFile.IterateDirectoryRecursively(*(Plugin.GetContentDir() / TEXT("Paks") / FPlatformProperties::PlatformName()), PakVisitor);
-
-						for (const FString& PakPath : FoundPaks)
-						{
-							FScopeLock Locker(&PluginPakCS);
-							if (FCoreDelegates::MountPak.IsBound())
-							{
-								FCoreDelegates::MountPak.Execute(PakPath, 0);
-								PluginsWithPakFile.AddUnique(PluginsArray[Index]);
-							}
-							else
-							{
-								UE_LOG(LogPluginManager, Warning, TEXT("PAK file (%s) could not be mounted because MountPak is not bound"), *PakPath)
-							}
-						}
-					}
-				}
-			}, true); // @todo disable parallelism for now as it's causing hard to track problems
+			}
 		}
 
+		// Mount all the plugin content folders and pak files
+		TArray<FString>	FoundPaks;
+		FPakFileSearchVisitor PakVisitor(FoundPaks);
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 		for (TSharedRef<IPlugin> Plugin: GetEnabledPluginsWithContent())
 		{
 			if (Plugin->GetDescriptor().bExplicitlyLoaded)
@@ -1079,14 +911,29 @@ bool FPluginManager::ConfigureEnabledPlugins()
 			{
 				FString ContentDir = Plugin->GetContentDir();
 				RegisterMountPointDelegate.Execute(Plugin->GetMountedAssetPath(), ContentDir);
+
+				// Pak files are loaded from <PluginName>/Content/Paks/<PlatformName>
+				if (FPlatformProperties::RequiresCookedData())
+				{
+					FoundPaks.Reset();
+					PlatformFile.IterateDirectoryRecursively(*(ContentDir / TEXT("Paks") / FPlatformProperties::PlatformName()), PakVisitor);
+					for (const FString& PakPath : FoundPaks)
+					{
+						if (FCoreDelegates::MountPak.IsBound())
+						{
+							FCoreDelegates::MountPak.Execute(PakPath, 0);
+							PluginsWithPakFile.AddUnique(Plugin);
+						}
+						else
+						{
+							UE_LOG(LogPluginManager, Warning, TEXT("PAK file (%s) could not be mounted because MountPak is not bound"), *PakPath)
+						}
+					}
+				}
 			}
 		}
 
 		PluginsToConfigure.Empty();
-	}
-	else 
-	{
-		bHaveAllRequiredPlugins = true;
 	}
 	return bHaveAllRequiredPlugins;
 #else
@@ -1201,8 +1048,6 @@ bool FPluginManager::GetCodePluginsForProject(const FProjectDescriptor* ProjectD
 
 bool FPluginManager::ConfigureEnabledPluginForCurrentTarget(const FPluginReferenceDescriptor& FirstReference, TMap<FString, FPlugin*>& EnabledPlugins)
 {
-	SCOPED_BOOT_TIMING("ConfigureEnabledPluginForCurrentTarget");
-
 	const FPluginReferenceDescriptor* MissingPlugin;
 	if (!ConfigureEnabledPluginForTarget(FirstReference, IProjectManager::Get().GetCurrentProject(), UE_APP_NAME, FPlatformMisc::GetUBTPlatform(), FApp::GetBuildConfiguration(), FApp::GetBuildTargetType(), (bool)LOAD_PLUGINS_FOR_TARGET_PLATFORMS, AllPlugins, EnabledPlugins, MissingPlugin))
 	{
@@ -1504,52 +1349,37 @@ bool FPluginManager::TryLoadModulesForPlugin( const FPlugin& Plugin, const ELoad
 bool FPluginManager::LoadModulesForEnabledPlugins( const ELoadingPhase::Type LoadingPhase )
 {
 	// Figure out which plugins are enabled
-	bool bSuccess = true;
-	if (!ConfigureEnabledPlugins())
+	if(!ConfigureEnabledPlugins())
 	{
-		bSuccess = false;
+		LoadingPhaseCompleteEvent.Broadcast(LoadingPhase, /*bSuccess =*/false);
+		return false;
 	}
-	else
+
+	FScopedSlowTask SlowTask(AllPlugins.Num());
+
+	// Load plugins!
+	for( const TPair<FString, TSharedRef< FPlugin >>& PluginPair : AllPlugins )
 	{
-		FScopedSlowTask SlowTask(AllPlugins.Num());
+		const TSharedRef<FPlugin> &Plugin = PluginPair.Value;
 
-		// Load plugins!
-		for (const TPair<FString, TSharedRef< FPlugin >>& PluginPair : AllPlugins)
+		SlowTask.EnterProgressFrame(1);
+
+		if ( Plugin->bEnabled && !Plugin->Descriptor.bExplicitlyLoaded )
 		{
-			const TSharedRef<FPlugin>& Plugin = PluginPair.Value;
-
-			SlowTask.EnterProgressFrame(1);
-
-			if (Plugin->bEnabled && !Plugin->Descriptor.bExplicitlyLoaded)
+			if (!TryLoadModulesForPlugin(Plugin.Get(), LoadingPhase))
 			{
-				if (!TryLoadModulesForPlugin(Plugin.Get(), LoadingPhase))
-				{
-					bSuccess = false;
-					break;
-				}
+				LoadingPhaseCompleteEvent.Broadcast(LoadingPhase, /*bSuccess =*/false);
+				return false;
 			}
 		}
 	}
-	// Some phases such as ELoadingPhase::PreEarlyLoadingScreen are potentially called multiple times,
-	// but we do not return to an earlier phase after calling LoadModulesForEnabledPlugins on a later phase
-	UE_CLOG(LastCompletedLoadingPhase != ELoadingPhase::None && LastCompletedLoadingPhase > LoadingPhase,
-		LogPluginManager, Error, TEXT("LoadModulesForEnabledPlugins called on phase %d after already being called on later phase %d."),
-		static_cast<int32>(LoadingPhase), static_cast<int32>(LastCompletedLoadingPhase));
-
-	// We send the broadcast event each time, even if this function is called multiple times with the same phase
-	LastCompletedLoadingPhase = LoadingPhase;
-	LoadingPhaseCompleteEvent.Broadcast(LoadingPhase, bSuccess);
-	return bSuccess;
+	LoadingPhaseCompleteEvent.Broadcast(LoadingPhase, /*bSuccess =*/true);
+	return true;
 }
 
 IPluginManager::FLoadingModulesForPhaseEvent& FPluginManager::OnLoadingPhaseComplete()
 {
 	return LoadingPhaseCompleteEvent;
-}
-
-ELoadingPhase::Type FPluginManager::GetLastCompletedLoadingPhase() const
-{
-	return LastCompletedLoadingPhase;
 }
 
 void FPluginManager::GetLocalizationPathsForEnabledPlugins( TArray<FString>& OutLocResPaths )
@@ -1583,11 +1413,6 @@ void FPluginManager::GetLocalizationPathsForEnabledPlugins( TArray<FString>& Out
 void FPluginManager::SetRegisterMountPointDelegate( const FRegisterMountPointDelegate& Delegate )
 {
 	RegisterMountPointDelegate = Delegate;
-}
-
-void FPluginManager::SetUnRegisterMountPointDelegate( const FRegisterMountPointDelegate& Delegate )
-{
-	UnRegisterMountPointDelegate = Delegate;
 }
 
 void FPluginManager::SetUpdatePackageLocalizationCacheDelegate( const FUpdatePackageLocalizationCacheDelegate& Delegate )
@@ -1819,48 +1644,6 @@ void FPluginManager::MountPluginFromExternalSource(const TSharedRef<FPlugin>& Pl
 	{
 		GWarn->EndSlowTask();
 	}
-}
-
-bool FPluginManager::UnmountExplicitlyLoadedPlugin(const FString& PluginName, FText* OutReason)
-{
-	TSharedPtr<FPlugin> Plugin = FindPluginInstance(PluginName);
-	return UnmountPluginFromExternalSource(Plugin, OutReason);
-}
-
-bool FPluginManager::UnmountPluginFromExternalSource(const TSharedPtr<FPlugin>& Plugin, FText* OutReason)
-{
-	if (!Plugin.IsValid() || Plugin->bEnabled == false)
-	{
-		// Does not exist or is not loaded
-		return true;
-	}
-
-	if (!Plugin->Descriptor.bExplicitlyLoaded)
-	{
-		if (OutReason)
-		{
-			*OutReason = LOCTEXT("UnloadPluginNotExplicitlyLoaded", "Plugin was not explicitly loaded");
-		}
-		return false;
-	}
-
-	if (Plugin->Descriptor.Modules.Num() > 0)
-	{
-		if (OutReason)
-		{
-			*OutReason = LOCTEXT("UnloadPluginContainedModules", "Plugin contains modules and may be unsafe to unload");
-		}
-		return false;
-	}
-
-	if (Plugin->CanContainContent() && ensure(UnRegisterMountPointDelegate.IsBound()))
-	{
-		UnRegisterMountPointDelegate.Execute(Plugin->GetMountedAssetPath(), Plugin->GetContentDir());
-	}
-
-	Plugin->bEnabled = false;
-
-	return true;
 }
 
 FName FPluginManager::PackageNameFromModuleName(FName ModuleName)

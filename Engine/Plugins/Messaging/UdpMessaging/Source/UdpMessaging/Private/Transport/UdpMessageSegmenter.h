@@ -79,9 +79,9 @@ public:
 	 * Get the pending segments array.
 	 * @return the list of pending segments flags.
 	 */
-	const TBitArray<>& GetPendingSendSegments() const
+	const TBitArray<>& GetPendingSegments() const
 	{
-		return PendingSendSegments;
+		return PendingSegments;
 	}
 
 	/**
@@ -89,28 +89,9 @@ public:
 	 *
 	 * @return Number of pending segments.
 	 */
-	uint32 GetPendingSendSegmentsCount() const
+	uint32 GetPendingSegmentsCount() const
 	{
-		return PendingSendSegmentsCount;
-	}
-
-	/**
-	 * Get the array of acknowledged segments. True represents acknowledgement. This array will be empty for unreliable messages
-	 * @return the list of segments.
-	 */
-	const TBitArray<>& GetAcknowledgedSegments() const
-	{
-		return AcknowledgeSegments;
-	}
-
-	/**
-	 * Gets the number of segments that have been acknowledged. Always zero for unreliable messages
-	 *
-	 * @return Number of pending segments.
-	 */
-	uint32 GetAcknowledgedSegmentsCount() const
-	{
-		return AcknowledgeSegmentsCount;
+		return PendingSegmentsCount;
 	}
 
 	/**
@@ -120,7 +101,7 @@ public:
 	 */
 	uint32 GetSegmentCount() const
 	{
-		return PendingSendSegments.Num();
+		return PendingSegments.Num();
 	}
 
 	/** Initializes the segmenter. */
@@ -131,19 +112,9 @@ public:
 	 *
 	 * @return true if all segments were sent, false otherwise.
 	 */
-	bool IsSendingComplete() const
+	bool IsComplete() const
 	{
-		return (PendingSendSegmentsCount == 0);
-	}
-
-	/**
-	 * Checks whether all outstanding acknowledgments have been received. Always true for an unreliable message once its sent
-	 *
-	 * @return true if all acknowledgments are received
-	 */
-	bool AreAcknowledgementsComplete() const
-	{
-		return (AcknowledgeSegmentsCount == AcknowledgeSegments.Num());
+		return (PendingSegmentsCount == 0);
 	}
 
 	/**
@@ -170,13 +141,6 @@ public:
 	EMessageFlags GetMessageFlags() const;
 
 	/**
-	* Marks the specified segments as sent
-	*
-	* @param Segments The acknowledged segments.
-	*/
-	void MarkAsSent(const TArray<uint32>& Segments);
-
-	/**
 	* Marks the specified segments as acknowledged.
 	*
 	* @param Segments The acknowledged segments.
@@ -184,9 +148,13 @@ public:
 	void MarkAsAcknowledged(const TArray<uint32>& Segments);
 
 	/**
-	 * Marks the entire message for retransmission. This does not reset acknowledgements as we only need an acknowledgment for a segement once
+	 * Marks the entire message for retransmission.
 	 */
-	void MarkForRetransmission();
+	void MarkForRetransmission()
+	{
+		PendingSegments.Init(true, PendingSegments.Num());
+	}
+
 	/**
 	 * Marks the specified segments for retransmission.
 	 *
@@ -226,17 +194,11 @@ private:
 	/** temp hack to support new transport API. */
 	FArchive* MessageReader;
 
-	/** Holds an array of bits where true indicates which segments still need to be sent. */
-	TBitArray<> PendingSendSegments;
-
-	/** Holds an array of bits where true indicates a segment has been acknowledged. Will always zero-length for an unreliable segment. */
-	TBitArray<> AcknowledgeSegments;
+	/** Holds an array of bits that indicate which segments still need to be sent. */
+	TBitArray<> PendingSegments;
 
 	/** Holds the number of segments that haven't been sent yet. */
-	uint32 PendingSendSegmentsCount;
-
-	/** Holds the number of segments that haven't been acknowledged yet. Will always be zero for an unreliable message */
-	uint32 AcknowledgeSegmentsCount;
+	uint32 PendingSegmentsCount;
 
 	/** Holds the segment size. */
 	uint16 SegmentSize;

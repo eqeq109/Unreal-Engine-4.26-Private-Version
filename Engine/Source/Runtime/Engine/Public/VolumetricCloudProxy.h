@@ -45,7 +45,6 @@ public:
 	float ShadowViewSampleCountScale;
 	float ShadowReflectionSampleCountScale;
 	float ShadowTracingDistance;
-	float StopTracingTransmittanceThreshold;
 private:
 
 	UMaterialInterface* CloudVolumeMaterial = nullptr;

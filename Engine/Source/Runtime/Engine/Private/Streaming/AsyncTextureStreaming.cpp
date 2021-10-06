@@ -133,7 +133,7 @@ void FAsyncRenderAssetStreamingData::UpdatePerfectWantedMips_Async(FStreamingRen
 #endif
 	if (Settings.bFullyLoadUsedTextures)
 	{
-		if (StreamingRenderAsset.LastRenderTime < 300 || StreamingRenderAsset.bForceFullyLoad)
+		if (StreamingRenderAsset.LastRenderTime < 300)
 		{
 			MaxSize_VisibleOnly = FLT_MAX;
 		}

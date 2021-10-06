@@ -16,7 +16,7 @@ struct FMovieSceneObjectPropertyValue : IMovieScenePreAnimatedToken
 		, PropertyBindings(*InPropertyBindings)
 	{}
 
-	virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params)
+	virtual void RestoreState(UObject& Object, IMovieScenePlayer& Player)
 	{
 		PropertyBindings.CallFunction<UObject*>(Object, Value.Get());
 	}

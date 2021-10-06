@@ -12,11 +12,8 @@ class FDisplayClusterProjectionManualPolicy
 	: public FDisplayClusterProjectionPolicyBase
 {
 public:
-	FDisplayClusterProjectionManualPolicy(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy);
+	FDisplayClusterProjectionManualPolicy(const FString& ViewportId, const TMap<FString, FString>& Parameters);
 	virtual ~FDisplayClusterProjectionManualPolicy();
-
-	virtual const FString GetTypeId() const
-	{ return DisplayClusterProjectionStrings::projection::Manual; }
 
 public:
 	enum class EManualDataType
@@ -32,11 +29,13 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProjectionPolicy
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual bool HandleStartScene(class IDisplayClusterViewport* InViewport) override;
-	virtual void HandleEndScene(class IDisplayClusterViewport* InViewport) override;
+	virtual void StartScene(UWorld* World) override;
+	virtual void EndScene() override;
+	virtual bool HandleAddViewport(const FIntPoint& ViewportSize, const uint32 ViewsAmount) override;
+	virtual void HandleRemoveViewport() override;
 
-	virtual bool CalculateView(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& InViewOffset, const float InWorldToMeters, const float InNCP, const float InFCP) override;
-	virtual bool GetProjectionMatrix(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FMatrix& OutPrjMatrix) override;
+	virtual bool CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& InViewOffset, const float InWorldToMeters, const float InNCP, const float InFCP) override;
+	virtual bool GetProjectionMatrix(const uint32 ViewIdx, FMatrix& OutPrjMatrix) override;
 
 	virtual bool IsWarpBlendSupported() override
 	{ return false; }
@@ -44,18 +43,17 @@ public:
 protected:
 	struct FFrustumAngles
 	{
-		float Left   = -30.f;
-		float Right  = 30.f;
-		float Top    = 30.f;
-		float Bottom = -30.f;
+		float Left   = 0.f;
+		float Right  = 0.f;
+		float Top    = 0.f;
+		float Bottom = 0.f;
 	};
 
 	virtual bool ExtractAngles(const FString& InAngles, FFrustumAngles& OutAngles);
-private:
-	EManualDataType DataTypeFromString(const FString& DataTypeInString) const;
+
 private:
 	// Current data type (matrix, frustum angle, ...)
-	EManualDataType DataType = EManualDataType::Matrix;
+	EManualDataType DataType;
 	// View rotation
 	FRotator ViewRotation = FRotator::ZeroRotator;
 	// Projection matrix

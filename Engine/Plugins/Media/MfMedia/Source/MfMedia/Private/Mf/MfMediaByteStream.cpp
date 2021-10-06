@@ -9,7 +9,7 @@
 #include "Misc/ScopeLock.h"
 #include "MfMediaReadState.h"
 #include "Serialization/Archive.h"
-#include "Microsoft/COMPointer.h"
+#include "Windows/COMPointer.h"
 
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#include "Windows/AllowWindowsPlatformTypes.h"

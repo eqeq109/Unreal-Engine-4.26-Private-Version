@@ -30,7 +30,7 @@ public:
 
 	// True if the parameter is an input
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
-	bool bIsInput = false;
+	bool bIsInput;
 
 	// The C++ data type of the parameter
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
@@ -38,7 +38,7 @@ public:
 
 	// The Struct of the C++ data type of the parameter (or nullptr)
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)
-	UObject* CPPTypeObject = nullptr;
+	UObject* CPPTypeObject;
 
 	// The default value of the parameter
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphParameterDescription)

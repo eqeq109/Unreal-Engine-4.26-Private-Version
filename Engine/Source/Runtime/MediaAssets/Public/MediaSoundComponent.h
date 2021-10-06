@@ -58,11 +58,11 @@ struct FMediaSoundComponentSpectralData
 
 	// The frequency hz of the spectrum value
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
-	float FrequencyHz = 0.0f;
+	float FrequencyHz;
 
 	// The magnitude of the spectrum at this frequency
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
-	float Magnitude = 0.0f;
+	float Magnitude;
 };
 
 /**
@@ -134,29 +134,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Media|MediaSoundComponent")
 	UMediaPlayer* GetMediaPlayer() const;
-
-	virtual USoundClass* GetSoundClass() override
-	{
-		if (SoundClass)
-		{
-			return SoundClass;
-		}
-
-		if (const UAudioSettings* AudioSettings = GetDefault<UAudioSettings>())
-		{
-			if (USoundClass* DefaultSoundClass = AudioSettings->GetDefaultMediaSoundClass())
-			{
-				return DefaultSoundClass;
-			}
-
-			if (USoundClass* DefaultSoundClass = AudioSettings->GetDefaultSoundClass())
-			{
-				return DefaultSoundClass;
-			}
-		}
-
-		return nullptr;
-	}
 
 	/**
 	 * Set the media player that provides the audio samples.
@@ -233,6 +210,7 @@ public:
 public:
 
 	//~ UObject interface
+	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;
 
 #if WITH_EDITOR
@@ -304,7 +282,7 @@ private:
 	EMediaSoundComponentFFTSize FFTSize;
 
 	/** Spectrum analyzer used for analyzing audio in media. */
-	Audio::FAsyncSpectrumAnalyzer SpectrumAnalyzer;
+	Audio::FSpectrumAnalyzer SpectrumAnalyzer;
 	Audio::FSpectrumAnalyzerSettings SpectrumAnalyzerSettings;
 
 	Audio::FEnvelopeFollower EnvelopeFollower;

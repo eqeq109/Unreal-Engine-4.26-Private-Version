@@ -63,10 +63,10 @@ protected:
 
 protected:
 	/** Postprocess component */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "NDisplay")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DisplayCluster")
 	UPostProcessComponent* PostProcessComponent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NDisplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DisplayCluster")
 	TMap<FString, UMaterial*> CalibrationPatterns;
 
 private:

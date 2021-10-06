@@ -553,8 +553,6 @@ void UpdateHistory(
 			AllocateOrReuseAORenderTarget(GraphBuilder, NewBentNormalHistory, BentNormalHistoryRTName, PF_FloatRGBA, HistoryPassOutputFlags);
 
 			{
-				FIntRect PrevHistoryViewRect = *DistanceFieldAOHistoryViewRect;
-
 				auto* PassParameters = GraphBuilder.AllocParameters<FUpdateHistoryDepthRejectionPS::FParameters>();
 				PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 				PassParameters->DistanceFieldNormal = DistanceFieldNormal;
@@ -570,7 +568,7 @@ void UpdateHistory(
 					RDG_EVENT_NAME("UpdateHistory"),
 					PassParameters,
 					ERDGPassFlags::Raster,
-					[VertexShader, PixelShader, &View, DistanceFieldNormal, BentNormalInterpolation, BentNormalHistoryTexture, VelocityTexture, PrevHistoryViewRect, Parameters, SceneTextureExtent]
+					[VertexShader, PixelShader, &View, DistanceFieldNormal, BentNormalInterpolation, BentNormalHistoryTexture, VelocityTexture, DistanceFieldAOHistoryViewRect, Parameters, SceneTextureExtent]
 					(FRHICommandList& RHICmdList)
 				{
 					RHICmdList.SetViewport(0, 0, 0.0f, View.ViewRect.Width() / GAODownsampleFactor, View.ViewRect.Height() / GAODownsampleFactor, 1.0f);
@@ -587,7 +585,7 @@ void UpdateHistory(
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-					PixelShader->SetParameters(RHICmdList, View, PrevHistoryViewRect,
+					PixelShader->SetParameters(RHICmdList, View, *DistanceFieldAOHistoryViewRect,
 						DistanceFieldNormal->GetPooledRenderTarget()->GetRenderTargetItem(),
 						BentNormalInterpolation->GetPooledRenderTarget()->GetRenderTargetItem(),
 						BentNormalHistoryTexture->GetPooledRenderTarget()->GetRenderTargetItem(),

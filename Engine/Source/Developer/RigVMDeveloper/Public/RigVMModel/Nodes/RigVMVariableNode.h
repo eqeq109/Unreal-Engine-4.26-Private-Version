@@ -34,7 +34,7 @@ public:
 
 	// The Struct of the C++ data type of the variable (or nullptr)
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)
-	UObject* CPPTypeObject = nullptr;
+	UObject* CPPTypeObject;
 
 	// The default value of the variable
 	UPROPERTY(BlueprintReadOnly, Category = RigVMGraphVariableDescription)

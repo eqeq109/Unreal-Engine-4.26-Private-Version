@@ -47,7 +47,7 @@ bool FUserOnlineAccountGoogleCommon::Parse(const FAuthTokenGoogle& InAuthToken, 
 			{
 				if (!UserId.IsEmpty())
 				{
-					UserIdPtr = FUniqueNetIdGoogle::Create(UserId);
+					UserIdPtr = MakeShared<FUniqueNetIdGoogle>(UserId);
 
 					// update the access token
 					AuthToken = InAuthToken;
@@ -77,7 +77,7 @@ bool FUserOnlineAccountGoogleCommon::Parse(const FAuthTokenGoogle& InAuthToken, 
 	return bResult;
 }
 
-FUniqueNetIdRef FUserOnlineAccountGoogleCommon::GetUserId() const
+TSharedRef<const FUniqueNetId> FUserOnlineAccountGoogleCommon::GetUserId() const
 {
 	return UserIdPtr;
 }

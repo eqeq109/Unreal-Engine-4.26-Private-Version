@@ -552,7 +552,7 @@ FReply FSceneViewport::AcquireFocusAndCapture(FIntPoint MousePosition, EFocusCau
 bool FSceneViewport::IsCurrentlyGameViewport()
 {
 	// Either were game code only or were are currently play in editor.
-	return (FApp::IsGame() && !GIsEditor && ViewportClient == GEngine->GameViewport) || IsPlayInEditorViewport();
+	return (FApp::IsGame() && !GIsEditor) || IsPlayInEditorViewport();
 }
 
 FReply FSceneViewport::OnMouseButtonUp( const FGeometry& InGeometry, const FPointerEvent& InMouseEvent )
@@ -901,10 +901,7 @@ FReply FSceneViewport::OnTouchGesture( const FGeometry& MyGeometry, const FPoint
 		// Switch to the viewport clients world before processing input
 		FScopedConditionalWorldSwitcher WorldSwitcher( ViewportClient );
 
-		if (GestureEvent.GetGestureType() != EGestureEvent::LongPress)
-		{
-			FSlateApplication::Get().SetKeyboardFocus(ViewportWidget.Pin());
-		}
+		FSlateApplication::Get().SetKeyboardFocus(ViewportWidget.Pin());
 
 		if( !ViewportClient->InputGesture( this, GestureEvent.GetGestureType(), GestureEvent.GetGestureDelta(), GestureEvent.IsDirectionInvertedFromDevice() ) )
 		{

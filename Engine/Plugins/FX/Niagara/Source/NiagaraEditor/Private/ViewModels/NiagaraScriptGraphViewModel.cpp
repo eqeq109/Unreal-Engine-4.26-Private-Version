@@ -17,27 +17,19 @@
 
 #define LOCTEXT_NAMESPACE "NiagaraScriptGraphViewModel"
 
-FNiagaraScriptGraphViewModel::FNiagaraScriptGraphViewModel(TAttribute<FText> InDisplayName, bool bInIsForDataProcessingOnly)
+FNiagaraScriptGraphViewModel::FNiagaraScriptGraphViewModel(TAttribute<FText> InDisplayName)
 	: DisplayName(InDisplayName)
 	, Commands(MakeShareable(new FUICommandList()))
 	, NodeSelection(MakeShareable(new FNiagaraObjectSelection()))
-	, bIsForDataProcessingOnly(bInIsForDataProcessingOnly)
 {
-	if (bIsForDataProcessingOnly == false)
-	{
-		SetupCommands();
-		GEditor->RegisterForUndo(this);
-	}
-
+	SetupCommands();
+	GEditor->RegisterForUndo(this);
 	ErrorColor = FEditorStyle::GetColor("ErrorReporting.BackgroundColor");
 }
 
 FNiagaraScriptGraphViewModel::~FNiagaraScriptGraphViewModel()
 {
-	if (bIsForDataProcessingOnly == false)
-	{
-		GEditor->UnregisterForUndo(this);
-	}
+	GEditor->UnregisterForUndo(this);
 }
 
 void FNiagaraScriptGraphViewModel::SetScriptSource(UNiagaraScriptSource* InScriptSrc)
@@ -50,11 +42,6 @@ void FNiagaraScriptGraphViewModel::SetScriptSource(UNiagaraScriptSource* InScrip
 FText FNiagaraScriptGraphViewModel::GetDisplayName() const
 {
 	return DisplayName.Get();
-}
-
-void FNiagaraScriptGraphViewModel::SetDisplayName(FText NewName)
-{
-	DisplayName.Set(NewName);
 }
 
 UNiagaraScriptSource* FNiagaraScriptGraphViewModel::GetScriptSource()

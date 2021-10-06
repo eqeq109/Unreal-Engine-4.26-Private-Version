@@ -99,11 +99,11 @@ struct FBranchingPoint : public FAnimLinkableElement
 	FName EventName;
 
 	UPROPERTY()
-	float DisplayTime_DEPRECATED = 0.f;
+	float DisplayTime_DEPRECATED;
 
 	/** An offset from the DisplayTime to the actual time we will trigger the notify, as we cannot always trigger it exactly at the time the user wants */
 	UPROPERTY()
-	float TriggerTimeOffset = 0.f;
+	float TriggerTimeOffset;
 
 	/** Returns the time this branching point should be triggered */
 	float GetTriggerTime() const { return GetTime() + TriggerTimeOffset; }
@@ -425,9 +425,6 @@ private:
 	/** Initialize Blend Setup from Montage */
 	void InitializeBlend(const FAlphaBlend& InAlphaBlend);
 
-	/**  Notify may invalidate current montage instance. Inputs should be memory not belonging to calling FAnimMontageInstance.*/
-	static bool ValidateInstanceAfterNotifyState(const TWeakObjectPtr<UAnimInstance>& InAnimInstance, const UAnimNotifyState* InNotifyStateClass);
-
 public:
 	FAnimMontageInstance();
 
@@ -519,8 +516,7 @@ private:
 	void OnMontagePositionChanged(FName const & ToSectionName);
 	
 	/** Updates ActiveStateBranchingPoints array and triggers Begin/End notifications based on CurrentTrackPosition */
-	/** Returns false if montage instance was destroyed during branching point update*/
-	bool UpdateActiveStateBranchingPoints(float CurrentTrackPosition);
+	void UpdateActiveStateBranchingPoints(float CurrentTrackPosition);
 
 	/** Trigger associated events when Montage ticking reaches given FBranchingPointMarker */
 	void BranchingPointEventHandler(const FBranchingPointMarker* BranchingPointMarker);
@@ -659,7 +655,6 @@ public:
 	virtual TArray<FName>* GetUniqueMarkerNames() override { return &MarkerData.UniqueMarkerNames; }
 	virtual void RefreshCacheData() override;
 	virtual bool CanBeUsedInComposition() const { return false; }
-	virtual void GetAnimationPose(FAnimationPoseData& OutPoseData, const FAnimExtractContext& ExtractionContext) const override { check(false); /* Should never be called, montages dont use this API */ }
 	//~ End AnimSequenceBase Interface
 
 #if WITH_EDITOR

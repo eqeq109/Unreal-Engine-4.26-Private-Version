@@ -21,8 +21,6 @@
 #include "DetailLayoutBuilder.h"
 #include "EditorFontGlyphs.h"
 #include "Modules/ModuleManager.h"
-#include "ISCSEditorUICustomization.h"
-#include "SSCSEditor.h"
 #include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -48,26 +46,9 @@ namespace DataprepEditorUtils
 	}
 }
 
-class FDataprepSCSEditorUICustomization : public ISCSEditorUICustomization
-{
-public:
-	void SetHideComponentsTree(bool bInHide) { bHideComponentsTree = bInHide; }
-
-	virtual bool HideAddComponentButton() const override { return true; }
-
-	virtual bool HideBlueprintButtons() const override { return true; }
-
-	virtual bool HideComponentsTree() const override { return bHideComponentsTree; }
-
-private:
-	bool bHideComponentsTree = false;
-};
-
 // Inspired from SKismetInspector::Construct
 void SGraphNodeDetailsWidget::Construct(const FArguments& InArgs)
 {
-	SelectedActor = nullptr;
-
 	FNotifyHook* NotifyHook = nullptr;
 
 	// Create a property view
@@ -81,32 +62,6 @@ void SGraphNodeDetailsWidget::Construct(const FArguments& InArgs)
 	PropertyView = EditModule.CreateDetailView(DetailsViewArgs);
 
 	PropertyView->GetIsPropertyEditingEnabledDelegate().BindSP(this, &SGraphNodeDetailsWidget::GetCanEditProperties);
-
-	DetailsSplitter = SNew(SSplitter)
-		.MinimumSlotHeight(80.0f)
-		.Orientation(Orient_Vertical)
-		.Style(FEditorStyle::Get(), "SplitterDark")
-		.PhysicalSplitterHandleSize(2.0f)
-		+ SSplitter::Slot()
-		.Value(.2f)
-		[
-			SNew(SBox)
-				.Visibility_Lambda([this]() -> EVisibility { return SelectedActor ? EVisibility::Visible : EVisibility::Collapsed; })
-				[
-					SAssignNew(SCSEditor, SSCSEditor)
-						.EditorMode(EComponentEditorMode::ActorInstance)
-						.ActorContext_Lambda([this]() -> AActor* { return SelectedActor; })
-						.OnSelectionUpdated(this, &SGraphNodeDetailsWidget::OnSCSEditorTreeViewSelectionChanged)
-						.AllowEditing(false)
-				]
-		]
-		+ SSplitter::Slot()
-		[
-			PropertyView.ToSharedRef()
-		];
-
-	SCSEditorUICustomization = MakeShared<FDataprepSCSEditorUICustomization>();
-	SCSEditor->SetUICustomization(SCSEditorUICustomization);
 
 	// Create the border that all of the content will get stuffed into
 	ChildSlot
@@ -178,53 +133,14 @@ void SGraphNodeDetailsWidget::AddPropertiesRecursive(FProperty* Property)
 	}
 }
 
-void SGraphNodeDetailsWidget::OnSCSEditorTreeViewSelectionChanged(const TArray<TSharedPtr<class FSCSEditorTreeNode> >& SelectedNodes)
-{
-	if (SelectedNodes.Num() > 0)
-	{
-		if (SelectedActor)
-		{
-			TArray<UObject*> DetailsObjects;
-
-			for (const TSharedPtr<FSCSEditorTreeNode>& SelectedNode : SelectedNodes)
-			{
-				if (SelectedNode.IsValid())
-				{
-					if (SelectedNode->GetNodeType() == FSCSEditorTreeNode::RootActorNode)
-					{
-						// Root actor takes precedence
-						DetailsObjects.Empty();
-						DetailsObjects.Add(SelectedActor);
-						break;
-					}
-					else if (SelectedNode->GetNodeType() == FSCSEditorTreeNode::ComponentNode)
-					{
-						if (UActorComponent* ComponentInstance = SelectedNode->FindComponentInstanceInActor(SelectedActor))
-						{
-							DetailsObjects.Add(ComponentInstance);
-						}
-					}
-				}
-			}
-
-			PropertyView->SetObjects(DetailsObjects);
-		}
-	}
-}
-
 // Inspired from SKismetInspector::UpdateFromObjects
-void SGraphNodeDetailsWidget::UpdateFromObjects(const TArray<UObject*>& PropertyObjects, bool bSelfUpdate)
+void SGraphNodeDetailsWidget::UpdateFromObjects(const TArray<UObject*>& PropertyObjects)
 {
 	TSharedRef< SVerticalBox > ContextualEditingWidget = SNew(SVerticalBox);
 
 	// DATAPREP_TODO: TO be revisited based on tpm's feedback. For the time being, simple view of properties
 	SelectedObjects.Empty();
 	FKismetSelectionInfo SelectionInfo;
-
-	if (!bSelfUpdate)
-	{
-		SelectedActor = nullptr;
-	}
 
 	for (auto ObjectIt = PropertyObjects.CreateConstIterator(); ObjectIt; ++ObjectIt)
 	{
@@ -287,11 +203,6 @@ void SGraphNodeDetailsWidget::UpdateFromObjects(const TArray<UObject*>& Property
 				SelectionInfo.ObjectsForPropertyEditing.AddUnique(Object);
 			}
 		}
-	}
-
-	if (!bSelfUpdate && SelectedObjects.Num() == 1)
-	{
-		SelectedActor = Cast<AActor>(SelectedObjects[0]);
 	}
 
 	// By default, no property filtering
@@ -359,8 +270,6 @@ void SGraphNodeDetailsWidget::UpdateFromObjects(const TArray<UObject*>& Property
 		}
 	}
 
-	SCSEditorUICustomization->SetHideComponentsTree(SelectedActor == nullptr);
-
 	PropertyView->SetObjects(SelectionInfo.ObjectsForPropertyEditing);
 
 	if (SelectionInfo.ObjectsForPropertyEditing.Num() > 0)
@@ -374,48 +283,25 @@ void SGraphNodeDetailsWidget::UpdateFromObjects(const TArray<UObject*>& Property
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
 				[
-					DetailsSplitter.ToSharedRef()
+					PropertyView.ToSharedRef()
 				]
 			]
 		];
 	}
 
 	ContextualEditingBorderWidget->SetContent(ContextualEditingWidget);
-
-	// Don't update component tree if this update comes from itself (avoids infinite recusrsion)
-	if (!bSelfUpdate)
-	{
-		SCSEditor->UpdateTree();
-	}
 }
 
 TSharedRef<ITableRow> SDataprepAssetView::OnGenerateRowForCategoryTree( TSharedRef<EDataprepCategory> InTreeNode, const TSharedRef<STableViewBase>& InOwnerTable )
 {
 	TSharedPtr<ITableRow> Row;
 
-	TSharedPtr<SWidget> ConsumerWidget;
-	
-	if (DataprepAssetInterfacePtr->GetConsumer())
-	{
-		ConsumerWidget = SNew( SDataprepDetailsView ).Object( DataprepAssetInterfacePtr->GetConsumer() );
-	}
-	else
-	{
-		ConsumerWidget = SNew( STextBlock )
-			.Font( FEditorStyle::GetFontStyle("BoldFont") )
-			.Text( LOCTEXT( "NoConsumer", "No consumer found" ) )
-			.Margin( 5.0f )
-			.ColorAndOpacity( FLinearColor(1, 0, 0, 1) );
-	}
-
 	switch( InTreeNode.Get() )
 	{
 		case EDataprepCategory::Producers:
 		{
 			ProducersWidget = SNew( SDataprepProducersWidget, DataprepAssetInterfacePtr->GetProducers() )
-				.ColumnSizeData( ColumnSizeData )
-				.DataprepImportProducersDelegate( DataprepImportProducersDelegate )
-				.DataprepImportProducersEnabledDelegate( DataprepImportProducersEnabledDelegate );
+				.ColumnSizeData( ColumnSizeData );
 
 			TSharedPtr< SWidget > ProducerWrapper = SNew( SHorizontalBox )
 				+ SHorizontalBox::Slot()
@@ -448,7 +334,8 @@ TSharedRef<ITableRow> SDataprepAssetView::OnGenerateRowForCategoryTree( TSharedR
 				.Padding(10.0f, 5.0f, 0.0f, 5.0f)
 				.AutoHeight()
 				[
-					ConsumerWidget.ToSharedRef()
+					SNew( SDataprepDetailsView )
+					.Object( DataprepAssetInterfacePtr->GetConsumer() )
 				];
 
 			TSharedPtr< SHorizontalBox > ConsumerSelectorWrapper = SNew( SHorizontalBox )
@@ -511,9 +398,6 @@ TSharedRef<ITableRow> SDataprepAssetView::OnGenerateRowForCategoryTree( TSharedR
 
 void SDataprepAssetView::Construct( const FArguments& InArgs, UDataprepAssetInterface* InDataprepAssetPtr )
 {
-	DataprepImportProducersDelegate = InArgs._DataprepImportProducersDelegate;
-	DataprepImportProducersEnabledDelegate = InArgs._DataprepImportProducersEnabledDelegate;
-
 	check( InDataprepAssetPtr );
 
 	DataprepAssetInterfacePtr = InDataprepAssetPtr;

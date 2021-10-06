@@ -7,7 +7,7 @@
 
 // FOnlineFriendIOS
 
-FUniqueNetIdRef FOnlineFriendIOS::GetUserId() const
+TSharedRef<const FUniqueNetId> FOnlineFriendIOS::GetUserId() const
 {
 	return UserId;
 }
@@ -169,7 +169,7 @@ bool FOnlineFriendsIOS::RejectInvite(int32 LocalUserNum, const FUniqueNetId& Fri
 
 void FOnlineFriendsIOS::SetFriendAlias(int32 LocalUserNum, const FUniqueNetId& FriendId, const FString& ListName, const FString& Alias, const FOnSetFriendAliasComplete& Delegate /*= FOnSetFriendAliasComplete()*/)
 {
-	FUniqueNetIdRef FriendIdRef = FriendId.AsShared();
+	TSharedRef<const FUniqueNetId> FriendIdRef = FriendId.AsShared();
 	IOSSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsIOS::SetFriendAlias is currently not supported"));
@@ -179,7 +179,7 @@ void FOnlineFriendsIOS::SetFriendAlias(int32 LocalUserNum, const FUniqueNetId& F
 
 void FOnlineFriendsIOS::DeleteFriendAlias(int32 LocalUserNum, const FUniqueNetId& FriendId, const FString& ListName, const FOnDeleteFriendAliasComplete& Delegate)
 {
-	FUniqueNetIdRef FriendIdRef = FriendId.AsShared();
+	TSharedRef<const FUniqueNetId> FriendIdRef = FriendId.AsShared();
 	IOSSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsIOS::DeleteFriendAlias is currently not supported"));

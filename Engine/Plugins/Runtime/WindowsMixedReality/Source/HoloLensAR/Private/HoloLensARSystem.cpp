@@ -12,7 +12,6 @@
 #include "WindowsMixedRealityInteropUtility.h"
 
 #include "HoloLensARFunctionLibrary.h"
-#include "HeadMountedDisplayFunctionLibrary.h"
 
 #include "Misc/ConfigCacheIni.h"
 #include "Async/Async.h"
@@ -55,9 +54,6 @@ struct FMeshUpdate
 	// The interop fills these in directly
 	TArray<FVector> Vertices;
 	TArray<MRMESH_INDEX_TYPE> Indices;
-	TArray<FVector> Normals;
-
-	bool bIsRightHandMesh;
 };
 
 /** A set of updates to be processed at once */
@@ -102,15 +98,11 @@ FHoloLensARSystem::FHoloLensARSystem()
 	, SessionConfig(nullptr)
 {
 	SpawnARActorDelegateHandle = UARLifeCycleComponent::OnSpawnARActorDelegate.AddRaw(this, &FHoloLensARSystem::OnSpawnARActor);
-	HandMeshes.Init(FMeshUpdate(), 2);
-
-	IModularFeatures::Get().RegisterModularFeature(IHandTracker::GetModularFeatureName(), static_cast<IHandTracker*>(this));
 }
 
 FHoloLensARSystem::~FHoloLensARSystem()
 {
 	UARLifeCycleComponent::OnSpawnARActorDelegate.Remove(SpawnARActorDelegateHandle);
-	IModularFeatures::Get().UnregisterModularFeature(IHandTracker::GetModularFeatureName(), static_cast<IHandTracker*>(this));
 }
 
 void FHoloLensARSystem::SetTrackingSystem(TSharedPtr<FXRTrackingSystemBase, ESPMode::ThreadSafe> InTrackingSystem)
@@ -288,27 +280,14 @@ void FHoloLensARSystem::OnStartARSession(UARSessionConfig* InSessionConfig)
 		WMRInterop->SetLogCallback(&OnLog);
 	}
 
-	// If spatial mapping was requested before the session started, start it now.
 #if WITH_EDITOR
-	if (bShouldStartSpatialMapping && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
+	if (SessionConfig->bGenerateMeshDataFromTrackedGeometry)
 #else
-	if (bShouldStartSpatialMapping && !WMRInterop->IsRemoting() && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
+	if (!WMRInterop->IsRemoting() && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
 #endif
 	{
 		// Start spatial mesh mapping
 		SetupMeshObserver();
-	}
-
-	// If QR was requested before the session started, start it now.
-	if (bShouldStartQRDetection)
-	{
-		UHoloLensARFunctionLibrary::StartQRCodeCapture();
-	}
-
-	// If the camera was requested before the session started, start it now.
-	if (bShouldStartPVCamera)
-	{
-		UHoloLensARFunctionLibrary::StartCameraCapture();
 	}
 
 	SessionStatus.Status = EARSessionStatus::Running;
@@ -336,13 +315,13 @@ void FHoloLensARSystem::OnStartARSession(UARSessionConfig* InSessionConfig)
 }
 
 #if  SUPPORTS_WINDOWS_MIXED_REALITY_AR
-bool FHoloLensARSystem::SetupCameraImageSupport()
+void FHoloLensARSystem::SetupCameraImageSupport()
 {
 	// Remoting does not support CameraCapture currently.
 	if (WMRInterop->IsRemoting())
 	{
 		UE_LOG(LogHoloLensAR, Warning, TEXT("HoloLens remoting does not support the device forward facing camera.  No images will be collected."));
-		return false;
+		return;
 	}
 
 	// Start the camera capture device
@@ -353,20 +332,18 @@ bool FHoloLensARSystem::SetupCameraImageSupport()
 	if (SessionConfig)
 	{
 		const FARVideoFormat Format = SessionConfig->GetDesiredVideoFormat();
-		return CameraCapture.StartCameraCapture(&OnCameraImageReceived_Raw, Format.Width, Format.Height, Format.FPS);
+		CameraCapture.StartCameraCapture(&OnCameraImageReceived_Raw, Format.Width, Format.Height, Format.FPS);
 	}
 	else
 	{
 		UE_LOG(LogHoloLensAR, Warning, TEXT("Session Config must be specified before using SetupCameraImageSupport."));
 	}
-
-	return false;
 }
 #endif
 
 void FHoloLensARSystem::OnPauseARSession()
 {
-	if (bShouldStartSpatialMapping && SessionConfig != nullptr && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
+	if (SessionConfig != nullptr && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
 	{
 		// Stop spatial mesh mapping. Existing meshes will remain
 		WMRInterop->StopSpatialMapping();
@@ -375,7 +352,7 @@ void FHoloLensARSystem::OnPauseARSession()
 
 void FHoloLensARSystem::OnResumeARSession()
 {
-	if (bShouldStartSpatialMapping && !WITH_EDITOR && SessionConfig != nullptr && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
+	if (!WITH_EDITOR && SessionConfig != nullptr && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
 	{
 		SetupMeshObserver();
 	}
@@ -488,100 +465,34 @@ bool FHoloLensARSystem::OnIsTrackingTypeSupported(EARSessionType SessionType) co
 
 bool FHoloLensARSystem::OnToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType)
 {
+	bool bSuccess = true;
 	switch (CaptureType)
 	{
 		case EARCaptureType::Camera:
 			if (bOnOff)
 			{
-				bShouldStartPVCamera = true;
-				if (SessionConfig != nullptr)
-				{
-					// We need a valid SessionConfig for camera setup.
-					return UHoloLensARFunctionLibrary::StartCameraCapture();
-				}
-				return true;
+				UHoloLensARFunctionLibrary::StartCameraCapture();
 			}
 			else
 			{
-				bShouldStartPVCamera = false;
-				return UHoloLensARFunctionLibrary::StopCameraCapture();
+				UHoloLensARFunctionLibrary::StopCameraCapture();
 			}
 			break;
 		case EARCaptureType::QRCode:
 			if (bOnOff)
 			{
-				bShouldStartQRDetection = true;
-				if (SessionConfig != nullptr)
-				{
-					// When spawning QRCode objects, we need a valid SessionConfig for the QRCode class.
-					return UHoloLensARFunctionLibrary::StartQRCodeCapture();
-				}
-				return true;
+				UHoloLensARFunctionLibrary::StartQRCodeCapture();
 			}
 			else
 			{
-				bShouldStartQRDetection = false;
-				return UHoloLensARFunctionLibrary::StopQRCodeCapture();
+				UHoloLensARFunctionLibrary::StopQRCodeCapture();
 			}
 			break;
-		case EARCaptureType::SpatialMapping:
-			if (bOnOff)
-			{
-				bShouldStartSpatialMapping = true;
-				if (SessionConfig != nullptr && SessionConfig->bGenerateMeshDataFromTrackedGeometry)
-				{
-					// If we already have a session config, start spatial mapping now.
-					// Otherwise ToggleARCapture was called before the ARSession started, 
-					// spatial mapping will start when the ARSession starts.
-					return SetupMeshObserver();
-				}
-				return true;
-			}
-			else
-			{
-				bShouldStartSpatialMapping = false;
-				return WMRInterop->StopSpatialMapping();
-			}
-			break;
-		case EARCaptureType::HandMesh:
-			if (bOnOff)
-			{
-				if (!WMRInterop)
-				{
-					return false;
-				}
-
-				if (WMRInterop->IsRemoting())
-				{
-					// Hand mesh is not supported over remoting
-					return true;
-				}
-
-				bShowHandMeshes = true;
-				return WMRInterop->StartHandMesh(&StartMeshUpdates_Raw, &AllocateMeshBuffers_Raw, &EndMeshUpdates_Raw);
-			}
-			else
-			{
-				if (!WMRInterop)
-				{
-					return false;
-				}
-
-				if (WMRInterop->IsRemoting())
-				{
-					// Hand mesh is not supported over remoting
-					return true;
-				}
-
-				bShowHandMeshes = false;
-				WMRInterop->StopHandMesh();
-				return true;
-			}
+		default:
+			bSuccess = false;
 			break;
 	}
-
-	// If we got here, this is an unsupported ARCapture type - return true to avoid a retry.
-	return true;
+	return bSuccess;
 }
 
 void FHoloLensARSystem::OnSetEnabledXRCamera(bool bOnOff)
@@ -641,7 +552,7 @@ UARPin* FHoloLensARSystem::OnPinComponent(USceneComponent* ComponentToPin, const
 				WMRAnchorId = FString::Format(TEXT("_RuntimeAnchor_{0}_{1}"), { DebugName.ToString(), RuntimeWMRAnchorCount });
 			} while (AnchorIdToPinMap.Contains(FName(*WMRAnchorId)));
 
-			bool bSuccess = WMRCreateAnchor(*WMRAnchorId.ToLower(), PinToTrackingTransform.GetLocation(), PinToTrackingTransform.GetRotation());
+			bool bSuccess = WMRCreateAnchor(*WMRAnchorId, PinToTrackingTransform.GetLocation(), PinToTrackingTransform.GetRotation());
 			if (!bSuccess)
 			{
 				UE_LOG(LogHoloLensAR, Warning, TEXT("OnPinComponent: Creation of anchor %s for component %s failed!  No anchor or pin created."), *WMRAnchorId, *ComponentToPin->GetReadableName());
@@ -684,7 +595,7 @@ void FHoloLensARSystem::OnRemovePin(UARPin* PinToRemove)
 		if (AnchorId.IsValid())
 		{
 			AnchorIdToPinMap.Remove(AnchorId);
-			WMRRemoveAnchor(*AnchorId.ToString().ToLower());
+			WMRRemoveAnchor(*AnchorId.ToString());
 			WMRARPin->SetAnchorId(FName());
 		}
 	}
@@ -701,7 +612,7 @@ void FHoloLensARSystem::UpdateWMRAnchors()
 		if (AnchorId.IsValid())
 		{
 			FTransform Transform;
-			if (WMRGetAnchorTransform(*AnchorId.ToString().ToLower(), Transform))
+			if (WMRGetAnchorTransform(*AnchorId.ToString(), Transform))
 			{
 				Pin->OnTransformUpdated(Transform);
 				Pin->OnTrackingStateChanged(EARTrackingState::Tracking);
@@ -801,7 +712,7 @@ bool FHoloLensARSystem::SaveARPin(FName InName, UARPin* InPin)
 		
 		// Force save identifier to lowercase because FName case is not guaranteed to be the same across multiple UE4 sessions.
 		const FString SaveId = InName.ToString().ToLower();
-		const FString AnchorId = WMRPin->GetAnchorIdName().ToString().ToLower();
+		const FString AnchorId = WMRPin->GetAnchorIdName().ToString();
 		bool Saved = WMRSaveAnchor(*SaveId, *AnchorId);
 		if (!Saved)
 		{
@@ -900,76 +811,56 @@ FTransform FHoloLensARSystem::GetPVCameraToWorldTransform()
 	return PVCameraToWorldMatrix;
 }
 
-bool FHoloLensARSystem::GetPVCameraIntrinsics(FVector2D& OutFocalLength, int& OutWidth, int& OutHeight, FVector2D& OutPrincipalPoint, FVector& OutRadialDistortion, FVector2D& OutTangentialDistortion)
+bool FHoloLensARSystem::GetPVCameraIntrinsics(FVector2D& focalLength, int& width, int& height, FVector2D& principalPoint, FVector& radialDistortion, FVector2D& tangentialDistortion)
 {
 	CameraImageCapture& CameraCapture = CameraImageCapture::Get();
 	
-	DirectX::XMFLOAT2 FocalLength, PrincipalPoint, TangentialDistortion;
-	DirectX::XMFLOAT3 RadialDistortion;
-	if (!CameraCapture.GetCameraIntrinsics(FocalLength, OutWidth, OutHeight, PrincipalPoint, RadialDistortion, TangentialDistortion))
+	DirectX::XMFLOAT2 _focalLength, _principalPoint, _tangentialDistortion;
+	DirectX::XMFLOAT3 _radialDistortion;
+	if (!CameraCapture.GetCameraIntrinsics(_focalLength, width, height, _principalPoint, _radialDistortion, _tangentialDistortion))
 	{
 		return false;
 	}
 
 	// Convert to FVector - 2d Vectors preserve windows coordinate system (x is left/right, y is up/down)
-	OutFocalLength = FVector2D(FocalLength.x, FocalLength.y);
-	OutPrincipalPoint = FVector2D(PrincipalPoint.x, PrincipalPoint.y);
-	OutRadialDistortion = WindowsMixedReality::WMRUtility::FromMixedRealityVector(RadialDistortion);
-	OutTangentialDistortion = FVector2D(TangentialDistortion.x, TangentialDistortion.y);
+	focalLength = FVector2D(_focalLength.x, _focalLength.y);
+	principalPoint = FVector2D(_principalPoint.x, _principalPoint.y);
+	radialDistortion = WindowsMixedReality::WMRUtility::FromMixedRealityVector(_radialDistortion);
+	tangentialDistortion = FVector2D(_tangentialDistortion.x, _tangentialDistortion.y);
 
 	return true;
 }
 
-bool FHoloLensARSystem::OnGetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const
-{
-	CameraImageCapture& CameraCapture = CameraImageCapture::Get();
-
-	DirectX::XMFLOAT2 FocalLength, PrincipalPoint, TangentialDistortion;
-	DirectX::XMFLOAT3 RadialDistortion;
-	int Width, Height;
-	if (!CameraCapture.GetCameraIntrinsics(FocalLength, Width, Height, PrincipalPoint, RadialDistortion, TangentialDistortion))
-	{
-		return false;
-	}
-
-	// Convert to FVector - 2d Vectors preserve windows coordinate system (x is left/right, y is up/down)
-	OutCameraIntrinsics.FocalLength = FVector2D(FocalLength.x, FocalLength.y);
-	OutCameraIntrinsics.PrincipalPoint = FVector2D(PrincipalPoint.x, PrincipalPoint.y);
-	OutCameraIntrinsics.ImageResolution = FIntPoint(Width, Height);
-
-	return true;
-}
-
-FVector FHoloLensARSystem::GetWorldSpaceRayFromCameraPoint(FVector2D PixelCoordinate)
+FVector FHoloLensARSystem::GetWorldSpaceRayFromCameraPoint(FVector2D pixelCoordinate)
 {
 	CameraImageCapture& CameraCapture = CameraImageCapture::Get();
 	
-	DirectX::XMFLOAT2 CameraPoint = DirectX::XMFLOAT2(PixelCoordinate.X, PixelCoordinate.Y);
-	DirectX::XMFLOAT2 UnprojectedPointAtUnitDepth = CameraCapture.UnprojectPVCamPointAtUnitDepth(CameraPoint);
+	DirectX::XMFLOAT2 cameraPoint = DirectX::XMFLOAT2(pixelCoordinate.X, pixelCoordinate.Y);
+	DirectX::XMFLOAT2 unprojectedPointAtUnitDepth = CameraCapture.UnprojectPVCamPointAtUnitDepth(cameraPoint);
 	
-	FVector Ray = WindowsMixedReality::WMRUtility::FromMixedRealityVector(
+	FVector ray = WindowsMixedReality::WMRUtility::FromMixedRealityVector(
 		DirectX::XMFLOAT3(
-			UnprojectedPointAtUnitDepth.x,
-			UnprojectedPointAtUnitDepth.y,
+			unprojectedPointAtUnitDepth.x,
+			unprojectedPointAtUnitDepth.y,
 			-1.0f // Unprojection happened at 1 meter
 		)
 	) * 100.0f;
 
-	Ray.Normalize();
+	ray.Normalize();
 
 	FScopeLock sl(&PVCamToWorldLock);
-	return PVCameraToWorldMatrix.TransformVector(Ray);
+	return PVCameraToWorldMatrix.TransformVector(ray);
 }
 
-bool FHoloLensARSystem::StartCameraCapture()
+void FHoloLensARSystem::StartCameraCapture()
 {
-	return SetupCameraImageSupport();
+	SetupCameraImageSupport();
 }
 
-bool FHoloLensARSystem::StopCameraCapture()
+void FHoloLensARSystem::StopCameraCapture()
 {
 	CameraImageCapture& CameraCapture = CameraImageCapture::Get();
-	return CameraCapture.StopCameraCapture();
+	CameraCapture.StopCameraCapture();
 }
 
 void FHoloLensARSystem::OnLog(const wchar_t* LogMsg)
@@ -1010,12 +901,9 @@ void FHoloLensARSystem::EndMeshUpdates_Raw()
 	HoloLensARThis->EndMeshUpdates();
 }
 
-bool FHoloLensARSystem::SetupMeshObserver()
+void FHoloLensARSystem::SetupMeshObserver()
 {
-	if (WMRInterop == nullptr)
-	{
-		return false;
-	}
+	check(WMRInterop != nullptr);
 
 	// Start the mesh observer. If the user says no to spatial mapping, then no updates will occur
 
@@ -1031,7 +919,7 @@ bool FHoloLensARSystem::SetupMeshObserver()
 	float VolumeSize = 1.f;
 	GConfig->GetFloat(TEXT("/Script/HoloLensPlatformEditor.HoloLensTargetSettings"), TEXT("SpatialMeshingVolumeSize"), VolumeSize, *iniFile);
 
-	return WMRInterop->StartSpatialMapping(TriangleDensity, VolumeSize, &StartMeshUpdates_Raw, &AllocateMeshBuffers_Raw, &RemovedMesh_Raw, &EndMeshUpdates_Raw);
+	WMRInterop->StartSpatialMapping(TriangleDensity, VolumeSize, &StartMeshUpdates_Raw, &AllocateMeshBuffers_Raw, &RemovedMesh_Raw, &EndMeshUpdates_Raw);
 }
 
 void FHoloLensARSystem::StartMeshUpdates()
@@ -1044,7 +932,6 @@ void FHoloLensARSystem::AllocateMeshBuffers(MeshUpdate* InMeshUpdate)
 {
 	// Allocate our memory for the mesh update
 	FMeshUpdate* MeshUpdate = new FMeshUpdate();
-
 	MeshUpdate->Id = GUIDToFGuid(InMeshUpdate->Id);
 	switch (InMeshUpdate->Type)
 	{
@@ -1064,14 +951,6 @@ void FHoloLensARSystem::AllocateMeshBuffers(MeshUpdate* InMeshUpdate)
 		InMeshUpdate->Vertices = MeshUpdate->Vertices.GetData();
 		MeshUpdate->Indices.AddUninitialized(InMeshUpdate->NumIndices);
 		InMeshUpdate->Indices = MeshUpdate->Indices.GetData();
-
-		if (InMeshUpdate->NumNormals > 0)
-		{
-			MeshUpdate->Normals.AddUninitialized(InMeshUpdate->NumNormals);
-			InMeshUpdate->Normals = MeshUpdate->Normals.GetData();
-		}
-
-		MeshUpdate->bIsRightHandMesh = InMeshUpdate->IsRightHandMesh;
 
 		const FTransform TrackingToWorldTransform = TrackingSystem->GetTrackingToWorldTransform();
 		
@@ -1157,8 +1036,6 @@ void FHoloLensARSystem::AddOrUpdateMesh(FMeshUpdate* CurrentMesh)
 {
 	bool bIsAdd = false;
 
-	bool bUseXRVisualizationForThisMesh = CurrentMesh->Type == EARObjectClassification::HandMesh && !bUseLegacyHandMeshVisualization;
-
 	FTrackedGeometryGroup* FoundTrackedGeometryGroup = TrackedGeometryGroups.Find(CurrentMesh->Id);
 	//UARTrackedGeometry** FoundGeometry = TrackedGeometries.Find(CurrentMesh->Id);
 	if (FoundTrackedGeometryGroup == nullptr)
@@ -1172,6 +1049,8 @@ void FHoloLensARSystem::AddOrUpdateMesh(FMeshUpdate* CurrentMesh)
 		check(FoundTrackedGeometryGroup);
 		
 		bIsAdd = true;
+		
+		AARActor::RequestSpawnARActor(CurrentMesh->Id, SessionConfig->GetMeshComponentClass());
 	}
 
 	UARTrackedGeometry* NewUpdatedGeometry = FoundTrackedGeometryGroup->TrackedGeometry;
@@ -1190,19 +1069,6 @@ void FHoloLensARSystem::AddOrUpdateMesh(FMeshUpdate* CurrentMesh)
 		// Mark this as a world mesh that isn't recognized as a particular scene type, since it is loose triangles
 		NewUpdatedGeometry->SetObjectClassification(CurrentMesh->Type);
 		
-		if (bUseXRVisualizationForThisMesh)
-		{
-			// The current mesh will be deleted when this function completes, so move relevant data to our cached hand mesh array.
-			int HandIndex = CurrentMesh->bIsRightHandMesh ? 1 : 0;
-			HandMeshes[HandIndex].Vertices = MoveTemp(CurrentMesh->Vertices);
-			HandMeshes[HandIndex].Indices = MoveTemp(CurrentMesh->Indices);
-			HandMeshes[HandIndex].Normals = MoveTemp(CurrentMesh->Normals);
-			HandMeshes[HandIndex].Location = MoveTemp(CurrentMesh->Location);
-			HandMeshes[HandIndex].Rotation = MoveTemp(CurrentMesh->Rotation);
-			HandMeshes[HandIndex].Scale = MoveTemp(CurrentMesh->Scale);
-			return;
-		}
-
 		// Update MRMesh if it's available
 		if (auto MRMesh = NewUpdatedGeometry->GetUnderlyingMesh())
 		{
@@ -1220,15 +1086,7 @@ void FHoloLensARSystem::AddOrUpdateMesh(FMeshUpdate* CurrentMesh)
 	}
 
 	// Trigger the proper notification delegate
-	if (bIsAdd)
-	{
-		// RequestSpawn should happen after UpdateTrackedGeometry so the TrackableAdded event has the correct object classification.
-		if (SessionConfig != nullptr)
-		{
-			AARActor::RequestSpawnARActor(CurrentMesh->Id, SessionConfig->GetMeshComponentClass());
-		}
-	}
-	else
+	if (!bIsAdd)
 	{
 		if (NewUpdatedARComponent)
 		{
@@ -1295,26 +1153,20 @@ void FHoloLensARSystem::QRCodeRemoved_Raw(QRCodeData* InCode)
 	FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(CameraImageTask, GET_STATID(STAT_FHoloLensARSystem_QRCodeRemoved_GameThread), nullptr, ENamedThreads::GameThread);
 }
 
-bool FHoloLensARSystem::SetupQRCodeTracking()
+void FHoloLensARSystem::SetupQRCodeTracking()
 {
-	if (WMRInterop == nullptr)
-	{
-		return false;
-	}
+	check(WMRInterop != nullptr);
 
+	WMRInterop->StartQRCodeTracking(&QRCodeAdded_Raw, &QRCodeUpdated_Raw, &QRCodeRemoved_Raw);
 	UE_LOG(LogHoloLensAR, Verbose, TEXT("FHoloLensARSystem::SetupQRCodeTracking() called"));
-	return WMRInterop->StartQRCodeTracking(&QRCodeAdded_Raw, &QRCodeUpdated_Raw, &QRCodeRemoved_Raw);
 }
 
-bool FHoloLensARSystem::StopQRCodeTracking()
+void FHoloLensARSystem::StopQRCodeTracking()
 {
-	if (WMRInterop == nullptr)
-	{
-		return false;
-	}
+	check(WMRInterop != nullptr);
 
+	WMRInterop->StopQRCodeTracking();
 	UE_LOG(LogHoloLensAR, Verbose, TEXT("FHoloLensARSystem::StopQRCodeTracking() called"));
-	return WMRInterop->StopQRCodeTracking();
 }
 
 static void DebugDumpQRData(QRCodeData* InCode)
@@ -1361,10 +1213,7 @@ void FHoloLensARSystem::QRCodeAdded_GameThread(FQRCodeData* InCode)
 
 		//		DebugDumpQRData(InCode);
 		
-		if (SessionConfig != nullptr)
-		{
-			AARActor::RequestSpawnARActor(InCode->Id, SessionConfig->GetQRCodeComponentClass());
-		}
+		AARActor::RequestSpawnARActor(InCode->Id, SessionConfig->GetQRCodeComponentClass());
 	}
 	delete InCode;
 }
@@ -1488,70 +1337,6 @@ void FHoloLensARSystem::ClearTrackedGeometries()
 		}
 	}
 	TrackedGeometryGroups.Empty();
-}
-
-FName FHoloLensARSystem::GetHandTrackerDeviceTypeName() const
-{
-	return FName("WMRHandMeshTracking");
-}
-
-bool FHoloLensARSystem::IsHandTrackingStateValid() const
-{
-	if (!bShowHandMeshes)
-	{
-		return false;
-	}
-
-	for (int i = 0; i < 2; i++)
-	{
-		FXRMotionControllerData data;
-		UHeadMountedDisplayFunctionLibrary::GetMotionControllerData(nullptr, (EControllerHand)i, data);
-		if (data.bValid)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool FHoloLensARSystem::HasHandMeshData() const
-{
-	if (!bShowHandMeshes)
-	{
-		return false;
-	}
-
-	return HandMeshes[0].Vertices.Num() > 0
-		|| HandMeshes[1].Vertices.Num() > 0;
-
-	return false;
-}
-
-bool FHoloLensARSystem::GetHandMeshData(EControllerHand Hand, TArray<FVector>& OutVertices, TArray<FVector>& OutNormals, TArray<int32>& OutIndices, FTransform& OutHandMeshTransform) const
-{
-	FMeshUpdate HandState = HandMeshes[(int)Hand];
-
-	OutIndices.Reset(HandState.Indices.Num());
-	OutVertices.Reset(HandState.Vertices.Num());
-	OutNormals.Reset(HandState.Normals.Num());
-
-	OutHandMeshTransform = FTransform(HandState.Rotation, HandState.Location, HandState.Scale);
-
-	OutIndices.AddUninitialized(HandState.Indices.Num());
-	OutVertices.AddUninitialized(HandState.Vertices.Num());
-	OutNormals.AddUninitialized(HandState.Normals.Num());
-
-	OutVertices = CopyTemp(HandState.Vertices);
-	OutNormals = CopyTemp(HandState.Normals);
-
-	auto DestIndices = OutIndices.GetData();
-	for (size_t i = 0; i < HandState.Indices.Num(); i++)
-	{
-		DestIndices[i] = HandState.Indices[i];
-	}
-
-	return true;
 }
 
 /** Used to run Exec commands */

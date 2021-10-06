@@ -4,11 +4,6 @@
 #include "SocketSubsystem.h"
 #include "AddressInfoTypes.h"
 
-void FInternetAddr::DumpAddrData() const
-{
-	UE_LOG(LogSockets, Log, TEXT("Dumping Addr Data : Addr = %s Protocol = %s Port = %i PlatformPort = %i"), *ToString(true), *GetProtocolType().ToString(), GetPort(), GetPlatformPort());
-}
-
 /**
  * Sets the address to return to the caller
  *

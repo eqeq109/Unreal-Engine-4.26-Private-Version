@@ -95,7 +95,6 @@ public:
 	TSharedPtr<FUICommandInfo> ToggleShowSelected;
 	TSharedPtr<FUICommandInfo> ShowSelected;
 	TSharedPtr<FUICommandInfo> HideSelected;
-	TSharedPtr<FUICommandInfo> ToggleShowOnlyColliding;
 	TSharedPtr<FUICommandInfo> ToggleShowOnlySelected;
 	TSharedPtr<FUICommandInfo> ShowAll;
 	TSharedPtr<FUICommandInfo> HideAll;

@@ -27,41 +27,30 @@ extern int32 GuardedMain( const TCHAR* CmdLine );
 extern void LaunchStaticShutdownAfterError();
 static int32 GGuardedMainErrorLevel = 0;
 
-void LogCrashCallstack(const FMacCrashContext& Context)
-{
-    Context.ReportCrash();
-    if (GLog)
-    {
-        GLog->SetCurrentThreadAsMasterThread();
-        GLog->Flush();
-    }
-    if (GWarn)
-    {
-        GWarn->Flush();
-    }
-    if (GError)
-    {
-        GError->Flush();
-        GError->HandleError();
-    }
-}
-
 /**
- * Minimal Crash Handler that logs the callstack
+ * Game-specific crash reporter
  */
-void EngineMinimalCrashHandler(const FGenericCrashContext& GenericContext)
+void EngineCrashHandler(const FGenericCrashContext& GenericContext)
 {
-    LogCrashCallstack(static_cast<const FMacCrashContext&>( GenericContext ));
-}
+	const FMacCrashContext& Context = static_cast< const FMacCrashContext& >( GenericContext );
+	
+	Context.ReportCrash();
+	if (GLog)
+	{
+		GLog->SetCurrentThreadAsMasterThread();
+		GLog->Flush();
+	}
+	if (GWarn)
+	{
+		GWarn->Flush();
+	}
+	if (GError)
+	{
+		GError->Flush();
+		GError->HandleError();
+	}
 
-/**
- * Full crash handler that logs the callstack and calls a project-overridable crash handler client
- */
-void EngineFullCrashHandler(const FGenericCrashContext& GenericContext)
-{
-    const FMacCrashContext& Context = static_cast<const FMacCrashContext&>( GenericContext );
-    LogCrashCallstack(Context);
-    Context.GenerateCrashInfoAndLaunchReporter();
+	return Context.GenerateCrashInfoAndLaunchReporter();
 }
 
 static int32 MacOSVersionCompare(const NSOperatingSystemVersion& VersionA, const NSOperatingSystemVersion& VersionB)
@@ -225,7 +214,7 @@ static int32 MacOSVersionCompare(const NSOperatingSystemVersion& VersionA, const
 #if UE_BUILD_DEBUG
 	if( true && !GAlwaysReportCrash )
 #else
-	if( FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash )
+	if( bIsBuildMachine || ( FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash ) )
 #endif
 	{
 		// Don't use exception handling when a debugger is attached to exactly trap the crash. This does NOT check
@@ -234,7 +223,10 @@ static int32 MacOSVersionCompare(const NSOperatingSystemVersion& VersionA, const
 	}
 	else
 	{
-		FPlatformMisc::SetCrashHandler(bIsBuildMachine ? EngineMinimalCrashHandler : EngineFullCrashHandler);
+		if (!bIsBuildMachine)
+		{
+			FPlatformMisc::SetCrashHandler(EngineCrashHandler);
+		}
 		GIsGuarded = 1;
 		// Run the guarded code.
 		GGuardedMainErrorLevel = GuardedMain( *GSavedCommandLine );
@@ -300,35 +292,6 @@ static int32 MacOSVersionCompare(const NSOperatingSystemVersion& VersionA, const
 
 		_Exit(1);
 	}
-
-#if WITH_EDITOR
-	if (!FParse::Param(*GSavedCommandLine, TEXT("skipminspeccheck")))
-	{
-		if (!FPlatformMisc::IsRunningOnRecommendedMinSpecHardware())
-		{
-			CFDictionaryRef SessionDictionary = CGSessionCopyCurrentDictionary();
-			const bool bIsWindowServerAvailable = SessionDictionary != nullptr;
-			if (bIsWindowServerAvailable)
-			{
-				NSAlert* AlertPanel = [NSAlert new];
-				[AlertPanel setAlertStyle:NSAlertStyleWarning];
-				[AlertPanel setInformativeText:@"You are attempting to run Unreal Editor on hardware that falls below the recommended minimum configuration. If you choose to proceed, you may experience odd behavior like crashing due to memory constraints or issues with unsupported graphics drivers. You may disable this warning by running with \r '-skipminspeccheck'"];
-				[AlertPanel setMessageText:@"Warning"];
-				[AlertPanel addButtonWithTitle:@"Quit"];
-				[AlertPanel addButtonWithTitle:@"Run Anyway"];
-				NSModalResponse Response = [AlertPanel runModal];
-				[AlertPanel release];
-
-				CFRelease(SessionDictionary);
-
-				if (Response == NSAlertFirstButtonReturn)
-				{
-					_Exit(1);
-				}
-			}
-		}
-	}
-#endif // WITH_EDITOR
 
 	//install the custom quit event handler
     NSAppleEventManager* appleEventManager = [NSAppleEventManager sharedAppleEventManager];

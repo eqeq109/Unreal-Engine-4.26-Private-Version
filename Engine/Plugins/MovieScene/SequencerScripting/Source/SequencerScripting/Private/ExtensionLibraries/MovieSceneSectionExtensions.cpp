@@ -246,7 +246,6 @@ void GetScriptingChannelsForChannel(FMovieSceneChannelProxy& ChannelProxy,TWeakO
 	const FMovieSceneChannelEntry* Entry = ChannelProxy.FindEntry(ChannelType::StaticStruct()->GetFName());
 	if (Entry)
 	{
-#if WITH_EDITORONLY_DATA
 		TArrayView<const FMovieSceneChannelMetaData> MetaData = Entry->GetMetaData();
 		for (int32 Index = 0; Index < MetaData.Num(); ++Index)
 		{
@@ -263,7 +262,6 @@ void GetScriptingChannelsForChannel(FMovieSceneChannelProxy& ChannelProxy,TWeakO
 				OutChannels.Add(ScriptingChannel);
 			}
 		}
-#endif
 	}
 }
 

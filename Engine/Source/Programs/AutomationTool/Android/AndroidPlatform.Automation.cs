@@ -22,7 +22,6 @@ public class AndroidPlatform : Platform
 	private const int DeployMaxParallelCommands = 6;
 
     private const string TargetAndroidLocation = "obb/";
-	private const string TargetAndroidTemp = "/data/local/tmp/";
 
 	public AndroidPlatform()
 		: base(UnrealTargetPlatform.Android)
@@ -659,11 +658,6 @@ public class AndroidPlatform : Platform
 		int TargetSDKVersion = MinSDKVersion;
 		Ini.GetInt32("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "TargetSDKVersion", out TargetSDKVersion);
 		LogInformation("Target SDK Version " + TargetSDKVersion);
-		bool bDisablePerfHarden = false;
-        if (TargetConfiguration != UnrealTargetConfiguration.Shipping)
-        {
-			Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bEnableMaliPerfCounters", out bDisablePerfHarden);
-		}
 
 		foreach (string Architecture in Architectures)
 		{
@@ -794,23 +788,22 @@ public class AndroidPlatform : Platform
 				var CreateInstallFilesAction = new Action<UnrealTargetPlatform>(Target =>
 				{
 					bool bIsPC = (Target == UnrealTargetPlatform.Win64);
-					string LineEnding = bIsPC ? "\r\n" : "\n";
 					// Write install batch file(s).
 					string PackageName = GetPackageInfo(ApkName, SC, false);
 					string BatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Install, Target);
 					string[] BatchLines = GenerateInstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false, 
-						Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22, bDisablePerfHarden);
+						Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22);
 					if (bHaveAPK)
 					{
 						// make a batch file that can be used to install the .apk and .obb files
-						File.WriteAllText(BatchName, string.Join(LineEnding, BatchLines) + LineEnding);
+						File.WriteAllLines(BatchName, BatchLines);
 					}
 					// make a batch file that can be used to uninstall the .apk and .obb files
 					string UninstallBatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Uninstall, Target);
 					BatchLines = GenerateUninstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, bIsPC);
 					if (bHaveAPK || bHaveUniversal)
 					{
-						File.WriteAllText(UninstallBatchName, string.Join(LineEnding, BatchLines) + LineEnding);
+						File.WriteAllLines(UninstallBatchName, BatchLines);
 					}
 
 					string UniversalBatchName = "";
@@ -819,15 +812,15 @@ public class AndroidPlatform : Platform
 						UniversalBatchName = GetFinalBatchName(UniversalApkName, SC, "", "", false, EBatchType.Install, Target);
 						// make a batch file that can be used to install the .apk
 						string[] UniversalBatchLines = GenerateInstallBatchFile(bPackageDataInsideApk, PackageName, UniversalApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false,
-							Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22, bDisablePerfHarden);
-						File.WriteAllText(UniversalBatchName, string.Join(LineEnding, UniversalBatchLines) + LineEnding);
+							Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22);
+						File.WriteAllLines(UniversalBatchName, UniversalBatchLines);
 					}
 
 					string SymbolizeBatchName = GetFinalBatchName(ApkName, SC, Architecture, GPUArchitecture, false, EBatchType.Symbolize, Target);
 					if(bBuildWithHiddenSymbolVisibility || bSaveSymbols)
 					{
 						BatchLines = GenerateSymbolizeBatchFile(Params, PackageName, ApkName, SC, Architecture, GPUArchitecture, bIsPC);
-						File.WriteAllText(SymbolizeBatchName, string.Join(LineEnding, BatchLines) + LineEnding);
+						File.WriteAllLines(SymbolizeBatchName, BatchLines);
 					}
 
 					if (Utils.IsRunningOnMono)
@@ -884,12 +877,11 @@ public class AndroidPlatform : Platform
 
     private string[] GenerateInstallBatchFile(bool bPackageDataInsideApk, string PackageName, string ApkName, ProjectParams Params, string ObbName, string DeviceObbName, bool bNoObbInstall,
 		string PatchName, string DevicePatchName, bool bNoPatchInstall, string Overflow1Name, string DeviceOverflow1Name, bool bNoOverflow1Install, string Overflow2Name, string DeviceOverflow2Name, bool bNoOverflow2Install,
-		bool bIsPC, bool bIsDistribution, bool bRequireRuntimeStoragePermission, bool bDisablePerfHarden)
+		bool bIsPC, bool bIsDistribution, bool bRequireRuntimeStoragePermission)
     {
         string[] BatchLines = null;
         string ReadPermissionGrantCommand = "shell pm grant " + PackageName + " android.permission.READ_EXTERNAL_STORAGE";
         string WritePermissionGrantCommand = "shell pm grant " + PackageName + " android.permission.WRITE_EXTERNAL_STORAGE";
-		string DisablePerfHardenCommand = "shell setprop security.perf_harden 0";
 
 		// We don't grant runtime permission for distribution build on purpose since we will push the obb file to the folder that doesn't require runtime storage permission.
 		// This way developer can catch permission issue if they try to save/load game file in folder that requires runtime storage permission.
@@ -906,10 +898,10 @@ public class AndroidPlatform : Platform
         {
 			// If it is a distribution build, push to $STORAGE/Android/obb folder instead of $STORAGE/obb folder.
 			// Note that $STORAGE/Android/obb will be the folder that contains the obb if you download the app from playstore.
-			string OBBInstallCommand = bNoObbInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceObbName + "'" : "push " + Path.GetFileName(ObbName) + (bIsDistribution ? " " + TargetAndroidTemp : " $STORAGE/") + DeviceObbName;
-			string PatchInstallCommand = bNoPatchInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DevicePatchName + "'" : "push " + Path.GetFileName(PatchName) + (bIsDistribution ? " " + TargetAndroidTemp : " $STORAGE/") + DevicePatchName;
-			string Overflow1InstallCommand = bNoOverflow1Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow1Name + "'" : "push " + Path.GetFileName(Overflow1Name) + (bIsDistribution ? " " + TargetAndroidTemp : " $STORAGE/") + DeviceOverflow1Name;
-			string Overflow2InstallCommand = bNoOverflow2Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow2Name + "'" : "push " + Path.GetFileName(Overflow2Name) + (bIsDistribution ? " " + TargetAndroidTemp : " $STORAGE/") + DeviceOverflow2Name;
+			string OBBInstallCommand = bNoObbInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceObbName + "'" : "push " + Path.GetFileName(ObbName) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceObbName;
+			string PatchInstallCommand = bNoPatchInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DevicePatchName + "'" : "push " + Path.GetFileName(PatchName) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DevicePatchName;
+			string Overflow1InstallCommand = bNoOverflow1Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow1Name + "'" : "push " + Path.GetFileName(Overflow1Name) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow1Name;
+			string Overflow2InstallCommand = bNoOverflow2Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow2Name + "'" : "push " + Path.GetFileName(Overflow2Name) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow2Name;
 
 			LogInformation("Writing shell script for install with {0}", bPackageDataInsideApk ? "data in APK" : "separate obb");
             BatchLines = new string[] {
@@ -929,8 +921,7 @@ public class AndroidPlatform : Platform
                         "\techo",
 						bNeedGrantStoragePermission ? "\techo Grant READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE to the apk for reading OBB or game file in external storage." : "",
 						bNeedGrantStoragePermission ? "\t$ADB $DEVICE " + ReadPermissionGrantCommand : "",
-						bNeedGrantStoragePermission ? "\t$ADB $DEVICE " + WritePermissionGrantCommand : "",
-						bDisablePerfHarden ? "\t$ADB $DEVICE " + DisablePerfHardenCommand : "",
+						bNeedGrantStoragePermission ?"\t$ADB $DEVICE " + WritePermissionGrantCommand : "",
                         "\techo",
 						"\techo Removing old data. Failures here are usually fine - indicating the files were not on the device.",
                         "\t$ADB $DEVICE shell 'rm -r $EXTERNAL_STORAGE/UE4Game/" + Params.ShortProjectName + "'",
@@ -947,8 +938,8 @@ public class AndroidPlatform : Platform
 						!bHaveOverflow1 ? "" : (bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + Overflow1InstallCommand),
 						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + Overflow2InstallCommand),
 						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell mkdir $STORAGE/Android/" + TargetAndroidLocation + PackageName, // don't check for error since installing may create the obb directory
-						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell mv " + TargetAndroidTemp + TargetAndroidLocation + PackageName + " $STORAGE/Android/" + TargetAndroidLocation,
-						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell rm -r " + TargetAndroidTemp + TargetAndroidLocation,
+						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell cp $STORAGE/Download/" + TargetAndroidLocation + PackageName + "/* $STORAGE/Android/" + TargetAndroidLocation + PackageName,
+						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell rm -r $STORAGE/Download/" + TargetAndroidLocation + PackageName,
 						"\t\techo",
 						"\t\techo Installation successful",
 						"\t\texit 0",
@@ -966,10 +957,10 @@ public class AndroidPlatform : Platform
         }
         else
         {
-			string OBBInstallCommand = bNoObbInstall ? "shell rm -r %STORAGE%/" + DeviceObbName : "push " + Path.GetFileName(ObbName) + (bIsDistribution ? " " + TargetAndroidTemp : " %STORAGE%/") + DeviceObbName;
-			string PatchInstallCommand = bNoPatchInstall ? "shell rm -r %STORAGE%/" + DevicePatchName : "push " + Path.GetFileName(PatchName) + (bIsDistribution ? " " + TargetAndroidTemp : " %STORAGE%/") + DevicePatchName;
-			string Overflow1InstallCommand = bNoOverflow1Install ? "shell rm -r %STORAGE%/" + DeviceOverflow1Name : "push " + Path.GetFileName(Overflow1Name) + (bIsDistribution ? " " + TargetAndroidTemp : " %STORAGE%/") + DeviceOverflow1Name;
-			string Overflow2InstallCommand = bNoOverflow2Install ? "shell rm -r %STORAGE%/" + DeviceOverflow2Name : "push " + Path.GetFileName(Overflow2Name) + (bIsDistribution ? " " + TargetAndroidTemp : " %STORAGE%/") + DeviceOverflow2Name;
+			string OBBInstallCommand = bNoObbInstall ? "shell rm -r %STORAGE%/" + DeviceObbName : "push " + Path.GetFileName(ObbName) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceObbName;
+			string PatchInstallCommand = bNoPatchInstall ? "shell rm -r %STORAGE%/" + DevicePatchName : "push " + Path.GetFileName(PatchName) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DevicePatchName;
+			string Overflow1InstallCommand = bNoOverflow1Install ? "shell rm -r %STORAGE%/" + DeviceOverflow1Name : "push " + Path.GetFileName(Overflow1Name) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow1Name;
+			string Overflow2InstallCommand = bNoOverflow2Install ? "shell rm -r %STORAGE%/" + DeviceOverflow2Name : "push " + Path.GetFileName(Overflow2Name) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow2Name;
 
 			LogInformation("Writing bat for install with {0}", bPackageDataInsideApk ? "data in APK" : "separate OBB");
             BatchLines = new string[] {
@@ -1004,14 +995,13 @@ public class AndroidPlatform : Platform
 						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "%ADB% %DEVICE% " + Overflow2InstallCommand),
 						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error"),
 						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell mkdir %STORAGE%/Android/" + TargetAndroidLocation + PackageName, // don't check for error since installing may create the obb directory
-						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell mv " + TargetAndroidTemp + TargetAndroidLocation + PackageName + " %STORAGE%/Android/" + TargetAndroidLocation,
+						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell cp %STORAGE%/Download/" + TargetAndroidLocation + PackageName + "/* %STORAGE%/Android/" + TargetAndroidLocation + PackageName,
 						bDontMoveOBB ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error",
-						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell rm -r " + TargetAndroidTemp + TargetAndroidLocation,
+						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell rm -r %STORAGE%/Download/" + TargetAndroidLocation + PackageName,
 						"@echo.",
 						bNeedGrantStoragePermission ? "@echo Grant READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE to the apk for reading OBB file or game file in external storage." : "",
 						bNeedGrantStoragePermission ? "%ADB% %DEVICE% " + ReadPermissionGrantCommand : "",
 						bNeedGrantStoragePermission ? "%ADB% %DEVICE% " + WritePermissionGrantCommand : "",
-						bDisablePerfHarden ? "%ADB% %DEVICE% " + DisablePerfHardenCommand : "",
                         "@echo.",
                         "@echo Installation successful",
 						"goto:eof",
@@ -1547,10 +1537,6 @@ public class AndroidPlatform : Platform
     {
 		var AppArchitectures = AndroidExports.CreateToolChain(Params.RawProjectPath).GetAllArchitectures();
 
-		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(Params.RawProjectPath), UnrealTargetPlatform.Android);
-		bool bDisablePerfHarden = false;
-		Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bEnableMaliPerfCounters", out bDisablePerfHarden);
-
 		foreach (var DeviceName in Params.DeviceNames)
         {
             string DeviceArchitecture = GetBestDeviceArchitecture(Params, DeviceName);
@@ -1580,11 +1566,6 @@ public class AndroidPlatform : Platform
 			string DeviceOverflow1Name = StorageLocation + "/" + GetDeviceOverflowName(ApkName, SC, 1);
 			string DeviceOverflow2Name = StorageLocation + "/" + GetDeviceOverflowName(ApkName, SC, 2);
 			string RemoteDir = StorageLocation + "/UE4Game/" + Params.ShortProjectName;
-
-			if (bDisablePerfHarden)
-			{
-				RunAdbCommand(Params, DeviceName, "shell setprop security.perf_harden 0");
-			}
 
             // determine if APK out of date
             string APKLastUpdateTime = new FileInfo(ApkName).LastWriteTime.ToString();

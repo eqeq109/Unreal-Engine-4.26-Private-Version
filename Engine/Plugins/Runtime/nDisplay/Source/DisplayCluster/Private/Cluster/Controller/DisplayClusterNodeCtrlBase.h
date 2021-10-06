@@ -9,8 +9,7 @@ class FDisplayClusterClusterManager;
 class FDisplayClusterServer;
 class IDisplayClusterClient;
 class IDisplayClusterServer;
-class FDisplayClusterClusterEventsJsonClient;
-class FDisplayClusterClusterEventsBinaryClient;
+
 
 
 /**
@@ -24,7 +23,9 @@ class FDisplayClusterNodeCtrlBase
 
 public:
 	FDisplayClusterNodeCtrlBase(const FString& CtrlName, const FString& NodeName);
-	virtual ~FDisplayClusterNodeCtrlBase();
+
+	virtual ~FDisplayClusterNodeCtrlBase() = 0
+	{ }
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
@@ -32,6 +33,11 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual bool Initialize() override final;
 	virtual void Release() override final;
+
+	virtual bool IsMaster() const override final
+	{
+		return !IsSlave();
+	}
 
 	virtual FString GetNodeId() const override final
 	{
@@ -42,9 +48,6 @@ public:
 	{
 		return ControllerName;
 	}
-
-	virtual void SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventJson& Event, bool bMasterOnly) override;
-	virtual void SendClusterEventTo(const FString& Address, const int32 Port, const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly) override;
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
@@ -64,19 +67,25 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProtocolClusterSync - default overrides
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForGameStart() override
+	virtual void WaitForGameStart(double* ThreadWaitTime, double* BarrierWaitTime) override
 	{ }
 
-	virtual void WaitForFrameStart() override
+	virtual void WaitForFrameStart(double* ThreadWaitTime, double* BarrierWaitTime) override
 	{ }
 
-	virtual void WaitForFrameEnd() override
+	virtual void WaitForFrameEnd(double* ThreadWaitTime, double* BarrierWaitTime) override
 	{ }
 
-	virtual void GetTimeData(float& InOutDeltaTime, double& InOutGameTime, TOptional<FQualifiedFrameTime>& InOutFrameTime) override
+	virtual void GetDeltaTime(float& DeltaSeconds) override
+	{ }
+
+	virtual void GetFrameTime(TOptional<FQualifiedFrameTime>& FrameTime) override
 	{ }
 
 	virtual void GetSyncData(TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup) override
+	{ }
+
+	virtual void GetInputData(TMap<FString, FString>& InputData) override
 	{ }
 
 	virtual void GetEventsData(TArray<TSharedPtr<FDisplayClusterClusterEventJson, ESPMode::ThreadSafe>>& JsonEvents, TArray<TSharedPtr<FDisplayClusterClusterEventBinary, ESPMode::ThreadSafe>>& BinaryEvents) override
@@ -89,7 +98,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProtocolRenderSync - default overrides
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForSwapSync() override
+	virtual void WaitForSwapSync(double* ThreadWaitTime, double* BarrierWaitTime) override
 	{ }
 
 protected:
@@ -118,12 +127,4 @@ protected:
 private:
 	const FString NodeName;
 	const FString ControllerName;
-
-	// JSON client for sending events outside of the cluster
-	FCriticalSection ExternEventsClientJsonGuard;
-	TUniquePtr<FDisplayClusterClusterEventsJsonClient>   ExternalEventsClientJson;
-
-	// Binary client for sending events outside of the cluster
-	FCriticalSection ExternEventsClientBinaryGuard;
-	TUniquePtr<FDisplayClusterClusterEventsBinaryClient> ExternalEventsClientBinary;
 };

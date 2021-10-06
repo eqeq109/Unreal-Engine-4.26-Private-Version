@@ -22,7 +22,7 @@ bool UDatasmithOpenNurbsImportOptions::CanEditChange(const FProperty* InProperty
 
 	if (PropertyFName == GET_MEMBER_NAME_CHECKED(FDatasmithOpenNurbsOptions, Geometry))
 	{
-		if (ICADInterfacesModule::GetAvailability() == ECADInterfaceAvailability::Unavailable)
+		if (ICADInterfacesModule::IsAvailable() == ECADInterfaceAvailability::Unavailable)
 		{
 			return false;
 		}

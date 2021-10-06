@@ -10,7 +10,6 @@ TextureStreamingHelpers.h: Definitions of classes used for texture streaming.
 #include "Stats/Stats.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/MemStack.h"
-#include "Engine/TextureDefines.h"
 
 class UStreamableRenderAsset;
 
@@ -103,9 +102,6 @@ struct FRenderAssetStreamingSettings
 
 	bool bStressTest;
 	static int32 ExtraIOLatency;
-
-	// Cached values of 
-	bool HighPriorityLoad_Texture[TEXTUREGROUP_MAX];
 
 protected:
 

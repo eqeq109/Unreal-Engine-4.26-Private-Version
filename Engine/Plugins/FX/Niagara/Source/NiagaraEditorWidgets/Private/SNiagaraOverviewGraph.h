@@ -4,7 +4,7 @@
 
 #include "Widgets/SCompoundWidget.h"
 #include "GraphEditor.h"
-#include "Widgets/SItemSelector.h"
+#include "ContentBrowserDelegates.h"
 
 class FNiagaraOverviewGraphViewModel;
 struct FActionMenuContent;
@@ -23,7 +23,7 @@ public:
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 public:
-	FRefreshItemSelectorDelegate RefreshItemSelector;
+	FRefreshAssetViewDelegate RefreshAssetView;
 
 private:
 	void ViewModelSelectionChanged();
@@ -41,12 +41,6 @@ private:
 	bool OnVerifyNodeTitle(const FText& NewText, UEdGraphNode* Node, FText& OutErrorMessage) const;
 	void OnNodeTitleCommitted(const FText& NewText, ETextCommit::Type CommitInfo, UEdGraphNode* NodeBeingChanged);
 
-	/** Called when nodes are pasted in the System Overview View Model. */
-	void NodesPasted(const TSet<UEdGraphNode*>& PastedNodes);
-
-	/** Sets the position on a group of newly pasted nodes. */
-	void PositionPastedNodes(const TSet<UEdGraphNode*>& PastedNodes);
-
 	void CreateAddEmitterMenuContent(FMenuBuilder& MenuBuilder, UEdGraph* InGraph);
 
 	void ZoomToFit();
@@ -59,6 +53,12 @@ private:
 	void OnDistributeNodesH();
 	void OnDistributeNodesV();
 
+	void LibraryCheckBoxStateChanged(ECheckBoxState InCheckbox);
+	ECheckBoxState GetLibraryCheckBoxState() const;
+	void TemplateCheckBoxStateChanged(ECheckBoxState InCheckbox);
+	ECheckBoxState GetTemplateCheckBoxState() const;
+
+	bool ShouldFilterEmitter(const FAssetData& AssetData);
 private:
 	TSharedPtr<FNiagaraOverviewGraphViewModel> ViewModel;
 	TSharedPtr<SGraphEditor> GraphEditor;
@@ -67,4 +67,7 @@ private:
 	bool bUpdatingGraphSelectionFromViewModel;
 
 	int32 ZoomToFitFrameDelay;
+
+	static bool bShowLibraryOnly;
+	static bool bShowTemplateOnly;
 };

@@ -6,7 +6,6 @@
 #include "Modules/ModuleManager.h"
 #include "SequenceRecorderUtils.h"
 #include "MovieScene.h"
-#include "LevelSequence.h"
 
 bool FMovieScene3DAttachTrackRecorderFactory::CanRecordObject(UObject* InObjectToRecord) const
 {
@@ -50,19 +49,15 @@ void UMovieScene3DAttachTrackRecorder::RecordSampleImpl(const FQualifiedFrameTim
 			if (!MovieSceneSection.IsValid() || AttachedToActor != ActorAttachedTo.Get())
 			{
 				MovieSceneSection = Cast<UMovieScene3DAttachSection>(AttachTrack->CreateNewSection());
-				AttachTrack->AddSection(*MovieSceneSection);
-
 				MovieSceneSection->AttachSocketName = SocketName;
 				MovieSceneSection->AttachComponentName = ComponentName;
 
 				MovieSceneSection->TimecodeSource = MovieScene->TimecodeSource;
 				MovieSceneSection->SetRange(TRange<FFrameNumber>(CurrentFrame, CurrentFrame));
 
-				FMovieSceneSequenceID TargetSequenceID = OwningTakeRecorderSource->GetLevelSequenceID(AttachedToActor);
-				FMovieSceneSequenceID ThisSequenceID   = OwningTakeRecorderSource->GetSequenceID();
-
-				FMovieSceneObjectBindingID NewBinding = UE::MovieScene::FRelativeObjectBindingID(ThisSequenceID, TargetSequenceID, Guid, OwningTakeRecorderSource->GetMasterLevelSequence());
-				MovieSceneSection->SetConstraintBindingID(NewBinding);
+				FMovieSceneSequenceID SequenceID;
+				SequenceID = OwningTakeRecorderSource->GetLevelSequenceID(AttachedToActor);
+				MovieSceneSection->SetConstraintId(Guid, SequenceID);
 			}
 
 			ActorAttachedTo = AttachedToActor;
@@ -93,11 +88,9 @@ void UMovieScene3DAttachTrackRecorder::FinalizeTrackImpl()
 				UE_LOG(LogTemp, Warning, TEXT("Could not find binding to attach (%s) to its parent (%s), perhaps (%s) was not recorded?"), *ActorToRecord->GetActorLabel(), *AttachedToActor->GetActorLabel(), *AttachedToActor->GetActorLabel());
 			}
 
-			FMovieSceneSequenceID TargetSequenceID = OwningTakeRecorderSource->GetLevelSequenceID(AttachedToActor);
-			FMovieSceneSequenceID ThisSequenceID   = OwningTakeRecorderSource->GetSequenceID();
-
-			FMovieSceneObjectBindingID NewBinding = UE::MovieScene::FRelativeObjectBindingID(ThisSequenceID, TargetSequenceID, Guid, OwningTakeRecorderSource->GetMasterLevelSequence());
-			MovieSceneSection->SetConstraintBindingID(NewBinding);
+			FMovieSceneSequenceID SequenceID;
+			SequenceID = OwningTakeRecorderSource->GetLevelSequenceID(AttachedToActor);
+			MovieSceneSection->SetConstraintId(Guid, SequenceID);
 		}
 	}
 }

@@ -34,18 +34,18 @@ public:
 	/** Sets the camera binding for this CameraCut section. Evaluates from the sequence binding ID */
 	void SetCameraGuid(const FGuid& InGuid)
 	{
-		SetCameraBindingID(UE::MovieScene::FRelativeObjectBindingID(InGuid));
+		SetCameraBindingID(FMovieSceneObjectBindingID(InGuid, MovieSceneSequenceID::Root, EMovieSceneObjectBindingSpace::Local));
 	}
 
 	/** Gets the camera binding for this CameraCut section */
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
 	const FMovieSceneObjectBindingID& GetCameraBindingID() const
 	{
 		return CameraBindingID;
 	}
 
 	/** Sets the camera binding for this CameraCut section */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetCameraBindingID(const FMovieSceneObjectBindingID& InCameraBindingID)
 	{
 		CameraBindingID = InCameraBindingID;

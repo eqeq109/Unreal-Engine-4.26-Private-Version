@@ -244,7 +244,7 @@ void FGraphActionNode::GetLeafNodes(TArray< TSharedPtr<FGraphActionNode> >& OutL
 {
 	for (TSharedPtr<FGraphActionNode> const& ChildNode : Children)
 	{
-		if (ChildNode->IsCategoryNode() || ChildNode->IsSectionHeadingNode())
+		if (ChildNode->IsCategoryNode())
 		{
 			ChildNode->GetLeafNodes(OutLeafArray);
 		}
@@ -573,7 +573,7 @@ void FGraphActionNode::InsertChild(TSharedPtr<FGraphActionNode> NodeToAdd)
 			NewSection->Children.Add(NodeToAdd);
 			if (NodeToAdd->IsCategoryNode())
 			{
-				NewSection->CategoryNodes.Add(NodeToAdd->DisplayText.ToString(), NodeToAdd);
+				CategoryNodes.Add(NodeToAdd->DisplayText.ToString(), NodeToAdd);
 			}
 			return;
 		}
@@ -612,4 +612,9 @@ void FGraphActionNode::InsertChild(TSharedPtr<FGraphActionNode> NodeToAdd)
 		CategoryNodes.Add(NodeToAdd->DisplayText.ToString(), NodeToAdd);
 	}
 }
+
+
+
+
+
 

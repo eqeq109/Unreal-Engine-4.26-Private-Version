@@ -237,19 +237,7 @@ struct FLandscapePatternBrushWorldSpaceSettings
 	UPROPERTY(Category = "World-Space", EditAnywhere)
 	float RepeatSize;
 
-	FLandscapePatternBrushWorldSpaceSettings()
-		: Origin(ForceInit)
-		, Rotation(0.0f)
-		, bCenterTextureOnOrigin(false)
-		, RepeatSize(0.0f)
-	{}
-
-	FLandscapePatternBrushWorldSpaceSettings(const FVector2D& InOrigin, float InRotation, bool bInCenterTextureOnOrigin, float bRepeatSize)
-		: Origin(InOrigin)
-		, Rotation(InRotation)
-		, bCenterTextureOnOrigin(bInCenterTextureOnOrigin)
-		, RepeatSize(bRepeatSize)
-	{}
+	FLandscapePatternBrushWorldSpaceSettings() = default;
 };
 
 UCLASS(MinimalAPI)

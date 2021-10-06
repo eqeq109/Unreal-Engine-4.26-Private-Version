@@ -5,8 +5,6 @@
 #include "AssetToolsModule.h"
 #include "CameraAnimationSequence.h"
 #include "ClassViewerModule.h"
-#include "Camera/CameraActor.h"
-#include "CineCameraActor.h"
 #include "DragAndDrop/ActorDragDropGraphEdOp.h"
 #include "DragAndDrop/AssetDragDropOp.h"
 #include "DragAndDrop/ClassDragDropOp.h"
@@ -24,25 +22,13 @@
 #include "TrackEditors/TemplateSequenceTrackEditor.h"
 #include "UObject/Class.h"
 #include "UObject/GCObject.h"
-#include "Widgets/Input/SComboBox.h"
 
 #define LOCTEXT_NAMESPACE "TemplateSequenceEditor"
-
-class FTemplateSequenceCustomizationBase
-{
-protected:
-	FText GetBoundActorClassName() const;
-	void OnBoundActorClassPicked(UClass* ChosenClass);
-	void ChangeActorBinding(UObject* Object, UActorFactory* ActorFactory = nullptr, bool bSetupDefaults = true);
-
-	ISequencer* Sequencer;
-	UTemplateSequence* TemplateSequence;
-};
 
 /**
  * The sequencer customization for template sequences. 
  */
-class FTemplateSequenceCustomization : public ISequencerCustomization, FTemplateSequenceCustomizationBase
+class FTemplateSequenceCustomization : public ISequencerCustomization
 {
 public:
 	virtual void RegisterSequencerCustomization(FSequencerCustomizationBuilder& Builder) override;
@@ -55,25 +41,24 @@ private:
 	ESequencerDropResult OnSequencerAssetsDrop(const TArray<UObject*>& Assets, const FAssetDragDropOp& DragDropOp);
 	ESequencerDropResult OnSequencerClassesDrop(const TArray<TWeakObjectPtr<UClass>>& Classes, const FClassDragDropOp& DragDropOp);
 	ESequencerDropResult OnSequencerActorsDrop(const TArray<TWeakObjectPtr<AActor>>& Actors, const FActorDragDropGraphEdOp& DragDropOp);
+
+	FText GetBoundActorClassName() const;
 	TSharedRef<SWidget> GetBoundActorClassMenuContent();
+	void OnBoundActorClassPicked(UClass* ChosenClass);
+	void ChangeActorBinding(UObject* Object, UActorFactory* ActorFactory = nullptr, bool bSetupDefaults = true);
+
+	ISequencer* Sequencer;
+	UTemplateSequence* TemplateSequence;
 };
 
 /**
  * The sequencer customization for camera animation sequences.
  */
-class FCameraAnimationSequenceCustomization : public ISequencerCustomization, FTemplateSequenceCustomizationBase
+class FCameraAnimationSequenceCustomation : public ISequencerCustomization
 {
 public:
 	virtual void RegisterSequencerCustomization(FSequencerCustomizationBuilder& Builder) override;
 	virtual void UnregisterSequencerCustomization() override;
-
-private:
-	void ExtendSequencerToolbar(FToolBarBuilder& ToolbarBuilder);
-
-	TSharedRef<SWidget> GetBoundCameraClassMenuContent();
-	bool IsBoundToActorClass(UClass* InClass);
-
-	TArray<UClass*> CameraActorClasses;
 };
 
 /**
@@ -211,7 +196,7 @@ private:
 		SequencerModule.GetSequencerCustomizationManager()->RegisterInstancedSequencerCustomization(UCameraAnimationSequence::StaticClass(),
 				FOnGetSequencerCustomizationInstance::CreateLambda([]()
 				{
-					return new FCameraAnimationSequenceCustomization();
+					return new FCameraAnimationSequenceCustomation();
 				}));
 	}
 
@@ -234,31 +219,6 @@ private:
 };
 
 IMPLEMENT_MODULE(FTemplateSequenceEditorModule, TemplateSequenceEditor);
-
-FText FTemplateSequenceCustomizationBase::GetBoundActorClassName() const
-{
-	const UClass* BoundActorClass = TemplateSequence ? TemplateSequence->BoundActorClass.Get() : nullptr;
-	return BoundActorClass ? BoundActorClass->GetDisplayNameText() : FText::FromName(NAME_None);
-}
-
-void FTemplateSequenceCustomizationBase::OnBoundActorClassPicked(UClass* ChosenClass)
-{
-	FSlateApplication::Get().DismissAllMenus();
-
-	if (TemplateSequence != nullptr)
-	{
-		ChangeActorBinding(ChosenClass);
-
-		Sequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemAdded);
-	}
-}
-
-void FTemplateSequenceCustomizationBase::ChangeActorBinding(UObject* Object, UActorFactory* ActorFactory, bool bSetupDefaults)
-{
-	FTemplateSequenceEditorUtil Util(TemplateSequence, *Sequencer);
-	Util.ChangeActorBinding(Object, ActorFactory, bSetupDefaults);
-}
-
 
 void FTemplateSequenceCustomization::RegisterSequencerCustomization(FSequencerCustomizationBuilder& Builder) 
 {
@@ -286,37 +246,28 @@ void FTemplateSequenceCustomization::UnregisterSequencerCustomization()
 
 void FTemplateSequenceCustomization::ExtendSequencerToolbar(FToolBarBuilder& ToolbarBuilder)
 {
-	ToolbarBuilder.AddSeparator();
-
-	ToolbarBuilder.AddComboButton(
-			FUIAction(),
-			FOnGetContent::CreateRaw(this, &FTemplateSequenceCustomization::GetBoundActorClassMenuContent),
-			LOCTEXT("BoundActorClassPicker", "Bound Actor Class"),
-			LOCTEXT("BoundActorClassPickerTooltip", "Change the base actor type that this template sequence can bind to"),
-			FSlateIcon(FTemplateSequenceEditorStyle::Get()->GetStyleSetName(), "TemplateSequenceEditor.Chain"));
-}
-
-TSharedRef<SWidget> FTemplateSequenceCustomization::GetBoundActorClassMenuContent()
-{
-	FClassViewerModule& ClassViewerModule = FModuleManager::LoadModuleChecked<FClassViewerModule>("ClassViewer");
-
-	FClassViewerInitializationOptions Options;
-	Options.Mode = EClassViewerMode::ClassPicker;
-	Options.bIsActorsOnly = true;
-
-	TSharedRef<SWidget> ClassPicker = ClassViewerModule.CreateClassViewer(Options, FOnClassPicked::CreateRaw(this, &FTemplateSequenceCustomization::OnBoundActorClassPicked));
-
-	return SNew(SBox)
-		.WidthOverride(350.0f)
+	TSharedRef<SHorizontalBox> Widget = SNew(SHorizontalBox)
+		+SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()
-			.MaxHeight(400.0f)
-			.AutoHeight()
+			SNew(STextBlock)
+			.Text(LOCTEXT("BoundActorClassPicker", "Bound Actor Class"))
+		]
+		+SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			SNew(SComboButton)
+			.OnGetMenuContent_Raw(this, &FTemplateSequenceCustomization::GetBoundActorClassMenuContent)
+			.ButtonContent()
 			[
-				ClassPicker
+				SNew(STextBlock)
+				.Text_Raw(this, &FTemplateSequenceCustomization::GetBoundActorClassName)
 			]
 		];
+	
+	ToolbarBuilder.AddWidget(Widget);
 }
 
 bool FTemplateSequenceCustomization::OnSequencerReceivedDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent, FReply& OutReply)
@@ -372,17 +323,56 @@ ESequencerDropResult FTemplateSequenceCustomization::OnSequencerActorsDrop(const
 	return ESequencerDropResult::Unhandled;
 }
 
-void FCameraAnimationSequenceCustomization::RegisterSequencerCustomization(FSequencerCustomizationBuilder& Builder)
+FText FTemplateSequenceCustomization::GetBoundActorClassName() const
 {
-	Sequencer = &Builder.GetSequencer();
-	TemplateSequence = Cast<UTemplateSequence>(&Builder.GetFocusedSequence());
-	CameraActorClasses = { ACameraActor::StaticClass(), ACineCameraActor::StaticClass() };
+	const UClass* BoundActorClass = TemplateSequence ? TemplateSequence->BoundActorClass.Get() : NULL;
+	return BoundActorClass ? BoundActorClass->GetDisplayNameText() : FText::FromName(NAME_None);
+}
 
+TSharedRef<SWidget> FTemplateSequenceCustomization::GetBoundActorClassMenuContent()
+{
+	FClassViewerModule& ClassViewerModule = FModuleManager::LoadModuleChecked<FClassViewerModule>("ClassViewer");
+
+	FClassViewerInitializationOptions Options;
+	Options.Mode = EClassViewerMode::ClassPicker;
+	Options.bIsActorsOnly = true;
+
+	TSharedRef<SWidget> ClassPicker = ClassViewerModule.CreateClassViewer(Options, FOnClassPicked::CreateRaw(this, &FTemplateSequenceCustomization::OnBoundActorClassPicked));
+
+	return SNew(SBox)
+		.WidthOverride(350.0f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.MaxHeight(400.0f)
+			.AutoHeight()
+			[
+				ClassPicker
+			]
+		];
+}
+
+void FTemplateSequenceCustomization::OnBoundActorClassPicked(UClass* ChosenClass)
+{
+	FSlateApplication::Get().DismissAllMenus();
+
+	if (TemplateSequence != nullptr)
+	{
+		ChangeActorBinding(ChosenClass);
+
+		Sequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemAdded);
+	}
+}
+
+void FTemplateSequenceCustomization::ChangeActorBinding(UObject* Object, UActorFactory* ActorFactory, bool bSetupDefaults)
+{
+	FTemplateSequenceEditorUtil Util(TemplateSequence, *Sequencer);
+	Util.ChangeActorBinding(Object, ActorFactory, bSetupDefaults);
+}
+
+void FCameraAnimationSequenceCustomation::RegisterSequencerCustomization(FSequencerCustomizationBuilder& Builder)
+{
 	FSequencerCustomizationInfo Customization;
-
-	TSharedRef<FExtender> ToolbarExtender = MakeShared<FExtender>();
-	ToolbarExtender->AddToolBarExtension("Base Commands", EExtensionHook::After, nullptr, FToolBarExtensionDelegate::CreateRaw(this, &FCameraAnimationSequenceCustomization::ExtendSequencerToolbar));
-	Customization.ToolbarExtender = ToolbarExtender;
 
 	Customization.OnAssetsDrop.BindLambda([](const TArray<UObject*>&, const FAssetDragDropOp&) -> ESequencerDropResult { return ESequencerDropResult::DropDenied; });
 	Customization.OnClassesDrop.BindLambda([](const TArray<TWeakObjectPtr<UClass>>&, const FClassDragDropOp&) -> ESequencerDropResult { return ESequencerDropResult::DropDenied; });
@@ -391,55 +381,8 @@ void FCameraAnimationSequenceCustomization::RegisterSequencerCustomization(FSequ
 	Builder.AddCustomization(Customization);
 }
 
-void FCameraAnimationSequenceCustomization::UnregisterSequencerCustomization()
+void FCameraAnimationSequenceCustomation::UnregisterSequencerCustomization()
 {
-	Sequencer = nullptr;
-	TemplateSequence = nullptr;
-}
-
-void FCameraAnimationSequenceCustomization::ExtendSequencerToolbar(FToolBarBuilder& ToolbarBuilder)
-{
-	ToolbarBuilder.AddSeparator();
-
-	ToolbarBuilder.AddComboButton(
-			FUIAction(),
-			FOnGetContent::CreateRaw(this, &FCameraAnimationSequenceCustomization::GetBoundCameraClassMenuContent),
-			LOCTEXT("CameraTypePicker", "Camera Type"),
-			LOCTEXT("CameraTypePickerTooltip", "Change the base camera actor type that this template sequence can bind to"),
-			FSlateIcon(FTemplateSequenceEditorStyle::Get()->GetStyleSetName(), "TemplateSequenceEditor.Chain"));
-}
-
-TSharedRef<SWidget> FCameraAnimationSequenceCustomization::GetBoundCameraClassMenuContent()
-{
-	FMenuBuilder MenuBuilder(true, nullptr);
-
-	for (UClass* CameraActorClass : CameraActorClasses)
-	{
-		MenuBuilder.AddMenuEntry(
-				FText::FromString(CameraActorClass->GetName()),
-				LOCTEXT("CameraTypeChoice", "Choose this type of camera as the type this template sequence can bind to"),
-				FSlateIcon(),
-				FUIAction(
-					FExecuteAction::CreateLambda([this, CameraActorClass]() { 
-						OnBoundActorClassPicked(CameraActorClass); 
-						}),
-					FCanExecuteAction(),
-					FGetActionCheckState::CreateLambda([this, CameraActorClass]() {
-						return IsBoundToActorClass(CameraActorClass) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; 
-						})
-					),
-				NAME_None,
-				EUserInterfaceActionType::RadioButton
-				);
-	}
-
-	return MenuBuilder.MakeWidget();
-}
-
-bool FCameraAnimationSequenceCustomization::IsBoundToActorClass(UClass* InClass)
-{
-	UClass* BoundActorClass = TemplateSequence ? TemplateSequence->BoundActorClass.Get() : nullptr;
-	return BoundActorClass == InClass;
 }
 
 #undef LOCTEXT_NAMESPACE

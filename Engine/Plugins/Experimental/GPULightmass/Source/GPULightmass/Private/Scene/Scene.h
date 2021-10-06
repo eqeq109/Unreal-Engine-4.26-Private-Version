@@ -57,7 +57,7 @@ private:
 
 struct FCachedRayTracingSceneData
 {
-	TArray<TArray<FVisibleRayTracingMeshCommand>> VisibleRayTracingMeshCommandsPerLOD;
+	TArray<FVisibleRayTracingMeshCommand> VisibleRayTracingMeshCommands;
 	TChunkedArray<FRayTracingMeshCommand> MeshCommandStorage;
 
 	FStructuredBufferRHIRef PrimitiveSceneDataBufferRHI;
@@ -66,7 +66,7 @@ struct FCachedRayTracingSceneData
 	FStructuredBufferRHIRef LightmapSceneDataBufferRHI;
 	FShaderResourceViewRHIRef LightmapSceneDataBufferSRV;
 
-	TArray<TArray<FRayTracingGeometryInstance>> RayTracingGeometryInstancesPerLOD;
+	TArray<FRayTracingGeometryInstance> RayTracingGeometryInstances;
 
 	TUniformBufferRef<FViewUniformShaderParameters> CachedViewUniformBuffer;
 
@@ -100,7 +100,7 @@ public:
 	TUniquePtr<FVolumetricLightmapRenderer> VolumetricLightmapRenderer;
 	TUniquePtr<FIrradianceCache> IrradianceCache;
 
-	void SetupRayTracingScene(int32 LODIndex = 0);
+	void SetupRayTracingScene();
 	void DestroyRayTracingScene();
 
 	void CalculateDistributionPrefixSumForAllLightmaps();

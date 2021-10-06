@@ -15,8 +15,11 @@ class UDMXEntityFixturePatch;
 class DMXEDITOR_API FDMXEditorUtils
 {
 public:
+
 	typedef TArray<UDMXEntityFixturePatch*> FUnassignedPatchesArray;
-		
+
+	
+	
 	/**
 	 * Generates a unique name given a base one and a list of existing ones, by appending an index to
 	 * existing names. If InBaseName is an empty String, it returns "Default name".
@@ -66,7 +69,7 @@ public:
 	static bool IsEntityUsed(const UDMXLibrary* InLibrary, const UDMXEntity* InEntity);
 
 	/**  Removes the entities and fixes references to it. */
-	static void RemoveEntities(UDMXLibrary* InLibrary, const TArray<UDMXEntity*>& InEntities);
+	static void RemoveEntities(UDMXLibrary* InLibrary, const TArray<UDMXEntity*>&& InEntities);
 
 	/**  Copies Entities to the operating system's clipboard. */
 	static void CopyEntities(const TArray<UDMXEntity*>&& EntitiesToCopy);
@@ -145,16 +148,25 @@ public:
 	static void GetAllAssetsOfClass(UClass* Class, TArray<UObject*>& OutObjects);
 
 	/**
-	 * Locate universe conflicts between libraries
+	 * Locate universe conflicts for a given entity across all other libraries.
 	 *
-	 * @param Library					The library to be tested.
-	 * @param OutConflictMessage		Message containing found conflicts
+	 * @param Entity					The entity to check against other libraries.
+	 * @param OutConflictingEntities	All entities within other libraries that have universe conflicts.
 	 * @return							True if there is at least one conflict found.
 	 */
-	static bool DoesLibraryHaveUniverseConflicts(UDMXLibrary* Library, FText& OutInputPortConflictMessage, FText& OutOutputPortConflictMessage);
+	static bool TryGetEntityUniverseConflicts(UDMXEntity* Entity, TArray<UDMXEntity*>& OutConflictingEntities);
+
+	/**
+	 * Compare two entities to determine if they have overlapping universes.
+	 *
+	 * @param EntityA					First entity to check.
+	 * @param EntityB					Second entity to check.
+	 * @return							True if there is a conflict.
+	 */
+	static bool DoEntitiesHaveUniverseConflict(UDMXEntity* EntityA, UDMXEntity* EntityB);
 
 	/** Zeros memory in all active DMX buffers of all protocols */
-	static void ClearAllDMXPortBuffers();
+	static void ZeroAllDMXBuffers();
 
 	/** Clears cached data fixture patches received */
 	static void ClearFixturePatchCachedData();

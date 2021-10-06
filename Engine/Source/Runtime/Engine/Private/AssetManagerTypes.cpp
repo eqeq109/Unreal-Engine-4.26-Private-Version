@@ -48,7 +48,15 @@ void FPrimaryAssetTypeInfo::FillRuntimeData(bool& bIsValid, bool& bBaseClassWasL
 	{
 		if (!PathRef.Path.IsEmpty())
 		{
-			AssetScanPaths.AddUnique(UAssetManager::GetNormalizedPackagePath(PathRef.Path, false));
+			if (PathRef.Path.EndsWith(TEXT("/")))
+			{
+				// Remove the trailing slash so searching with this behaves correctly
+				AssetScanPaths.AddUnique(PathRef.Path.LeftChop(1));
+			}
+			else
+			{
+				AssetScanPaths.AddUnique(PathRef.Path);
+			}
 		}
 	}
 
@@ -128,24 +136,6 @@ void FPrimaryAssetRules::PropagateCookRules(const FPrimaryAssetRules& ParentRule
 	{
 		CookRule = ParentRules.CookRule;
 	}
-}
-
-bool FAssetManagerSearchRules::AreRulesSet() const
-{	
-	if (AssetScanPaths.Num() || ExcludePatterns.Num() || IncludePatterns.Num())
-	{
-		return true;
-	}
-	else if (AssetBaseClass)
-	{
-		return true;
-	}
-	else if (ShouldIncludeDelegate.IsBound())
-	{
-		return true;
-	}
-
-	return false;
 }
 
 void UAssetManagerSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)

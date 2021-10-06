@@ -12,10 +12,10 @@
 class FLegacyCamelCaseBreakIterator : public FCamelCaseBreakIterator
 {
 protected:
-	virtual void TokenizeString(FTokensArray& OutTokens) override;
+	virtual void TokenizeString(TArray<FToken>& OutTokens) override;
 };
 
-void FLegacyCamelCaseBreakIterator::TokenizeString(FTokensArray& OutTokens)
+void FLegacyCamelCaseBreakIterator::TokenizeString(TArray<FToken>& OutTokens)
 {
 	OutTokens.Empty(String.Len());
 

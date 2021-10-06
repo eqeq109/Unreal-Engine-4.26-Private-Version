@@ -141,17 +141,10 @@ void UAnimStateConduitNode::ValidateNodeDuringCompilation(class FCompilerResults
 	UAnimGraphNode_TransitionResult* ResultNode = TransGraph->GetResultNode();
 	check(ResultNode);
 
-	if (ResultNode->PropertyBindings.Num() > 0 && ResultNode->PropertyBindings.CreateIterator()->Value.bIsBound)
+	UEdGraphPin* BoolResultPin = ResultNode->Pins[0];
+	if ((BoolResultPin->LinkedTo.Num() == 0) && (BoolResultPin->DefaultValue.ToBool() == false))
 	{
-		// Rule is bound so nothing more to check
-	}
-	else
-	{
-		UEdGraphPin* BoolResultPin = ResultNode->Pins[0];
-		if ((BoolResultPin->LinkedTo.Num() == 0) && (BoolResultPin->DefaultValue.ToBool() == false))
-		{
-			MessageLog.Warning(TEXT("@@ will never be taken, please connect something to @@"), this, BoolResultPin);
-		}
+		MessageLog.Warning(TEXT("@@ will never be taken, please connect something to @@"), this, BoolResultPin);
 	}
 }
 

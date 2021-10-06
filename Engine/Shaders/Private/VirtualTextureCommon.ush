@@ -26,8 +26,10 @@ struct FVirtualTextureFeedbackParams
 void InitializeVirtualTextureFeedback(in out FVirtualTextureFeedbackParams Params, uint2 SvPosition, uint FrameNumber)
 {
 #if (NUM_VIRTUALTEXTURE_SAMPLES + LIGHTMAP_VT_ENABLED) > 1
+	uint2 PixelPos = SvPosition;
+	PixelPos /= VIRTUAL_TEXTURE_FEEDBACK_FACTOR;
 	uint NumVTSamplesInShader = NUM_VIRTUALTEXTURE_SAMPLES + LIGHTMAP_VT_ENABLED;
-	Params.RequestId = View.VirtualTextureFeedbackSampleOffset % NumVTSamplesInShader;
+	Params.RequestId = (PixelPos.x + PixelPos.y * VIRTUAL_TEXTURE_FEEDBACK_FACTOR + FrameNumber) % NumVTSamplesInShader;
 	Params.Request = 0xFFFFFFFF;
 #else
 	Params.Request = 0xFFFFFFFF;	
@@ -47,15 +49,14 @@ void StoreVirtualTextureFeedback(in out FVirtualTextureFeedbackParams Params, ui
 /** This should be called at the end of the pixel shader to write out the gathered VT feedback info to the OutputBuffer. */
 void FinalizeVirtualTextureFeedback(in FVirtualTextureFeedbackParams Params, float4 SvPosition, float Opacity, uint FrameNumber, RWBuffer<uint> OutputBuffer)
 {
-	uint2 PixelTilePos = (uint2)SvPosition.xy % VIRTUAL_TEXTURE_FEEDBACK_FACTOR;
-	uint PixelTileIndex = PixelTilePos.y * VIRTUAL_TEXTURE_FEEDBACK_FACTOR + PixelTilePos.x;
-
+	uint2 PixelPos = SvPosition.xy;	
+	uint FeedbackPos = 0;
 	// This code will only run every few pixels...
-	[branch] if (PixelTileIndex == View.VirtualTextureFeedbackJitterOffset)
+	[branch] if (((PixelPos.x | PixelPos.y) & (VIRTUAL_TEXTURE_FEEDBACK_FACTOR-1)) == 0)
 	{
 		// TODO use append buffer ?
-		uint2 PixelPos = (uint2)SvPosition.xy / VIRTUAL_TEXTURE_FEEDBACK_FACTOR;
-		uint FeedbackPos = PixelPos.y * View.VirtualTextureFeedbackStride + PixelPos.x;
+		PixelPos /= VIRTUAL_TEXTURE_FEEDBACK_FACTOR;
+		FeedbackPos = PixelPos.y*View.VirtualTextureFeedbackStride + PixelPos.x;
 
 		// When using DBuffer, feedback buffer is blending using decal opacity for opaque objects
 		// This way we avoid overwriting values already written to feedback buffer while rendering dbuffer decals
@@ -480,7 +481,7 @@ VTPageTableResult TextureLoadVirtualPageTableLevel(
 }
 
 // LoadPageTable: 1 Page table, Adaptive
-VTPageTableResult TextureLoadVirtualPageTableAdaptive(
+VTPageTableResult TextureLoadVirtualPageTable(
 	Texture2D<uint4> PageTable0,
 	Texture2D<uint> PageTableIndirection,
 	VTPageTableUniform PageTableUniform,
@@ -503,7 +504,7 @@ VTPageTableResult TextureLoadVirtualPageTableAdaptive(
 }
 
 // LoadPageTable: 1 Page table, Adaptive, SampleGrad
-VTPageTableResult TextureLoadVirtualPageTableAdaptiveGrad(
+VTPageTableResult TextureLoadVirtualPageTableGrad(
 	Texture2D<uint4> PageTable0,
 	Texture2D<uint> PageTableIndirection,
 	VTPageTableUniform PageTableUniform,
@@ -523,7 +524,7 @@ VTPageTableResult TextureLoadVirtualPageTableAdaptiveGrad(
 }
 
 // LoadPageTable: 1 Page table, Adaptive, SampleLevel
-VTPageTableResult TextureLoadVirtualPageTableAdaptiveLevel(
+VTPageTableResult TextureLoadVirtualPageTableLevel(
 	Texture2D<uint4> PageTable0,
 	Texture2D<uint> PageTableIndirection,
 	VTPageTableUniform PageTableUniform,
@@ -544,7 +545,7 @@ VTPageTableResult TextureLoadVirtualPageTableAdaptiveLevel(
 }
 
 // LoadPageTable: 1 Page table, Adaptive, SampleLevel, No feedback
-VTPageTableResult TextureLoadVirtualPageTableAdaptiveLevel(
+VTPageTableResult TextureLoadVirtualPageTableLevel(
 	Texture2D<uint4> PageTable0,
 	Texture2D<uint> PageTableIndirection,
 	VTPageTableUniform PageTableUniform,

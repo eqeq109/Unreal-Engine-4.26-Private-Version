@@ -43,6 +43,4 @@ private:
 
 	bool bIsActivePIE   = false;
 	bool bIsNDisplayPIE = false;
-
-	uint64 SessionFrameCounter = 0;
 };

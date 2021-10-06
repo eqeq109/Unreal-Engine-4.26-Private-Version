@@ -52,7 +52,6 @@ namespace TimeUtils
 		bool bIsZero;
 		bool bIsNegative;
 		bool bIsInfinite;
-		bool bIsNaN;
 	};
 
 	TRACEINSIGHTS_API FString FormatTimeValue(const double Duration, const int32 NumDigits = 1);

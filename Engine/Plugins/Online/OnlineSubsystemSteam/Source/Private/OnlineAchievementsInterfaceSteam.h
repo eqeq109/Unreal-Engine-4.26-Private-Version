@@ -98,7 +98,7 @@ private:
 	FOnlineAchievementsSteam() {};
 
 	/** Mapping of players to their achievements */
-	TUniqueNetIdMap<TArray<FOnlineAchievement>> PlayerAchievements;
+	TMap<FUniqueNetIdSteam, TArray<FOnlineAchievement>> PlayerAchievements;
 
 	/** Cached achievement descriptions for an Id */
 	TMap<FString, FOnlineAchievementDesc> AchievementDescriptions;

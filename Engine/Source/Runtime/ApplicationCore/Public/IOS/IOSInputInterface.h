@@ -14,7 +14,6 @@
 #include "Math/Vector.h"
 #include "Math/Color.h"
 #include "GenericPlatform/GenericApplicationMessageHandler.h"
-#include "AppleControllerInterface.h"
 
 
 #define KEYCODE_ENTER 1000
@@ -29,6 +28,24 @@ enum TouchType
 	TouchEnded,
 	ForceChanged,
 	FirstMove,
+};
+
+enum ControllerType
+{
+    Unassigned,
+    SiriRemote,
+    ExtendedGamepad,
+    XboxGamepad,
+    DualShockGamepad
+};
+
+enum PlayerIndex
+{
+    PlayerOne,
+    PlayerTwo,
+    PlayerThree,
+    PlayerFour,
+    PlayerUnset
 };
 
 struct TouchInput
@@ -64,7 +81,7 @@ struct FDeferredIOSEvent
 /**
  * Interface class for IOS input devices
  */
-class FIOSInputInterface : public FAppleControllerInterface, FSelfRegisteringExec
+class FIOSInputInterface : public IForceFeedbackSystem, FSelfRegisteringExec
 {
 public:
 
@@ -74,17 +91,16 @@ public:
 public:
 
 	virtual ~FIOSInputInterface() {}
-	
+
+	void SetMessageHandler( const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler );
+
+	/** Tick the interface (i.e check for new controllers) */
+	void Tick( float DeltaTime );
+
 	/**
 	 * Poll for controller state and send events if needed
 	 */
 	void SendControllerEvents();
-	
-	/**
-	 * IForceFeedbackSystem implementation
-	 */
-	virtual void SetForceFeedbackChannelValue(int32 ControllerId, FForceFeedbackChannelType ChannelType, float Value) override;
-	virtual void SetForceFeedbackChannelValues(int32 ControllerId, const FForceFeedbackValues &values) override;
 
 	static APPLICATIONCORE_API void QueueTouchInput(const TArray<TouchInput>& InTouchEvents);
 	static void QueueKeyInput(int32 Key, int32 Char);
@@ -93,8 +109,18 @@ public:
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar) override;
 	//~ End Exec Interface
 
+	/**
+	 * IForceFeedbackSystem implementation
+	 */
+	virtual void SetForceFeedbackChannelValue(int32 ControllerId, FForceFeedbackChannelType ChannelType, float Value) override;
+	virtual void SetForceFeedbackChannelValues(int32 ControllerId, const FForceFeedbackValues &values) override;
+	virtual void SetLightColor(int32 ControllerId, FColor Color) override {}
+	virtual void ResetLightColor(int32 ControllerId) override {}
+
 	void SetGamepadsAllowed(bool bAllowed) { bAllowControllers = bAllowed; }
 	void SetGamepadsBlockDeviceFeedback(bool bBlock) { bControllersBlockDeviceFeedback = bBlock; }
+	bool IsControllerAssignedToGamepad(int32 ControllerId) const;
+	bool IsGamepadAttached() const;
 
 	void EnableMotionData(bool bEnable);
 	bool IsMotionDataEnabled() const;
@@ -102,8 +128,18 @@ public:
     static void SetKeyboardInhibited(bool bInhibited) { bKeyboardInhibited = bInhibited; }
     static bool IsKeyboardInhibited() { return bKeyboardInhibited; }
     
-    NSData* GetGamepadGlyphRawData(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex);
     
+    NSData* GetGamepadGlyphRawData(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex);
+    const ControllerType GetControllerType(uint32 ControllerIndex);
+    void SetControllerType(uint32 ControllerIndex);
+    
+    GCControllerButtonInput *GetGCControllerButton(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex);
+    
+    void HandleInputInternal(const FGamepadKeyNames::Type& UEButton, uint32 ControllerIndex, bool bIsPressed, bool bWasPressed);
+    void HandleButtonGamepad(const FGamepadKeyNames::Type& UEButton, uint32 ControllerIndex);
+    void HandleAnalogGamepad(const FGamepadKeyNames::Type& UEAxis, uint32 ControllerIndex);
+    void HandleVirtualButtonGamepad(const FGamepadKeyNames::Type& UEButtonNegative, const FGamepadKeyNames::Type& UEButtonPositive, uint32 ControllerIndex);
+
 private:
 
 	FIOSInputInterface( const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler );
@@ -116,6 +152,10 @@ private:
     void HandleKeyboardConnection(GCKeyboard* Keyboard);
     void HandleKeyboardDisconnect(GCKeyboard* Keyboard);
 #endif
+	void HandleConnection(GCController* Controller);
+	void HandleDisconnect(GCController* Controller);
+	
+    void SetCurrentController(GCController* Controller);
 
     /**
 	 * Get the current Movement data from the device
@@ -137,6 +177,31 @@ private:
     void ProcessDeferredEvents();
     void ProcessEvent(const FDeferredIOSEvent& Event);
 	
+    TSharedRef< FGenericApplicationMessageHandler > MessageHandler;
+
+
+	/** Game controller objects (per user)*/
+	struct FUserController
+	{
+        GCController* Controller;
+        
+        ControllerType ControllerType;
+        
+        PlayerIndex PlayerIndex;
+
+        GCExtendedGamepad* PreviousExtendedGamepad;
+        GCMicroGamepad* PreviousMicroGamepad;
+
+		FQuat ReferenceAttitude;
+		bool bNeedsReferenceAttitude;
+		bool bHasReferenceAttitude;
+        
+        // Deprecated but buttonMenu in iOS 14 is not working in current Beta (August 2020).
+        bool bPauseWasPressed;
+	};
+    // there is a hardcoded limit of 4 controllers in the API
+	FUserController Controllers[4];
+
 	// can the remote be rotated to landscape
 	bool bAllowRemoteRotation;
 
@@ -148,6 +213,9 @@ private:
 
 	// should the tracking use the pad center as the virtual joystick center?
 	bool bUseRemoteAbsoluteDpadValues;
+	
+	// should we allow controllers to send input
+	bool bAllowControllers;
 
 	// bluetooth connected controllers will block force feedback.
 	bool bControllersBlockDeviceFeedback;
@@ -185,6 +253,8 @@ private:
 	float LastHapticValue;
 	
 	int HapticFeedbackSupportLevel;
+	
+	TMap<FName, double> NextKeyRepeatTime;
     
     FCriticalSection EventsMutex;
         TArray<FDeferredIOSEvent> DeferredEvents;

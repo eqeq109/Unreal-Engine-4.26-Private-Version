@@ -289,13 +289,7 @@ struct FBaseBlendedCurve
 	/** Initialize Curve Data from following data */
 	void InitFrom(const FBoneContainer& RequiredBones)
 	{
-		UIDToArrayIndexLUT = &RequiredBones.GetUIDToArrayLookupTable();
-		NumValidCurveCount = RequiredBones.GetUIDToArrayIndexLookupTableValidCount();
-		CurveWeights.Reset();
-		CurveWeights.AddZeroed(NumValidCurveCount);
-		ValidCurveWeights.Init(false, NumValidCurveCount);
-		// no name, means no curve
-		bInitialized = true;
+		InitFrom(&RequiredBones.GetUIDToArrayLookupTable());
 	}
 
 	void InitFrom(TArray<uint16> const * InUIDToArrayIndexLUT)
@@ -303,8 +297,7 @@ struct FBaseBlendedCurve
 		check(InUIDToArrayIndexLUT != nullptr);
 		UIDToArrayIndexLUT = InUIDToArrayIndexLUT;
 		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
-		CurveWeights.Reset();
-		CurveWeights.AddZeroed(NumValidCurveCount);
+		CurveWeights.Init(0.0f, NumValidCurveCount);
 		ValidCurveWeights.Init(false, NumValidCurveCount);
 		// no name, means no curve
 		bInitialized = true;
@@ -316,10 +309,9 @@ struct FBaseBlendedCurve
 		// make sure this doesn't happen
 		check(InCurveToInitFrom.UIDToArrayIndexLUT != nullptr);
 		UIDToArrayIndexLUT = InCurveToInitFrom.UIDToArrayIndexLUT;
-		NumValidCurveCount = InCurveToInitFrom.NumValidCurveCount;
+		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 
-		CurveWeights.Reset();
-		CurveWeights.AddZeroed(NumValidCurveCount);
+		CurveWeights.Init(0.0f, NumValidCurveCount);
 		ValidCurveWeights.Init(false, NumValidCurveCount);
 		bInitialized = true;
 	}
@@ -331,9 +323,8 @@ struct FBaseBlendedCurve
 		{
 			check(InCurveToInitFrom.UIDToArrayIndexLUT != nullptr);
 			UIDToArrayIndexLUT = InCurveToInitFrom.UIDToArrayIndexLUT;
-			NumValidCurveCount = InCurveToInitFrom.NumValidCurveCount;
-			CurveWeights.Reset();
-			CurveWeights.AddZeroed(NumValidCurveCount);
+			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
+			CurveWeights.Init(0.0f, NumValidCurveCount);
 			ValidCurveWeights.Init(false, NumValidCurveCount);
 			bInitialized = true;
 		}
@@ -603,7 +594,7 @@ struct FBaseBlendedCurve
 		{
 			check(CurveToOverrideFrom.UIDToArrayIndexLUT != nullptr);
 			UIDToArrayIndexLUT = CurveToOverrideFrom.UIDToArrayIndexLUT;
-			NumValidCurveCount = CurveToOverrideFrom.NumValidCurveCount;
+			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 			CurveWeights = CurveToOverrideFrom.CurveWeights;
 			ValidCurveWeights = CurveToOverrideFrom.ValidCurveWeights;
 			bInitialized = true;
@@ -621,7 +612,7 @@ struct FBaseBlendedCurve
 			check(CurveToOverrideFrom.UIDToArrayIndexLUT != nullptr);
 			UIDToArrayIndexLUT = CurveToOverrideFrom.UIDToArrayIndexLUT;
 			CurveToOverrideFrom.UIDToArrayIndexLUT = nullptr;
-			NumValidCurveCount = CurveToOverrideFrom.NumValidCurveCount;
+			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 			CurveToOverrideFrom.NumValidCurveCount = 0;
 			CurveWeights = MoveTemp(CurveToOverrideFrom.CurveWeights);
 			ValidCurveWeights = MoveTemp(CurveToOverrideFrom.ValidCurveWeights);
@@ -641,7 +632,7 @@ struct FBaseBlendedCurve
 		UIDToArrayIndexLUT = CurveToCopyFrom.UIDToArrayIndexLUT;
 		CurveWeights = CurveToCopyFrom.CurveWeights;
 		ValidCurveWeights = CurveToCopyFrom.ValidCurveWeights;
-		NumValidCurveCount = CurveToCopyFrom.NumValidCurveCount;
+		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 		bInitialized = true;
 	}
 
@@ -653,7 +644,7 @@ struct FBaseBlendedCurve
 			UIDToArrayIndexLUT = CurveToCopyFrom.UIDToArrayIndexLUT;
 			CurveWeights = CurveToCopyFrom.CurveWeights;
 			ValidCurveWeights = CurveToCopyFrom.ValidCurveWeights;
-			NumValidCurveCount = CurveToCopyFrom.NumValidCurveCount;
+			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 			bInitialized = true;
 		}
 	}

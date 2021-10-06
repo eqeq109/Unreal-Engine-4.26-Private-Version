@@ -560,7 +560,7 @@ public:
 	{
 		if (Implementation.IsValid())
 		{
-			return Implementation->GetSingleSelectedNode();
+			Implementation->GetSingleSelectedNode();
 		}
 		return nullptr;
 	}

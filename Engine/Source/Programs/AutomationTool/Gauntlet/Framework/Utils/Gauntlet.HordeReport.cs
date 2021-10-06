@@ -65,7 +65,7 @@ namespace Gauntlet
 						string TargetPath = Path.Combine(OutputArtifactPath, Name ?? Path.GetFileName(ArtifactPath));
 						string TargetDirectry = Path.GetDirectoryName(TargetPath);
 						if (!Directory.Exists(TargetDirectry)) { Directory.CreateDirectory(TargetDirectry); }
-						File.Copy(Utils.SystemHelpers.GetFullyQualifiedPath(ArtifactPath), Utils.SystemHelpers.GetFullyQualifiedPath(TargetPath));
+						File.Copy(Globals.LongPathPrefix + Path.GetFullPath(ArtifactPath), Path.GetFullPath(TargetPath));
 						return true;
 					}
 					catch (Exception Ex)
@@ -208,17 +208,6 @@ namespace Gauntlet
 				get { return TestDetailed.State; }
 				set { TestDetailed.State = value; }
 			}
-			public int Errors
-			{
-				get { return TestDetailed.Errors; }
-				set { TestDetailed.Errors = value; }
-			}
-			public int Warnings
-			{
-				get { return TestDetailed.Warnings; }
-				set { TestDetailed.Warnings = value; }
-			}
-
 			public string ArtifactName;
 
 			private TestResultDetailed TestDetailed;
@@ -261,7 +250,6 @@ namespace Gauntlet
 			public int SucceededWithWarningsCount;
 			public int FailedCount;
 			public int NotRunCount;
-			public int InProcessCount;
 			public float TotalDurationSeconds;
 			public List<TestResult> Tests;
 
@@ -292,7 +280,6 @@ namespace Gauntlet
 				OutTestPassResults.SucceededWithWarningsCount = InTestPassResults.succeededWithWarnings;
 				OutTestPassResults.FailedCount = InTestPassResults.failed;
 				OutTestPassResults.NotRunCount = InTestPassResults.notRun;
-				OutTestPassResults.InProcessCount = InTestPassResults.inProcess;
 				OutTestPassResults.TotalDurationSeconds = InTestPassResults.totalDuration;
 				if (InTestPassResults.tests != null)
 				{
@@ -316,9 +303,9 @@ namespace Gauntlet
 							NewArtifact.Name = InTestArtifact.name;
 							NewArtifact.Type = InTestArtifact.type;
 							ComparisonFiles ArtifactFiles = NewArtifact.Files;
-							ArtifactFiles.Difference = !string.IsNullOrEmpty(InTestArtifact.files.difference)?Path.Combine(ReportPath, InTestArtifact.files.difference):null;
-							ArtifactFiles.Approved = !string.IsNullOrEmpty(InTestArtifact.files.approved)?Path.Combine(ReportPath, InTestArtifact.files.approved):null;
-							ArtifactFiles.Unapproved = !string.IsNullOrEmpty(InTestArtifact.files.unapproved)?Path.Combine(ReportPath, InTestArtifact.files.unapproved):null;
+							ArtifactFiles.Difference = Path.Combine(ReportPath, InTestArtifact.files.difference);
+							ArtifactFiles.Approved = Path.Combine(ReportPath, InTestArtifact.files.approved);
+							ArtifactFiles.Unapproved = Path.Combine(ReportPath, InTestArtifact.files.unapproved);
 						}
 						foreach (UnrealAutomationEntry InTestEntry in InTestResult.entries)
 						{

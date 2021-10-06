@@ -33,8 +33,7 @@ FStaticMeshUpdateContext::FStaticMeshUpdateContext(const UStaticMesh* InMesh, ET
 {
 	check(InMesh);
 	checkSlow(InCurrentThread != FStaticMeshUpdate::TT_Render || IsInRenderingThread());
-	// #TODO RenderData under a const UStaticMesh should stay const
-	RenderData = const_cast<UStaticMesh*>(InMesh)->GetRenderData();
+	RenderData = Mesh->RenderData.Get();
 	if (RenderData)
 	{
 		LODResourcesView = TArrayView<FStaticMeshLODResources*>(RenderData->LODResources.GetData() + InMesh->GetStreamableResourceState().AssetLODBias, InMesh->GetStreamableResourceState().MaxNumLODs);
@@ -236,7 +235,6 @@ void FStaticMeshStreamIn::DoFinishUpdate(const FContext& Context)
 		}
 #endif
 		RenderData->CurrentFirstLODIdx = ResourceState.LODCountToAssetFirstLODIdx(ResourceState.NumRequestedLODs);
-		MarkAsSuccessfullyFinished();
 	}
 	else
 	{
@@ -264,8 +262,7 @@ FStaticMeshStreamOut::FStaticMeshStreamOut(const UStaticMesh* InMesh, bool InDis
 	check(InMesh);
 
 	// Immediately change CurrentFirstLODIdx to prevent new references from being made to the streamed out lods.
-	// #TODO RenderData under a const UStaticMesh should stay const
-	FStaticMeshRenderData* RenderData = const_cast<UStaticMesh*>(InMesh)->GetRenderData();
+	FStaticMeshRenderData* RenderData = InMesh->RenderData.Get();
 	if (RenderData)
 	{
 		RenderData->CurrentFirstLODIdx = ResourceState.LODCountToAssetFirstLODIdx(ResourceState.NumRequestedLODs);
@@ -354,7 +351,6 @@ void FStaticMeshStreamOut::ReleaseRHIBuffers(const FContext& Context)
 #endif
 		}
 	}
-	MarkAsSuccessfullyFinished();
 }
 
 void FStaticMeshStreamOut::Cancel(const FContext& Context)

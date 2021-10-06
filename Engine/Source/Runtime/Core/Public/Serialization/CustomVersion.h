@@ -30,7 +30,7 @@ struct ECustomVersionSerializationFormat
 };
 
 typedef TArray<FCustomVersion> FCustomVersionArray;
-typedef bool (*CustomVersionValidatorFunc)(const FCustomVersion& Version, const FCustomVersionArray& AllVersions, const TCHAR* DebugContext);
+typedef bool (*CustomVersionValidatorFunc)(const FCustomVersion& Version, const FCustomVersionArray& AllVersions);
 
 /**
  * Structure to hold unique custom key with its version.
@@ -183,7 +183,7 @@ public:
 	static TOptional<FCustomVersion> Get(const FGuid& Guid);
 
 	/** Compare a number of versions to current ones and return potential differences. */
-	static TArray<FCustomVersionDifference> Compare(const FCustomVersionArray& CompareVersions, const TCHAR* DebugContext);
+	static TArray<FCustomVersionDifference> Compare(const FCustomVersionArray& CompareVersions);
 
 private:
 	friend class FCustomVersionRegistration;

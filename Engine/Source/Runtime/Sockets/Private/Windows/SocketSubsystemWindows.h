@@ -4,8 +4,9 @@
 
 #include "SocketSubsystem.h"
 #include "BSDSockets/SocketSubsystemBSD.h"
-#include "SocketsWindows.h"
+#include "BSDSockets/SocketsBSD.h"
 #include "SocketSubsystemPackage.h"
+
 
 /**
  * Windows specific socket subsystem implementation.
@@ -49,8 +50,6 @@ PACKAGE_SCOPE:
 	static void Destroy();
 
 protected:
-
-	virtual FSocketBSD* InternalBSDSocketFactory(SOCKET Socket, ESocketType SocketType, const FString& SocketDescription, const FName& SocketProtocol) override;
 
 	/** Holds a flag indicating whether Init() has been called before or not. */
 	bool bTriedToInit;

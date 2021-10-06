@@ -15,7 +15,7 @@ public:
 	DECLARE_MULTICAST_DELEGATE(FOnSystemCompiled)
 
 public:
-	FNiagaraSystemScriptViewModel(bool bInIsForDataProcessingOnly);
+	FNiagaraSystemScriptViewModel();
 
 	void Initialize(UNiagaraSystem& InSystem);
 
@@ -25,7 +25,7 @@ public:
 
 	void CompileSystem(bool bForce);
 	
-	virtual ENiagaraScriptCompileStatus GetLatestCompileStatus(FGuid VersionGuid = FGuid()) override;
+	virtual ENiagaraScriptCompileStatus GetLatestCompileStatus() override;
 
 private:
 	void OnSystemVMCompiled(UNiagaraSystem* InSystem);

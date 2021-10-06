@@ -69,11 +69,6 @@ public:
 	FTexture2DArrayRHIRef GetTextureRHI() { return Texture2DArrayRHI; }
 
 	/**
-	 * @return UnorderedAccessView for rendering
-	 */
-	FUnorderedAccessViewRHIRef GetUnorderedAccessViewRHI() { return UnorderedAccessViewRHI; }
-
-	/**
 	* Render target resource should be sampled in linear color space
 	*
 	* @return display gamma expected for rendering to this render target
@@ -114,6 +109,4 @@ private:
 	FTexture2DArrayRHIRef RenderTarget2DArrayRHI;
 	/** Texture resource used for rendering with and resolving to */
 	FTexture2DArrayRHIRef Texture2DArrayRHI;
-	/** Optional Unordered Access View for the resource, automatically created if bCanCreateUAV is true */
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
 };

@@ -6,7 +6,6 @@
 #include "HAL/CriticalSection.h"
 #include "Containers/Array.h"
 #include "Containers/Queue.h"
-#include "Containers/Set.h"
 
 class IAsyncReadRequest;
 class IBulkDataIORequest;
@@ -95,8 +94,6 @@ private:
 	// Chunks that have finished loading but have not finished their post-load bookkeping
 	// they are still not part of the ChunksAvailable list.
 	TQueue<FCompletedChunk, EQueueMode::Mpsc> CompletedChunks;
-
-	TSet<IBulkDataIORequest*> DelayedDeleteReadRequests;
 
 	mutable FCriticalSection CriticalSection;
 };

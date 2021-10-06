@@ -358,43 +358,24 @@ public:
 	}
 
 	/** @return enumerable object for one-ring vertex neighbours of a vertex, suitable for use with range-based for, ie for ( int i : VtxVerticesItr(VertexID) ) */
-	FSmallListSet::MappedValueEnumerable VtxVerticesItr(int VertexID) const
+	FSmallListSet::ValueEnumerable VtxVerticesItr(int VertexID) const
 	{
-		checkSlow(VertexRefCounts.IsValid(VertexID));
-		return VertexEdgeLists.MappedValues(VertexID,
-			[VertexID, this](int eid) { return GetOtherEdgeVertex(eid, VertexID); });
+		check(VertexRefCounts.IsValid(VertexID));
+		return VertexEdgeLists.Values(VertexID,
+		                              [VertexID, this](int eid) { return GetOtherEdgeVertex(eid, VertexID); });
 	}
-
-	/** Call VertexFunc for each one-ring vertex neighbour of a vertex. Currently this is more efficient than VtxVerticesItr() due to overhead in the Values() enumerable */
-	void EnumerateVertexVertices(int32 VertexID, TFunctionRef<void(int32)> VertexFunc) const
-	{
-		checkSlow(VertexRefCounts.IsValid(VertexID));
-		VertexEdgeLists.Enumerate(VertexID, [this, &VertexFunc, VertexID](int32 eid)
-		{
-			VertexFunc(GetOtherEdgeVertex(eid, VertexID));
-		});
-	}
-
 
 	/** @return enumerable object for one-ring edges of a vertex, suitable for use with range-based for, ie for ( int i : VtxEdgesItr(VertexID) ) */
 	FSmallListSet::ValueEnumerable VtxEdgesItr(int VertexID) const
 	{
-		checkSlow(VertexRefCounts.IsValid(VertexID));
+		check(VertexRefCounts.IsValid(VertexID));
 		return VertexEdgeLists.Values(VertexID);
 	}
-
-	/** Call EdgeFunc for each one-ring edge of a vertex. Currently this is more efficient than VtxEdgesItr() due to overhead in the Values() enumerable */
-	void EnumerateVertexEdges(int32 VertexID, TFunctionRef<void(int32)> EdgeFunc) const
-	{
-		checkSlow(VertexRefCounts.IsValid(VertexID));
-		VertexEdgeLists.Enumerate(VertexID, EdgeFunc);
-	}
-
 
 	/** @return enumerable object for one-ring triangles of a vertex, suitable for use with range-based for, ie for ( int i : VtxTrianglesItr(VertexID) ) */
 	vtx_triangles_enumerable VtxTrianglesItr(int VertexID) const
 	{
-		checkSlow(VertexRefCounts.IsValid(VertexID));
+		check(VertexRefCounts.IsValid(VertexID));
 		return vtx_triangles_enumerable(VertexEdgeLists.Values(VertexID), [this, VertexID](int EdgeID) {
 			return GetOrderedOneRingEdgeTris(VertexID, EdgeID);
 		});
@@ -479,14 +460,7 @@ public:
 	/** @return the vertex position */
 	inline FVector3d GetVertex(int VertexID) const
 	{
-		checkSlow(IsVertex(VertexID));
-		return Vertices[VertexID];
-	}
-
-	/** @return the vertex position */
-	inline const FVector3d& GetVertexRef(int VertexID) const
-	{
-		checkSlow(IsVertex(VertexID));
+		check(IsVertex(VertexID));
 		return Vertices[VertexID];
 	}
 
@@ -494,7 +468,7 @@ public:
 	inline void SetVertex(int VertexID, const FVector3d& vNewPos)
 	{
 		checkSlow(VectorUtil::IsFinite(vNewPos));
-		checkSlow(IsVertex(VertexID));
+		check(IsVertex(VertexID));
 		if (VectorUtil::IsFinite(vNewPos))
 		{
 			Vertices[VertexID] = vNewPos;
@@ -510,7 +484,7 @@ public:
 	void SetVertex_NoTimeStampUpdate(int VertexID, const FVector3d& vNewPos)
 	{
 		checkSlow(VectorUtil::IsFinite(vNewPos));
-		checkSlow(IsVertex(VertexID));
+		check(IsVertex(VertexID));
 
 		if (VectorUtil::IsFinite(vNewPos))
 		{
@@ -557,35 +531,21 @@ public:
 	/** Get triangle vertices */
 	inline FIndex3i GetTriangle(int TriangleID) const
 	{
-		checkSlow(IsTriangle(TriangleID));
-		return Triangles[TriangleID];
-	}
-
-	/** Get triangle vertices */
-	inline const FIndex3i& GetTriangleRef(int TriangleID) const
-	{
-		checkSlow(IsTriangle(TriangleID));
+		check(IsTriangle(TriangleID));
 		return Triangles[TriangleID];
 	}
 
 	/** Get triangle edges */
 	inline FIndex3i GetTriEdges(int TriangleID) const
 	{
-		checkSlow(IsTriangle(TriangleID));
-		return TriangleEdges[TriangleID];
-	}
-
-	/** Get triangle edges */
-	inline const FIndex3i& GetTriEdgesRef(int TriangleID) const
-	{
-		checkSlow(IsTriangle(TriangleID));
+		check(IsTriangle(TriangleID));
 		return TriangleEdges[TriangleID];
 	}
 
 	/** Get one of the edges of a triangle */
 	inline int GetTriEdge(int TriangleID, int j) const
 	{
-		checkSlow(IsTriangle(TriangleID));
+		check(IsTriangle(TriangleID));
 		return TriangleEdges[TriangleID][j];
 	}
 
@@ -610,28 +570,21 @@ public:
 	/** Get the vertices and triangles of an edge, returned as [v0,v1,t0,t1], where t1 may be InvalidID */
 	inline FEdge GetEdge(int EdgeID) const
 	{
-		checkSlow(IsEdge(EdgeID));
-		return Edges[EdgeID];
-	}
-
-	/** Get the vertices and triangles of an edge, returned as [v0,v1,t0,t1], where t1 may be InvalidID */
-	inline const FEdge& GetEdgeRef(int EdgeID) const
-	{
-		checkSlow(IsEdge(EdgeID));
+		check(IsEdge(EdgeID));
 		return Edges[EdgeID];
 	}
 
 	/** Get the vertex pair for an edge */
 	inline FIndex2i GetEdgeV(int EdgeID) const
 	{
-		checkSlow(IsEdge(EdgeID));
+		check(IsEdge(EdgeID));
 		return Edges[EdgeID].Vert;
 	}
 
 	/** Get the vertex positions of an edge */
 	inline bool GetEdgeV(int EdgeID, FVector3d& a, FVector3d& b) const
 	{
-		checkSlow(IsEdge(EdgeID));
+		check(IsEdge(EdgeID));
 
 		const FIndex2i Verts = Edges[EdgeID].Vert;
 
@@ -644,7 +597,7 @@ public:
 	/** Get the triangle pair for an edge. The second triangle may be InvalidID */
 	inline FIndex2i GetEdgeT(int EdgeID) const
 	{
-		checkSlow(IsEdge(EdgeID));
+		check(IsEdge(EdgeID));
 		return Edges[EdgeID].Tri;
 	}
 
@@ -655,13 +608,6 @@ public:
 	// Vertex and Triangle attribute arrays
 	//
 public:
-	/**
-	 * Enable requested set of mesh components (triangle groups and vertex normals/colors/UVs)
-	 * and discard any that are not requested
-	 * @param MeshComponentsFlags A 'bitwise or' of requested EMeshComponents flags
-	 */
-	void EnableMeshComponents(int MeshComponentsFlags);
-
 	void EnableVertexNormals(const FVector3f& InitialNormal);
 	void DiscardVertexNormals();
 
@@ -671,7 +617,7 @@ public:
 		{
 			return FVector3f::UnitY();
 		}
-		checkSlow(IsVertex(vID));
+		check(IsVertex(vID));
 		const TDynamicVector<FVector3f>& Normals = VertexNormals.GetValue();
 		return Normals[vID];
 	}
@@ -680,7 +626,7 @@ public:
 	{
 		if (HasVertexNormals())
 		{
-			checkSlow(IsVertex(vID));
+			check(IsVertex(vID));
 			TDynamicVector<FVector3f>& Normals = VertexNormals.GetValue();
 			Normals[vID]                       = vNewNormal;
 			UpdateTimeStamp(false, false);
@@ -697,7 +643,7 @@ public:
 		{
 			return FVector3f::One();
 		}
-		checkSlow(IsVertex(vID));
+		check(IsVertex(vID));
 
 		const TDynamicVector<FVector3f>& Colors = VertexColors.GetValue();
 		return Colors[vID];
@@ -707,7 +653,7 @@ public:
 	{
 		if (HasVertexColors())
 		{
-			checkSlow(IsVertex(vID));
+			check(IsVertex(vID));
 			TDynamicVector<FVector3f>& Colors = VertexColors.GetValue();
 			Colors[vID]                       = vNewColor;
 			UpdateTimeStamp(false, false);
@@ -723,7 +669,7 @@ public:
 		{
 			return FVector2f::Zero();
 		}
-		checkSlow(IsVertex(vID));
+		check(IsVertex(vID));
 		const TDynamicVector<FVector2f>& UVs = VertexUVs.GetValue();
 		return UVs[vID];
 	}
@@ -732,7 +678,7 @@ public:
 	{
 		if (HasVertexUVs())
 		{
-			checkSlow(IsVertex(vID));
+			check(IsVertex(vID));
 			TDynamicVector<FVector2f>& UVs = VertexUVs.GetValue();
 			UVs[vID]                       = vNewUV;
 			UpdateTimeStamp(false, false);
@@ -757,7 +703,7 @@ public:
 	{
 		if (HasTriangleGroups())
 		{
-			checkSlow(IsTriangle(tid));
+			check(IsTriangle(tid));
 			TriangleGroups.GetValue()[tid] = group_id;
 			GroupIDCounter                 = FMath::Max(GroupIDCounter, group_id + 1);
 			UpdateTimeStamp(false, false);
@@ -784,7 +730,7 @@ public:
 	/** Returns true if edge is on the mesh boundary, ie only connected to one triangle */
 	inline bool IsBoundaryEdge(int EdgeID) const
 	{
-		checkSlow(IsEdge(EdgeID));
+		check(IsEdge(EdgeID));
 		return Edges[EdgeID].Tri[1] == InvalidID;
 	}
 
@@ -933,7 +879,7 @@ public:
 	//
 public:
 	/** Returns bounding box of all mesh vertices (including unreferenced vertices) */
-	FAxisAlignedBox3d GetBounds(bool bParallel = false) const;
+	FAxisAlignedBox3d GetBounds() const;
 
 	/** Returns GetBounds() and saves result, cache is invalidated and recomputed if topology has changed since last call */
 	FAxisAlignedBox3d GetCachedBounds();
@@ -1412,7 +1358,7 @@ protected:
 		}
 		if (bTopologyChange)
 		{
-			checkSlow(bShapeChange); // we consider topology change to be a shape change!
+			check(bShapeChange); // we consider topology change to be a shape change!
 			TopologyTimestamp++;
 		}
 	}

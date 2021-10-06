@@ -16,11 +16,7 @@ class CURVEEDITOR_API SCurveEditorTree : public STreeView<FCurveEditorTreeItemID
 {
 public:
 
-	SLATE_BEGIN_ARGS(SCurveEditorTree)
-		: _SelectColumnWidth(24.f)
-		{}
-		SLATE_ARGUMENT(float, SelectColumnWidth)
-		SLATE_EVENT(FOnMouseButtonDoubleClick, OnMouseButtonDoubleClick)
+	SLATE_BEGIN_ARGS(SCurveEditorTree){}
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs, TSharedPtr<FCurveEditor> InCurveEditor);
@@ -41,10 +37,6 @@ private:
 
 	void RefreshTree();
 
-	void RefreshTreeWidgetSelection();
-
-	void ToggleExpansionState(bool bRecursive);
-
 private:
 
 	bool bFilterWasActive;
@@ -57,7 +49,4 @@ private:
 	TSharedPtr<FCurveEditor> CurveEditor;
 
 	TSharedPtr<SHeaderRow> HeaderRow;
-
-	bool bUpdatingTreeWidgetSelection;
-	bool bUpdatingCurveEditorTreeSelection;
 };

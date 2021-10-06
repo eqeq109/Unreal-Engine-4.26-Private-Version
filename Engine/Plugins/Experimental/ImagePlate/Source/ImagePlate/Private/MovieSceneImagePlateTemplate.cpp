@@ -50,9 +50,9 @@ struct FRenderTexturePropertyPreAnimatedToken : IMovieScenePreAnimatedToken
 		OldTexture = InBindings->GetCurrentValue<UTexture*>(Object);
 	}
 
-	virtual void RestoreState(UObject& Object, const UE::MovieScene::FRestoreStateParams& Params)
+	virtual void RestoreState(UObject& RestoreObject, IMovieScenePlayer& Player)
 	{
-		PropertyBindings->CallFunction<UTexture*>(Object, OldTexture.Get());
+		PropertyBindings->CallFunction<UTexture*>(RestoreObject, OldTexture.Get());
 	}
 
 private:
@@ -105,8 +105,7 @@ struct FImagePlateExecutionToken : IMovieSceneExecutionToken
 			if (bCreateNewTexture)
 			{
 				// Save the render target assignment with the track
-				FScopedPreAnimatedCaptureSource CaptureSource(&Player.PreAnimatedState, PersistentData.GetTrackKey(), true);
-				Player.SavePreAnimatedState(*Object, SectionData.PropertyID, FRenderTexturePropertyPreAnimatedToken::FProducer(SectionData.PropertyBindings));
+				Player.SavePreAnimatedState(*Object, SectionData.PropertyID, FRenderTexturePropertyPreAnimatedToken::FProducer(SectionData.PropertyBindings), PersistentData.GetTrackKey());
 				RenderTexture = SectionData.PropertyBindings->GetCurrentValue<UTexture*>(*Object);
 			}
 

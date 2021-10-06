@@ -13,14 +13,20 @@ public class VirtualCameraEditor : ModuleRules
 			{
 				"Core",
 				"CoreUObject",
+				"EditorStyle",
 				"Engine",
+				"LevelEditor",
+				"Projects",
+				"Slate",
+				"SlateCore",
+				"TimeManagement",
+				"UMG",
 				"UnrealEd",
-				"Settings",
-				"PlacementMode",
-				"VPUtilities",
-				"VPUtilitiesEditor",
 				"VCamCore",
-				"VirtualCamera"
+				"VirtualCamera",
+				"VPUtilitiesEditor",
+				"WorkspaceMenuStructure",
+				"PlacementMode"
 			}
 		);
 	}

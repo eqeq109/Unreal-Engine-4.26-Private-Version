@@ -4,7 +4,7 @@
 
 #include "guiddef.h"
 
-#include "Microsoft/COMPointer.h"
+#include "Windows\COMPointer.h"
 
 struct IMFTopologyNode;
 struct IMFTransform;

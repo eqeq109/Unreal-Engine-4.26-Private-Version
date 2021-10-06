@@ -35,10 +35,8 @@ struct NIAGARA_API FNiagaraVariant
 	UNiagaraDataInterface* GetDataInterface() const;
 	void SetDataInterface(UNiagaraDataInterface* InDataInterface);
 
-	void AllocateBytes(int32 InCount);
-	void SetBytes(const uint8* InBytes, int32 InCount);
+	void SetBytes(uint8* InBytes, int32 InCount);
 	uint8* GetBytes() const;
-	int32 GetNumBytes() const;
 
 	bool IsValid() const { return CurrentMode != ENiagaraVariantMode::None; }
 	ENiagaraVariantMode GetMode() const { return CurrentMode; }
@@ -47,10 +45,10 @@ struct NIAGARA_API FNiagaraVariant
 	bool operator!=(const FNiagaraVariant& Other) const;
 
 private:
-	UPROPERTY(EditAnywhere, Category=Variant, Instanced)
+	UPROPERTY(EditAnywhere, Category=Variant)
 	UObject* Object;
 
-	UPROPERTY(EditAnywhere, Category=Variant, Instanced)
+	UPROPERTY(EditAnywhere, Category=Variant)
 	UNiagaraDataInterface* DataInterface;
 
 	UPROPERTY(EditAnywhere, Category=Variant)

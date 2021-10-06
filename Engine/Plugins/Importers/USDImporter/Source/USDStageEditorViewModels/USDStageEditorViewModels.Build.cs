@@ -19,19 +19,18 @@ namespace UnrealBuildTool.Rules
 					"DesktopWidgets",
 					"EditorStyle",
 					"Engine",
-					"InputCore",
 					"LevelEditor",
+					"InputCore",
 					"Slate",
 					"SlateCore",
 					"UnrealEd",
 					"UnrealUSDWrapper",
-					"USDClasses",
 					"USDStage",
 					"USDStageImporter",
 					"USDUtilities",
 					"WorkspaceMenuStructure",
 				}
-			);
+				);
 		}
 	}
 }

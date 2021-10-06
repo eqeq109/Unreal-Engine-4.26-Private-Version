@@ -39,12 +39,8 @@ void FNormalFlowRemesher::RemeshWithFaceProjection()
 	// to where they will ultimately want to go
 
 	const double OriginalSmoothSpeed = SmoothSpeedT;
-	
-	int Iterations = 0;
-	const double ProjectionDistanceThreshold = 0.1 * MinEdgeLength;
 
-	bool bContinue = true;
-	while (bContinue)
+	for (int k = 0; k < MaxRemeshIterations; ++k)
 	{
 		if (Cancelled())
 		{
@@ -53,24 +49,17 @@ void FNormalFlowRemesher::RemeshWithFaceProjection()
 
 		RemeshIteration();
 
-		if (Iterations > MaxRemeshIterations / 2)
+		if (k > MaxRemeshIterations / 2)
 		{
 			SmoothSpeedT *= 0.9;
 		}
-
-		double MaxProjectionDistance = 0.0;
-		TrackedFaceProjectionPass(MaxProjectionDistance);
-
-		// Stop if we've hit max iterations, or both:
-		// - queue is empty and
-		// - projection isn't moving anything
-		bContinue = (Iterations++ < MaxRemeshIterations) && ((ModifiedEdges->Num() > 0) || (MaxProjectionDistance > ProjectionDistanceThreshold));
 	}
 
 	SmoothSpeedT = OriginalSmoothSpeed;
 
-	// Now just face projections and edge flips
-	if (ProjTarget != nullptr)
+	// Now face projection iterations.
+
+	if (ProjTarget != nullptr && ProjectionMode == ETargetProjectionMode::AfterRefinement)
 	{
 		for (int k = 0; k < NumExtraProjectionIterations; ++k)
 		{
@@ -79,23 +68,18 @@ void FNormalFlowRemesher::RemeshWithFaceProjection()
 				break;
 			}
 
-			double MaxProjectionDistance = 0.0;
-			TrackedFaceProjectionPass(MaxProjectionDistance);
-
-			if (MaxProjectionDistance == 0.0)
-			{
-				break;
-			}
-
-			// See if we can flip edges to improve normal fit
-			TrackedEdgeFlipPass();
+			TrackedFaceProjectionPass();
 		}
+
+		TrackedFullProjectionPass(true);
 	}
 
+	// See if we can flip edges to improve normal fit
+	TrackedEdgeFlipPass();
 }
 
 
-void FNormalFlowRemesher::TrackedFaceProjectionPass(double& MaxDistanceMoved)
+void FNormalFlowRemesher::TrackedFaceProjectionPass()
 {
 	ensure(ProjTarget != nullptr);
 
@@ -151,8 +135,6 @@ void FNormalFlowRemesher::TrackedFaceProjectionPass(double& MaxDistanceMoved)
 	// did not actually move. We also queue any edges that moved far enough to fall
 	// under min/max edge length thresholds
 
-	MaxDistanceMoved = 0.0;
-
 	for (int VertexID : Mesh->VertexIndicesItr())
 	{
 		TempFlagBuffer[VertexID] = false;
@@ -179,8 +161,6 @@ void FNormalFlowRemesher::TrackedFaceProjectionPass(double& MaxDistanceMoved)
 		{
 			continue;
 		}
-
-		MaxDistanceMoved = FMath::Max(MaxDistanceMoved, CurrentPosition.Distance(ProjectedPosition));
 
 		TempFlagBuffer[VertexID] = true;
 		TempPosBuffer[VertexID] = ProjectedPosition;
@@ -309,6 +289,7 @@ void FNormalFlowRemesher::TrackedEdgeFlipPass()
 				QueueOneRing(OpposingEdgeVertices.A);
 				QueueOneRing(OpposingEdgeVertices.B);
 				OnEdgeFlip(EdgeID, FlipInfo);
+				DoDebugChecks();
 			}
 		}
 	}

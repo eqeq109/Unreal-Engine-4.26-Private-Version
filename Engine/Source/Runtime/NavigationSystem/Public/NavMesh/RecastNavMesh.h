@@ -413,11 +413,11 @@ class NAVIGATIONSYSTEM_API ARecastNavMesh : public ANavigationData
 	virtual bool CanEditChange(const FProperty* InProperty) const override;
 #endif
 
-	/** Draw edges of every navmesh's triangle */
+	/** should we draw edges of every navmesh's triangle */
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawTriangleEdges:1;
 
-	/** Draw edges of every poly (i.e. not only border-edges)  */
+	/** should we draw edges of every poly (i.e. not only border-edges)  */
 	UPROPERTY(EditAnywhere, Category=Display, config)
 	uint32 bDrawPolyEdges:1;
 
@@ -425,11 +425,11 @@ class NAVIGATIONSYSTEM_API ARecastNavMesh : public ANavigationData
 	UPROPERTY(EditAnywhere, Category = Display)
 	uint32 bDrawFilledPolys:1;
 
-	/** Draw border-edges */
+	/** should we draw border-edges */
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawNavMeshEdges:1;
 
-	/** Draw the tile boundaries */
+	/** should we draw the tile boundaries */
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawTileBounds:1;
 	
@@ -440,17 +440,11 @@ class NAVIGATIONSYSTEM_API ARecastNavMesh : public ANavigationData
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawTileLabels:1;
 
-	/** Draw a label for every poly that indicates its poly and tile indices */
-	UPROPERTY(EditAnywhere, Category=Display, meta = (DisplayName = "Draw Polygon Indices"))
+	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawPolygonLabels:1;
 
-	/** Draw a label for every poly that indicates its default and fixed costs */
-	UPROPERTY(EditAnywhere, Category=Display, meta=(DisplayName="Draw Polygon Costs"))
-	uint32 bDrawDefaultPolygonCost:1;
-
-	/** Draw a label for every poly that indicates its poly and area flags */
 	UPROPERTY(EditAnywhere, Category=Display)
-	uint32 bDrawPolygonFlags:1;
+	uint32 bDrawDefaultPolygonCost:1;
 
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawLabelsOnPathNodes:1;
@@ -461,11 +455,11 @@ class NAVIGATIONSYSTEM_API ARecastNavMesh : public ANavigationData
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawFailedNavLinks:1;
 	
-	/** Draw navmesh's clusters and cluster links. (Requires WITH_NAVMESH_CLUSTER_LINKS=1) */
+	/** should we draw navmesh's clusters and cluster links. (Requires WITH_NAVMESH_CLUSTER_LINKS=1) */
 	UPROPERTY(EditAnywhere, Category=Display)
 	uint32 bDrawClusters:1;
 
-	/** Draw edges of every navmesh's triangle */
+	/** should we draw edges of every navmesh's triangle */
 	UPROPERTY(EditAnywhere, Category = Display)
 	uint32 bDrawOctree : 1;
 
@@ -933,9 +927,6 @@ public:
 
 	FColor GetAreaIDColor(uint8 AreaID) const;
 
-	/** Finds the polygons along the navigation graph that touch the specified circle. */
-	bool FindPolysAroundCircle(const FVector& CenterPos, const NavNodeRef CenterNodeRef, const float Radius, const FSharedConstNavQueryFilter& Filter, const UObject* QueryOwner, TArray<NavNodeRef>* OutPolys = nullptr, TArray<NavNodeRef>* OutPolysParent = nullptr, TArray<float>* OutPolysCost = nullptr, int32* OutPolysCount = nullptr) const;
-
 	/** Returns nearest navmesh polygon to Loc, or INVALID_NAVMESHREF if Loc is not on the navmesh. */
 	NavNodeRef FindNearestPoly(FVector const& Loc, FVector const& Extent, FSharedConstNavQueryFilter Filter = NULL, const UObject* Querier = NULL) const;
 
@@ -1078,7 +1069,6 @@ protected:
 	virtual FRecastNavMeshGenerator* CreateGeneratorInstance();
 
 private:
-	friend struct FRecastGraphWrapper;
 	friend FRecastNavMeshGenerator;
 	friend class FPImplRecastNavMesh;
 	// destroys FPImplRecastNavMesh instance if it has been created 

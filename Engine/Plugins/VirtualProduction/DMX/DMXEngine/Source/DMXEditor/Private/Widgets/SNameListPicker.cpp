@@ -200,6 +200,11 @@ void SNameListPicker::OnUserSelectedItem(const TSharedPtr<FName> Item)
 	{
 		return;
 	}
+	const bool bWasNoneSelected = Item->IsEqual(FDMXNameListItem::None);
+	if(bWasNoneSelected)
+	{
+		return;
+	}
 
 	if (OnValueChangedDelegate.IsBound())
 	{

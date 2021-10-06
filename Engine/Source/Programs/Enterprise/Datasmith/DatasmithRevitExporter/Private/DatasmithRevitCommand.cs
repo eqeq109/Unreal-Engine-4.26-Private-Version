@@ -137,15 +137,6 @@ namespace DatasmithRevitExporter
 	[Transaction(TransactionMode.Manual)]
 	public class DatasmithExportRevitCommand : DatasmithRevitCommand
 	{
-		class DocumentExportPathCache
-		{
-			public string LastExportPath = null;
-			// Per-view export path
-			public Dictionary<ElementId, string> ViewPaths = new Dictionary<ElementId, string>();
-		};
-
-		private static Dictionary<Document, DocumentExportPathCache> ExportPaths = new Dictionary<Document, DocumentExportPathCache>();
-	
 		// Implement the interface to execute the command.
 		public override Result OnExecute(ExternalCommandData InCommandData, ref string OutCommandMessage, ElementSet OutElements)
 		{
@@ -196,41 +187,13 @@ namespace DatasmithRevitExporter
 					return Result.Cancelled;
 				}
 
-				if (!ExportPaths.ContainsKey(Doc))
-				{
-					ExportPaths[Doc] = new DocumentExportPathCache();
-				}
-
-				string InitialDir = null;
-				string FileName = null;
-				string LastFilePath = null;
-
-				if (ExportPaths[Doc].ViewPaths.TryGetValue(ActiveView.Id, out LastFilePath))
-				{
-					InitialDir = Path.GetDirectoryName(LastFilePath);
-					FileName = Path.GetFileName(LastFilePath);
-				}
-				else
-				{
-					LastFilePath = ExportPaths[Doc].LastExportPath;
-
-					if (LastFilePath != null)
-					{
-						InitialDir = LastFilePath;
-					}
-					else
-					{
-						InitialDir = Path.GetDirectoryName(DocumentPath);
-					}
-
-					string ViewFamilyName = ActiveView.get_Parameter(BuiltInParameter.ELEM_FAMILY_PARAM).AsValueString().Replace(" ", "");
-					FileName = Regex.Replace($"{Path.GetFileNameWithoutExtension(DocumentPath)}-{ViewFamilyName}-{ActiveView.Name}.udatasmith", @"\s+", "_");
-				}
+				string ViewFamilyName = ActiveView.get_Parameter(BuiltInParameter.ELEM_FAMILY_PARAM).AsValueString().Replace(" ", "");
+				string FileName       = Regex.Replace($"{Path.GetFileNameWithoutExtension(DocumentPath)}-{ViewFamilyName}-{ActiveView.Name}.udatasmith", @"\s+", "_");
 
 				SaveFileDialog Dialog = new SaveFileDialog();
 
 				Dialog.Title            = DIALOG_CAPTION;
-				Dialog.InitialDirectory = InitialDir;
+				Dialog.InitialDirectory = Path.GetDirectoryName(DocumentPath);
 				Dialog.FileName         = FileName;
 				Dialog.DefaultExt       = "udatasmith";
 				Dialog.Filter           = "Unreal Datasmith|*.udatasmith";
@@ -244,17 +207,16 @@ namespace DatasmithRevitExporter
 					return Result.Cancelled;
 				}
 
-				ExportPaths[Doc].LastExportPath = Path.GetDirectoryName(Dialog.FileName);
-				ExportPaths[Doc].ViewPaths[ActiveView.Id] = Dialog.FileName;
+				string FilePath = Dialog.FileName;
 
-				if (string.IsNullOrWhiteSpace(Dialog.FileName))
+				if (string.IsNullOrWhiteSpace(FilePath))
 				{
 					string message = "The given Unreal Datasmith file name is blank.";
 					MessageBox.Show(message, DIALOG_CAPTION, MessageBoxButtons.OK, MessageBoxIcon.Warning);
 					return Result.Cancelled;
 				}
 
-				FilePaths.Add(ActiveView.Id, Dialog.FileName);
+				FilePaths.Add(ActiveView.Id, FilePath);
 				ViewsToExport.Add(ActiveView);
 			}
 			else

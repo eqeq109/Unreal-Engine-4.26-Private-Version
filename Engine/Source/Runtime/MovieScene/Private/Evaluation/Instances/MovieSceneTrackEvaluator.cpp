@@ -7,7 +7,6 @@
 #include "MovieSceneSequence.h"
 #include "Sections/MovieSceneSubSection.h"
 #include "Compilation/MovieSceneCompiledDataManager.h"
-#include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
 
 #include "IMovieSceneModule.h"
 #include "Algo/Sort.h"
@@ -40,7 +39,7 @@ struct FDelayedPreAnimatedStateRestore
 	{
 		for (FMovieSceneEvaluationKey Key : KeysToRestore)
 		{
-			Player.PreAnimatedState.OnFinishedEvaluating(Key);
+			Player.PreAnimatedState.RestorePreAnimatedState(Player, Key);
 		}
 		KeysToRestore.Reset();
 	}
@@ -53,12 +52,12 @@ private:
 };
 
 
-FMovieSceneTrackEvaluator::FMovieSceneTrackEvaluator(UMovieSceneSequence* InRootSequence, FMovieSceneCompiledDataID InRootCompiledDataID, UMovieSceneCompiledDataManager* InCompiledDataManager)
+FMovieSceneTrackEvaluator::FMovieSceneTrackEvaluator(UMovieSceneSequence* InRootSequence, UMovieSceneCompiledDataManager* InCompiledDataManager)
 	: RootSequence(InRootSequence)
-	, RootCompiledDataID(InRootCompiledDataID)
 	, RootID(MovieSceneSequenceID::Root)
 	, CompiledDataManager(InCompiledDataManager)
 {
+	RootCompiledDataID = CompiledDataManager->GetDataID(InRootSequence);
 	CachedReallocationVersion = 0;
 }
 
@@ -82,6 +81,7 @@ void FMovieSceneTrackEvaluator::Finish(IMovieScenePlayer& Player)
 	ThisFrameMetaData.Reset();
 
 	ConstructEvaluationPtrCache();
+
 	CallSetupTearDown(Player);
 }
 
@@ -147,7 +147,7 @@ void FMovieSceneTrackEvaluator::ConstructEvaluationPtrCache()
 			for (const TTuple<FMovieSceneSequenceID, FMovieSceneSubSequenceData>& Pair : RootHierarchy->AllSubSequenceData())
 			{
 				UMovieSceneSequence*                 SubSequence = Pair.Value.GetSequence();
-				FMovieSceneCompiledDataID            SubDataID   = CompiledDataManager->FindDataID(SubSequence);
+				FMovieSceneCompiledDataID            SubDataID   = CompiledDataManager->GetDataID(SubSequence);
 				const FMovieSceneEvaluationTemplate* SubTemplate = CompiledDataManager->FindTrackTemplate(SubDataID);
 				if (SubTemplate)
 				{
@@ -171,7 +171,7 @@ const FMovieSceneEvaluationGroup* FMovieSceneTrackEvaluator::SetupFrame(UMovieSc
 	check(OverrideRootSequence);
 
 	RootID = InOverrideRootID;
-	RootOverridePath.Reset(InOverrideRootID, RootHierarchy);
+	RootOverridePath.Set(InOverrideRootID, RootHierarchy);
 
 	const FMovieSceneEvaluationField* OverrideRootField = nullptr;
 	FFrameTime RootTime = Context.GetTime();
@@ -185,7 +185,7 @@ const FMovieSceneEvaluationGroup* FMovieSceneTrackEvaluator::SetupFrame(UMovieSc
 		check(RootHierarchy);
 
 		// Evaluate Sub Sequences in Isolation is turned on
-		FMovieSceneCompiledDataID OverrideRootDataID = CompiledDataManager->FindDataID(OverrideRootSequence);
+		FMovieSceneCompiledDataID OverrideRootDataID = CompiledDataManager->GetDataID(OverrideRootSequence);
 		OverrideRootField = CompiledDataManager->FindTrackTemplateField(OverrideRootDataID);
 		if (const FMovieSceneSubSequenceData* OverrideSubData = RootHierarchy->FindSubData(InOverrideRootID))
 		{
@@ -236,7 +236,7 @@ void FMovieSceneTrackEvaluator::EvaluateGroup(const FMovieSceneEvaluationGroup& 
 			FMovieSceneEvaluationFieldTrackPtr    TrackPtr   = TrackEntry.TrackPtr;
 
 			// Ensure we're able to find the sequence instance in our root if we've overridden
-			TrackPtr.SequenceID = RootOverridePath.ResolveChildSequenceID(TrackPtr.SequenceID);
+			TrackPtr.SequenceID = RootOverridePath.Remap(TrackPtr.SequenceID);
 
 			const FCachedPtrs&                EvalPtrs = CachedPtrs.FindChecked(TrackPtr.SequenceID);
 			const FMovieSceneEvaluationTrack* Track    = EvalPtrs.Template->FindTrack(TrackPtr.TrackIdentifier);
@@ -249,7 +249,7 @@ void FMovieSceneTrackEvaluator::EvaluateGroup(const FMovieSceneEvaluationGroup& 
 				FMovieSceneEvaluationKey TrackKey(TrackPtr.SequenceID, TrackPtr.TrackIdentifier);
 
 				PersistentDataProxy.SetTrackKey(TrackKey);
-				FScopedPreAnimatedCaptureSource CaptureSource(&Player.PreAnimatedState, TrackKey, false);
+				Player.PreAnimatedState.SetCaptureEntity(TrackKey, EMovieSceneCompletionMode::KeepState);
 
 				SubContext = Context;
 				if (EvalPtrs.SubData)
@@ -276,7 +276,7 @@ void FMovieSceneTrackEvaluator::EvaluateGroup(const FMovieSceneEvaluationGroup& 
 			FMovieSceneEvaluationFieldTrackPtr    TrackPtr   = TrackEntry.TrackPtr;
 
 			// Ensure we're able to find the sequence instance in our root if we've overridden
-			TrackPtr.SequenceID = RootOverridePath.ResolveChildSequenceID(TrackPtr.SequenceID);
+			TrackPtr.SequenceID = RootOverridePath.Remap(TrackPtr.SequenceID);
 
 			const FCachedPtrs&                EvalPtrs = CachedPtrs.FindChecked(TrackPtr.SequenceID);
 			const FMovieSceneEvaluationTrack* Track    = EvalPtrs.Template->FindTrack(TrackPtr.TrackIdentifier);
@@ -323,8 +323,6 @@ void FMovieSceneTrackEvaluator::CallSetupTearDown(IMovieScenePlayer& Player, FDe
 {
 	MOVIESCENE_DETAILED_SCOPE_CYCLE_COUNTER(MovieSceneEval_CallSetupTearDown);
 
-	UMovieSceneEntitySystemLinker* Linker = Player.GetEvaluationTemplate().GetEntitySystemLinker();
-
 	FPersistentEvaluationData PersistentDataProxy(Player);
 
 	TArray<FMovieSceneOrderedEvaluationKey> ExpiredEntities;
@@ -336,7 +334,7 @@ void FMovieSceneTrackEvaluator::CallSetupTearDown(IMovieScenePlayer& Player, FDe
 		FMovieSceneEvaluationKey Key = OrderedKey.Key;
 
 		// Ensure we're able to find the sequence instance in our root if we've overridden
-		Key.SequenceID = RootOverridePath.ResolveChildSequenceID(Key.SequenceID);
+		Key.SequenceID = RootOverridePath.Remap(Key.SequenceID);
 
 		const FCachedPtrs* EvalPtrs = CachedPtrs.Find(Key.SequenceID);
 		if (EvalPtrs)
@@ -370,7 +368,7 @@ void FMovieSceneTrackEvaluator::CallSetupTearDown(IMovieScenePlayer& Player, FDe
 			}
 			else
 			{
-				Player.PreAnimatedState.OnFinishedEvaluating(Key);
+				Player.PreAnimatedState.RestorePreAnimatedState(Player, Key);
 			}
 		}
 		else
@@ -378,7 +376,7 @@ void FMovieSceneTrackEvaluator::CallSetupTearDown(IMovieScenePlayer& Player, FDe
 			// If the track has been destroyed since it was last evaluated, we can still restore state for anything it made
 			// In particular this is needed for movie renders, where it will enable/disable shots between cuts in order
 			// to render handle frames
-			Player.PreAnimatedState.OnFinishedEvaluating(Key);
+			Player.PreAnimatedState.RestorePreAnimatedState(Player, Key);
 		}
 	}
 
@@ -387,7 +385,7 @@ void FMovieSceneTrackEvaluator::CallSetupTearDown(IMovieScenePlayer& Player, FDe
 		FMovieSceneEvaluationKey Key = OrderedKey.Key;
 
 		// Ensure we're able to find the sequence instance in our root if we've overridden
-		Key.SequenceID = RootOverridePath.ResolveChildSequenceID(Key.SequenceID);
+		Key.SequenceID = RootOverridePath.Remap(Key.SequenceID);
 
 		const FCachedPtrs&                EvalPtrs = CachedPtrs.FindChecked(Key.SequenceID);
 		const FMovieSceneEvaluationTrack* Track    = EvalPtrs.Template->FindTrack(Key.TrackIdentifier);

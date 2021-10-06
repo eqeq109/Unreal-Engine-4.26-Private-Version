@@ -122,11 +122,6 @@ void UMovieSceneGeometryCollectionTrack::RemoveSection(UMovieSceneSection& Secti
 	AnimationSections.Remove(&Section);
 }
 
-void UMovieSceneGeometryCollectionTrack::RemoveSectionAt(int32 SectionIndex)
-{
-	AnimationSections.RemoveAt(SectionIndex);
-}
-
 
 bool UMovieSceneGeometryCollectionTrack::IsEmpty() const
 {

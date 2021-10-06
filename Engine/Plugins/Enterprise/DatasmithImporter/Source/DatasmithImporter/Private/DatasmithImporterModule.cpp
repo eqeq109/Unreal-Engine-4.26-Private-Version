@@ -213,7 +213,7 @@ void FDatasmithImporterModule::AddDataprepMenuEntryForDatasmithSceneAsset()
 										{
 											if (UDatasmithConsumer* DatasmithConsumer = Cast<UDatasmithConsumer>(DataprepAsset->GetConsumer()))
 											{
-												if (DatasmithConsumer->GetDatasmithScene() == SelectedDatasmithScene)
+												if (DatasmithConsumer->DatasmithScene.LoadSynchronous() == SelectedDatasmithScene)
 												{
 													// A Dataprep asset was found and it will regenerate this scene
 													DataprepAssetInterfacesPtr.Emplace( DataprepAsset );

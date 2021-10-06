@@ -58,7 +58,7 @@ void UMovieSceneCameraCutSection::PostLoad()
 	{
 		if (!CameraBindingID.IsValid())
 		{
-			CameraBindingID = UE::MovieScene::FRelativeObjectBindingID(CameraGuid_DEPRECATED);
+			CameraBindingID = FMovieSceneObjectBindingID(CameraGuid_DEPRECATED, MovieSceneSequenceID::Root, EMovieSceneObjectBindingSpace::Local);
 		}
 		CameraGuid_DEPRECATED.Invalidate();
 	}
@@ -66,9 +66,16 @@ void UMovieSceneCameraCutSection::PostLoad()
 
 UCameraComponent* UMovieSceneCameraCutSection::GetFirstCamera(IMovieScenePlayer& Player, FMovieSceneSequenceID SequenceID) const
 {
-	for (TWeakObjectPtr<> WeakObject : CameraBindingID.ResolveBoundObjects(SequenceID, Player))
+	if (CameraBindingID.GetSequenceID().IsValid())
 	{
-		if (UObject* Object = WeakObject.Get())
+		// Ensure that this ID is resolvable from the root, based on the current local sequence ID
+		FMovieSceneObjectBindingID RootBindingID = CameraBindingID.ResolveLocalToRoot(SequenceID, Player);
+		SequenceID = RootBindingID.GetSequenceID();
+	}
+
+	for (TWeakObjectPtr<>& WeakObject : Player.FindBoundObjects(CameraBindingID.GetGuid(), SequenceID))
+	{
+		if (UObject* Object = WeakObject .Get())
 		{
 			UCameraComponent* Camera = MovieSceneHelpers::CameraComponentFromRuntimeObject(Object);
 			if (Camera)

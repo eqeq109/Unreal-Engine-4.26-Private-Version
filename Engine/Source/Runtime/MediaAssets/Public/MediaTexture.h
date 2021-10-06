@@ -108,6 +108,15 @@ public:
 	int32 GetHeight() const;
 
 	/**
+	 * Get the media player that provides the video samples.
+	 *
+	 * @return The texture's media player, or nullptr if not set.
+	 * @see SetMediaPlayer
+	 */
+	UFUNCTION(BlueprintCallable, Category="Media|MediaTexture")
+	UMediaPlayer* GetMediaPlayer() const;
+
+	/**
 	 * Gets the current width of the texture.
 	 *
 	 * @return Texture width (in pixels).
@@ -115,23 +124,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Media|MediaTexture")
 	int32 GetWidth() const;
-
-	/**
-	 * Gets the current numbe of mips of the texture.
-	 *
-	 * @return Number of mips.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Media|MediaTexture")
-	int32 GetTextureNumMips() const;
-
-	/**
-	 * Get the media player that provides the video samples.
-	 *
-	 * @return The texture's media player, or nullptr if not set.
-	 * @see SetMediaPlayer
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Media|MediaTexture")
-	UMediaPlayer* GetMediaPlayer() const;
 
 	/**
 	 * Set the media player that provides the video samples.
@@ -278,7 +270,4 @@ private:
 
 	/** Next available sample time when last render call was made */
 	TAtomic<FTimespan> CachedNextSampleTime;
-
-	/** Number of mips in the actual output texture */
-	int32 TextureNumMips;
 };

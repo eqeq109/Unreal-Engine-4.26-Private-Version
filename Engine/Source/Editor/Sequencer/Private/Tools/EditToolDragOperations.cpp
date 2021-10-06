@@ -204,13 +204,9 @@ void FResizeSection::OnEndDrag(const FPointerEvent& MouseEvent, FVector2D LocalM
 {
 	bool bIsDilating = MouseEvent.IsControlDown();
 
-	TOptional<EMovieSceneDataChangeType> ChangeNotification;
-
 	if (!bIsDilating)
 	{
-		TSet<UMovieSceneTrack*> Tracks;
 		FMovieSceneSectionMovedParams SectionMovedParams(EPropertyChangeType::ValueSet);
-		EMovieSceneSectionMovedResult SectionMovedResult(EMovieSceneSectionMovedResult::None);
 		for (const TWeakObjectPtr<UMovieSceneSection>& WeakSection : Sections)
 		{
 			if (UMovieSceneSection* Section = WeakSection.Get())
@@ -218,28 +214,13 @@ void FResizeSection::OnEndDrag(const FPointerEvent& MouseEvent, FVector2D LocalM
 				if (UMovieSceneTrack* OuterTrack = Section->GetTypedOuter<UMovieSceneTrack>())
 				{
 					OuterTrack->Modify();
-					SectionMovedResult |= OuterTrack->OnSectionMoved(*Section, SectionMovedParams);
-
-					Tracks.Add(OuterTrack);
+					OuterTrack->OnSectionMoved(*Section, SectionMovedParams);
 				}
 			}
-		}
-		for (UMovieSceneTrack* Track : Tracks)
-		{
-			Track->UpdateEasing();
-		}
-		if (SectionMovedResult != EMovieSceneSectionMovedResult::None)
-		{
-			ChangeNotification = EMovieSceneDataChangeType::MovieSceneStructureItemsChanged;
 		}
 	}
 
 	EndTransaction();
-
-	if (ChangeNotification.IsSet())
-	{
-		Sequencer.NotifyMovieSceneDataChanged(ChangeNotification.GetValue());
-	}
 }
 
 void FResizeSection::OnDrag(const FPointerEvent& MouseEvent, FVector2D LocalMousePos, const FVirtualTrackArea& VirtualTrackArea)
@@ -292,8 +273,6 @@ void FResizeSection::OnDrag(const FPointerEvent& MouseEvent, FVector2D LocalMous
 	}
 	
 	/********************************************************************/
-	EMovieSceneSectionMovedResult SectionMovedResult(EMovieSceneSectionMovedResult::None);
-
 	if (bIsDilating)
 	{
 		for(FPreDragSectionData Data: PreDragSectionData)
@@ -449,7 +428,7 @@ void FResizeSection::OnDrag(const FPointerEvent& MouseEvent, FVector2D LocalMous
 		if (OuterTrack)
 		{
 			OuterTrack->Modify();
-			SectionMovedResult |= OuterTrack->OnSectionMoved(*Section, EPropertyChangeType::Interactive);
+			OuterTrack->OnSectionMoved(*Section, EPropertyChangeType::Interactive);
 		}
 	}
 
@@ -471,14 +450,7 @@ void FResizeSection::OnDrag(const FPointerEvent& MouseEvent, FVector2D LocalMous
 		}
 	}
 
-	if (SectionMovedResult != EMovieSceneSectionMovedResult::None)
-	{
-		Sequencer.NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
-	}
-	else
-	{
-		Sequencer.NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
-	}
+	Sequencer.NotifyMovieSceneDataChanged( EMovieSceneDataChangeType::TrackValueChanged );
 }
 
 void FDuplicateKeysAndSections::OnBeginDrag(const FPointerEvent& MouseEvent, FVector2D LocalMousePos, const FVirtualTrackArea& VirtualTrackArea)
@@ -859,18 +831,16 @@ void FMoveKeysAndSections::OnDrag(const FPointerEvent& MouseEvent, FVector2D Loc
 	// Get a list of the unique tracks in this selection and update their easing so previews draw interactively as you drag.
 	TSet<UMovieSceneTrack*> Tracks;
 	FMovieSceneSectionMovedParams SectionMovedParams(EPropertyChangeType::Interactive);
-	EMovieSceneSectionMovedResult SectionMovedResult(EMovieSceneSectionMovedResult::None);
 	for (TWeakObjectPtr<UMovieSceneSection> WeakSection : Sections)
 	{
 		if (UMovieSceneTrack* Track = WeakSection.Get()->GetTypedOuter<UMovieSceneTrack>())
 		{
 			Track->Modify();
-			SectionMovedResult |= Track->OnSectionMoved(*WeakSection.Get(), SectionMovedParams);
+			Track->OnSectionMoved(*WeakSection.Get(), SectionMovedParams);
 
 			Tracks.Add(Track);
 		}
 	}
-	bSectionMovementModifiedStructure |= (SectionMovedResult != EMovieSceneSectionMovedResult::None);
 
 	for (UMovieSceneTrack* Track : Tracks)
 	{
@@ -920,7 +890,6 @@ void FMoveKeysAndSections::OnEndDrag(const FPointerEvent& MouseEvent, FVector2D 
 	}
 
 	FMovieSceneSectionMovedParams SectionMovedParams(EPropertyChangeType::ValueSet);
-	EMovieSceneSectionMovedResult SectionMovedResult(EMovieSceneSectionMovedResult::None);
 	for (const TWeakObjectPtr<UMovieSceneSection>& WeakSection : Sections)
 	{
 		UMovieSceneSection* Section = WeakSection.Get();
@@ -929,21 +898,11 @@ void FMoveKeysAndSections::OnEndDrag(const FPointerEvent& MouseEvent, FVector2D 
 		if (OuterTrack)
 		{
 			OuterTrack->Modify();
-			SectionMovedResult |= OuterTrack->OnSectionMoved(*Section, SectionMovedParams);
+			OuterTrack->OnSectionMoved(*Section, SectionMovedParams);
 		}
 	}
 
-	for (UMovieSceneTrack* Track : Tracks)
-	{
-		Track->UpdateEasing();
-	}
-
 	EndTransaction();
-
-	if (SectionMovedResult != EMovieSceneSectionMovedResult::None)
-	{
-		Sequencer.NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
-	}
 }
 
 void FMoveKeysAndSections::ModifyNonSelectedSections()

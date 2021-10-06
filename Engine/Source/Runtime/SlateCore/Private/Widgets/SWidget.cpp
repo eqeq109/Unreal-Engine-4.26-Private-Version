@@ -15,13 +15,9 @@
 #include "Application/ActiveTimerHandle.h"
 #include "Input/HittestGrid.h"
 #include "Debugging/SlateDebugging.h"
-#include "Debugging/WidgetList.h"
 #include "Widgets/SWindow.h"
 #include "Trace/SlateTrace.h"
-#include "Types/SlateCursorMetaData.h"
-#include "Types/SlateMouseEventsMetaData.h"
 #include "Types/ReflectionMetadata.h"
-#include "Types/SlateToolTipMetaData.h"
 #include "Stats/Stats.h"
 #include "Containers/StringConv.h"
 #include "Misc/ScopeRWLock.h"
@@ -34,11 +30,9 @@
 #endif
 
 // Enabled to assign FindWidgetMetaData::FoundWidget to the widget that has the matching reflection data 
-#ifndef UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA
-	#define UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA 0
-#endif
+#define WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA 0
 
-#if UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA
+#if WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA
 namespace FindWidgetMetaData
 {
 	SWidget* FoundWidget = nullptr;
@@ -55,7 +49,6 @@ DEFINE_STAT(STAT_SlateTickWidgets);
 DEFINE_STAT(STAT_SlatePrepass);
 DEFINE_STAT(STAT_SlateTotalWidgets);
 DEFINE_STAT(STAT_SlateSWidgetAllocSize);
-DEFINE_STAT(STAT_SlateGetMetaData);
 
 DECLARE_CYCLE_STAT(TEXT("SWidget::CreateStatID"), STAT_Slate_CreateStatID, STATGROUP_Slate);
 
@@ -166,7 +159,7 @@ void SWidget::UpdateWidgetProxy(int32 NewLayerId, FSlateCachedElementsHandle& Ca
 	}
 	PersistentState.CachedElementHandle = CacheHandle;
 
-	if (FastPathProxyHandle.IsValid(this))
+	if (FastPathProxyHandle.IsValid())
 	{
 		FWidgetProxy& MyProxy = FastPathProxyHandle.GetProxy();
 
@@ -193,6 +186,11 @@ namespace SlateTraceMetaData
 }
 #endif
 
+FName NAME_MouseButtonDown(TEXT("MouseButtonDown"));
+FName NAME_MouseButtonUp(TEXT("MouseButtonUp"));
+FName NAME_MouseMove(TEXT("MouseMove"));
+FName NAME_MouseDoubleClick(TEXT("MouseDoubleClick"));
+
 SWidget::SWidget()
 	: bIsHovered(false)
 	, bCanSupportFocus(true)
@@ -204,6 +202,7 @@ SWidget::SWidget()
 	, bInheritedVolatility(false)
 	, bInvisibleDueToParentOrSelfVisibility(false)
 	, bNeedsPrepass(true)
+	, bNeedsDesiredSize(true)
 	, bUpdatingDesiredSize(false)
 	, bHasCustomPrepass(false)
 	, bHasRelativeLayoutScale(false)
@@ -224,6 +223,8 @@ SWidget::SWidget()
 	, RenderOpacity(1.0f)
 	, RenderTransform()
 	, RenderTransformPivot(FVector2D::ZeroVector)
+	, Cursor( TOptional<EMouseCursor::Type>() )
+	, ToolTip()
 #if UE_SLATE_WITH_WIDGET_UNIQUE_IDENTIFIER
 	, UniqueIdentifier(++SlateTraceMetaData::UniqueIdGenerator)
 #endif
@@ -237,14 +238,12 @@ SWidget::SWidget()
 		INC_DWORD_STAT(STAT_SlateTotalWidgetsPerFrame);
 	}
 
-	UE_SLATE_DEBUG_WIDGETLIST_ADD_WIDGET(this);
 	UE_TRACE_SLATE_WIDGET_ADDED(this);
 }
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 SWidget::~SWidget()
 {
-#if UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA
+#if WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA
 	if (FindWidgetMetaData::FoundWidget == this)
 	{
 		FindWidgetMetaData::FoundWidget = nullptr;
@@ -260,7 +259,11 @@ SWidget::~SWidget()
 		}
 
 		// Warn the invalidation root
-		if (FSlateInvalidationRoot* InvalidationRoot = FastPathProxyHandle.GetInvalidationRootHandle().GetInvalidationRoot())
+		FSlateInvalidationRootHandle SlateInvalidationRootHandle = FastPathProxyHandle.GetInvalidationRootHandle();
+#if WITH_SLATE_DEBUGGING
+		ensure(!SlateInvalidationRootHandle.IsStale());
+#endif
+		if (FSlateInvalidationRoot* InvalidationRoot = SlateInvalidationRootHandle.GetInvalidationRoot())
 		{
 			InvalidationRoot->OnWidgetDestroyed(this);
 		}
@@ -284,14 +287,11 @@ SWidget::~SWidget()
 	StatIDStringStorage = nullptr;
 #endif
 
-	UE_SLATE_DEBUG_WIDGETLIST_REMOVE_WIDGET(this);
 	UE_TRACE_SLATE_WIDGET_REMOVED(this);
 	DEC_DWORD_STAT(STAT_SlateTotalWidgets);
 	DEC_MEMORY_STAT_BY(STAT_SlateSWidgetAllocSize, AllocSize);
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 void SWidget::Construct(
 	const TAttribute<FText>& InToolTipText,
 	const TSharedPtr<IToolTip>& InToolTip,
@@ -309,81 +309,51 @@ void SWidget::Construct(
 	const TArray<TSharedRef<ISlateMetaData>>& InMetaData
 )
 {
-	FSlateBaseNamedArgs Args;
-	Args._ToolTipText = InToolTipText;
-	Args._ToolTip = InToolTip;
-	Args._Cursor = InCursor;
-	Args._IsEnabled = InEnabledState;
-	Args._Visibility = InVisibility;
-	Args._RenderOpacity = InRenderOpacity;
-	Args._ForceVolatile = InForceVolatile;
-	Args._Clipping = InClipping;
-	Args._FlowDirectionPreference = InFlowPreference;
-	Args._RenderTransform = InTransform;
-	Args._RenderTransformPivot = InTransformPivot;
-	Args._Tag = InTag;
-	Args._AccessibleParams = InAccessibleData;
-	Args.MetaData = InMetaData;
-	SWidgetConstruct(Args);
-}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	if ( InToolTip.IsValid() )
+	{
+		// If someone specified a fancy widget tooltip, use it.
+		ToolTip = InToolTip;
+	}
+	else if ( InToolTipText.IsSet() )
+	{
+		// If someone specified a text binding, make a tooltip out of it
+		ToolTip = FSlateApplicationBase::Get().MakeToolTip(InToolTipText);
+	}
+	else if( !ToolTip.IsValid() || (ToolTip.IsValid() && ToolTip->IsEmpty()) )
+	{	
+		// We don't have a tooltip.
+		ToolTip.Reset();
+	}
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	Cursor = InCursor;
+	EnabledState = InEnabledState;
+	Visibility = InVisibility;
+	RenderOpacity = InRenderOpacity;
+	RenderTransform = InTransform;
+	RenderTransformPivot = InTransformPivot;
+	Tag = InTag;
+	bForceVolatile = InForceVolatile;
+	Clipping = InClipping;
+	FlowDirectionPreference = InFlowPreference;
+	MetaData = InMetaData;
+
+#if WITH_ACCESSIBILITY
+	if (InAccessibleData.IsSet())
+	{
+		SetCanChildrenBeAccessible(InAccessibleData->bCanChildrenBeAccessible);
+		// If custom text is provided, force behavior to custom. Otherwise, use the passed-in behavior and set their default text.
+		SetAccessibleBehavior(InAccessibleData->AccessibleText.IsSet() ? EAccessibleBehavior::Custom : InAccessibleData->AccessibleBehavior, InAccessibleData->AccessibleText, EAccessibleType::Main);
+		SetAccessibleBehavior(InAccessibleData->AccessibleSummaryText.IsSet() ? EAccessibleBehavior::Custom : InAccessibleData->AccessibleSummaryBehavior, InAccessibleData->AccessibleSummaryText, EAccessibleType::Summary);
+	}
+#endif
+}
+
 void SWidget::SWidgetConstruct(const TAttribute<FText>& InToolTipText, const TSharedPtr<IToolTip>& InToolTip, const TAttribute< TOptional<EMouseCursor::Type> >& InCursor, const TAttribute<bool>& InEnabledState,
 							   const TAttribute<EVisibility>& InVisibility, const float InRenderOpacity, const TAttribute<TOptional<FSlateRenderTransform>>& InTransform, const TAttribute<FVector2D>& InTransformPivot,
 							   const FName& InTag, const bool InForceVolatile, const EWidgetClipping InClipping, const EFlowDirectionPreference InFlowPreference, const TOptional<FAccessibleWidgetData>& InAccessibleData,
 							   const TArray<TSharedRef<ISlateMetaData>>& InMetaData)
 {
 	Construct(InToolTipText, InToolTip, InCursor, InEnabledState, InVisibility, InRenderOpacity, InTransform, InTransformPivot, InTag, InForceVolatile, InClipping, InFlowPreference, InAccessibleData, InMetaData);
-}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-void SWidget::SWidgetConstruct(const FSlateBaseNamedArgs& Args)
-{
-	EnabledState = Args._IsEnabled;
-	Visibility = Args._Visibility;
-	RenderOpacity = Args._RenderOpacity;
-	RenderTransform = Args._RenderTransform;
-	RenderTransformPivot = Args._RenderTransformPivot;
-	Tag = Args._Tag;
-	bForceVolatile = Args._ForceVolatile;
-	Clipping = Args._Clipping;
-	FlowDirectionPreference = Args._FlowDirectionPreference;
-	MetaData.Append(Args.MetaData);
-
-	if (Args._ToolTip.IsSet())
-	{
-		// If someone specified a fancy widget tooltip, use it.
-		SetToolTip(Args._ToolTip);
-	}
-	else if (Args._ToolTipText.IsSet())
-	{
-		// If someone specified a text binding, make a tooltip out of it
-		SetToolTipText(Args._ToolTipText);
-	}
-
-	SetCursor(Args._Cursor);
-
-#if WITH_ACCESSIBILITY
-	// If custom text is provided, force behavior to custom. Otherwise, use the passed-in behavior and set their default text.
-	if (Args._AccessibleText.IsSet() || Args._AccessibleParams.IsSet())
-	{
-		auto SetAccessibleWidgetData = [this](const FAccessibleWidgetData& AccessibleParams)
-		{
-			SetCanChildrenBeAccessible(AccessibleParams.bCanChildrenBeAccessible);
-			SetAccessibleBehavior(AccessibleParams.AccessibleText.IsSet() ? EAccessibleBehavior::Custom : AccessibleParams.AccessibleBehavior, AccessibleParams.AccessibleText, EAccessibleType::Main);
-		SetAccessibleBehavior(AccessibleParams.AccessibleSummaryText.IsSet() ? EAccessibleBehavior::Custom : AccessibleParams.AccessibleSummaryBehavior, AccessibleParams.AccessibleSummaryText, EAccessibleType::Summary);
-		};
-		if (Args._AccessibleText.IsSet())
-		{
-			SetAccessibleWidgetData(FAccessibleWidgetData{ Args._AccessibleText });
-		}
-		else
-		{
-			SetAccessibleWidgetData(Args._AccessibleParams.GetValue());
-		}
-	}
-#endif
 }
 
 FReply SWidget::OnFocusReceived(const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent)
@@ -457,11 +427,11 @@ FReply SWidget::OnPreviewMouseButtonDown( const FGeometry& MyGeometry, const FPo
 
 FReply SWidget::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if (const FPointerEventHandler* Event = GetPointerEvent(NAME_MouseButtonDown))
 	{
-		if (Data->MouseButtonDownHandle.IsBound() )
+		if ( Event->IsBound() )
 		{
-			return Data->MouseButtonDownHandle.Execute(MyGeometry, MouseEvent);
+			return Event->Execute(MyGeometry, MouseEvent);
 		}
 	}
 	return FReply::Unhandled();
@@ -469,11 +439,11 @@ FReply SWidget::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEve
 
 FReply SWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if (const FPointerEventHandler* Event = GetPointerEvent(NAME_MouseButtonUp) )
 	{
-		if (Data->MouseButtonUpHandle.IsBound())
+		if ( Event->IsBound() )
 		{
-			return Data->MouseButtonUpHandle.Execute(MyGeometry, MouseEvent);
+			return Event->Execute(MyGeometry, MouseEvent);
 		}
 	}
 	return FReply::Unhandled();
@@ -481,11 +451,11 @@ FReply SWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent
 
 FReply SWidget::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if (const FPointerEventHandler* Event = GetPointerEvent(NAME_MouseMove) )
 	{
-		if (Data->MouseMoveHandle.IsBound())
+		if ( Event->IsBound() )
 		{
-			return Data->MouseMoveHandle.Execute(MyGeometry, MouseEvent);
+			return Event->Execute(MyGeometry, MouseEvent);
 		}
 	}
 	return FReply::Unhandled();
@@ -493,11 +463,11 @@ FReply SWidget::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& Mo
 
 FReply SWidget::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if ( const FPointerEventHandler* Event = GetPointerEvent(NAME_MouseDoubleClick) )
 	{
-		if (Data->MouseDoubleClickHandle.IsBound())
+		if ( Event->IsBound() )
 		{
-			return Data->MouseDoubleClickHandle.Execute(MyGeometry, MouseEvent);
+			return Event->Execute(MyGeometry, MouseEvent);
 		}
 	}
 	return FReply::Unhandled();
@@ -507,13 +477,10 @@ void SWidget::OnMouseEnter( const FGeometry& MyGeometry, const FPointerEvent& Mo
 {
 	bIsHovered = true;
 
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if (MouseEnterHandler.IsBound())
 	{
-		if (Data->MouseEnterHandler.IsBound())
-		{
-			// A valid handler is assigned; let it handle the event.
-			Data->MouseEnterHandler.Execute(MyGeometry, MouseEvent);
-		}
+		// A valid handler is assigned; let it handle the event.
+		MouseEnterHandler.Execute(MyGeometry, MouseEvent);
 	}
 }
 
@@ -521,13 +488,10 @@ void SWidget::OnMouseLeave( const FPointerEvent& MouseEvent )
 {
 	bIsHovered = false;
 
-	if (TSharedPtr<FSlateMouseEventsMetaData> Data = GetMetaData<FSlateMouseEventsMetaData>())
+	if (MouseLeaveHandler.IsBound())
 	{
-		if (Data->MouseLeaveHandler.IsBound())
-		{
-			// A valid handler is assigned; let it handle the event.
-			Data->MouseLeaveHandler.Execute(MouseEvent);
-		}
+		// A valid handler is assigned; let it handle the event.
+		MouseLeaveHandler.Execute(MouseEvent);
 	}
 }
 
@@ -538,7 +502,7 @@ FReply SWidget::OnMouseWheel( const FGeometry& MyGeometry, const FPointerEvent& 
 
 FCursorReply SWidget::OnCursorQuery( const FGeometry& MyGeometry, const FPointerEvent& CursorEvent ) const
 {
-	TOptional<EMouseCursor::Type> TheCursor = GetCursor();
+	TOptional<EMouseCursor::Type> TheCursor = Cursor.Get();
 	return ( TheCursor.IsSet() )
 		? FCursorReply::Cursor( TheCursor.GetValue() )
 		: FCursorReply::Unhandled();
@@ -675,6 +639,10 @@ void SWidget::SlatePrepass(float InLayoutScaleMultiplier)
 
 	if (!GSlateIsOnFastUpdatePath || bNeedsPrepass)
 	{
+		// If the scale changed, that can affect the desired size of some elements that take it into
+		// account, such as text, so when the prepass size changes, so must we invalidate desired size.
+		bNeedsDesiredSize = true;
+
 		Prepass_Internal(InLayoutScaleMultiplier);
 	}
 }
@@ -753,33 +721,40 @@ bool SWidget::ConditionallyDetatchParentWidget(SWidget* InExpectedParent)
 	return false;
 }
 
-void SWidget::SetFastPathSortOrder(const FSlateInvalidationWidgetSortOrder InSortOrder)
+bool SWidget::AssignIndicesToChildren(FSlateInvalidationRoot& Root, int32 ParentIndex, TArray<FWidgetProxy, TMemStackAllocator<>>& FastPathList, bool bParentVisible, bool bParentVolatile)
 {
-	if (InSortOrder != FastPathProxyHandle.GetWidgetSortOrder())
+	// Because null widgets are a shared static widget they are not valid for the fast path and are treated as non-existent
+	if (this == &SNullWidget::NullWidget.Get())
 	{
-		FastPathProxyHandle.WidgetSortOrder = InSortOrder;
-		if (FSlateInvalidationRoot* Root = FastPathProxyHandle.GetInvalidationRootHandle().GetInvalidationRoot())
-		{
-			if (FHittestGrid* HittestGrid = Root->GetHittestGrid())
-			{
-				HittestGrid->UpdateWidget(AsShared(), InSortOrder);
-			}
-		}
-
-		//TODO, update Cached LayerId
+		return false;
 	}
-}
 
-void SWidget::SetFastPathProxyHandle(const FWidgetProxyHandle& Handle, bool bInInvisibleDueToParentOrSelfVisibility, bool bParentVolatile)
-{
-	check(this != &SNullWidget::NullWidget.Get());
+	if (FastPathProxyHandle.IsValid())
+	{
+		ensureAlwaysMsgf(!FastPathProxyHandle.IsValid(), TEXT("Widget %s was already assigned a proxy handle. If this is being hit this widget is in the active slate tree more than once.  This is illegal and at best will result in UI corruption."), *FReflectionMetaData::GetWidgetDebugInfo(*this));
+		return false;
+	}
 
-	FastPathProxyHandle = Handle;
+	FWidgetProxy MyProxy(*this);
+	MyProxy.Index = FastPathList.Num();
+	MyProxy.ParentIndex = ParentIndex;
+	MyProxy.Visibility = GetVisibility();
 
-	bInvisibleDueToParentOrSelfVisibility = bInInvisibleDueToParentOrSelfVisibility;
+	check(ParentIndex != MyProxy.Index);
+
+	// If this method is being called, child order changed.  Initial visibility and volatility needs to be propagated
+	// Update visibility
+	const bool bParentAndSelfVisible = bParentVisible && MyProxy.Visibility.IsVisible();
+	const bool bWasInvisible = bInvisibleDueToParentOrSelfVisibility;
+	bInvisibleDueToParentOrSelfVisibility = !bParentAndSelfVisible;
+	MyProxy.bInvisibleDueToParentOrSelfVisibility = bInvisibleDueToParentOrSelfVisibility;
+
+	// Update volatility
 	bInheritedVolatility = bParentVolatile;
 
-	if (bInvisibleDueToParentOrSelfVisibility && PersistentState.CachedElementHandle.IsValid())
+	FastPathProxyHandle = FWidgetProxyHandle(Root, MyProxy.Index);
+
+	if (bInvisibleDueToParentOrSelfVisibility&& PersistentState.CachedElementHandle.IsValid())
 	{
 #if WITH_SLATE_DEBUGGING
 		check(PersistentState.CachedElementHandle.IsOwnedByWidget(this));
@@ -787,20 +762,34 @@ void SWidget::SetFastPathProxyHandle(const FWidgetProxyHandle& Handle, bool bInI
 		PersistentState.CachedElementHandle.RemoveFromCache();
 	}
 
-	if (IsVolatile() && !IsVolatileIndirectly())
+	FastPathList.Add(MyProxy);
+
+	// Don't recur into children if we are at a different invalidation root(nested invalidation panels) than where we started and not at the root of the tree. Those children should belong to that roots tree.
+	if (!Advanced_IsInvalidationRoot() || ParentIndex == INDEX_NONE)
 	{
-		if (!HasAnyUpdateFlags(EWidgetUpdateFlags::NeedsVolatilePaint))
+		FChildren* MyChildren = GetAllChildren();
+		const int32 NumChildren = MyChildren->Num();
+
+		int32 NumChildrenValidForFastPath = 0;
+		for (int32 ChildIndex = 0; ChildIndex < NumChildren; ++ChildIndex)
 		{
-			AddUpdateFlags(EWidgetUpdateFlags::NeedsVolatilePaint);
+			// Because null widgets are a shared static widget they are not valid for the fast path and are treated as non-existent
+			const TSharedRef<SWidget>& Child = MyChildren->GetChildAt(ChildIndex);
+			if (Child->AssignIndicesToChildren(Root, MyProxy.Index, FastPathList, bParentAndSelfVisible, bParentVolatile || IsVolatile()))
+			{
+				NumChildrenValidForFastPath++;
+			}
+		}
+
+		{
+			FWidgetProxy& MyProxyRef = FastPathList[MyProxy.Index];
+			MyProxyRef.NumChildren = NumChildrenValidForFastPath;
+			int32 LastIndex = FastPathList.Num() - 1;
+			MyProxyRef.LeafMostChildIndex = LastIndex != MyProxy.Index ? LastIndex : INDEX_NONE;
 		}
 	}
-	else
-	{
-		if (HasAnyUpdateFlags(EWidgetUpdateFlags::NeedsVolatilePaint))
-		{
-			RemoveUpdateFlags(EWidgetUpdateFlags::NeedsVolatilePaint);
-		}
-	}
+
+	return true;
 }
 
 void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved, FHittestGrid* ParentHittestGrid)
@@ -812,12 +801,18 @@ void SWidget::UpdateFastPathVisibility(bool bParentVisible, bool bWidgetRemoved,
 	const bool bVisibilityChanged = bWasInvisible != bInvisibleDueToParentOrSelfVisibility;
 
 	FHittestGrid* HittestGridToRemoveFrom = ParentHittestGrid;
-	if (FastPathProxyHandle.IsValid(this))
+	if (FastPathProxyHandle.IsValid())
 	{	
 		// Try and remove this from the current handles hit test grid.  If we are in a nested invalidation situation the hittest grid may have changed
 		HittestGridToRemoveFrom = FastPathProxyHandle.GetInvalidationRoot()->GetHittestGrid();
 		FWidgetProxy& Proxy = FastPathProxyHandle.GetProxy();
 		Proxy.Visibility = CurrentVisibility;
+		Proxy.bInvisibleDueToParentOrSelfVisibility = bInvisibleDueToParentOrSelfVisibility;
+
+		if (bWidgetRemoved)
+		{
+			FastPathProxyHandle.GetInvalidationRoot()->RemoveWidgetFromFastPath(Proxy);
+		}
 	}
 	else if (bWidgetRemoved)
 	{
@@ -1080,63 +1075,24 @@ const FGeometry& SWidget::GetPaintSpaceGeometry() const
 	return PersistentState.AllottedGeometry;
 }
 
-namespace Private
-{
-	TSharedPtr<FSlateToolTipMetaData> FindOrAddToolTipMetaData(SWidget* Widget)
-	{
-		TSharedPtr<FSlateToolTipMetaData> Data = Widget->GetMetaData<FSlateToolTipMetaData>();
-		if (!Data)
-		{
-			Data = MakeShared<FSlateToolTipMetaData>();
-			Widget->AddMetadata(Data.ToSharedRef());
-		}
-		return Data;
-	}
-}
-
 void SWidget::SetToolTipText(const TAttribute<FText>& ToolTipText)
 {
-	if (ToolTipText.IsSet())
-	{
-		Private::FindOrAddToolTipMetaData(this)->ToolTip = FSlateApplicationBase::Get().MakeToolTip(ToolTipText);
-	}
-	else
-	{
-		RemoveMetaData<FSlateToolTipMetaData>();
-	}
+	ToolTip = FSlateApplicationBase::Get().MakeToolTip(ToolTipText);
 }
 
 void SWidget::SetToolTipText( const FText& ToolTipText )
 {
-	if (!ToolTipText.IsEmptyOrWhitespace())
-	{
-		Private::FindOrAddToolTipMetaData(this)->ToolTip = FSlateApplicationBase::Get().MakeToolTip(ToolTipText);
-	}
-	else
-	{
-		RemoveMetaData<FSlateToolTipMetaData>();
-	}
+	ToolTip = FSlateApplicationBase::Get().MakeToolTip(ToolTipText);
 }
 
-void SWidget::SetToolTip(const TAttribute<TSharedPtr<IToolTip>>& InToolTip)
+void SWidget::SetToolTip( const TSharedPtr<IToolTip> & InToolTip )
 {
-	if (InToolTip.IsSet())
-	{
-		Private::FindOrAddToolTipMetaData(this)->ToolTip = InToolTip;
-	}
-	else
-	{
-		RemoveMetaData<FSlateToolTipMetaData>();
-	}
+	ToolTip = InToolTip;
 }
 
 TSharedPtr<IToolTip> SWidget::GetToolTip()
 {
-	if (TSharedPtr<FSlateToolTipMetaData> Data = GetMetaData<FSlateToolTipMetaData>())
-	{
-		return Data->ToolTip.Get();
-	}
-	return TSharedPtr<IToolTip>();
+	return ToolTip;
 }
 
 void SWidget::OnToolTipClosing()
@@ -1178,7 +1134,7 @@ void SWidget::Invalidate(EInvalidateWidgetReason InvalidateReason)
 		InvalidatePrepass();
 	}
 
-	if(FastPathProxyHandle.IsValid(this))
+	if(FastPathProxyHandle.IsValid())
 	{
 		// Current thinking is that visibility and volatility should be updated right away, not during fast path invalidation processing next frame
 		if (EnumHasAnyFlags(InvalidateReason, EInvalidateWidgetReason::Visibility))
@@ -1212,30 +1168,7 @@ void SWidget::Invalidate(EInvalidateWidgetReason InvalidateReason)
 
 void SWidget::SetCursor( const TAttribute< TOptional<EMouseCursor::Type> >& InCursor )
 {
-	// If bounded or has a valid optional value
-	if (InCursor.IsBound() || InCursor.Get().IsSet())
-	{
-		TSharedPtr<FSlateCursorMetaData> Data = GetMetaData<FSlateCursorMetaData>();
-		if (!Data)
-		{
-			Data = MakeShared<FSlateCursorMetaData>();
-			AddMetadata(Data.ToSharedRef());
-		}
-		Data->Cursor = InCursor;
-	}
-	else
-	{
-		RemoveMetaData<FSlateCursorMetaData>();
-	}
-}
-
-TOptional<EMouseCursor::Type> SWidget::GetCursor() const
-{
-	if (TSharedPtr<FSlateCursorMetaData> Data = GetMetaData<FSlateCursorMetaData>())
-	{
-		return Data->Cursor.Get();
-	}
-	return TOptional<EMouseCursor::Type>();
+	Cursor = InCursor;
 }
 
 void SWidget::SetDebugInfo( const ANSICHAR* InType, const ANSICHAR* InFile, int32 OnLine, size_t InAllocSize )
@@ -1398,7 +1331,7 @@ int32 SWidget::Paint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, 
 #endif
 
 #if WITH_SLATE_DEBUGGING
-	if (!FastPathProxyHandle.IsValid(this) && PersistentState.CachedElementHandle.IsValid())
+	if (!FastPathProxyHandle.IsValid() && PersistentState.CachedElementHandle.IsValid())
 	{
 		ensure(!bInvisibleDueToParentOrSelfVisibility);
 	}
@@ -1408,7 +1341,7 @@ int32 SWidget::Paint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, 
 
 	if (bOutgoingHittestability)
 	{
-		Args.GetHittestGrid().AddWidget(MutableThis, 0, LayerId, FastPathProxyHandle.GetWidgetSortOrder());
+		Args.GetHittestGrid().AddWidget(MutableThis, 0, LayerId, FastPathProxyHandle.GetIndex());
 	}
 
 	if (bClipToBounds)
@@ -1580,7 +1513,28 @@ void SWidget::Prepass_Internal(float InLayoutScaleMultiplier)
 		// a function of its children's sizes.
 		FChildren* MyChildren = this->GetChildren();
 		const int32 NumChildren = MyChildren->Num();
-		Prepass_ChildLoop(InLayoutScaleMultiplier, MyChildren);
+		for (int32 ChildIndex = 0; ChildIndex < MyChildren->Num(); ++ChildIndex)
+		{
+			const float ChildLayoutScaleMultiplier = bHasRelativeLayoutScale
+				? InLayoutScaleMultiplier * GetRelativeLayoutScale(ChildIndex, InLayoutScaleMultiplier)
+				: InLayoutScaleMultiplier;
+
+			const TSharedRef<SWidget>& Child = MyChildren->GetChildAt(ChildIndex);
+
+			if (Child->Visibility.Get() != EVisibility::Collapsed)
+			{
+				// Recur: Descend down the widget tree.
+				Child->Prepass_Internal(ChildLayoutScaleMultiplier);
+			}
+			else
+			{
+				// If the child widget is collapsed, we need to store the new layout scale it will have when 
+				// it is finally visible and invalidate it's prepass so that it gets that when its visiblity
+				// is finally invalidated.
+				Child->InvalidatePrepass();
+				Child->PrepassLayoutScaleMultiplier = ChildLayoutScaleMultiplier;
+			}
+		}
 		ensure(NumChildren == MyChildren->Num());
 	}
 
@@ -1588,33 +1542,6 @@ void SWidget::Prepass_Internal(float InLayoutScaleMultiplier)
 		// Cache this widget's desired size.
 		CacheDesiredSize(PrepassLayoutScaleMultiplier.Get(1.0f));
 		bNeedsPrepass = false;
-	}
-}
-
-void SWidget::Prepass_ChildLoop(float InLayoutScaleMultiplier, FChildren* MyChildren)
-{
-	const int32 NumChildren = MyChildren->Num();
-	for (int32 ChildIndex = 0; ChildIndex < MyChildren->Num(); ++ChildIndex)
-	{
-		const float ChildLayoutScaleMultiplier = bHasRelativeLayoutScale
-			? InLayoutScaleMultiplier * GetRelativeLayoutScale(ChildIndex, InLayoutScaleMultiplier)
-			: InLayoutScaleMultiplier;
-
-		const TSharedRef<SWidget>& Child = MyChildren->GetChildAt(ChildIndex);
-
-		if (Child->Visibility.Get() != EVisibility::Collapsed)
-		{
-			// Recur: Descend down the widget tree.
-			Child->Prepass_Internal(ChildLayoutScaleMultiplier);
-		}
-		else
-		{
-			// If the child widget is collapsed, we need to store the new layout scale it will have when 
-			// it is finally visible and invalidate it's prepass so that it gets that when its visiblity
-			// is finally invalidated.
-			Child->InvalidatePrepass();
-			Child->PrepassLayoutScaleMultiplier = ChildLayoutScaleMultiplier;
-		}
 	}
 }
 
@@ -1673,58 +1600,70 @@ void SWidget::ExecuteActiveTimers(double CurrentTime, float DeltaTime)
 	}
 }
 
-namespace Private
+const FPointerEventHandler* SWidget::GetPointerEvent(const FName EventName) const
 {
-	TSharedPtr<FSlateMouseEventsMetaData> FindOrAddMouseEventsMetaData(SWidget* Widget)
+	auto* FoundPair = PointerEvents.FindByPredicate([&EventName](const auto& TestPair) {return TestPair.Key == EventName; });
+	if (FoundPair)
 	{
-		TSharedPtr<FSlateMouseEventsMetaData> Data = Widget->GetMetaData<FSlateMouseEventsMetaData>();
-		if (!Data)
-		{
-			Data = MakeShared<FSlateMouseEventsMetaData>();
-			Widget->AddMetadata(Data.ToSharedRef());
-		}
-		return Data;
+		return &FoundPair->Value;
 	}
+	return nullptr;
+}
+
+void SWidget::SetPointerEvent(const FName EventName, FPointerEventHandler& InEvent)
+{
+	// Find the event name and if found, replace the delegate
+	auto* FoundPair = PointerEvents.FindByPredicate([&EventName](const auto& TestPair) {return TestPair.Key == EventName; });
+	if (FoundPair)
+	{
+		FoundPair->Value = InEvent;
+	}
+	else
+	{
+		PointerEvents.Emplace(EventName, InEvent);
+	}
+
 }
 
 void SWidget::SetOnMouseButtonDown(FPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseButtonDownHandle = EventHandler;
+	SetPointerEvent(NAME_MouseButtonDown, EventHandler);
 }
 
 void SWidget::SetOnMouseButtonUp(FPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseButtonUpHandle = EventHandler;
+	SetPointerEvent(NAME_MouseButtonUp, EventHandler);
 }
 
 void SWidget::SetOnMouseMove(FPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseMoveHandle = EventHandler;
+	SetPointerEvent(NAME_MouseMove, EventHandler);
 }
 
 void SWidget::SetOnMouseDoubleClick(FPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseDoubleClickHandle = EventHandler;
+	SetPointerEvent(NAME_MouseDoubleClick, EventHandler);
 }
 
 void SWidget::SetOnMouseEnter(FNoReplyPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseEnterHandler = EventHandler;
+	MouseEnterHandler = EventHandler;
 }
 
 void SWidget::SetOnMouseLeave(FSimpleNoReplyPointerEventHandler EventHandler)
 {
-	Private::FindOrAddMouseEventsMetaData(this)->MouseLeaveHandler = EventHandler;
+	MouseLeaveHandler = EventHandler;
 }
 
 void SWidget::AddMetadataInternal(const TSharedRef<ISlateMetaData>& AddMe)
 {
 	MetaData.Add(AddMe);
 
-#if UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA || UE_SLATE_TRACE_ENABLED
+
+#if WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA || UE_SLATE_TRACE_ENABLED
 	if (AddMe->IsOfType<FReflectionMetaData>())
 	{
-#if UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA
+#if WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA
 		TSharedRef<FReflectionMetaData> Reflection = StaticCastSharedRef<FReflectionMetaData>(AddMe);
 		if (Reflection->Name == FindWidgetMetaData::WidgeName && Reflection->Asset.Get() && Reflection->Asset.Get()->GetFName() == FindWidgetMetaData::AssetName)
 		{
@@ -1794,20 +1733,11 @@ FText SWidget::GetAccessibleText(EAccessibleType AccessibleType) const
 	case EAccessibleBehavior::Summary:
 		return GetAccessibleSummary();
 	case EAccessibleBehavior::ToolTip:
-	{
-		//TODO should use GetToolTip
-		if (TSharedPtr<FSlateToolTipMetaData> Data = GetMetaData<FSlateToolTipMetaData>())
+		if (ToolTip.IsValid() && !ToolTip->IsEmpty())
 		{
-			if (TSharedPtr<IToolTip> ToolTip = Data->ToolTip.Get())
-			{
-				if (ToolTip && !ToolTip->IsEmpty())
-				{
-					return ToolTip->GetContentWidget()->GetAccessibleText(EAccessibleType::Main);
-				}
-			}
+			return ToolTip->GetContentWidget()->GetAccessibleText(EAccessibleType::Main);
 		}
 		break;
-	}
 	case EAccessibleBehavior::Auto:
 		// Auto first checks if custom text was set. This should never happen with user-defined values as custom should be
 		// used instead in that case - however, this will be used for widgets with special default text such as TextBlocks.
@@ -1936,5 +1866,4 @@ bool SWidget::IsChildWidgetCulled(const FSlateRect& MyCullingRect, const FArrang
 }
 
 #endif
-
-#undef UE_WITH_SLATE_DEBUG_FIND_WIDGET_REFLECTION_METADATA
+#undef WITH_SLATE_FIND_WIDGET_REFLECTION_METADATA

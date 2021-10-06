@@ -22,11 +22,19 @@
 	],
 	"Plugins": [
 		{
+			"Name": "DatasmithContent",
+			"Enabled": true
+		},
+		{
 			"Name": "DatasmithImporter",
 			"Enabled": true
 		},
 		{
-			"Name": "RuntimePhysXCooking",
+			"Name": "RemoteImport",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
 			"Enabled": true
 		},
 		{

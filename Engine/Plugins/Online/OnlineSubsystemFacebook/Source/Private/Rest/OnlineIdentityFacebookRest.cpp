@@ -156,7 +156,7 @@ void FOnlineIdentityFacebook::OnAccessTokenLoginComplete(int32 LocalUserNum, boo
 	}
 }
 
-void FOnlineIdentityFacebook::OnExternalUILoginComplete(FUniqueNetIdPtr UniqueId, const int ControllerIndex, const FOnlineError& Error)
+void FOnlineIdentityFacebook::OnExternalUILoginComplete(TSharedPtr<const FUniqueNetId> UniqueId, const int ControllerIndex, const FOnlineError& Error)
 {
 	const FString& ErrorStr = Error.GetErrorCode();
 	const bool bWasSuccessful = Error.WasSuccessful() && UniqueId.IsValid() && UniqueId->IsValid();
@@ -217,7 +217,7 @@ void FOnlineIdentityFacebook::RequestElevatedPermissions(int32 LocalUserNum, con
 				else
 				{
 					// Fire off delegate now because permissions already exist
-					FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+					TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 					InCompletionDelegate.ExecuteIfBound(LocalUserNum, true, *UserId, ErrorStr);
 				}
 			}
@@ -236,7 +236,7 @@ void FOnlineIdentityFacebook::RequestElevatedPermissions(int32 LocalUserNum, con
 	}
 }
 
-void FOnlineIdentityFacebook::OnExternalUIElevatedPermissionsComplete(FUniqueNetIdPtr UniqueId, const int ControllerIndex, const FOnlineError& Error, FOnLoginCompleteDelegate InCompletionDelegate)
+void FOnlineIdentityFacebook::OnExternalUIElevatedPermissionsComplete(TSharedPtr<const FUniqueNetId> UniqueId, const int ControllerIndex, const FOnlineError& Error, FOnLoginCompleteDelegate InCompletionDelegate)
 {
 	FString ErrorStr;
 	bool bWasSuccessful = UniqueId.IsValid() && UniqueId->IsValid();
@@ -248,14 +248,14 @@ void FOnlineIdentityFacebook::OnExternalUIElevatedPermissionsComplete(FUniqueNet
 	}
 
 	UE_LOG_ONLINE_IDENTITY(Verbose, TEXT("RequestElevatedPermissions() %s"), bWasSuccessful ? TEXT("success") : TEXT("failed"));
-	FUniqueNetIdPtr ExistingUserId = GetUniquePlayerId(ControllerIndex);
+	TSharedPtr<const FUniqueNetId> ExistingUserId = GetUniquePlayerId(ControllerIndex);
 	InCompletionDelegate.ExecuteIfBound(ControllerIndex, bWasSuccessful, ExistingUserId.IsValid() ? *ExistingUserId : *FUniqueNetIdFacebook::EmptyId(), ErrorStr);
 }
 
 bool FOnlineIdentityFacebook::Logout(int32 LocalUserNum)
 {
 	bool bResult = false;
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		// remove cached user account

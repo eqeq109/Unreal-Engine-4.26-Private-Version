@@ -293,7 +293,7 @@ struct FLandscapeComponentMaterialOverride
 	FPerPlatformInt LODIndex;
 
 	UPROPERTY(EditAnywhere, Category = LandscapeComponent)
-	UMaterialInterface* Material = nullptr;
+	UMaterialInterface* Material;
 };
 
 USTRUCT(NotBlueprintable)
@@ -317,7 +317,7 @@ struct FHeightmapData
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	UTexture2D* Texture = nullptr;
+	UTexture2D* Texture;
 };
 
 USTRUCT(NotBlueprintable)
@@ -514,12 +514,6 @@ private:
 
 	UPROPERTY(Transient)
 	uint32 LayerUpdateFlagPerMode;
-
-	UPROPERTY(Transient)
-	bool bPendingCollisionDataUpdate;
-
-	UPROPERTY(Transient)
-	bool bPendingLayerCollisionDataUpdate;
 
 	/** Dirtied collision height region when painting (only used by Landscape Layer System) */
 	FIntRect LayerDirtyCollisionHeightData;
@@ -742,11 +736,6 @@ public:
 	FGuid GetEditingLayerGUID() const;
 
 	void CopyFinalLayerIntoEditingLayer(FLandscapeEditDataInterface& DataInterface, TSet<UTexture2D*>& ProcessedHeightmaps);
-
-	void SetPendingCollisionDataUpdate(bool bInPendingCollisionDataUpdate) { bPendingCollisionDataUpdate = bInPendingCollisionDataUpdate; }
-	bool GetPendingCollisionDataUpdate() const { return bPendingCollisionDataUpdate; }
-	void SetPendingLayerCollisionDataUpdate(bool bInPendingLayerCollisionDataUpdate) { bPendingLayerCollisionDataUpdate = bInPendingLayerCollisionDataUpdate; }
-	bool GetPendingLayerCollisionDataUpdate() const { return bPendingLayerCollisionDataUpdate; }
 #endif 
 
 #if WITH_EDITOR
@@ -1050,6 +1039,7 @@ public:
 	/** Updates the values of component-level properties exposed by the Landscape Actor */
 	LANDSCAPE_API void UpdatedSharedPropertiesFromActor();
 
+	LANDSCAPE_API bool IsUpdateFlagEnabledForModes(ELandscapeComponentUpdateFlag InFlag, uint32 InModeMask) const;
 	LANDSCAPE_API void ClearUpdateFlagsForModes(uint32 InModeMask);
 	LANDSCAPE_API void RequestWeightmapUpdate(bool bUpdateAll = false, bool bUpdateCollision = true);
 	LANDSCAPE_API void RequestHeightmapUpdate(bool bUpdateAll = false, bool bUpdateCollision = true);

@@ -14,6 +14,8 @@ namespace Electra
 
 	namespace AdaptiveStreamingPlayerConfig
 	{
+
+
 		struct FConfiguration
 		{
 			FConfiguration()
@@ -33,23 +35,17 @@ namespace Electra
 
 				bHoldLastFrameDuringSeek = true;
 
+				MaxPrerollDurationUntilForcedStart = 3.0;
+
 				InitialBufferMinTimeAvailBeforePlayback = 5.0;
 				SeekBufferMinTimeAvailBeforePlayback = 5.0;
 				RebufferMinTimeAvailBeforePlayback = 5.0;
+
+				// And apply the following scaling factors to determine the individual state buffering amounts
+				ScaleMPDInitialBufferMinTimeBeforePlayback = 1.0;
+				ScaleMPDSeekBufferMinTimeAvailBeforePlayback = 1.0;
+				ScaleMPDRebufferMinTimeAvailBeforePlayback = 1.0;
 			}
-
-			struct FVideoDecoderLimit
-			{
-				struct FTierProfileLevel
-				{
-					int32 Tier = 0;
-					int32 Profile = 0;
-					int32 Level = 0;
-				};
-				FStreamCodecInformation::FResolution	MaxResolution;
-				FTierProfileLevel						MaxTierProfileLevel;
-			};
-
 
 			FMediaRunnable::Param								WorkerThread;
 
@@ -62,14 +58,17 @@ namespace Electra
 			IVideoDecoderH264::FInstanceConfiguration			DecoderCfg264;
 			IAudioDecoderAAC::FInstanceConfiguration			DecoderCfgAAC;
 
-			FVideoDecoderLimit									H264LimitUpto30fps;
-			FVideoDecoderLimit									H264LimitAbove30fps;
-
 			bool												bHoldLastFrameDuringSeek;
+
+			double												MaxPrerollDurationUntilForcedStart;
 
 			double												InitialBufferMinTimeAvailBeforePlayback;
 			double												SeekBufferMinTimeAvailBeforePlayback;
 			double												RebufferMinTimeAvailBeforePlayback;
+
+			double												ScaleMPDInitialBufferMinTimeBeforePlayback;
+			double												ScaleMPDSeekBufferMinTimeAvailBeforePlayback;
+			double												ScaleMPDRebufferMinTimeAvailBeforePlayback;
 		};
 
 	} // namespace AdaptiveStreamingPlayerConfig

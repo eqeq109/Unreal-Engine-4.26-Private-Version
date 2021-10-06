@@ -2,11 +2,9 @@
 
 #include "StaticMeshExporterUSD.h"
 
-#include "StaticMeshExporterUSDOptions.h"
 #include "USDConversionUtils.h"
 #include "USDGeomMeshConversion.h"
 #include "USDMemory.h"
-#include "USDOptionsWindow.h"
 #include "USDTypesConversion.h"
 
 #include "UsdWrappers/SdfLayer.h"
@@ -14,9 +12,8 @@
 #include "UsdWrappers/UsdPrim.h"
 #include "UsdWrappers/UsdStage.h"
 
-#include "AssetExportTask.h"
-#include "CoreMinimal.h"
 #include "Engine/StaticMesh.h"
+
 
 bool UStaticMeshExporterUsd::IsUsdAvailable()
 {
@@ -50,99 +47,29 @@ bool UStaticMeshExporterUsd::ExportBinary( UObject* Object, const TCHAR* Type, F
 {
 #if USE_USD_SDK
 	UStaticMesh* StaticMesh = CastChecked< UStaticMesh >( Object );
-	if ( !StaticMesh )
-	{
-		return false;
-	}
 
-	UStaticMeshExporterUSDOptions* Options = nullptr;
-	if ( ExportTask )
 	{
-		Options = Cast<UStaticMeshExporterUSDOptions>( ExportTask->Options );
-	}
-	if ( !Options && ( !ExportTask || !ExportTask->bAutomated ) )
-	{
-		Options = GetMutableDefault<UStaticMeshExporterUSDOptions>();
-		if ( Options )
+		UE::FUsdStage UsdStage = UnrealUSDWrapper::NewStage( *UExporter::CurrentFilename );
+
+		if ( !UsdStage )
 		{
-			const bool bIsImport = false;
-			const bool bContinue = SUsdOptionsWindow::ShowOptions( *Options, bIsImport );
-			if ( !bContinue )
-			{
-				return false;
-			}
-		}
-	}
-
-	// If bUsePayload is true, we'll intercept the filename so that we write the mesh data to
-	// "C:/MyFolder/file_payload.usda" and create an "asset" file "C:/MyFolder/file.usda" that uses it
-	// as a payload, pointing at the default prim
-	FString PayloadFilename = UExporter::CurrentFilename;
-	if ( Options && Options->bUsePayload )
-	{
-		FString PathPart;
-		FString FilenamePart;
-		FString ExtensionPart;
-		FPaths::Split( PayloadFilename, PathPart, FilenamePart, ExtensionPart );
-
-		if ( FormatExtension.Contains( Options->PayloadFormat ) )
-		{
-			ExtensionPart = Options->PayloadFormat;
+			return false;
 		}
 
-		PayloadFilename = FPaths::Combine( PathPart, FilenamePart + TEXT( "_payload." ) + ExtensionPart );
-	}
+		FString RootPrimPath = ( TEXT("/") + StaticMesh->GetName() );
 
-	UE::FUsdStage UsdStage = UnrealUSDWrapper::NewStage( *PayloadFilename );
-	if ( !UsdStage )
-	{
-		return false;
-	}
-
-	if ( Options )
-	{
-		UsdUtils::SetUsdStageMetersPerUnit( UsdStage, Options->StageOptions.MetersPerUnit );
-		UsdUtils::SetUsdStageUpAxis( UsdStage, Options->StageOptions.UpAxis );
-	}
-
-	FString RootPrimPath = ( TEXT( "/" ) + UsdUtils::SanitizeUsdIdentifier( *StaticMesh->GetName() ) );
-
-	UE::FUsdPrim RootPrim = UsdStage.DefinePrim( UE::FSdfPath( *RootPrimPath ) );
-	if ( !RootPrim )
-	{
-		return false;
-	}
-
-	UsdStage.SetDefaultPrim( RootPrim );
-
-	// Using payload: Convert mesh data through the asset stage (that references the payload) so that we can
-	// author mesh data on the payload layer and material data on the asset layer
-	if ( Options && Options->bUsePayload )
-	{
-		if ( UE::FUsdStage AssetStage = UnrealUSDWrapper::NewStage( *UExporter::CurrentFilename ) )
+		UE::FUsdPrim RootPrim = UsdStage.DefinePrim( UE::FSdfPath( *RootPrimPath ) );
+		if ( !RootPrim )
 		{
-			UsdUtils::SetUsdStageMetersPerUnit( AssetStage, Options->StageOptions.MetersPerUnit );
-			UsdUtils::SetUsdStageUpAxis( AssetStage, Options->StageOptions.UpAxis );
-
-			if ( UE::FUsdPrim AssetRootPrim = AssetStage.DefinePrim( UE::FSdfPath( *RootPrimPath ) ) )
-			{
-				AssetStage.SetDefaultPrim( AssetRootPrim );
-
-				UsdUtils::AddPayload( AssetRootPrim, *PayloadFilename );
-			}
-
-			UnrealToUsd::ConvertStaticMesh( StaticMesh, RootPrim, UsdUtils::GetDefaultTimeCode(), &AssetStage );
-
-			AssetStage.GetRootLayer().Save();
+			return false;
 		}
-	}
-	// Not using payload: Just author everything on the current edit target of the payload (== asset) layer
-	else
-	{
+
+		UsdStage.SetDefaultPrim( RootPrim );
+
 		UnrealToUsd::ConvertStaticMesh( StaticMesh, RootPrim );
-	}
 
-	UsdStage.GetRootLayer().Save();
+		UsdStage.GetRootLayer().Save();
+	}
 
 	return true;
 #else

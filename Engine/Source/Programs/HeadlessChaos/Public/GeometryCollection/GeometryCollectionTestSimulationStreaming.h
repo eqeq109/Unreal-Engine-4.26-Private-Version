@@ -6,10 +6,13 @@
 
 namespace GeometryCollectionTest
 {	
+	template<class T>
 	void RigidBodies_Streaming_StartSolverEmpty();
 
+	template<class T>
 	void RigidBodies_Streaming_BulkInitialization();
 	
+	template<class T>
 	void RigidBodies_Streaming_DeferedClusteringInitialization();
 
 }

@@ -61,8 +61,6 @@ public:
 
 	void EnterNamespaceModifierEditingMode();
 
-	void UpdateDecorator(TSharedRef<SWidget> InDecorator);
-	
 private:
 	TSharedRef<SBorder> CreateNamespaceWidget(FText NamespaceDisplayName, FText NamespaceDescription, FLinearColor NamespaceBorderColor, FName NamespaceForegroundStyle);
 
@@ -70,11 +68,11 @@ private:
 
 	FName ReconstructNameFromEditText(const FText& InEditText);
 
-	bool VerifyNameTextChange(const FText& InNewName, FText& OutErrorMessage, FName InOriginalName);
+	bool VerifyNameTextChange(const FText& InNewNameText, FText& OutErrorMessage);
 
 	void NameTextCommitted(const FText& InNewNameText, ETextCommit::Type CommitType);
 
-	bool VerifyNamespaceModifierTextChange(const FText& InNewNamespaceModifier, FText& OutErrorMessage, FName InOriginalNamespaceModifier);
+	bool VerifyNamespaceModifierTextChange(const FText& InNewNameText, FText& OutErrorMessage);
 
 	void NamespaceModifierTextCommitted(const FText& InNewNameText, ETextCommit::Type CommitType);
 
@@ -107,7 +105,6 @@ class NIAGARAEDITOR_API SNiagaraParameterNameTextBlock : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SNiagaraParameterNameTextBlock)
 		: _EditableTextStyle(&FEditorStyle::Get().GetWidgetStyle<FInlineEditableTextBlockStyle>("InlineEditableTextBlockStyle"))
-		, _ReadOnlyTextStyle(&FEditorStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText"))
 		, _IsReadOnly(false)
 		, _DecoratorHAlign(HAlign_Left)
 		, _DecoratorPadding(5.0f, 0.0f, 0.0f, 0.0f)
@@ -115,7 +112,6 @@ public:
 		_Clipping = EWidgetClipping::OnDemand;
 	}
 		SLATE_STYLE_ARGUMENT(FInlineEditableTextBlockStyle, EditableTextStyle)
-		SLATE_STYLE_ARGUMENT(FTextBlockStyle, ReadOnlyTextStyle)
 		SLATE_ATTRIBUTE(FText, ParameterText)
 		SLATE_ARGUMENT(bool, IsReadOnly)
 		SLATE_ATTRIBUTE(FText, HighlightText)

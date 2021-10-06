@@ -232,12 +232,8 @@ FTransform FDatasmithMaxSceneExporter::GetPivotTransform( INode* Node, float Uni
 
 	if ( !bIsInWorldSpace )
 	{
-// Matrix3::Matrix3(BOOL) is deprecated in 3ds max 2022 SDK
-#if MAX_PRODUCT_YEAR_NUMBER < 2022
 		Matrix3 ObjectOffset(1);
-#else
-		Matrix3 ObjectOffset;
-#endif
+
 		Point3 OffsetPos = Node->GetObjOffsetPos(); // Object translation in Node (pivot) space
 		ObjectOffset.PreTranslate( OffsetPos );
 
@@ -834,12 +830,7 @@ bool FDatasmithMaxSceneExporter::ParseTransformAnimation(INode* Node, TSharedRef
 	Matrix3 NodeTransform = Node->GetNodeTM(TIME_NegInfinity, &ValidInterval);
 	INode* Parent = Node->GetParentNode();
 
-// Matrix3::Matrix3(BOOL) is deprecated in 3ds max 2022 SDK
-#if MAX_PRODUCT_YEAR_NUMBER < 2022
 	Matrix3 ParentTransform = Parent ? Parent->GetNodeTM(TIME_NegInfinity, &ValidInterval) : Matrix3(true);
-#else
-	Matrix3 ParentTransform = Parent ? Parent->GetNodeTM(TIME_NegInfinity, &ValidInterval) : Matrix3();
-#endif
 	Matrix3 LocalTransform;
 
 	// An infinite interval indicates there's no animation in the transform
@@ -861,12 +852,7 @@ bool FDatasmithMaxSceneExporter::ParseTransformAnimation(INode* Node, TSharedRef
 		// The parent node could change at each frame because of the Link Constraint
 		NodeTransform = Node->GetNodeTM(CurrentTime, &ValidInterval);
 		Parent = Node->GetParentNode();
-// Matrix3::Matrix3(BOOL) is deprecated in 3ds max 2022 SDK
-#if MAX_PRODUCT_YEAR_NUMBER < 2022
 		ParentTransform = Parent ? Parent->GetNodeTM(CurrentTime, &ValidInterval) : Matrix3(true);
-#else
-		ParentTransform = Parent ? Parent->GetNodeTM(CurrentTime, &ValidInterval) : Matrix3();
-#endif
 
 		Matrix3 InvParentTransform = Inverse(ParentTransform);
 		LocalTransform = NodeTransform * InvParentTransform;
@@ -1041,7 +1027,7 @@ bool FDatasmithMaxSceneExporter::ParseLight(INode* Node, TSharedRef< IDatasmithL
 		FVector Translation, Scale;
 		FQuat Rotation;
 
-		const float UnitMultiplier = (float)GetSystemUnitScale(UNITS_CENTIMETERS);
+		const float UnitMultiplier = (float)GetMasterScale(UNITS_CENTIMETERS);
 		const FMaxLightCoordinateConversionParams LightParams = FMaxLightCoordinateConversionParams(Node, EDatasmithLightShape::Cylinder);
 		if (Node->GetWSMDerivedObject() != nullptr)
 		{
@@ -1080,7 +1066,7 @@ bool FDatasmithMaxSceneExporter::ParseLightObject(LightObject& Light, TSharedRef
 
 		if ( LState.useAtten != 0 ) // Using the LightState here because calling Light.GetUseAtten() on a Corona Light crashes
 		{
-			PointLightElement->SetAttenuationRadius( LState.attenEnd * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			PointLightElement->SetAttenuationRadius( LState.attenEnd * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 		}
 	}
 
@@ -1211,11 +1197,11 @@ bool FDatasmithMaxSceneExporter::ParseCoronaLight(LightObject& Light, TSharedRef
 			}
 			else if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("width")) == 0 )
 			{
-				AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+				AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			}
 			else if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("height")) == 0 )
 			{
-				AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+				AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			}
 			else if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("visibleDirectly")) == 0 )
 			{
@@ -1431,16 +1417,16 @@ bool FDatasmithMaxSceneExporter::ParsePhotometricLight(LightObject& Light, TShar
 		case LightscapeLight::DISC_TYPE:
 		case LightscapeLight::TARGET_DISC_TYPE:
 			AreaLightElement->SetLightShape( EDatasmithLightShape::Disc );
-			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
-			AreaLightElement->SetLength( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetLength( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			bIsOneSided = true;
 
 			break;
 		case LightscapeLight::AREA_TYPE:
 		case LightscapeLight::TARGET_AREA_TYPE:
 			AreaLightElement->SetLightShape( EDatasmithLightShape::Rectangle );
-			AreaLightElement->SetWidth( PhotometricLight.GetWidth( GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
-			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetWidth( PhotometricLight.GetWidth( GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			bIsOneSided = true;
 
 			break;
@@ -1449,15 +1435,15 @@ bool FDatasmithMaxSceneExporter::ParsePhotometricLight(LightObject& Light, TShar
 		case LightscapeLight::TARGET_LINEAR_TYPE:
 			AreaLightElement->SetLightShape( EDatasmithLightShape::Rectangle );
 			AreaLightElement->SetWidth( 1.f ); // 1 cm
-			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 
 			break;
 
 		case LightscapeLight::SPHERE_TYPE:
 		case LightscapeLight::TARGET_SPHERE_TYPE:
 			AreaLightElement->SetLightShape( EDatasmithLightShape::Sphere );
-			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
-			AreaLightElement->SetLength( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetLength( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			bHasVolume = true;
 			
 			break;
@@ -1465,8 +1451,8 @@ bool FDatasmithMaxSceneExporter::ParsePhotometricLight(LightObject& Light, TShar
 		case LightscapeLight::CYLINDER_TYPE:
 		case LightscapeLight::TARGET_CYLINDER_TYPE:
 			AreaLightElement->SetLightShape( EDatasmithLightShape::Cylinder );
-			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
-			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetWidth( PhotometricLight.GetRadius( GetCOREInterface()->GetTime() ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
+			AreaLightElement->SetLength( PhotometricLight.GetLength( GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 			bHasVolume = true;
 
 			break;
@@ -1554,8 +1540,8 @@ bool FDatasmithMaxSceneExporter::ParseVRayLight(LightObject& Light, TSharedRef< 
 	}
 	
 
-	float VRayLightSize0 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size0 ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS );
-	float VRayLightSize1 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size1 ) * 2.f * (float)GetSystemUnitScale( UNITS_CENTIMETERS );
+	float VRayLightSize0 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size0 ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS );
+	float VRayLightSize1 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size1 ) * 2.f * (float)GetMasterScale( UNITS_CENTIMETERS );
 	AreaLightElement->SetWidth( VRayLightSize0 );
 
 	const double CentimeterToMeter = 0.01;
@@ -1644,8 +1630,8 @@ bool FDatasmithMaxSceneExporter::ParseVRayLightPortal(LightObject& Light, TShare
 {
 	IParamBlock2* ParamBlock2 = Light.GetParamBlockByID( (short)EVRayLightParamBlocks::Params );
 
-	float VRayLightSize0 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size0 ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS );
-	float VRayLightSize1 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size1 ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS );
+	float VRayLightSize0 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size0 ) * (float)GetMasterScale( UNITS_CENTIMETERS );
+	float VRayLightSize1 = ParamBlock2->GetFloat( (short)EVrayLightsParams::Size1 ) * (float)GetMasterScale( UNITS_CENTIMETERS );
 	
 	FVector CurrentScale = LightPortalElement->GetScale();
 	LightPortalElement->SetScale( 10.f, VRayLightSize0 * CurrentScale.X, VRayLightSize1 * CurrentScale.Y);
@@ -1781,19 +1767,19 @@ bool FDatasmithMaxSceneExporter::ParseVRayLightIES(LightObject& Light, TSharedRe
 				{
 					if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("width")) == 0 )
 					{
-						AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+						AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 					}
 					else if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("length")) == 0 )
 					{
-						AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+						AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 					}
 				}
 				else
 				{
 					if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("diameter")) == 0 )
 					{
-						AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
-						AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+						AreaLightElement->SetWidth( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
+						AreaLightElement->SetLength( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 					}
 				}
 			}
@@ -1906,15 +1892,15 @@ bool FDatasmithMaxSceneExporter::ParseLightParameters(EMaxLightClass LightClass,
 
 				if (FCString::Stricmp(ParamDefinition.int_name, TEXT("size0")) == 0)
 				{
-					PointLightElement->SetSourceRadius( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+					PointLightElement->SetSourceRadius( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 				}
 				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("width")) == 0 || FCString::Stricmp(ParamDefinition.int_name, TEXT("light_Width")) == 0 || FCString::Stricmp(ParamDefinition.int_name, TEXT("quadX")) == 0)
 				{
-					PointLightElement->SetSourceRadius( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) / 2.0f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+					PointLightElement->SetSourceRadius( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) / 2.0f * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 				}
 				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("size1")) == 0)
 				{
-					PointLightElement->SetSourceLength( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) * (float)GetSystemUnitScale( UNITS_CENTIMETERS ) );
+					PointLightElement->SetSourceLength( ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) * (float)GetMasterScale( UNITS_CENTIMETERS ) );
 				}
 				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("height")) == 0 || FCString::Stricmp(ParamDefinition.int_name, TEXT("length")) == 0 ||
 					FCString::Stricmp(ParamDefinition.int_name, TEXT("light_length")) == 0 || FCString::Stricmp(ParamDefinition.int_name, TEXT("quadY")) == 0)
@@ -1922,7 +1908,7 @@ bool FDatasmithMaxSceneExporter::ParseLightParameters(EMaxLightClass LightClass,
 					//Arnold has height parameter but it is not the right one we are looking for quadY
 					if (LightClass != EMaxLightClass::ArnoldLight || FCString::Stricmp(ParamDefinition.int_name, TEXT("height")) != 0)
 					{
-						PointLightElement->SetSourceLength(ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) / 2.0f * (float)GetSystemUnitScale( UNITS_CENTIMETERS ));
+						PointLightElement->SetSourceLength(ParamBlock2->GetFloat(ParamDefinition.ID, GetCOREInterface()->GetTime()) / 2.0f * (float)GetMasterScale( UNITS_CENTIMETERS ));
 					}
 				}
 			}

@@ -14,7 +14,6 @@ struct FSourceFilteringTickFunction : public FTickFunction
 	FSourceFilteringTickFunction() : Manager(nullptr) {}
 private:
 	virtual void ExecuteTick(float DeltaTime, ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent) override;
-	virtual FString DiagnosticMessage() override;
 protected:
 	FSourceFilterManager* Manager;
 };

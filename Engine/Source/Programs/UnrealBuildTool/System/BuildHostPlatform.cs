@@ -300,6 +300,7 @@ namespace UnrealBuildTool
 			try
 			{
 				Proc.Start();
+				Proc.WaitForExit();
 				for (string Line = Proc.StandardOutput.ReadLine(); Line != null; Line = Proc.StandardOutput.ReadLine())
 				{
 					Line = Line.Trim();
@@ -321,7 +322,7 @@ namespace UnrealBuildTool
 						catch { }
 					}
 				}
-				Proc.WaitForExit();
+
 			}
 			catch { }
 			return Result.ToArray();

@@ -31,7 +31,6 @@ class CURVEEDITOR_API SCurveEditorPanel : public SCompoundWidget
 		: _GridLineTint(FLinearColor(0.1f, 0.1f, 0.1f, 1.f))
 		, _TreeSplitterWidth(0.3f)
 		, _ContentSplitterWidth(0.7f)
-		, _MinimumViewPanelHeight(300.0f)
 	{}
 
 		/** Color to draw grid lines */
@@ -54,9 +53,6 @@ class CURVEEDITOR_API SCurveEditorPanel : public SCompoundWidget
 
 		/** The width of the splitter slot for the main content */
 		SLATE_ARGUMENT(float, ContentSplitterWidth)
-
-		/** The minimum height for the panel which contains the curve editor views. */
-		SLATE_ARGUMENT(float, MinimumViewPanelHeight)
 
 	SLATE_END_ARGS()
 

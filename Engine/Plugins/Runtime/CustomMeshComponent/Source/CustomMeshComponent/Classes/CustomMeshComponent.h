@@ -15,13 +15,13 @@ struct FCustomMeshTriangle
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Triangle)
-	FVector Vertex0 = FVector::ZeroVector;
+	FVector Vertex0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Triangle)
-	FVector Vertex1 = FVector::ZeroVector;
+	FVector Vertex1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Triangle)
-	FVector Vertex2 = FVector::ZeroVector;
+	FVector Vertex2;
 };
 
 /** Component that allows you to specify custom triangle mesh geometry */

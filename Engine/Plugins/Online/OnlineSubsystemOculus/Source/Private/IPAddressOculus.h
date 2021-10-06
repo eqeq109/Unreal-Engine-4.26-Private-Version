@@ -16,7 +16,7 @@
 class FInternetAddrOculus : public FInternetAddr
 {
 PACKAGE_SCOPE:
-	FUniqueNetIdOculusRef OculusId;
+	FUniqueNetIdOculus OculusId;
 
 	/**
 	* Copy Constructor
@@ -31,7 +31,7 @@ public:
 	* Constructor. Sets address to default state
 	*/
 	FInternetAddrOculus() :
-		OculusId(FUniqueNetIdOculus::EmptyId())
+		OculusId(0ull)
 	{
 	}
 
@@ -39,39 +39,33 @@ public:
 	* Constructor
 	*/
 	explicit FInternetAddrOculus(const FUniqueNetIdOculus& InOculusId) :
-		OculusId(InOculusId.AsShared())
+		OculusId(InOculusId)
 	{
 	}
 
 	/**
 	* Constructor
 	*/
-	explicit FInternetAddrOculus(ovrID InOculusId) :
-		OculusId(FUniqueNetIdOculus::Create(InOculusId))
+	explicit FInternetAddrOculus(const FURL& ConnectURL)
 	{
-	}
+		auto Host = ConnectURL.Host;
 
-	static FInternetAddrOculus FromUrl(const FURL& ConnectURL)
-	{
-		FString Host = ConnectURL.Host;
 		// Parse the URL: unreal://<oculus_id>.oculus or unreal://<oculus_id>
 		int32 DotIndex;
-		FString OculusStringID = (Host.FindChar('.', DotIndex)) ? Host.Left(DotIndex) : Host;
-		uint64 OculusUintId = strtoull(TCHAR_TO_ANSI(*OculusStringID), nullptr, 10);
-		const FUniqueNetIdOculusRef OculusNetId = FUniqueNetIdOculus::Create(OculusUintId);
-		return FInternetAddrOculus(*OculusNetId);
+		auto OculusStringID = (Host.FindChar('.', DotIndex)) ? Host.Left(DotIndex) : Host;
+		OculusId = strtoull(TCHAR_TO_ANSI(*OculusStringID), nullptr, 10);
 	}
 
 	ovrID GetID() const
 	{
-		return OculusId->GetID();
+		return OculusId.GetID();
 	}
 
 	virtual TArray<uint8> GetRawIp() const override
 	{
 		TArray<uint8> RawAddressArray;
-		const uint8* OculusIdWalk = OculusId->GetBytes();
-		while (RawAddressArray.Num() < OculusId->GetSize())
+		const uint8* OculusIdWalk = OculusId.GetBytes();
+		while (RawAddressArray.Num() < OculusId.GetSize())
 		{
 			RawAddressArray.Add(*OculusIdWalk);
 			++OculusIdWalk;
@@ -102,7 +96,7 @@ public:
 			NewId |= (ovrID)WorkingArray[i] << (i * 8);
 		}
 
-		OculusId = FUniqueNetIdOculus::Create(NewId);
+		OculusId = FUniqueNetIdOculus(NewId);
 	}
 
 	/**
@@ -189,7 +183,7 @@ public:
 	*/
 	FString ToString(bool bAppendPort) const override
 	{
-		return OculusId->ToString();
+		return OculusId.ToString();
 	}
 
 	/**
@@ -225,7 +219,7 @@ public:
 	*/
 	virtual bool IsValid() const override
 	{
-		return OculusId->IsValid();
+		return OculusId.IsValid();
 	}
 
 	virtual TSharedRef<FInternetAddr> Clone() const override

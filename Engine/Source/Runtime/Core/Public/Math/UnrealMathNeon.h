@@ -418,20 +418,7 @@ FORCEINLINE VectorRegister VectorMultiply( VectorRegister Vec1, VectorRegister V
  */
 FORCEINLINE VectorRegister VectorMultiplyAdd( VectorRegister Vec1, VectorRegister Vec2, VectorRegister Vec3 )
 {
-	return vfmaq_f32( Vec3, Vec1, Vec2 );
-}
-
-/**
- * Multiplies two vectors (component-wise), negates the results and adds it to the third vector i.e. -AB + C = C - AB
- *
- * @param Vec1	1st vector
- * @param Vec2	2nd vector
- * @param Vec3	3rd vector
- * @return		VectorRegister( Vec3.x - Vec1.x*Vec2.x, Vec3.y - Vec1.y*Vec2.y, Vec3.z - Vec1.z*Vec2.z, Vec3.w - Vec1.w*Vec2.w )
- */
-FORCEINLINE VectorRegister VectorNegateMultiplyAdd(VectorRegister Vec1, VectorRegister Vec2, VectorRegister Vec3)
-{
-	return vfmsq_f32(Vec3, Vec1, Vec2);
+	return vmlaq_f32( Vec3, Vec1, Vec2 );
 }
 
 /**
@@ -746,9 +733,8 @@ FORCEINLINE VectorRegister VectorCombineLow(const VectorRegister& Vec1, const Ve
  */
 FORCEINLINE VectorRegister VectorCross( const VectorRegister& Vec1, const VectorRegister& Vec2 )
 {
-	VectorRegister C = VectorMultiply(Vec1, VectorSwizzle(Vec2, 1, 2, 0, 3));
-	C = VectorNegateMultiplyAdd(VectorSwizzle(Vec1, 1, 2, 0, 3), Vec2, C);
-	C = VectorSwizzle(C, 1, 2, 0, 3);
+	VectorRegister C = VectorSubtract( VectorMultiply( VectorSwizzle(Vec1,1,2,0,1), VectorSwizzle(Vec2,2,0,1,3) ), VectorMultiply( VectorSwizzle(Vec1,2,0,1,3), VectorSwizzle(Vec2,1,2,0,1) ) );
+	C = VectorSetComponent( C, 3, 0.0f );
 	return C;
 }
 
@@ -828,20 +814,14 @@ FORCEINLINE VectorRegister VectorReciprocalSqrtAccurate(const VectorRegister& Ve
 FORCEINLINE VectorRegister VectorReciprocalAccurate(const VectorRegister& Vec)
 {
 	// Perform two passes of Newton-Raphson iteration on the hardware estimate
-	// The built-in instruction (VRECPS) is not as accurate
+	// This is a built-in instruction (VRECPS)
 
 	// Initial estimate
 	VectorRegister Reciprocal = VectorReciprocal(Vec);
 
-	// First iteration
-	VectorRegister Squared = VectorMultiply(Reciprocal, Reciprocal);
-	VectorRegister Double = VectorAdd(Reciprocal, Reciprocal);
-	Reciprocal = VectorNegateMultiplyAdd(Vec, Squared, Double);
-
-	// Second iteration
-	Squared = VectorMultiply(Reciprocal, Reciprocal);
-	Double = VectorAdd(Reciprocal, Reciprocal);
-	return VectorNegateMultiplyAdd(Vec, Squared, Double);
+	// 2 refinement iterations
+	Reciprocal = vmulq_f32(vrecpsq_f32(Vec, Reciprocal), Reciprocal);
+	return vmulq_f32(vrecpsq_f32(Vec, Reciprocal), Reciprocal);
 }
 
 /**
@@ -853,7 +833,8 @@ FORCEINLINE VectorRegister VectorReciprocalAccurate(const VectorRegister& Vec)
 */
 FORCEINLINE VectorRegister VectorDivide(VectorRegister Vec1, VectorRegister Vec2)
 {
-	return vdivq_f32(Vec1, Vec2);
+	VectorRegister x = VectorReciprocalAccurate(Vec2);
+	return VectorMultiply(Vec1, x);
 }
 
 /**
@@ -891,12 +872,14 @@ FORCEINLINE VectorRegister VectorNormalize( const VectorRegister& Vector )
 * @param ComponentIndex	Which component to get, X=0, Y=1, Z=2, W=3
 * @return					The component as a float
 */
-FORCEINLINE float VectorGetComponent(VectorRegister Vec, int ElementIndex)
+FORCEINLINE float VectorGetComponent(VectorRegister Vec, uint32 ComponentIndex)
 {
-	MS_ALIGN(16) float Tmp[4] GCC_ALIGN(16);
+	float Tmp[4];
 	VectorStore(Vec, Tmp);
-	return Tmp[ElementIndex];
+	return Tmp[ComponentIndex];
 }
+
+
 
 /**
  * Multiplies two 4x4 matrices.
@@ -910,7 +893,7 @@ FORCEINLINE void VectorMatrixMultiply( void *Result, const void* Matrix1, const 
 	const VectorRegister *A	= (const VectorRegister *) Matrix1;
 	const VectorRegister *B	= (const VectorRegister *) Matrix2;
 	VectorRegister *R		= (VectorRegister *) Result;
-	VectorRegister Temp, R0, R1, R2;
+	VectorRegister Temp, R0, R1, R2, R3;
 
 	// First row of result (Matrix1[0] * Matrix2).
 	Temp    = vmulq_lane_f32(       B[0], vget_low_f32(  A[0] ), 0 );
@@ -934,13 +917,13 @@ FORCEINLINE void VectorMatrixMultiply( void *Result, const void* Matrix1, const 
 	Temp    = vmulq_lane_f32(       B[0], vget_low_f32(  A[3] ), 0 );
 	Temp    = vmlaq_lane_f32( Temp, B[1], vget_low_f32(  A[3] ), 1 );
 	Temp    = vmlaq_lane_f32( Temp, B[2], vget_high_f32( A[3] ), 0 );
-	Temp    = vmlaq_lane_f32( Temp, B[3], vget_high_f32( A[3] ), 1 );
+	R3      = vmlaq_lane_f32( Temp, B[3], vget_high_f32( A[3] ), 1 );
 
 	// Store result
 	R[0] = R0;
 	R[1] = R1;
 	R[2] = R2;
-	R[3] = Temp;
+	R[3] = R3;
 }
 
 /**
@@ -1053,9 +1036,13 @@ FORCEINLINE VectorRegister VectorTransformVector(const VectorRegister&  VecP,  c
 	VTempW = VectorReplicate(VecP, 3);
 	// Mul by the matrix
 	VTempX = VectorMultiply(VTempX, M[0]);
-	VTempX = VectorMultiplyAdd(VTempY, M[1], VTempX);
-	VTempX = VectorMultiplyAdd(VTempZ, M[2], VTempX);
-	VTempX = VectorMultiplyAdd(VTempW, M[3], VTempX);
+	VTempY = VectorMultiply(VTempY, M[1]);
+	VTempZ = VectorMultiply(VTempZ, M[2]);
+	VTempW = VectorMultiply(VTempW, M[3]);
+	// Add them all together
+	VTempX = VectorAdd(VTempX, VTempY);
+	VTempZ = VectorAdd(VTempZ, VTempW);
+	VTempX = VectorAdd(VTempX, VTempZ);
 
 	return VTempX;
 }
@@ -1201,7 +1188,6 @@ FORCEINLINE void VectorStoreHalf4(VectorRegister Vec, void* RESTRICT Ptr)
 		uint32_t buf[2];
 		vst1_u8( (uint8_t *)buf, f16x4 );
 		*(uint32_t *)Ptr = buf[0]; 
-		((uint32_t*)Ptr)[1] = buf[1];
 	}
 }
 
@@ -1214,15 +1200,15 @@ FORCEINLINE void VectorStoreHalf4(VectorRegister Vec, void* RESTRICT Ptr)
 */
 FORCEINLINE VectorRegister VectorLoadURGB10A2N(void* Ptr)
 {
-	MS_ALIGN(16) float V[4] GCC_ALIGN(16);
-	const uint32 E = *(uint32*)Ptr;
-	V[0] = float((E >> 00) & 0x3FF);
-	V[1] = float((E >> 10) & 0x3FF);
-	V[2] = float((E >> 20) & 0x3FF);
-	V[3] = float((E >> 30) & 0x3);
+	float V[4];
+	uint32 E = *(uint32*)Ptr;
 
-	VectorRegister Div = MakeVectorRegister(1.0f / 1023.0f, 1.0f / 1023.0f, 1.0f / 1023.0f, 1.0f / 3.0f);
-	return VectorMultiply(MakeVectorRegister(V[0], V[1], V[2], V[3]), Div);
+	V[0] = float((E >> 00) & 0x3FF) / 1023.0f;
+	V[1] = float((E >> 10) & 0x3FF) / 1023.0f;
+	V[2] = float((E >> 20) & 0x3FF) / 1023.0f;
+	V[3] = float((E >> 30) & 0x3) / 3.0f;
+
+	return MakeVectorRegister(V[0], V[1], V[2], V[3]);
 }
 
 /**
@@ -1339,60 +1325,19 @@ FORCEINLINE void VectorQuaternionMultiply( void* RESTRICT Result, const void* RE
 */
 FORCEINLINE void VectorSinCos(  VectorRegister* VSinAngles, VectorRegister* VCosAngles, const VectorRegister* VAngles )
 {	
-	// Map to [-pi, pi]
-	// X = A - 2pi * round(A/2pi)
-	// Note the round(), not truncate(). In this case round() can round halfway cases using round-to-nearest-even OR round-to-nearest.
+	union U { 
+		VectorRegister v; float f[4]; 
+		FORCEINLINE U() : v() {}
+	} VecSin, VecCos, VecAngles;
+	VecAngles.v = *VAngles;
 
-	// Quotient = round(A/2pi)
-	VectorRegister Quotient = VectorMultiply(*VAngles, GlobalVectorConstants::OneOverTwoPi);
-#if PLATFORM_64BITS
-	Quotient = vcvtq_f32_s32(vcvtnq_s32_f32(Quotient)); // round to nearest even is the default rounding mode but that's fine here.
-#else
-	uint32x4_t SignMask = vdupq_n_u32(0x80000000);
-	float32x4_t Half = vbslq_f32(SignMask, Quotient, vdupq_n_f32(0.5f));
-	Quotient = vcvtq_f32_s32(vcvtq_s32_f32(VectorAdd(Quotient, Half))); // round to nearest even is the default rounding mode but that's fine here.
-#endif
-	// X = A - 2pi * Quotient
-	VectorRegister X = VectorNegateMultiplyAdd(GlobalVectorConstants::TwoPi, Quotient, *VAngles);
+	FMath::SinCos(&VecSin.f[0], &VecCos.f[0], VecAngles.f[0]);
+	FMath::SinCos(&VecSin.f[1], &VecCos.f[1], VecAngles.f[1]);
+	FMath::SinCos(&VecSin.f[2], &VecCos.f[2], VecAngles.f[2]);
+	FMath::SinCos(&VecSin.f[3], &VecCos.f[3], VecAngles.f[3]);
 
-	// Map in [-pi/2,pi/2]
-	VectorRegister sign = VectorBitwiseAnd(X, GlobalVectorConstants::SignBit);
-	VectorRegister c = VectorBitwiseOr(GlobalVectorConstants::Pi, sign);  // pi when x >= 0, -pi when x < 0
-	VectorRegister absx = VectorAbs(X);
-	VectorRegister rflx = VectorSubtract(c, X);
-	VectorRegister comp = VectorCompareGT(absx, GlobalVectorConstants::PiByTwo);
-	X = VectorSelect(comp, rflx, X);
-	sign = VectorSelect(comp, GlobalVectorConstants::FloatMinusOne, GlobalVectorConstants::FloatOne);
-
-	const VectorRegister XSquared = VectorMultiply(X, X);
-
-	// 11-degree minimax approximation
-	//*ScalarSin = (((((-2.3889859e-08f * y2 + 2.7525562e-06f) * y2 - 0.00019840874f) * y2 + 0.0083333310f) * y2 - 0.16666667f) * y2 + 1.0f) * y;
-	const VectorRegister SinCoeff0 = MakeVectorRegister(1.0f, -0.16666667f, 0.0083333310f, -0.00019840874f);
-	const VectorRegister SinCoeff1 = MakeVectorRegister(2.7525562e-06f, -2.3889859e-08f, /*unused*/ 0.f, /*unused*/ 0.f);
-
-	VectorRegister S;
-	S = VectorReplicate(SinCoeff1, 1);
-	S = VectorMultiplyAdd(XSquared, S, VectorReplicate(SinCoeff1, 0));
-	S = VectorMultiplyAdd(XSquared, S, VectorReplicate(SinCoeff0, 3));
-	S = VectorMultiplyAdd(XSquared, S, VectorReplicate(SinCoeff0, 2));
-	S = VectorMultiplyAdd(XSquared, S, VectorReplicate(SinCoeff0, 1));
-	S = VectorMultiplyAdd(XSquared, S, VectorReplicate(SinCoeff0, 0));
-	*VSinAngles = VectorMultiply(S, X);
-
-	// 10-degree minimax approximation
-	//*ScalarCos = sign * (((((-2.6051615e-07f * y2 + 2.4760495e-05f) * y2 - 0.0013888378f) * y2 + 0.041666638f) * y2 - 0.5f) * y2 + 1.0f);
-	const VectorRegister CosCoeff0 = MakeVectorRegister(1.0f, -0.5f, 0.041666638f, -0.0013888378f);
-	const VectorRegister CosCoeff1 = MakeVectorRegister(2.4760495e-05f, -2.6051615e-07f, /*unused*/ 0.f, /*unused*/ 0.f);
-
-	VectorRegister C;
-	C = VectorReplicate(CosCoeff1, 1);
-	C = VectorMultiplyAdd(XSquared, C, VectorReplicate(CosCoeff1, 0));
-	C = VectorMultiplyAdd(XSquared, C, VectorReplicate(CosCoeff0, 3));
-	C = VectorMultiplyAdd(XSquared, C, VectorReplicate(CosCoeff0, 2));
-	C = VectorMultiplyAdd(XSquared, C, VectorReplicate(CosCoeff0, 1));
-	C = VectorMultiplyAdd(XSquared, C, VectorReplicate(CosCoeff0, 0));
-	*VCosAngles = VectorMultiply(C, sign);
+	*VSinAngles = VecSin.v;
+	*VCosAngles = VecCos.v;
 }
 
 // Returns true if the vector contains a component that is either NAN or +/-infinite.
@@ -1449,157 +1394,123 @@ inline bool VectorContainsNaNOrInfinite(const VectorRegister& Vec)
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorExp(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Exp(Val[0]), FMath::Exp(Val[1]), FMath::Exp(Val[2]), FMath::Exp(Val[3]));
+	return MakeVectorRegister(FMath::Exp(VectorGetComponent(X, 0)), FMath::Exp(VectorGetComponent(X, 1)), FMath::Exp(VectorGetComponent(X, 2)), FMath::Exp(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorExp2(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Exp2(Val[0]), FMath::Exp2(Val[1]), FMath::Exp2(Val[2]), FMath::Exp2(Val[3]));
+	return MakeVectorRegister(FMath::Exp2(VectorGetComponent(X, 0)), FMath::Exp2(VectorGetComponent(X, 1)), FMath::Exp2(VectorGetComponent(X, 2)), FMath::Exp2(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorLog(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Loge(Val[0]), FMath::Loge(Val[1]), FMath::Loge(Val[2]), FMath::Loge(Val[3]));
+	return MakeVectorRegister(FMath::Loge(VectorGetComponent(X, 0)), FMath::Loge(VectorGetComponent(X, 1)), FMath::Loge(VectorGetComponent(X, 2)), FMath::Loge(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorLog2(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Log2(Val[0]), FMath::Log2(Val[1]), FMath::Log2(Val[2]), FMath::Log2(Val[3]));
+	return MakeVectorRegister(FMath::Log2(VectorGetComponent(X, 0)), FMath::Log2(VectorGetComponent(X, 1)), FMath::Log2(VectorGetComponent(X, 2)), FMath::Log2(VectorGetComponent(X, 3)));
+}
+
+//TODO: Vectorize
+FORCEINLINE VectorRegister VectorSin(const VectorRegister& X)
+{
+	return MakeVectorRegister(FMath::Sin(VectorGetComponent(X, 0)), FMath::Sin(VectorGetComponent(X, 1)), FMath::Sin(VectorGetComponent(X, 2)), FMath::Sin(VectorGetComponent(X, 3)));
+}
+
+//TODO: Vectorize
+FORCEINLINE VectorRegister VectorCos(const VectorRegister& X)
+{
+	return MakeVectorRegister(FMath::Cos(VectorGetComponent(X, 0)), FMath::Cos(VectorGetComponent(X, 1)), FMath::Cos(VectorGetComponent(X, 2)), FMath::Cos(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorTan(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Tan(Val[0]), FMath::Tan(Val[1]), FMath::Tan(Val[2]), FMath::Tan(Val[3]));
+	return MakeVectorRegister(FMath::Tan(VectorGetComponent(X, 0)), FMath::Tan(VectorGetComponent(X, 1)), FMath::Tan(VectorGetComponent(X, 2)), FMath::Tan(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorASin(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Asin(Val[0]), FMath::Asin(Val[1]), FMath::Asin(Val[2]), FMath::Asin(Val[3]));
+	return MakeVectorRegister(FMath::Asin(VectorGetComponent(X, 0)), FMath::Asin(VectorGetComponent(X, 1)), FMath::Asin(VectorGetComponent(X, 2)), FMath::Asin(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorACos(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Acos(Val[0]), FMath::Acos(Val[1]), FMath::Acos(Val[2]), FMath::Acos(Val[3]));
+	return MakeVectorRegister(FMath::Acos(VectorGetComponent(X, 0)), FMath::Acos(VectorGetComponent(X, 1)), FMath::Acos(VectorGetComponent(X, 2)), FMath::Acos(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorATan(const VectorRegister& X)
 {
-	MS_ALIGN(16) float Val[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, Val);
-	return MakeVectorRegister(FMath::Atan(Val[0]), FMath::Atan(Val[1]), FMath::Atan(Val[2]), FMath::Atan(Val[3]));
+	return MakeVectorRegister(FMath::Atan(VectorGetComponent(X, 0)), FMath::Atan(VectorGetComponent(X, 1)), FMath::Atan(VectorGetComponent(X, 2)), FMath::Atan(VectorGetComponent(X, 3)));
 }
 
 //TODO: Vectorize
 FORCEINLINE VectorRegister VectorATan2(const VectorRegister& X, const VectorRegister& Y)
 {
-	MS_ALIGN(16) float ValX[4] GCC_ALIGN(16);
-	VectorStoreAligned(X, ValX);
-	MS_ALIGN(16) float ValY[4] GCC_ALIGN(16);
-	VectorStoreAligned(Y, ValY);
-
-	return MakeVectorRegister(FMath::Atan2(ValX[0], ValY[0]),
-							  FMath::Atan2(ValX[1], ValY[1]),
-							  FMath::Atan2(ValX[2], ValY[2]),
-							  FMath::Atan2(ValX[3], ValY[3]));
+	return MakeVectorRegister(FMath::Atan2(VectorGetComponent(X, 0), VectorGetComponent(Y, 0)),
+		FMath::Atan2(VectorGetComponent(X, 1), VectorGetComponent(Y, 1)),
+		FMath::Atan2(VectorGetComponent(X, 2), VectorGetComponent(Y, 2)),
+		FMath::Atan2(VectorGetComponent(X, 3), VectorGetComponent(Y, 3)));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorCeil(const VectorRegister& X)
 {
-	return vrndpq_f32(X);
+	return MakeVectorRegister(FMath::CeilToFloat(VectorGetComponent(X, 0)), FMath::CeilToFloat(VectorGetComponent(X, 1)), FMath::CeilToFloat(VectorGetComponent(X, 2)), FMath::CeilToFloat(VectorGetComponent(X, 3)));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorFloor(const VectorRegister& X)
 {
-	return vrndmq_f32(X);
+	return MakeVectorRegister(FMath::FloorToFloat(VectorGetComponent(X, 0)), FMath::FloorToFloat(VectorGetComponent(X, 1)), FMath::FloorToFloat(VectorGetComponent(X, 2)), FMath::FloorToFloat(VectorGetComponent(X, 3)));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorTruncate(const VectorRegister& X)
 {
-	return vrndq_f32(X);
+	return MakeVectorRegister(FMath::TruncToFloat(VectorGetComponent(X, 0)), FMath::TruncToFloat(VectorGetComponent(X, 1)), FMath::TruncToFloat(VectorGetComponent(X, 2)), FMath::TruncToFloat(VectorGetComponent(X, 3)));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorFractional(const VectorRegister& X)
 {
 	return VectorSubtract(X, VectorTruncate(X));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorMod(const VectorRegister& X, const VectorRegister& Y)
 {
-	VectorRegister Div = VectorDivide(X, Y);
-	// Floats where abs(f) >= 2^23 have no fractional portion, and larger values would overflow VectorTruncate.
-	VectorRegister NoFractionMask = VectorCompareGE(VectorAbs(Div), GlobalVectorConstants::FloatNonFractional);
-	VectorRegister Temp = VectorSelect(NoFractionMask, Div, VectorTruncate(Div));
-	VectorRegister Result = VectorNegateMultiplyAdd(Y, Temp, X);
-	// Clamp to [-AbsY, AbsY] because of possible failures for very large numbers (>1e10) due to precision loss.
-	VectorRegister AbsY = VectorAbs(Y);
-	return vmaxnmq_f32(VectorNegate(AbsY), vminnmq_f32(Result, AbsY));
+	return MakeVectorRegister(FMath::Fmod(VectorGetComponent(X, 0), VectorGetComponent(Y, 0)),
+		FMath::Fmod(VectorGetComponent(X, 1), VectorGetComponent(Y, 1)),
+		FMath::Fmod(VectorGetComponent(X, 2), VectorGetComponent(Y, 2)),
+		FMath::Fmod(VectorGetComponent(X, 3), VectorGetComponent(Y, 3)));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorSign(const VectorRegister& X)
 {
-	VectorRegister Mask = VectorCompareGE(X, (GlobalVectorConstants::FloatZero));
-	return VectorSelect(Mask, (GlobalVectorConstants::FloatOne), (GlobalVectorConstants::FloatMinusOne));
+	return MakeVectorRegister(
+		(float)(VectorGetComponent(X, 0) >= 0.0f ? 1.0f : -1.0f),
+		(float)(VectorGetComponent(X, 1) >= 0.0f ? 1.0f : -1.0f),
+		(float)(VectorGetComponent(X, 2) >= 0.0f ? 1.0f : -1.0f),
+		(float)(VectorGetComponent(X, 3) >= 0.0f ? 1.0f : -1.0f));
 }
 
+//TODO: Vectorize
 FORCEINLINE VectorRegister VectorStep(const VectorRegister& X)
 {
-	VectorRegister Mask = VectorCompareGE(X, (GlobalVectorConstants::FloatZero));
-	return VectorSelect(Mask, (GlobalVectorConstants::FloatOne), (GlobalVectorConstants::FloatZero));
-}
-
-namespace VectorSinConstantsNEON
-{
-	static const float p = 0.225f;
-	static const float a = (16 * sqrtf(p));
-	static const float b = ((1 - p) / sqrtf(p));
-	static const VectorRegister A = MakeVectorRegister(a, a, a, a);
-	static const VectorRegister B = MakeVectorRegister(b, b, b, b);
-}
-
-FORCEINLINE VectorRegister VectorSin(const VectorRegister& X)
-{
-	//Sine approximation using a squared parabola restrained to f(0) = 0, f(PI) = 0, f(PI/2) = 1.
-	//based on a good discussion here http://forum.devmaster.net/t/fast-and-accurate-sine-cosine/9648
-	//After approx 2.5 million tests comparing to sin(): 
-	//Average error of 0.000128
-	//Max error of 0.001091
-	//
-	// Error clarification - the *relative* error rises above 1.2% near
-	// 0 and PI (as the result nears 0). This is enough to introduce 
-	// harmonic distortion when used as an oscillator - VectorSinCos
-	// doesn't cost that much more and is significantly more accurate.
-	// (though don't use either for an oscillator if you care about perf)
-
-	VectorRegister Y = VectorMultiply(X, GlobalVectorConstants::OneOverTwoPi);
-	Y = VectorSubtract(Y, VectorFloor(VectorAdd(Y, GlobalVectorConstants::FloatOneHalf)));
-	Y = VectorMultiply(VectorSinConstantsNEON::A, VectorMultiply(Y, VectorSubtract(GlobalVectorConstants::FloatOneHalf, VectorAbs(Y))));
-	return VectorMultiply(Y, VectorAdd(VectorSinConstantsNEON::B, VectorAbs(Y)));
-}
-
-FORCEINLINE VectorRegister VectorCos(const VectorRegister& X)
-{
-	return VectorSin(VectorAdd(X, GlobalVectorConstants::PiByTwo));
+	return MakeVectorRegister(
+		(float)(VectorGetComponent(X, 0) >= 0.0f ? 1.0f : 0.0f),
+		(float)(VectorGetComponent(X, 1) >= 0.0f ? 1.0f : 0.0f),
+		(float)(VectorGetComponent(X, 2) >= 0.0f ? 1.0f : 0.0f),
+		(float)(VectorGetComponent(X, 3) >= 0.0f ? 1.0f : 0.0f));
 }
 
 /**
@@ -1609,17 +1520,17 @@ FORCEINLINE VectorRegister VectorCos(const VectorRegister& X)
 * @param Ptr			Unaligned memory pointer to the RGBA16(8 bytes).
 * @return				VectorRegister with 4 FLOATs loaded from Ptr.
 */
-FORCEINLINE VectorRegister VectorLoadURGBA16N(uint16* E)
+FORCEINLINE VectorRegister VectorLoadURGBA16N(void* Ptr)
 {
-	MS_ALIGN(16) float V[4] GCC_ALIGN(16);
-	V[0] = float(E[0]);
-	V[1] = float(E[1]);
-	V[2] = float(E[2]);
-	V[3] = float(E[3]);
+	float V[4];
+	uint16* E = (uint16*)Ptr;
 
-	VectorRegister Vec = VectorLoad(V);
-	VectorRegister Div = vdupq_n_f32(1.0f / 65535.0f);
-	return VectorMultiply(Vec, Div);
+	V[0] = float(E[0]) / 65535.0f;
+	V[1] = float(E[1]) / 65535.0f;
+	V[2] = float(E[2]) / 65535.0f;
+	V[3] = float(E[3]) / 65535.0f;
+
+	return MakeVectorRegister(V[0], V[1], V[2], V[3]);
 }
 
 /**
@@ -1631,17 +1542,15 @@ FORCEINLINE VectorRegister VectorLoadURGBA16N(uint16* E)
 */
 FORCEINLINE VectorRegister VectorLoadSRGBA16N(void* Ptr)
 {
-	MS_ALIGN(16) float V[4] GCC_ALIGN(16);
+	float V[4];
 	int16* E = (int16*)Ptr;
 
-	V[0] = float(E[0]);
-	V[1] = float(E[1]);
-	V[2] = float(E[2]);
-	V[3] = float(E[3]);
+	V[0] = float(E[0]) / 32767.0;
+	V[1] = float(E[1]) / 32767.0;
+	V[2] = float(E[2]) / 32767.0;
+	V[3] = float(E[3]) / 32767.0;
 
-	VectorRegister Vec = VectorLoad(V);
-	VectorRegister Div = vdupq_n_f32(1.0f / 32767.0f);
-	return VectorMultiply(Vec, Div);
+	return MakeVectorRegister(V[0], V[1], V[2], V[3]);
 }
 
 /**
@@ -1651,21 +1560,19 @@ FORCEINLINE VectorRegister VectorLoadSRGBA16N(void* Ptr)
 * @param Vec			Vector containing 4 FLOATs
 * @param Ptr			Unaligned memory pointer to store the packed RGBA16(8 bytes).
 */
-FORCEINLINE void VectorStoreURGBA16N(const VectorRegister& Vec, uint16* Out)
+FORCEINLINE void VectorStoreURGBA16N(const VectorRegister& Vec, void* Ptr)
 {
 	VectorRegister Tmp;
-	Tmp = VectorMax(Vec, VectorZero());
-	Tmp = VectorMin(Tmp, VectorOne());
-	Tmp = VectorMultiplyAdd(Tmp, vdupq_n_f32(65535.0f), vdupq_n_f32(0.5f));
+	Tmp = VectorMax(Vec, MakeVectorRegister(0.0f, 0.0f, 0.0f, 0.0f));
+	Tmp = VectorMin(Tmp, MakeVectorRegister(1.0f, 1.0f, 1.0f, 1.0f));
+	Tmp = VectorMultiplyAdd(Tmp, MakeVectorRegister(65535.0f, 65535.0f, 65535.0f, 65535.0f), MakeVectorRegister(0.5f, 0.5f, 0.5f, 0.5f));
 	Tmp = VectorTruncate(Tmp);
 
-	MS_ALIGN(16) float F[4] GCC_ALIGN(16);
-	VectorStoreAligned(Tmp, F);
-
-	Out[0] = (uint16)F[0];
-	Out[1] = (uint16)F[1];
-	Out[2] = (uint16)F[2];
-	Out[3] = (uint16)F[3];
+	uint16* Out = (uint16*)Ptr;
+	Out[0] = (uint16)VectorGetComponent(Tmp, 0);
+	Out[1] = (uint16)VectorGetComponent(Tmp, 1);
+	Out[2] = (uint16)VectorGetComponent(Tmp, 2);
+	Out[3] = (uint16)VectorGetComponent(Tmp, 3);
 }
 
 //////////////////////////////////////////////////////////////////////////

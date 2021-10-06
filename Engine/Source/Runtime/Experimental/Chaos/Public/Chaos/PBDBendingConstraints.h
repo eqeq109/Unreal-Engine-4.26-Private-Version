@@ -8,17 +8,18 @@
 
 namespace Chaos
 {
-class FPBDBendingConstraints : public FParticleRule, public FPBDBendingConstraintsBase
+template<class T>
+class TPBDBendingConstraints : public TParticleRule<T, 3>, public TPBDBendingConstraintsBase<T>
 {
-	typedef FPBDBendingConstraintsBase Base;
+	typedef TPBDBendingConstraintsBase<T> Base;
 	using Base::MConstraints;
 
   public:
-	FPBDBendingConstraints(const FDynamicParticles& InParticles, TArray<TVec4<int32>>&& Constraints, const FReal stiffness = (FReal)1.)
+	TPBDBendingConstraints(const TDynamicParticles<T, 3>& InParticles, TArray<TVector<int32, 4>>&& Constraints, const T stiffness = (T)1)
 	    : Base(InParticles, MoveTemp(Constraints), stiffness) {}
-	virtual ~FPBDBendingConstraints() {}
+	virtual ~TPBDBendingConstraints() {}
 
-	void Apply(FPBDParticles& InParticles, const FReal Dt) const override //-V762
+	void Apply(TPBDParticles<T, 3>& InParticles, const T Dt) const override //-V762
 	{
 		for (int i = 0; i < MConstraints.Num(); ++i)
 		{
@@ -36,7 +37,4 @@ class FPBDBendingConstraints : public FParticleRule, public FPBDBendingConstrain
 		}
 	}
 };
-
-template<class T>
-using TPBDBendingConstraints UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPBDBendingConstraints instead") = FPBDBendingConstraints;
 }

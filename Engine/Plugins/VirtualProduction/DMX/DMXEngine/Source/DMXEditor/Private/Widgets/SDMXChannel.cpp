@@ -29,24 +29,24 @@ void SDMXChannel::Construct(const FArguments& InArgs)
 	SetVisibility(EVisibility::SelfHitTestInvisible);
 	SetCanTick(false);
 
-	ChannelID = InArgs._ChannelID;
-	Value = InArgs._Value;
+	BoundID = InArgs._ID;
+	BoundValue = InArgs._Value;
 	NewValueFreshness = 0.0f;
 
 	const float PaddingInfo = 3.0f;
 
 
-	ChannelIDTextBlock =
+	TSharedPtr<STextBlock> ChannelIDTextBlock =
 		SNew(STextBlock)
-		.Text(GetChannelIDText())
+		.Text(this, &SDMXChannel::GetIDLabel)
 		.ColorAndOpacity(FSlateColor(IDColor))
 		.MinDesiredWidth(23.0f)
 		.Justification(ETextJustify::Center)
 		.Font(FDMXEditorStyle::Get().GetFontStyle("DMXEditor.Font.InputChannelID"));
 
-	ChannelValueTextBlock =
+	TSharedPtr<STextBlock> ChannelValueTextBlock =
 		SNew(STextBlock)
-		.Text(GetValueText())
+		.Text(this, &SDMXChannel::GetValueLabel)
 		.ColorAndOpacity(FSlateColor(ValueColor))
 		.MinDesiredWidth(23.0f)
 		.Justification(ETextJustify::Center)
@@ -79,7 +79,7 @@ void SDMXChannel::Construct(const FArguments& InArgs)
 			// Background color image
 			SAssignNew(BarColorBorder, SImage)
 			.Image(FDMXEditorStyle::Get().GetBrush(TEXT("DMXEditor.WhiteBrush")))
-			.ColorAndOpacity(GetBackgroundColor())
+			.ColorAndOpacity(this, &SDMXChannel::GetBackgroundColor)
 		]
 
 		// Info
@@ -120,39 +120,31 @@ void SDMXChannel::Construct(const FArguments& InArgs)
 	];
 }
 
-void SDMXChannel::SetChannelID(uint32 NewChannelID)
+void SDMXChannel::SetID(const TAttribute<uint32>& NewID)
 {
-	ChannelID = NewChannelID;
+	BoundID = NewID;
 }
 
-void SDMXChannel::SetValue(uint8 NewValue)
+void SDMXChannel::SetValue(const TAttribute<uint8>& NewValue)
 {
-	check(ChannelValueTextBlock.IsValid());
-
 	// is NewValue a different value from current one?
-	if (NewValue != Value)
+	if (NewValue.Get() != BoundValue.Get())
 	{
-		Value = NewValue;
-
-		ChannelValueTextBlock->SetText(GetValueText());
-
 		// Activate timer to animate value bar color
 		if (!AnimationTimerHandle.IsValid())
 		{
 			AnimationTimerHandle = RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SDMXChannel::UpdateValueChangedAnim));
 		}
-
 		// restart value change animation
 		NewValueFreshness = 1.0f;
 	}
+	BoundValue = NewValue;
 }
 
 EActiveTimerReturnType SDMXChannel::UpdateValueChangedAnim(double InCurrentTime, float InDeltaTime)
 {
 	NewValueFreshness = FMath::Max(NewValueFreshness - InDeltaTime / NewValueChangedAnimDuration, 0.0f);
 	
-	BarColorBorder->SetColorAndOpacity(GetBackgroundColor());
-
 	// disable timer when the value bar color animation ends
 	if (NewValueFreshness <= 0.0f)
 	{
@@ -165,19 +157,19 @@ EActiveTimerReturnType SDMXChannel::UpdateValueChangedAnim(double InCurrentTime,
 	return EActiveTimerReturnType::Continue;
 }
 
-FText SDMXChannel::GetChannelIDText() const
+FText SDMXChannel::GetIDLabel() const
 {
-	return FText::AsNumber(ChannelID);
+	return FText::AsNumber(BoundID.Get());
 }
 
-FText SDMXChannel::GetValueText() const
+FText SDMXChannel::GetValueLabel() const
 {
-	return FText::AsNumber(Value);
+	return FText::AsNumber(BoundValue.Get());
 }
 
 FSlateColor SDMXChannel::GetBackgroundColor() const
 {
-	const float CurrentPercent = static_cast<float>(Value) / DMX_MAX_CHANNEL_VALUE;
+	const float CurrentPercent = static_cast<float>(BoundValue.Get()) / DMX_MAX_CHANNEL_VALUE;
 
 	// totally transparent when 0
 	if (CurrentPercent <= 0.0f)

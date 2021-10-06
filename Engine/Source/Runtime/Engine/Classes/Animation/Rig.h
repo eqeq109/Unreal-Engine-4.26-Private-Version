@@ -99,7 +99,7 @@ struct FRigTransformConstraint
 
 	/** What transform type **/
 	UPROPERTY(/*EditAnywhere, Category="FTransformBaseConstraint"*/)
-	TEnumAsByte<EConstraintTransform::Type>	TranformType = EConstraintTransform::Absolute;
+	TEnumAsByte<EConstraintTransform::Type>	TranformType;
 
 	/** Parent space that are define **/
 	UPROPERTY(EditAnywhere, Category="FTransformBaseConstraint")
@@ -107,7 +107,7 @@ struct FRigTransformConstraint
 
 	/** Weight of the influence - for future*/
 	UPROPERTY(/*EditAnywhere, Category="FTransformBaseConstraint"*/)
-	float	Weight = 0.f;
+	float	Weight;
 };
 
 /** This defines what constraint it is defined */

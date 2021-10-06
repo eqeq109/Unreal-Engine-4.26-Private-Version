@@ -9,12 +9,6 @@
 
 class AUsdStageActor;
 
-namespace UsdUtils
-{
-	struct FObjectChangeNotice;
-	using FObjectChangesByPath = TMap<FString, TArray<FObjectChangeNotice>>;
-}
-
 #if USE_USD_SDK
 
 class SUsdStageInfo : public SCompoundWidget
@@ -40,7 +34,7 @@ private:
 	FText GetRootLayerDisplayName() const { return StageInfos.RootLayerDisplayName; }
 	FText GetMetersPerUnit() const;
 
-	void OnObjectsChanged( const UsdUtils::FObjectChangesByPath& InfoChanges, const UsdUtils::FObjectChangesByPath& ResyncChanges );
+	void OnStageInfoChanged( const TArray<FString>& ChangedFields );
 	void OnMetersPerUnitCommitted( const FText& InUnitsPerMeterText, ETextCommit::Type InCommitInfo );
 };
 

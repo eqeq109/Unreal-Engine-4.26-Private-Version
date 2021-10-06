@@ -673,46 +673,39 @@ namespace Cook
 			SetIsPreloadAttempted(true);
 			return true;
 		}
-		if (GAllowCookedDataInEditorBuilds)
-		{
-			// Use of preloaded files is not yet implemented when GAllowCookedDataInEditorBuilds is on, see FLinkerLoad::CreateLoader
-			SetIsPreloadAttempted(true);
-			return true;
-		}
-		if (!PreloadableFile.Get())
+		if (!PreloadableFile)
 		{
 			TStringBuilder<NAME_SIZE> FileNameString;
 			GetFileName().ToString(FileNameString);
-			PreloadableFile.Set(MakeShared<FPreloadableFile>(FileNameString.ToString()), *this);
-			PreloadableFile.Get()->InitializeAsync(FPreloadableFile::Flags::PreloadHandle | FPreloadableFile::Flags::Prime);
+			PreloadableFile = MakeShared<FPreloadableFile>(FileNameString.ToString());
+			PackageDatas.GetMonitor().OnPreloadAllocatedChanged(*this, true);
+			PreloadableFile->InitializeAsync(FPreloadableFile::Flags::PreloadHandle | FPreloadableFile::Flags::Prime);
 		}
-		const TSharedPtr<FPreloadableFile>& FilePtr = PreloadableFile.Get();
-		if (!FilePtr->IsInitialized())
+		if (!PreloadableFile->IsInitialized())
 		{
 			if (GetIsUrgent())
 			{
 				// For urgent requests, wait on them to finish preloading rather than letting them run asynchronously and coming back to them later
-				FilePtr->WaitForInitialization();
-				check(FilePtr->IsInitialized());
+				PreloadableFile->WaitForInitialization();
+				check(PreloadableFile->IsInitialized());
 			}
 			else
 			{
 				return false;
 			}
 		}
-		if (FilePtr->TotalSize() < 0)
+		if (PreloadableFile->TotalSize() < 0)
 		{
-			UE_LOG(LogCook, Warning, TEXT("Failed to find file when preloading %s."), *GetFileName().ToString());
 			SetIsPreloadAttempted(true);
-			PreloadableFile.Reset(*this);
+			PreloadableFile.Reset();
 			return true;
 		}
 
-		if (!FPreloadableFile::TryRegister(FilePtr))
+		if (!FPreloadableFile::TryRegister(PreloadableFile))
 		{
 			UE_LOG(LogCook, Warning, TEXT("Duplicate attempts to register %s for preload."), *GetFileName().ToString());
 			SetIsPreloadAttempted(true);
-			PreloadableFile.Reset(*this);
+			PreloadableFile.Reset();
 			return true;
 		}
 
@@ -721,44 +714,28 @@ namespace Cook
 		return true;
 	}
 
-	void FPackageData::FTrackedPreloadableFilePtr::Set(TSharedPtr<FPreloadableFile>&& InPtr, FPackageData& Owner)
-	{
-		Reset(Owner);
-		if (InPtr)
-		{
-			Ptr = MoveTemp(InPtr);
-			Owner.PackageDatas.GetMonitor().OnPreloadAllocatedChanged(Owner, true);
-		}
-	}
-
-	void FPackageData::FTrackedPreloadableFilePtr::Reset(FPackageData& Owner)
-	{
-		if (Ptr)
-		{
-			Owner.PackageDatas.GetMonitor().OnPreloadAllocatedChanged(Owner, false);
-			Ptr.Reset();
-		}
-	}
-
 	void FPackageData::ClearPreload()
 	{
-		const TSharedPtr<FPreloadableFile>& FilePtr = PreloadableFile.Get();
 		if (GetIsPreloaded())
 		{
-			check(FilePtr);
-			if (FPreloadableFile::UnRegister(FilePtr))
+			check(PreloadableFile);
+			if (FPreloadableFile::UnRegister(PreloadableFile))
 			{
 				UE_LOG(LogCook, Display, TEXT("PreloadableFile was created for %s but never used. This is wasteful and bad for cook performance."), *PackageName.ToString());
 			}
-			FilePtr->ReleaseCache(); // ReleaseCache to conserve memory if the Linker still has a pointer to it
+			PreloadableFile->ReleaseCache(); // ReleaseCache to conserve memory if the Linker still has a pointer to it
 		}
 		else
 		{
-			check(!FilePtr || !FilePtr->IsCacheAllocated());
-			check(!FilePtr || !FPreloadableFile::UnRegister(FilePtr));
+			check(!PreloadableFile || !PreloadableFile->IsCacheAllocated());
+			check(!PreloadableFile || !FPreloadableFile::UnRegister(PreloadableFile));
 		}
 
-		PreloadableFile.Reset(*this);
+		if (PreloadableFile)
+		{
+			PreloadableFile.Reset();
+			PackageDatas.GetMonitor().OnPreloadAllocatedChanged(*this, false);
+		}
 		SetIsPreloaded(false);
 		SetIsPreloadAttempted(false);
 	}
@@ -766,7 +743,7 @@ namespace Cook
 	void FPackageData::CheckPreloadEmpty()
 	{
 		check(!GetIsPreloadAttempted());
-		check(!PreloadableFile.Get());
+		check(!PreloadableFile);
 		check(!GetIsPreloaded());
 	}
 

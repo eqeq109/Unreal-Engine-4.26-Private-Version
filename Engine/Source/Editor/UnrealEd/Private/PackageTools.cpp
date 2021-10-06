@@ -666,8 +666,7 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 				// Unload the current world
 				if (GIsEditor)
 				{
-					const bool bPromptForSave = InteractionMode == UPackageTools::EReloadPackagesInteractionMode::Interactive;
-					GEditor->CreateNewMapForEditing(bPromptForSave);
+					GEditor->CreateNewMapForEditing();
 				}
 				else if (UGameEngine* GameEngine = Cast<UGameEngine>(GEngine))
 				{
@@ -867,7 +866,7 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 				UObject* OldObject = RepointedObjectPair.Key;
 				UObject* NewObject = RepointedObjectPair.Value;
 
-				if (OldObject && OldObject->IsAsset())
+				if (OldObject->IsAsset())
 				{
 					if (const UBlueprint* OldBlueprint = Cast<UBlueprint>(OldObject))
 					{

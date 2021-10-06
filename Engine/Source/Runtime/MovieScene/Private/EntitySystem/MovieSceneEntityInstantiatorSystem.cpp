@@ -76,10 +76,11 @@ void UMovieSceneEntityInstantiatorSystem::UnlinkStaleObjectBindings(UE::MovieSce
 	{
 		const FSequenceInstance* TargetInstance = &InstanceRegistry->GetInstance(InstanceHandle);
 
-		FMovieSceneSequenceID ThisSequenceID     = TargetInstance->GetSequenceID();
-		FMovieSceneSequenceID RemappedSequenceID = InObjectBindingID.ResolveSequenceID(ThisSequenceID, *TargetInstance->GetPlayer());
+		// Is the binding in the same instance as the entity?
+		bool bBindingInThisSequence = InObjectBindingID.GetBindingSpace() == EMovieSceneObjectBindingSpace::Local && InObjectBindingID.GetSequenceID() == MovieSceneSequenceID::Root;
+		bBindingInThisSequence |= InObjectBindingID.GetBindingSpace() == EMovieSceneObjectBindingSpace::Root && TargetInstance->GetSequenceID() == InObjectBindingID.GetSequenceID();
 
-		if (RemappedSequenceID == ThisSequenceID)
+		if (bBindingInThisSequence)
 		{
 			if (InstanceRegistry->IsBindingInvalidated(InObjectBindingID.GetGuid(), InstanceHandle))
 			{
@@ -90,10 +91,16 @@ void UMovieSceneEntityInstantiatorSystem::UnlinkStaleObjectBindings(UE::MovieSce
 		{
 			if (!TargetInstance->IsRootSequence())
 			{
+				if (InObjectBindingID.GetBindingSpace() == EMovieSceneObjectBindingSpace::Local)
+				{
+					InObjectBindingID = InObjectBindingID.ResolveLocalToRoot(TargetInstance->GetSequenceID(), *TargetInstance->GetPlayer());
+				}
+
 				TargetInstance = &InstanceRegistry->GetInstance(TargetInstance->GetRootInstanceHandle());
 			}
 
-			FInstanceHandle SubInstance = TargetInstance->FindSubInstance(RemappedSequenceID);
+
+			FInstanceHandle SubInstance = TargetInstance->FindSubInstance(InObjectBindingID.GetSequenceID());
 			if (!InstanceRegistry->IsHandleValid(SubInstance) || InstanceRegistry->IsBindingInvalidated(InObjectBindingID.GetGuid(), SubInstance))
 			{
 				StaleEntities.Add(EntityID);

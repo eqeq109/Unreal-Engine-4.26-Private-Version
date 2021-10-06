@@ -3,9 +3,11 @@
 #include "InputDevice.h"
 #include "PixelStreamerInputComponent.h"
 #include "PixelStreamingSettings.h"
-#include "PixelStreamingModule.h"
+#include "IPixelStreamingModule.h"
 #include "ProtocolDefs.h"
 #include "JavaScriptKeyCodes.inl"
+#include "IPixelStreamingModule.h"
+
 #include "Engine/Engine.h"
 #include "Engine/GameEngine.h"
 #include "Engine/GameViewportClient.h"
@@ -113,10 +115,11 @@ public:
 
 const FVector2D FInputDevice::UnfocusedPos(-1.0f, -1.0f);
 
-FInputDevice::FInputDevice(const TSharedRef<FGenericApplicationMessageHandler>& InMessageHandler)
+FInputDevice::FInputDevice(const TSharedRef<FGenericApplicationMessageHandler>& InMessageHandler, TArray<UPixelStreamerInputComponent*>& InInputComponents)
 	: PixelStreamerApplicationWrapper(MakeShareable(new FApplicationWrapper(FSlateApplication::Get().GetPlatformApplication())))
 	, MessageHandler(InMessageHandler)
-	, bAllowCommands(PixelStreamingSettings::IsAllowPixelStreamingCommands())
+	, InputComponents(InInputComponents)
+	, bAllowCommands(FParse::Param(FCommandLine::Get(), TEXT("AllowPixelStreamingCommands")))
 	, bFakingTouchEvents(FSlateApplication::Get().IsFakingTouchEvents())
 	, FocusedPos(UnfocusedPos)
 	, PixelStreamingModule(FModuleManager::Get().GetModulePtr<IPixelStreamingModule>("PixelStreaming"))
@@ -131,7 +134,7 @@ FInputDevice::FInputDevice(const TSharedRef<FGenericApplicationMessageHandler>& 
 		// Check to see if we want to hide the cursor (by making it invisible).
 		// This is required if we want to make the cursor client-side (displayed
 		// only by the the browser).
-		bool bHideCursor = PixelStreamingSettings::IsPixelStreamingHideCursor();
+		bool bHideCursor = FParse::Param(FCommandLine::Get(), TEXT("PixelStreamingHideCursor"));
 		if (bHideCursor)
 		{
 			GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::Default, Settings->PixelStreamerHiddenCursorClassName);
@@ -155,16 +158,6 @@ void QuantizeAndNormalize(const FVector2D& InPos, uint16& OutX, uint16& OutY)
 	OutY = InPos.Y / SizeXY.Y * 65536.0f;
 }
 
-bool FilterKey(const FKey& Key)
-{
-	for (auto&& FilteredKey : PixelStreamingSettings::FilteredKeys)
-	{
-		if (FilteredKey == Key)
-			return false;
-	}
-	return true;
-}
-
 void FInputDevice::Tick(float DeltaTime)
 {
 	FEvent Event;
@@ -183,16 +176,13 @@ void FInputDevice::Tick(float DeltaTime)
 			bool IsRepeat;
 			Event.GetKeyDown(JavaScriptKeyCode, IsRepeat);
 			const FKey* AgnosticKey = JavaScriptKeyCodeToFKey[JavaScriptKeyCode];
-			if (FilterKey(*AgnosticKey))
-			{
-				const uint32* KeyCodePtr;
-				const uint32* CharacterCodePtr;
-				FInputKeyManager::Get().GetCodesFromKey(*AgnosticKey, KeyCodePtr, CharacterCodePtr);
-				uint32 KeyCode = KeyCodePtr ? *KeyCodePtr : 0;
-				uint32 CharacterCode = CharacterCodePtr ? *CharacterCodePtr : 0;
-				MessageHandler->OnKeyDown(KeyCode, CharacterCode, IsRepeat);
-				UE_LOG(PixelStreamerInputDevice, Verbose, TEXT("KEY_DOWN: KeyCode = %d; CharacterCode = %d; IsRepeat = %s"), KeyCode, CharacterCode, IsRepeat ? TEXT("True") : TEXT("False"));
-			}
+			const uint32* KeyCodePtr;
+			const uint32* CharacterCodePtr;
+			FInputKeyManager::Get().GetCodesFromKey(*AgnosticKey, KeyCodePtr, CharacterCodePtr);
+			uint32 KeyCode = KeyCodePtr ? *KeyCodePtr : 0;
+			uint32 CharacterCode = CharacterCodePtr ? *CharacterCodePtr : 0;
+			MessageHandler->OnKeyDown(KeyCode, CharacterCode, IsRepeat);
+			UE_LOG(PixelStreamerInputDevice, Verbose, TEXT("KEY_DOWN: KeyCode = %d; CharacterCode = %d; IsRepeat = %s"), KeyCode, CharacterCode, IsRepeat ? TEXT("True") : TEXT("False"));
 		}
 		break;
 		case EventType::KEY_UP:
@@ -200,16 +190,13 @@ void FInputDevice::Tick(float DeltaTime)
 			uint8 JavaScriptKeyCode;
 			Event.GetKeyUp(JavaScriptKeyCode);
 			const FKey* AgnosticKey = JavaScriptKeyCodeToFKey[JavaScriptKeyCode];
-			if (FilterKey(*AgnosticKey))
-			{
-				const uint32* KeyCodePtr;
-				const uint32* CharacterCodePtr;
-				FInputKeyManager::Get().GetCodesFromKey(*AgnosticKey, KeyCodePtr, CharacterCodePtr);
-				uint32 KeyCode = KeyCodePtr ? *KeyCodePtr : 0;
-				uint32 CharacterCode = CharacterCodePtr ? *CharacterCodePtr : 0;
-				MessageHandler->OnKeyUp(KeyCode, CharacterCode, false);   // Key up events are never repeats.
-				UE_LOG(PixelStreamerInputDevice, Verbose, TEXT("KEY_UP: KeyCode = %d; CharacterCode = %d"), KeyCode, CharacterCode);
-			}
+			const uint32* KeyCodePtr;
+			const uint32* CharacterCodePtr;
+			FInputKeyManager::Get().GetCodesFromKey(*AgnosticKey, KeyCodePtr, CharacterCodePtr);
+			uint32 KeyCode = KeyCodePtr ? *KeyCodePtr : 0;
+			uint32 CharacterCode = CharacterCodePtr ? *CharacterCodePtr : 0;
+			MessageHandler->OnKeyUp(KeyCode, CharacterCode, false);   // Key up events are never repeats.
+			UE_LOG(PixelStreamerInputDevice, Verbose, TEXT("KEY_UP: KeyCode = %d; CharacterCode = %d"), KeyCode, CharacterCode);
 		}
 		break;
 		case EventType::KEY_PRESS:
@@ -356,7 +343,7 @@ void FInputDevice::Tick(float DeltaTime)
 	FString UIInteraction;
 	while (UIInteractions.Dequeue(UIInteraction))
 	{
-		for (UPixelStreamerInputComponent* InputComponent : this->PixelStreamingModule->GetInputComponents())
+		for (UPixelStreamerInputComponent* InputComponent : InputComponents)
 		{
 			InputComponent->OnInputEvent.Broadcast(UIInteraction);
 			UE_LOG(PixelStreamerInputDevice, Verbose, TEXT("UIInteraction = %s"), *UIInteraction);
@@ -366,7 +353,7 @@ void FInputDevice::Tick(float DeltaTime)
 	FString Command;
 	while (Commands.Dequeue(Command))
 	{
-		for (UPixelStreamerInputComponent* InputComponent : this->PixelStreamingModule->GetInputComponents())
+		for (UPixelStreamerInputComponent* InputComponent : InputComponents)
 		{
 			if (InputComponent->OnCommand(Command))
 			{
@@ -466,8 +453,30 @@ void FInputDevice::FindFocusedWidget()
 
 namespace
 {
+	template<typename T>
+	const T& Get(const uint8*& Data, uint32& Size)
+	{
+		checkf(sizeof(T) <= Size, TEXT("%d - %d"), sizeof(T), Size);
+		const T& Value = *reinterpret_cast<const T*>(Data);
+		Data += sizeof(T);
+		Size -= sizeof(T);
+		return Value;
+	}
 
-#define GET(Type, Var) Type Var = PixelStreamingProtocol::ParseBuffer<Type>(Data, Size)
+#define GET(Type, Var) Type Var = Get<Type>(Data, Size)
+
+	FString GetString(const uint8*& Data, uint32& Size)
+	{
+		GET(uint16, StrLen);
+		checkf(StrLen * sizeof(TCHAR) <= Size, TEXT("%d - %d"), StrLen, Size);
+		FString Res;
+		Res.GetCharArray().SetNumUninitialized(StrLen + 1);
+		FMemory::Memcpy(Res.GetCharArray().GetData(), Data, StrLen * sizeof(TCHAR));
+		Res.GetCharArray()[StrLen] = '\0';
+		Data += StrLen * sizeof(TCHAR);
+		Size -= StrLen * sizeof(TCHAR);
+		return Res;
+	}
 
 	// XY positions are the ratio (0.0..1.0) along a viewport axis, quantized
 	// into an uint16 (0..65536). This allows the browser viewport and player
@@ -565,7 +574,7 @@ void FInputDevice::OnMessage(const uint8* Data, uint32 Size)
 	{
 	case EToStreamerMsg::UIInteraction:
 	{
-		FString Descriptor = PixelStreamingProtocol::ParseString(Data, Size);
+		FString Descriptor = GetString(Data, Size);
 		checkf(Size == 0, TEXT("%d, %d"), Size, Descriptor.Len());
 		UE_LOG(PixelStreamerInput, Verbose, TEXT("UIInteraction: %s"), *Descriptor);
 		ProcessUIInteraction(Descriptor);
@@ -573,7 +582,7 @@ void FInputDevice::OnMessage(const uint8* Data, uint32 Size)
 	}
 	case EToStreamerMsg::Command:
 	{
-		FString Descriptor = PixelStreamingProtocol::ParseString(Data, Size);
+		FString Descriptor = GetString(Data, Size);
 		checkf(Size == 0, TEXT("%d, %d"), Size, Descriptor.Len());
 		UE_LOG(PixelStreamerInput, Verbose, TEXT("Command: %s"), *Descriptor);
 		ProcessCommand(Descriptor);

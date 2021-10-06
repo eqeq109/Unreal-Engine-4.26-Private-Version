@@ -7,17 +7,23 @@
 #include "NiagaraDataSet.h"
 #include "NiagaraDataSetAccessor.h"
 
+enum class ENiagaraBoundsMeshOffsetTransform
+{
+	None,
+	WorldToLocal,
+	LocalToWorld
+};
+
 template<bool bUsedWithSprites, bool bUsedWithMeshes, bool bUsedWithRibbons>
 class FNiagaraBoundsCalculatorHelper : public FNiagaraBoundsCalculator
 {
 public:
 
 	FNiagaraBoundsCalculatorHelper() = default;
-	FNiagaraBoundsCalculatorHelper(const FVector& InMeshExtents, const FVector& InMaxLocalMeshOffset, const FVector& InMaxWorldMeshOffset, bool bInLocalSpace)
+	FNiagaraBoundsCalculatorHelper(const FVector& InMeshExtents, const FVector& InMeshOffset, ENiagaraBoundsMeshOffsetTransform InMeshOffsetTransform)
 		: MeshExtents(InMeshExtents)
-		, MaxLocalMeshOffset(InMaxLocalMeshOffset)
-		, MaxWorldMeshOffset(InMaxWorldMeshOffset)
-		, bLocalSpace(bInLocalSpace)
+		, MeshOffset(InMeshOffset)
+		, MeshOffsetTransform(InMeshOffsetTransform)
 	{}
 
 	virtual void InitAccessors(const FNiagaraDataSetCompiledData* CompiledData) override final
@@ -68,19 +74,34 @@ public:
 			const FVector ScaledExtents = MeshExtents * MaxScale;
 			MaxSize = FMath::Max(MaxSize, ScaledExtents.Size());
 			
-			FVector MaxTransformedOffset;
-			if (bLocalSpace)
+			// Apply a potentially transformed MeshOffset
+			FVector TransformedOffset;
+			switch (MeshOffsetTransform)
 			{
-				MaxTransformedOffset = MaxLocalMeshOffset.ComponentMax(SystemTransform.InverseTransformVector(MaxWorldMeshOffset));
+			case ENiagaraBoundsMeshOffsetTransform::LocalToWorld:
+				TransformedOffset = SystemTransform.TransformVector(MeshOffset);
+				break;
+
+			case ENiagaraBoundsMeshOffsetTransform::WorldToLocal:
+				TransformedOffset = SystemTransform.InverseTransformVector(MeshOffset);
+				break;
+
+			default:
+				TransformedOffset = MeshOffset;
+				break;
+			}
+
+			if (!bUsedWithSprites && !bUsedWithRibbons)
+			{
+				// If it's only used with meshes, we can simply shift the min/max
+				Bounds = Bounds.ShiftBy(TransformedOffset);
 			}
 			else
 			{
-				MaxTransformedOffset = MaxWorldMeshOffset.ComponentMax(SystemTransform.TransformVector(MaxLocalMeshOffset));
+				// We have to extend the min/max by the offset
+				Bounds.Max = Bounds.Max.ComponentMax(Bounds.Max + TransformedOffset);
+				Bounds.Min = Bounds.Min.ComponentMin(Bounds.Min + TransformedOffset);
 			}
-
-			// We have to extend the min/max by the offset
-			Bounds.Max = Bounds.Max.ComponentMax(Bounds.Max + MaxTransformedOffset);
-			Bounds.Min = Bounds.Min.ComponentMin(Bounds.Min - MaxTransformedOffset);
 		}
 
 		if (bUsedWithSprites)
@@ -115,7 +136,6 @@ public:
 	FNiagaraDataSetAccessor<float> RibbonWidthAccessor;
 
 	const FVector MeshExtents = FVector::OneVector;
-	const FVector MaxLocalMeshOffset = FVector::ZeroVector;
-	const FVector MaxWorldMeshOffset = FVector::ZeroVector;
-	const bool bLocalSpace = false;
+	const FVector MeshOffset = FVector::ZeroVector;
+	const ENiagaraBoundsMeshOffsetTransform MeshOffsetTransform = ENiagaraBoundsMeshOffsetTransform::None;
 };

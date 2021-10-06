@@ -272,22 +272,7 @@ void FStreamingGeometryCacheData::UpdateStreamingStatus()
 			RemoveResidentChunk(ResidentChunk);
 			ChunksEvicted.RemoveAt(ChunkId);
 		}
-	}
 
-	// Delete the read requests that were delayed
-	TSet<IBulkDataIORequest*> ReadyForDeletion;
-	for (IBulkDataIORequest* ReadRequest : DelayedDeleteReadRequests)
-	{
-		if (ReadRequest->PollCompletion())
-		{
-			ReadyForDeletion.Add(ReadRequest);
-		}
-	}
-
-	for (IBulkDataIORequest* ReadRequest : ReadyForDeletion)
-	{
-		DelayedDeleteReadRequests.Remove(ReadRequest);
-		delete ReadRequest;
 	}
 }
 
@@ -376,18 +361,8 @@ void FStreamingGeometryCacheData::ProcessCompletedChunks()
 		}
 
 		// Clean up the now fully processed IO request
-		if (CompletedChunk.ReadRequest->PollCompletion())
-		{
-			delete CompletedChunk.ReadRequest;
-		}
-		else
-		{
-			// The ReadRequest SetComplete is a 2-step process where the read completion callback OnAsyncReadComplete is called first,
-			// then the flag checked by PollCompletion, bCompleteAndCallbackCalled, is set to true.
-			// Since the callback is called from a worker thread, there's a possible window where the CompletedChunk gets processed
-			// but its ReadRequest completion flag is still false. In that case, the deletion is queued to be processed later
-			DelayedDeleteReadRequests.Add(CompletedChunk.ReadRequest);
-		}
+		check(CompletedChunk.ReadRequest->PollCompletion());
+		delete CompletedChunk.ReadRequest;
 	}
 }
 

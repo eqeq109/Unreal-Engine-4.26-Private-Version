@@ -10,6 +10,7 @@
 #include "RenderingThread.h"
 #include "Components/LightComponentBase.h"
 #include "Math/SHMath.h"
+#include "Rendering/SkyLightImportanceSampling.h"
 #include "SkyLightComponent.generated.h"
 
 class FSkyLightSceneProxy;
@@ -286,9 +287,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Rendering|Components|SkyLight")
 	void RecaptureSky();
 
+	void UpdateImportanceSamplingData();
+
 	virtual void Serialize(FArchive& Ar) override;
 
 	const FTexture* GetProcessedSkyTexture() const { return ProcessedSkyTexture; }
+#if RHI_RAYTRACING
+	const FSkyLightImportanceSamplingData* GetImportanceSamplingData() const { return ImportanceSamplingData; }
+#endif
 	FSHVectorRGB3 GetIrradianceEnvironmentMap() { return IrradianceEnvironmentMap; }
 protected:
 
@@ -304,7 +310,11 @@ protected:
 
 	TRefCountPtr<FSkyTextureCubeResource> ProcessedSkyTexture;
 	FSHVectorRGB3 IrradianceEnvironmentMap;
-	float AverageBrightness=0.0f;
+	float AverageBrightness;
+
+#if RHI_RAYTRACING
+	TRefCountPtr<FSkyLightImportanceSamplingData> ImportanceSamplingData;
+#endif
 
 	/** If 0, no blend is present.  If > 0, BlendDestinationProcessedSkyTexture and BlendDestinationIrradianceEnvironmentMap must be generated and used for rendering. */
 	float BlendFraction;
@@ -371,10 +381,14 @@ public:
 	FGuid LightGuid;
 
 	UPROPERTY()
-	float AverageBrightness = 1.0f;
+	float AverageBrightness;
 
 	// This has to be refcounted to keep it alive during the handoff without doing a deep copy
 	TRefCountPtr<FSkyTextureCubeResource> ProcessedSkyTexture;
+
+#if RHI_RAYTRACING
+	TRefCountPtr<FSkyLightImportanceSamplingData> ImportanceSamplingData;
+#endif
 
 	FSHVectorRGB3 IrradianceEnvironmentMap;
 };

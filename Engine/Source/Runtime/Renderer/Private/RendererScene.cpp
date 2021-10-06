@@ -21,7 +21,6 @@
 #include "SceneTypes.h"
 #include "SceneInterface.h"
 #include "Components/PrimitiveComponent.h"
-#include "PhysicsField/PhysicsFieldComponent.h"
 #include "MaterialShared.h"
 #include "SceneManagement.h"
 #include "PrecomputedLightVolume.h"
@@ -109,12 +108,6 @@ static FAutoConsoleVariableRef CVarAsyncCreateLightPrimitiveInteractions(
 	TEXT("r.AsyncCreateLightPrimitiveInteractions"),
 	GAsyncCreateLightPrimitiveInteractions,
 	TEXT("Whether to create LPIs asynchronously."),
-	ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<int32> CVarWPOPrimitivesOutputVelocity(
-	TEXT("r.WPOPrimitivesOutputVelocity"),
-	0,
-	TEXT("Whether primitives using World Position Offset (WPO) materials output velocity."),
 	ECVF_RenderThreadSafe);
 
 DECLARE_CYCLE_STAT(TEXT("DeferredShadingSceneRenderer MotionBlurStartFrame"), STAT_FDeferredShadingSceneRenderer_MotionBlurStartFrame, STATGROUP_SceneRendering);
@@ -231,10 +224,21 @@ FSceneViewState::FSceneViewState()
 	bUpdateLastExposure = false;
 
 #if RHI_RAYTRACING
+	VarianceMipTreeDimensions = FIntVector(0);
+	VarianceMipTree = new FRWBuffer;
 	PathTracingRect = FIntRect(0, 0, 0, 0);
-	PathTracingTargetSPP = 0;
-	PathTracingSampleIndex = 0;
-	PathTracingFrameIndex = 0;
+	TotalRayCount = 0;
+	TotalRayCountBuffer = new FRWBuffer;
+	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+	{
+		ENQUEUE_RENDER_COMMAND(InitializeSceneViewStateRWBuffer)(
+			[this](FRHICommandList&)
+			{
+				TotalRayCountBuffer->Initialize(sizeof(uint32), 1, PF_R32_UINT, BUF_SourceCopy);
+			});
+	}
+	bReadbackInitialized = false;
+	RayCountGPUReadback = new FRHIGPUBufferReadback(TEXT("Ray Count Readback"));
 
 	GatherPointsBuffer = nullptr;
 	GatherPointsResolution = FIntVector(0, 0, 0);
@@ -280,7 +284,16 @@ FSceneViewState::~FSceneViewState()
 	AOScreenGridResources = NULL;
 	DestroyLightPropagationVolume();
 
-	HairStrandsViewData.Release();
+#if RHI_RAYTRACING
+	DestroyRWBuffer(VarianceMipTree);
+	DestroyRWBuffer(TotalRayCountBuffer);
+
+	ENQUEUE_RENDER_COMMAND(FDeleteGpuReadback)(
+		[DeleteMe = RayCountGPUReadback](FRHICommandList&)
+	{
+		delete DeleteMe;
+	});
+#endif // RHI_RAYTRACING
 }
 
 #if WITH_EDITOR
@@ -1059,7 +1072,6 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 ,	ConvolvedSkyRenderTargetReadyIndex(-1)
 ,	RealTimeSlicedReflectionCaptureFirstFrameState(ERealTimeSlicedReflectionCaptureFirstFrameState::INIT)
 ,	RealTimeSlicedReflectionCaptureState(-1)
-,	RealTimeSlicedReflectionCaptureFrameNumber(0)
 ,	SimpleDirectionalLight(NULL)
 ,	ReflectionSceneData(InFeatureLevel)
 ,	IndirectLightingCache(InFeatureLevel)
@@ -1148,7 +1160,7 @@ FScene::FScene(UWorld* InWorld, bool bInRequiresHitProxies, bool bInIsEditorScen
 FScene::~FScene()
 {
 #if 0 // if you have component that has invalid scene, try this code to see this is reason. 
-	for (FThreadSafeObjectIterator Iter(UActorComponent::StaticClass()); Iter; ++Iter)
+	for (FObjectIterator Iter(UActorComponent::StaticClass()); Iter; ++Iter)
 	{
 		UActorComponent * ActorComp = CastChecked<UActorComponent>(*Iter);
 		if (ActorComp->GetScene() == this)
@@ -1869,37 +1881,6 @@ void FScene::AddOrRemoveDecal_RenderThread(FDeferredDecalProxy* Proxy, bool bAdd
 	}
 }
 
-void FScene::SetPhysicsField(FPhysicsFieldSceneProxy* PhysicsFieldSceneProxy)
-{
-	check(PhysicsFieldSceneProxy);
-	FScene* Scene = this;
-
-	ENQUEUE_RENDER_COMMAND(FSetPhysicsFieldCommand)(
-		[Scene, PhysicsFieldSceneProxy](FRHICommandListImmediate& RHICmdList)
-		{
-			Scene->PhysicsField = PhysicsFieldSceneProxy;
-		});
-}
-
-void FScene::ResetPhysicsField()
-{
-	FScene* Scene = this;
-
-	ENQUEUE_RENDER_COMMAND(FResetPhysicsFieldCommand)(
-		[Scene](FRHICommandListImmediate& RHICmdList)
-		{
-			Scene->PhysicsField = nullptr;
-		});
-}
-
-void FScene::UpdatePhysicsField(FRHICommandListImmediate& RHICmdList, FViewInfo& View)
-{
-	if (PhysicsField)
-	{
-		PhysicsField->FieldResource->FieldInfos.ViewOrigin = View.ViewMatrices.GetViewOrigin();
-	}
-}
-
 void FScene::AddDecal(UDecalComponent* Component)
 {
 	if(!Component->SceneProxy)
@@ -2030,14 +2011,14 @@ void FScene::AddReflectionCapture(UReflectionCaptureComponent* Component)
 			const int32 PackedIndex = Scene->ReflectionSceneData.RegisteredReflectionCaptures.Add(Proxy);
 
 			Proxy->PackedIndex = PackedIndex;
-			Scene->ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Add(FSphere(Proxy->Position, Proxy->InfluenceRadius));
+			Scene->ReflectionSceneData.RegisteredReflectionCapturePositions.Add(Proxy->Position);
 			
 			if (Scene->GetFeatureLevel() <= ERHIFeatureLevel::ES3_1)
 			{
 				Proxy->UpdateMobileUniformBuffer();
 			}
 
-			checkSlow(Scene->ReflectionSceneData.RegisteredReflectionCaptures.Num() == Scene->ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Num());
+			checkSlow(Scene->ReflectionSceneData.RegisteredReflectionCaptures.Num() == Scene->ReflectionSceneData.RegisteredReflectionCapturePositions.Num());
 		});
 	}
 }
@@ -2067,7 +2048,7 @@ void FScene::RemoveReflectionCapture(UReflectionCaptureComponent* Component)
 
 			int32 CaptureIndex = Proxy->PackedIndex;
 			Scene->ReflectionSceneData.RegisteredReflectionCaptures.RemoveAtSwap(CaptureIndex);
-			Scene->ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.RemoveAtSwap(CaptureIndex);
+			Scene->ReflectionSceneData.RegisteredReflectionCapturePositions.RemoveAtSwap(CaptureIndex);
 
 			if (Scene->ReflectionSceneData.RegisteredReflectionCaptures.IsValidIndex(CaptureIndex))
 			{
@@ -2077,7 +2058,7 @@ void FScene::RemoveReflectionCapture(UReflectionCaptureComponent* Component)
 
 			delete Proxy;
 
-			checkSlow(Scene->ReflectionSceneData.RegisteredReflectionCaptures.Num() == Scene->ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Num());
+			checkSlow(Scene->ReflectionSceneData.RegisteredReflectionCaptures.Num() == Scene->ReflectionSceneData.RegisteredReflectionCapturePositions.Num());
 		});
 
 		// Disassociate the primitive's scene proxy.
@@ -2161,38 +2142,17 @@ const FReflectionCaptureProxy* FScene::FindClosestReflectionCapture(FVector Posi
 	int32 ClosestCaptureIndex = INDEX_NONE;
 	float ClosestDistanceSquared = FLT_MAX;
 
-	int32 ClosestInfluencingCaptureIndex = INDEX_NONE;
-
 	// Linear search through the scene's reflection captures
-	// ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius has been packed densely to make this coherent in memory
-	for (int32 CaptureIndex = 0; CaptureIndex < ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Num(); CaptureIndex++)
+	// ReflectionSceneData.RegisteredReflectionCapturePositions has been packed densely to make this coherent in memory
+	for (int32 CaptureIndex = 0; CaptureIndex < ReflectionSceneData.RegisteredReflectionCapturePositions.Num(); CaptureIndex++)
 	{
-		const FSphere& ReflectionCapturePositionAndRadius = ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius[CaptureIndex];
+		const float DistanceSquared = (ReflectionSceneData.RegisteredReflectionCapturePositions[CaptureIndex] - Position).SizeSquared();
 
-		const float DistanceSquared = (ReflectionCapturePositionAndRadius.Center - Position).SizeSquared();
-
-		// If the Position is inside the InfluenceRadius of a ReflectionCapture
-		if (DistanceSquared <= FMath::Square(ReflectionCapturePositionAndRadius.W))
-		{
-			// Choose the closest ReflectionCapture or record the first one found.
-			if (ClosestInfluencingCaptureIndex == INDEX_NONE || DistanceSquared < ClosestDistanceSquared)
-			{
-				ClosestDistanceSquared = DistanceSquared;
-				ClosestInfluencingCaptureIndex = CaptureIndex;
-			}
-		}
-		// If no influencing ReflectionCapture has been found, record the closest ReflectionCapture.
-		else if (ClosestInfluencingCaptureIndex == INDEX_NONE && DistanceSquared < ClosestDistanceSquared)
+		if (DistanceSquared < ClosestDistanceSquared)
 		{
 			ClosestDistanceSquared = DistanceSquared;
 			ClosestCaptureIndex = CaptureIndex;
 		}
-	}
-
-	// Choose the closest influencing ReflectionCapture if any exists.
-	if (ClosestInfluencingCaptureIndex != INDEX_NONE)
-	{
-		ClosestCaptureIndex = ClosestInfluencingCaptureIndex;
 	}
 
 	return ClosestCaptureIndex != INDEX_NONE ? ReflectionSceneData.RegisteredReflectionCaptures[ClosestCaptureIndex] : NULL;
@@ -2251,7 +2211,7 @@ void FScene::FindClosestReflectionCaptures(FVector Position, const FReflectionCa
 	};
 
 	// Find the nearest n captures to this primitive. 
-	const int32 NumRegisteredReflectionCaptures = ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius.Num();
+	const int32 NumRegisteredReflectionCaptures = ReflectionSceneData.RegisteredReflectionCapturePositions.Num();
 	const int32 PopulateCaptureCount = FMath::Min(ArraySize, NumRegisteredReflectionCaptures);
 
 	TArray<FReflectionCaptureDistIndex, TFixedAllocator<ArraySize>> ClosestCaptureIndices;
@@ -2260,12 +2220,12 @@ void FScene::FindClosestReflectionCaptures(FVector Position, const FReflectionCa
 	for (int32 CaptureIndex = 0; CaptureIndex < PopulateCaptureCount; CaptureIndex++)
 	{
 		ClosestCaptureIndices[CaptureIndex].CaptureIndex = CaptureIndex;
-		ClosestCaptureIndices[CaptureIndex].CaptureDistance = (ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius[CaptureIndex].Center - Position).SizeSquared();
+		ClosestCaptureIndices[CaptureIndex].CaptureDistance = (ReflectionSceneData.RegisteredReflectionCapturePositions[CaptureIndex] - Position).SizeSquared();
 	}
 	
 	for (int32 CaptureIndex = PopulateCaptureCount; CaptureIndex < NumRegisteredReflectionCaptures; CaptureIndex++)
 	{
-		const float DistanceSquared = (ReflectionSceneData.RegisteredReflectionCapturePositionAndRadius[CaptureIndex].Center - Position).SizeSquared();
+		const float DistanceSquared = (ReflectionSceneData.RegisteredReflectionCapturePositions[CaptureIndex] - Position).SizeSquared();
 		for (int32 i = 0; i < ArraySize; i++)
 		{
 			if (DistanceSquared<ClosestCaptureIndices[i].CaptureDistance)
@@ -2928,7 +2888,7 @@ void FScene::AddWindSource(UWindDirectionalSourceComponent* WindComponent)
 	{
 		return;
 	}
-	ensure(IsInGameThread());
+
 	WindComponents_GameThread.Add(WindComponent);
 
 	FWindSourceSceneProxy* SceneProxy = WindComponent->CreateSceneProxy();
@@ -2944,7 +2904,6 @@ void FScene::AddWindSource(UWindDirectionalSourceComponent* WindComponent)
 
 void FScene::RemoveWindSource(UWindDirectionalSourceComponent* WindComponent)
 {
-	ensure(IsInGameThread());
 	WindComponents_GameThread.Remove(WindComponent);
 
 	FWindSourceSceneProxy* SceneProxy = WindComponent->SceneProxy;
@@ -2961,39 +2920,6 @@ void FScene::RemoveWindSource(UWindDirectionalSourceComponent* WindComponent)
 				delete SceneProxy;
 			});
 	}
-}
-
-void FScene::UpdateWindSource(UWindDirectionalSourceComponent* WindComponent)
-{
-	// Recreate the scene proxy without touching WindComponents_GameThread
-	// so that this function is kept thread safe when iterating in parallel
-	// over components (unlike AddWindSource and RemoveWindSource)
-	FWindSourceSceneProxy* const OldSceneProxy = WindComponent->SceneProxy;
-	if (OldSceneProxy)
-	{
-		WindComponent->SceneProxy = nullptr;
-
-		ENQUEUE_RENDER_COMMAND(FRemoveWindSourceCommand)(
-			[Scene = this, OldSceneProxy](FRHICommandListImmediate& RHICmdList)
-			{
-				Scene->WindSources.Remove(OldSceneProxy);
-
-				delete OldSceneProxy;
-			});
-	}
-
-	if (WindComponent->IsActive())
-	{
-		FWindSourceSceneProxy* const NewSceneProxy = WindComponent->CreateSceneProxy();
-		WindComponent->SceneProxy = NewSceneProxy;
-
-		ENQUEUE_RENDER_COMMAND(FAddWindSourceCommand)(
-			[Scene = this, NewSceneProxy](FRHICommandListImmediate& RHICmdList)
-			{
-				Scene->WindSources.Add(NewSceneProxy);
-			});
-	}
-
 }
 
 const TArray<FWindSourceSceneProxy*>& FScene::GetWindSources_RenderThread() const
@@ -3108,7 +3034,7 @@ void FScene::GetDirectionalWindParameters(FVector& OutDirection, float& OutSpeed
 
 void FScene::AddSpeedTreeWind(FVertexFactory* VertexFactory, const UStaticMesh* StaticMesh)
 {
-	if (StaticMesh != NULL && StaticMesh->SpeedTreeWind.IsValid() && StaticMesh->GetRenderData())
+	if (StaticMesh != NULL && StaticMesh->SpeedTreeWind.IsValid() && StaticMesh->RenderData.IsValid())
 	{
 		FScene* Scene = this;
 		ENQUEUE_RENDER_COMMAND(FAddSpeedTreeWindCommand)(
@@ -3179,7 +3105,7 @@ void FScene::UpdateSpeedTreeWind(double CurrentTime)
 				const UStaticMesh* StaticMesh = It.Key();
 				FSpeedTreeWindComputation* WindComputation = It.Value();
 
-				if( !(StaticMesh->GetRenderData() && StaticMesh->SpeedTreeWind.IsValid()) )
+				if( !(StaticMesh->RenderData.IsValid() && StaticMesh->SpeedTreeWind.IsValid()) )
 				{
 					It.RemoveCurrent();
 					continue;
@@ -3439,16 +3365,13 @@ void FScene::UpdateEarlyZPassMode()
 	}
 	else if (GetShadingPath(GetFeatureLevel()) == EShadingPath::Mobile)
 	{
-		EarlyZPassMode = DDM_None;
-
 		if (MaskedInEarlyPass(GetFeatureLevelShaderPlatform(FeatureLevel)))
 		{
 			EarlyZPassMode = DDM_MaskedOnly;
 		}
-
-		if (IsMobileDistanceFieldEnabled(GetShaderPlatform()) || IsMobileAmbientOcclusionEnabled(GetShaderPlatform()))
+		else
 		{
-			EarlyZPassMode = DDM_AllOpaque;
+			EarlyZPassMode = DDM_None;
 		}
 	}
 }
@@ -3772,15 +3695,6 @@ struct FPrimitiveArraySortKey
 	}
 };
 
-static bool ShouldPrimitiveOutputVelocity(const FPrimitiveSceneProxy* Proxy, const FStaticShaderPlatform ShaderPlatform)
-{
-	bool bShouldPrimitiveOutputVelocity = Proxy->IsMovable() || (!!CVarWPOPrimitivesOutputVelocity.GetValueOnRenderThread() && Proxy->IsUsingWPOMaterial());
-
-	bool bPlatformSupportsVelocityRendering = PlatformSupportsVelocityRendering(ShaderPlatform);
-
-	return bPlatformSupportsVelocityRendering && bShouldPrimitiveOutputVelocity;
-}
-
 void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, bool bAsyncCreateLPIs)
 {
 	SCOPED_NAMED_EVENT(FScene_UpdateAllPrimitiveSceneInfos, FColor::Orange);
@@ -3916,25 +3830,26 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 
 			for (int CheckIndex = StartIndex; CheckIndex < RemovedLocalPrimitiveSceneInfos.Num(); CheckIndex++)
 			{
-				checkf(RemovedLocalPrimitiveSceneInfos[CheckIndex]->PackedIndex >= Primitives.Num() - RemovedLocalPrimitiveSceneInfos.Num(), TEXT("Removed item should be at the end"));
+				checkfSlow(RemovedLocalPrimitiveSceneInfos[CheckIndex]->PackedIndex >= Primitives.Num() - RemovedLocalPrimitiveSceneInfos.Num(), TEXT("Removed item should be at the end"));
 			}
 
-			//Remove all items from the location of StartIndex to the end of the arrays.
-			int RemoveCount = RemovedLocalPrimitiveSceneInfos.Num() - StartIndex;
-			int SourceIndex = Primitives.Num() - RemoveCount;
-
-			Primitives.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveTransforms.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveSceneProxies.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveBounds.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveFlagsCompact.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveVisibilityIds.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveOcclusionFlags.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveComponentIds.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveVirtualTextureFlags.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveVirtualTextureLod.RemoveAt(SourceIndex, RemoveCount);
-			PrimitiveOcclusionBounds.RemoveAt(SourceIndex, RemoveCount);
-			PrimitivesNeedingStaticMeshUpdate.RemoveAt(SourceIndex, RemoveCount);
+			for (int RemoveIndex = StartIndex; RemoveIndex < RemovedLocalPrimitiveSceneInfos.Num(); RemoveIndex++)
+			{
+				int SourceIndex = RemovedLocalPrimitiveSceneInfos[RemoveIndex]->PackedIndex;
+				check(SourceIndex >= (Primitives.Num() - RemovedLocalPrimitiveSceneInfos.Num() + StartIndex));
+				Primitives.Pop();
+				PrimitiveTransforms.Pop();
+				PrimitiveSceneProxies.Pop();
+				PrimitiveBounds.Pop();
+				PrimitiveFlagsCompact.Pop();
+				PrimitiveVisibilityIds.Pop();
+				PrimitiveOcclusionFlags.Pop();
+				PrimitiveComponentIds.Pop();
+				PrimitiveVirtualTextureFlags.Pop();
+				PrimitiveVirtualTextureLod.Pop();
+				PrimitiveOcclusionBounds.Pop();
+				PrimitivesNeedingStaticMeshUpdate.RemoveAt(PrimitivesNeedingStaticMeshUpdate.Num() - 1);
+			}
 
 			CheckPrimitiveArrays();
 
@@ -3945,7 +3860,7 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 				int32 PrimitiveIndex = PrimitiveSceneInfo->PackedIndex;
 				PrimitiveSceneInfo->PackedIndex = INDEX_NONE;
 
-				if (ShouldPrimitiveOutputVelocity(PrimitiveSceneInfo->Proxy, GetShaderPlatform()))
+				if (PrimitiveSceneInfo->Proxy->IsMovable())
 				{
 					// Remove primitive's motion blur information.
 					VelocityData.RemoveFromScene(PrimitiveSceneInfo->PrimitiveComponentId);
@@ -4149,7 +4064,7 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 				FPrimitiveSceneInfo* PrimitiveSceneInfo = AddedLocalPrimitiveSceneInfos[AddIndex];
 				int32 PrimitiveIndex = PrimitiveSceneInfo->PackedIndex;
 
-				if (ShouldPrimitiveOutputVelocity(PrimitiveSceneInfo->Proxy, GetShaderPlatform()))
+				if (PrimitiveSceneInfo->Proxy->IsMovable() && GetFeatureLevel() > ERHIFeatureLevel::ES3_1)
 				{
 					// We must register the initial LocalToWorld with the velocity state. 
 					// In the case of a moving component with MarkRenderStateDirty() called every frame, UpdateTransform will never happen.
@@ -4157,8 +4072,6 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 				}
 
 				AddPrimitiveToUpdateGPU(*this, PrimitiveIndex);
-
-				// Invalidate PathTraced image because we added something to the scene
 				bPathTracingNeedsInvalidation = true;
 
 				DistanceFieldSceneData.AddPrimitive(PrimitiveSceneInfo);
@@ -4217,7 +4130,7 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 			// (note that the octree update relies on the bounds not being modified yet).
 			PrimitiveSceneInfo->RemoveFromScene(bUpdateStaticDrawLists);
 
-			if (ShouldPrimitiveOutputVelocity(PrimitiveSceneInfo->Proxy, GetShaderPlatform()))
+			if (PrimitiveSceneInfo->Proxy->IsMovable() && GetFeatureLevel() > ERHIFeatureLevel::ES3_1)
 			{
 				VelocityData.UpdateTransform(PrimitiveSceneInfo, LocalToWorld, PrimitiveSceneProxy->GetLocalToWorld());
 			}
@@ -4310,7 +4223,7 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 		SCOPED_NAMED_EVENT(FScene_DeletePrimitiveSceneInfo, FColor::Red);
 		for (FPrimitiveSceneInfo* PrimitiveSceneInfo : DeletedSceneInfos)
 		{
-			// It is possible that the HitProxies list isn't empty if PrimitiveSceneInfo was Added/Removed in same frame
+			// It is possible that hte HitProxies list isn't empty if PrimitiveSceneInfo was Added/Removed in same frame
 			// Delete the PrimitiveSceneInfo on the game thread after the rendering thread has processed its removal.
 			// This must be done on the game thread because the hit proxy references (and possibly other members) need to be freed on the game thread.
 			struct DeferDeleteHitProxies : FDeferredCleanupInterface
@@ -4323,9 +4236,6 @@ void FScene::UpdateAllPrimitiveSceneInfos(FRHICommandListImmediate& RHICmdList, 
 			// free the primitive scene proxy.
 			delete PrimitiveSceneInfo->Proxy;
 			delete PrimitiveSceneInfo;
-
-			// Invalidate PathTraced image because we removed something from the scene
-			bPathTracingNeedsInvalidation = true;
 		}
 	}
 
@@ -4446,10 +4356,6 @@ public:
 	virtual FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() override { return NULL; }
 	virtual const FSkyAtmosphereRenderSceneInfo* GetSkyAtmosphereSceneInfo() const override { return NULL; }
 
-	virtual void SetPhysicsField(FPhysicsFieldSceneProxy* PhysicsFieldSceneProxy) override {}
-	virtual void ResetPhysicsField() override {}
-	virtual void UpdatePhysicsField(FRHICommandListImmediate& RHICmdList, FViewInfo& View) override {}
-
 	virtual void AddVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override {}
 	virtual void RemoveVolumetricCloud(FVolumetricCloudSceneProxy* VolumetricCloudSceneProxy) override {}
 	virtual FVolumetricCloudRenderSceneInfo* GetVolumetricCloudSceneInfo() override { return NULL; }
@@ -4457,7 +4363,6 @@ public:
 
 	virtual void AddWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
 	virtual void RemoveWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
-	virtual void UpdateWindSource(class UWindDirectionalSourceComponent* WindComponent) override {}
 	virtual const TArray<class FWindSourceSceneProxy*>& GetWindSources_RenderThread() const override
 	{
 		static TArray<class FWindSourceSceneProxy*> NullWindSources;

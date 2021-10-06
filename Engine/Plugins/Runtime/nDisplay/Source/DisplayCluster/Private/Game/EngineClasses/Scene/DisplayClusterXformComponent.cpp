@@ -1,95 +1,47 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DisplayClusterXformComponent.h"
+
 #include "Components/StaticMeshComponent.h"
 
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/Material.h"
 #include "UObject/ConstructorHelpers.h"
 
 
 UDisplayClusterXformComponent::UDisplayClusterXformComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-#if WITH_EDITOR
-	, bEnableGizmo(true)
-	, BaseGizmoScale(0.5f, 0.5f, 0.5f)
-	, GizmoScaleMultiplier(1.f)
-#endif
 {
+	// Children of UDisplayClusterSceneComponent must always Tick to be able to process VRPN tracking
+	PrimaryComponentTick.bCanEverTick = true;
+
 #if WITH_EDITOR
-	if (GIsEditor && !IsRunningCommandlet())
+	if (GIsEditor)
 	{
-		static ConstructorHelpers::FObjectFinder<UStaticMesh> ProxyMeshRef(TEXT("/nDisplay/Meshes/sm_nDisplayXform"));
-		ProxyMesh = ProxyMeshRef.Object;
-	}
-#endif
-}
-
-#if WITH_EDITOR
-void UDisplayClusterXformComponent::SetVisualizationScale(float Scale)
-{
-	GizmoScaleMultiplier = Scale;
-	RefreshVisualRepresentation();
-}
-
-void UDisplayClusterXformComponent::SetVisualizationEnabled(bool bEnabled)
-{
-	bEnableGizmo = bEnabled;
-	RefreshVisualRepresentation();
-}
-#endif
-
-
-void UDisplayClusterXformComponent::OnRegister()
-{
-#if WITH_EDITOR
-	if (GIsEditor && !IsRunningCommandlet())
-	{
-		if (ProxyMeshComponent == nullptr)
+		// Create visual mesh component as a child
+		VisXformComponent = CreateDefaultSubobject<UStaticMeshComponent>(FName(*(GetName() + FString("_impl"))));
+		if (VisXformComponent)
 		{
-			ProxyMeshComponent = NewObject<UStaticMeshComponent>(this, NAME_None, RF_Transactional | RF_TextExportTransient);
-			ProxyMeshComponent->SetupAttachment(this);
-			ProxyMeshComponent->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
-			ProxyMeshComponent->SetMobility(EComponentMobility::Movable);
-			ProxyMeshComponent->SetIsVisualizationComponent(true);
-			ProxyMeshComponent->SetStaticMesh(ProxyMesh);
-			ProxyMeshComponent->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-			ProxyMeshComponent->bHiddenInGame = true;
-			ProxyMeshComponent->CastShadow = false;
-			ProxyMeshComponent->CreationMethod = CreationMethod;
-			ProxyMeshComponent->RegisterComponentWithWorld(GetWorld());
+			static ConstructorHelpers::FObjectFinder<UStaticMesh> ScreenMesh(TEXT("/Engine/VREditor/TransformGizmo/SM_Sequencer_Node"));
+
+			VisXformComponent->SetFlags(EObjectFlags::RF_DuplicateTransient | RF_Transient | RF_TextExportTransient);
+			VisXformComponent->AttachToComponent(this, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+			VisXformComponent->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+			VisXformComponent->SetRelativeScale3D(FVector::OneVector);
+			VisXformComponent->SetStaticMesh(ScreenMesh.Object);
+			VisXformComponent->SetMobility(EComponentMobility::Movable);
+			VisXformComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			VisXformComponent->SetVisibility(true);
 		}
 	}
-
-	RefreshVisualRepresentation();
 #endif
-
-	Super::OnRegister();
 }
 
 #if WITH_EDITOR
-void UDisplayClusterXformComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+void UDisplayClusterXformComponent::SetNodeSelection(bool bSelect)
 {
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	RefreshVisualRepresentation();
-}
-
-void UDisplayClusterXformComponent::RefreshVisualRepresentation()
-{
-	// Update the proxy mesh if necessary
-	if (ProxyMeshComponent && ProxyMeshComponent->GetStaticMesh() != ProxyMesh)
-	{
-		ProxyMeshComponent->SetStaticMesh(ProxyMesh);
-
-		bEnableGizmo = true;
-		BaseGizmoScale = FVector::OneVector;
-		GizmoScaleMultiplier = 1.f;
-	}
-
-	if (ProxyMeshComponent)
-	{
-		ProxyMeshComponent->SetVisibility(bEnableGizmo);
-		ProxyMeshComponent->SetWorldScale3D(BaseGizmoScale * GizmoScaleMultiplier);
-	}
+	VisXformComponent->bDisplayVertexColors = bSelect;
+	VisXformComponent->PushSelectionToProxy();
 }
 #endif

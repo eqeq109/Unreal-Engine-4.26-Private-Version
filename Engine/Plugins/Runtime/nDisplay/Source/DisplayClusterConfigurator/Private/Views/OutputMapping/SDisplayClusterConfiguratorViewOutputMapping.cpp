@@ -3,14 +3,13 @@
 #include "Views/OutputMapping/SDisplayClusterConfiguratorViewOutputMapping.h"
 
 #include "DisplayClusterConfiguratorCommands.h"
-#include "DisplayClusterConfiguratorBlueprintEditor.h"
+#include "DisplayClusterConfiguratorToolkit.h"
 #include "Interfaces/IDisplayClusterConfigurator.h"
 #include "Views/OutputMapping/DisplayClusterConfiguratorViewOutputMapping.h"
 #include "Views/OutputMapping/SDisplayClusterConfiguratorGraphEditor.h"
 #include "Views/OutputMapping/Widgets/SDisplayClusterConfiguratorOutputMappingToolbar.h"
 #include "Views/OutputMapping/Widgets/SDisplayClusterConfiguratorRuler.h"
 
-#include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Layout/SDPIScaler.h"
@@ -18,19 +17,13 @@
 
 #define LOCTEXT_NAMESPACE "SDisplayClusterConfiguratorViewOutputMapping"
 
-void SDisplayClusterConfiguratorViewOutputMapping::Construct(const FArguments& InArgs, const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit, const TSharedRef<SDisplayClusterConfiguratorGraphEditor>& InGraphEditor, const TSharedRef<FDisplayClusterConfiguratorViewOutputMapping> InViewOutputMapping)
+void SDisplayClusterConfiguratorViewOutputMapping::Construct(const FArguments& InArgs, const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit, const TSharedRef<SDisplayClusterConfiguratorGraphEditor>& InGraphEditor, const TSharedRef<FDisplayClusterConfiguratorViewOutputMapping> InViewOutputMapping)
 {
 	ToolkitPtr = InToolkit;
 	GraphEditorPtr = InGraphEditor;
 	ViewOutputMappingPtr = InViewOutputMapping;
 
 	BindCommands();
-
-	const TSharedPtr<FUICommandList>& AdditionalCommands = InArgs._AdditionalCommands;
-	if (AdditionalCommands.IsValid())
-	{
-		CommandList->Append(AdditionalCommands.ToSharedRef());
-	}
 
 	SDisplayClusterConfiguratorViewBase::Construct(
 		SDisplayClusterConfiguratorViewBase::FArguments()
@@ -110,17 +103,13 @@ void SDisplayClusterConfiguratorViewOutputMapping::Tick(const FGeometry& Allotte
 	float GraphEditorZoomAmount = 0;
 	GraphEditor->GetViewLocation(GraphEditorLocation, GraphEditorZoomAmount);
 
-	const float ViewScale = GetViewScale();
-	const float DPIScale = GetDPIScale();
-	const float RulerScale = ViewScale * GraphEditorZoomAmount;
-
 	// Compute the origin in absolute space.
 	FGeometry RootGeometry = PreviewSurface->GetCachedGeometry();
 	FVector2D AbsoluteOrigin = MakeGeometryWindowLocal(RootGeometry).LocalToAbsolute(FVector2D::ZeroVector);
-	FVector2D AbsoluteOriginWithOffset = AbsoluteOrigin - GraphEditorLocation * GraphEditorZoomAmount * DPIScale;
+	FVector2D AbsoluteOriginWithOffset = AbsoluteOrigin + (-GraphEditorLocation * GraphEditorZoomAmount);
 
-	TopRuler->SetRuling(AbsoluteOriginWithOffset, 1.f / RulerScale);
-	SideRuler->SetRuling(AbsoluteOriginWithOffset, 1.f / RulerScale);
+	TopRuler->SetRuling(AbsoluteOriginWithOffset, 1.f / GraphEditorZoomAmount);
+	SideRuler->SetRuling(AbsoluteOriginWithOffset, 1.f / GraphEditorZoomAmount);
 
 	if (IsHovered())
 	{
@@ -136,15 +125,6 @@ void SDisplayClusterConfiguratorViewOutputMapping::Tick(const FGeometry& Allotte
 		TopRuler->SetCursor(TOptional<FVector2D>());
 		SideRuler->SetCursor(TOptional<FVector2D>());
 	}
-}
-
-FReply SDisplayClusterConfiguratorViewOutputMapping::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
-{
-	if (CommandList->ProcessCommandBindings(InKeyEvent))
-	{
-		return FReply::Handled();
-	}
-	return FReply::Unhandled();
 }
 
 FGeometry SDisplayClusterConfiguratorViewOutputMapping::MakeGeometryWindowLocal(const FGeometry& WidgetGeometry) const
@@ -167,7 +147,7 @@ EVisibility SDisplayClusterConfiguratorViewOutputMapping::GetRulerVisibility() c
 	TSharedPtr<FDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping = ViewOutputMappingPtr.Pin();
 	check(ViewOutputMapping.IsValid());
 
-	if (ViewOutputMapping->GetOutputMappingSettings().bShowRuler)
+	if (ViewOutputMapping->IsRulerVisible())
 	{
 		return EVisibility::Visible;
 	}
@@ -189,9 +169,9 @@ TSharedRef<SWidget> SDisplayClusterConfiguratorViewOutputMapping::CreateOverlayU
 
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
-		.VAlign(VAlign_Top)
+		.VAlign(VAlign_Center)
 		[
-			SNew(SDisplayClusterConfiguratorOutputMappingToolbar, ViewOutputMappingPtr)
+			SNew(SDisplayClusterConfiguratorOutputMappingToolbar)
 			.CommandList(CommandList)
 		]
 
@@ -205,31 +185,14 @@ TSharedRef<SWidget> SDisplayClusterConfiguratorViewOutputMapping::CreateOverlayU
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0, 3, 15, 3)
+		.Padding(0, 2, 100, 2)
 		[
 			SNew(STextBlock)
 			.TextStyle(FEditorStyle::Get(), "Graph.ZoomText")
+			.Font(FCoreStyle::GetDefaultFontStyle(TEXT("BoldCondensed"), 14))
 			.Text(this, &SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionText)
 			.ColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.25f))
 			.Visibility(this, &SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionTextVisibility)
-		]
-
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(0, 3, 0, 3)
-		[
-			SNew(STextBlock)
-			.TextStyle(FEditorStyle::Get(), "Graph.ZoomText")
-			.Text(this, &SDisplayClusterConfiguratorViewOutputMapping::GetViewScaleText)
-			.ColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.25f))
-		]
-
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		[
-			SNew(SSpacer)
-			.Size(FVector2D(100, 1))
 		]
 	];
 }
@@ -238,11 +201,6 @@ FText SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionText() cons
 	TSharedPtr<SDisplayClusterConfiguratorGraphEditor> GraphEditor = GraphEditorPtr.Pin();
 	check(GraphEditor.IsValid());
 
-	TSharedPtr<FDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping = ViewOutputMappingPtr.Pin();
-	check(ViewOutputMapping != nullptr);
-
-	const float ViewScale = ViewOutputMapping->GetOutputMappingSettings().ViewScale;
-
 	FGeometry RootGeometry = PreviewSurface->GetCachedGeometry();
 	const FVector2D CursorPos = RootGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
 
@@ -250,7 +208,7 @@ FText SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionText() cons
 	float GraphEditorZoomAmount = 0;
 	GraphEditor->GetViewLocation(GraphEditorLocation, GraphEditorZoomAmount);
 
-	FVector2D GraphPosition = ((CursorPos / GraphEditorZoomAmount) + GraphEditorLocation) / ViewScale;
+	FVector2D GraphPosition = (CursorPos / GraphEditorZoomAmount) + GraphEditorLocation;
 
 	return FText::Format(LOCTEXT("CursorPositionFormat", "{0} x {1}"), FText::AsNumber(FMath::RoundToInt(GraphPosition.X)), FText::AsNumber(FMath::RoundToInt(GraphPosition.Y)));
 }
@@ -258,24 +216,6 @@ FText SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionText() cons
 EVisibility SDisplayClusterConfiguratorViewOutputMapping::GetCursorPositionTextVisibility() const
 {
 	return IsHovered() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
-}
-
-float SDisplayClusterConfiguratorViewOutputMapping::GetViewScale() const
-{
-	TSharedPtr<FDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping = ViewOutputMappingPtr.Pin();
-	check(ViewOutputMapping != nullptr);
-
-	return ViewOutputMapping->GetOutputMappingSettings().ViewScale;
-}
-
-FText SDisplayClusterConfiguratorViewOutputMapping::GetViewScaleText() const
-{
-	TSharedPtr<FDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping = ViewOutputMappingPtr.Pin();
-	check(ViewOutputMapping != nullptr);
-
-	const float ViewScale = ViewOutputMapping->GetOutputMappingSettings().ViewScale;
-
-	return FText::Format(LOCTEXT("ViewScaleFormat", "View Scale x{0}"), FText::AsNumber(ViewScale));
 }
 
 void SDisplayClusterConfiguratorViewOutputMapping::ZoomToFit()
@@ -289,22 +229,35 @@ void SDisplayClusterConfiguratorViewOutputMapping::BindCommands()
 
 	const FDisplayClusterConfiguratorCommands& Commands = IDisplayClusterConfigurator::Get().GetCommands();
 
+	TSharedPtr<FDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping = ViewOutputMappingPtr.Pin();
+	check(ViewOutputMapping != nullptr);
+
+	CommandList->MapAction(
+		Commands.ToggleWindowInfo,
+		FExecuteAction::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::ToggleShowWindowInfo),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::IsShowWindowInfo)
+		);
+
+	CommandList->MapAction(
+		Commands.ToggleWindowCornerImage,
+		FExecuteAction::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::ToggleShowWindowCornerImage),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::IsShowWindowCornerImage)
+		);
+
+	CommandList->MapAction(
+		Commands.ToggleOutsideViewports,
+		FExecuteAction::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::ToggleShowOutsideViewports),
+		FCanExecuteAction(),
+		FIsActionChecked::CreateSP(ViewOutputMapping.Get(), &FDisplayClusterConfiguratorViewOutputMapping::IsShowOutsideViewports)
+		);
+
 	CommandList->MapAction(
 		Commands.ZoomToFit,
 		FExecuteAction::CreateSP(this, &SDisplayClusterConfiguratorViewOutputMapping::ZoomToFit)
-	);
+		);
 }
 
-float SDisplayClusterConfiguratorViewOutputMapping::GetDPIScale() const
-{
-	float DPIScale = 1.0f;
-	TSharedPtr<SWindow> WidgetWindow = FSlateApplication::Get().FindWidgetWindow(SharedThis(this));
-	if (WidgetWindow.IsValid())
-	{
-		DPIScale = WidgetWindow->GetNativeWindow()->GetDPIScaleFactor();
-	}
-
-	return DPIScale;
-}
 
 #undef LOCTEXT_NAMESPACE

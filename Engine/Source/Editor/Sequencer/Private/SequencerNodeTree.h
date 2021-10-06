@@ -59,12 +59,6 @@ public:
 	/** @return Whether or not there is an active filter */
 	bool HasActiveFilter() const;
 
-	/** 
-	 * Checks if filters should be updated on track value changes, and if so updates them.
-	 * @return Whether the filtered node list was modified
-	 */
-	bool UpdateFiltersOnTrackValueChanged();
-
 	/**
 	 * Returns whether or not a node is filtered
 	 *
@@ -269,10 +263,8 @@ private:
 	/**
 	 * Update the list of filters nodes based on current filter settings, if an update is scheduled
 	 * This is called by Update();
-	 * 
-	 * @return Whether the list of filtered nodes changed
 	 */
-	bool UpdateFilters();
+	void UpdateFilters();
 
 	/**
 	 * Finds or adds a type editor for the track
@@ -304,8 +296,8 @@ private:
 	void DestroyAllNodes();
 
 public:
-	int32 GetTotalDisplayNodeCount() const;
-	int32 GetFilteredDisplayNodeCount() const;
+	int32 GetTotalDisplayNodeCount() const { return DisplayNodeCount; }
+	int32 GetFilteredDisplayNodeCount() const { return FilteredNodes.Num(); }
 
 private:
 

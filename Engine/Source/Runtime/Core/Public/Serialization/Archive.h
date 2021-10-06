@@ -657,6 +657,7 @@ public:
 	virtual void Reset();
 
 public:
+#if DEVIRTUALIZE_FLinkerLoad_Serialize
 	/* These are used for fastpath inline serializers  */
 	struct FFastPathLoadBuffer
 	{
@@ -674,7 +675,6 @@ public:
 			OriginalFastPathLoadBuffer = nullptr;
 		}
 	};
-#if DEVIRTUALIZE_FLinkerLoad_Serialize
 	//@todoio FArchive is really a horrible class and the way it is proxied by FLinkerLoad is double terrible. It makes the fast path really hacky and slower than it would need to be.
 	FFastPathLoadBuffer* ActiveFPLB;
 	FFastPathLoadBuffer InlineFPLB;
@@ -1042,7 +1042,6 @@ public:
 protected:
 	using FArchiveState::LinkProxy;
 	using FArchiveState::UnlinkProxy;
-	using FArchiveState::FFastPathLoadBuffer;
 
 public:
 
@@ -1349,12 +1348,6 @@ public:
 		{
 			uint32 OldUBoolValue = D ? 1 : 0;
 			Ar.Serialize(&OldUBoolValue, sizeof(OldUBoolValue));
-
-			if (OldUBoolValue > 1)
-			{
-				Ar.SetError();
-			}
-
 			D = !!OldUBoolValue;
 		}
 		return Ar;
@@ -1815,11 +1808,6 @@ public:
 	 * @return true if dependency has been added, false if Archive does not support them
 	 */
 	virtual bool AttachExternalReadDependency(FExternalReadCallback& ReadCallback) { return false; };
-
-	/**
-	 * Returns whether the Event Driven Loader is enabled or not.
-	 */
-	virtual bool IsUsingEventDrivenLoader() const;
 
 #if USE_STABLE_LOCALIZATION_KEYS
 	using FArchiveState::SetLocalizationNamespace;

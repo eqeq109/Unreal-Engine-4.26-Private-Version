@@ -20,13 +20,7 @@ struct FVisualLoggerDBRow;
 USTRUCT()
 struct FCategoryFilter
 {
-	GENERATED_BODY()
-
-	FCategoryFilter()
-		: LogVerbosity(ELogVerbosity::Type::NoLogging)
-		, Enabled(0)
-		, bIsInUse(0)
-	{}
+	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(config)
 	FString CategoryName;
@@ -73,10 +67,9 @@ struct FVisualLoggerFilters : public FVisualLoggerFiltersData
 	void Reset();
 	void InitWith(const FVisualLoggerFiltersData& NewFiltersData);
 
-	/** @return whether given String represents a log category we allow to be displayed at given Verbosity  */
 	bool MatchCategoryFilters(FString String, ELogVerbosity::Type Verbosity = ELogVerbosity::All);
 
-	bool MatchSearchString(FString String) { return SearchBoxFilter.Equals(String, ESearchCase::IgnoreCase); }
+	bool MatchSearchString(FString String) { return SearchBoxFilter == String; }
 	void SetSearchString(FString InString) { SearchBoxFilter = InString; }
 	FString GetSearchString() { return SearchBoxFilter; }
 

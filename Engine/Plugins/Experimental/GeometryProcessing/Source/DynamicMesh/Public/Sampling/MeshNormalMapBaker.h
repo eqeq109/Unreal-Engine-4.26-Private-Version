@@ -20,7 +20,6 @@ public:
 
 	const TMeshTangents<double>* BaseMeshTangents;
 
-	FVector3f DefaultNormal = FVector3f(0, 0, 1);
 
 	//
 	// Compute functions

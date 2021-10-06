@@ -20,7 +20,7 @@ void FSmallListSet::Resize(int32 NewSize)
 
 void FSmallListSet::AllocateAt(int32 ListIndex)
 {
-	checkSlow(ListIndex >= 0);
+	check(ListIndex >= 0);
 	if (ListIndex >= (int)ListHeads.GetLength())
 	{
 		int32 j = (int32)ListHeads.GetLength();
@@ -43,7 +43,7 @@ void FSmallListSet::AllocateAt(int32 ListIndex)
 
 void FSmallListSet::Insert(int32 ListIndex, int32 Value)
 {
-	checkSlow(ListIndex >= 0);
+	check(ListIndex >= 0);
 	int32 block_ptr = ListHeads[ListIndex];
 	if (block_ptr == NullValue)
 	{
@@ -90,7 +90,7 @@ void FSmallListSet::Insert(int32 ListIndex, int32 Value)
 
 bool FSmallListSet::Remove(int32 ListIndex, int32 Value)
 {
-	checkSlow(ListIndex >= 0);
+	check(ListIndex >= 0);
 	int32 block_ptr = ListHeads[ListIndex];
 	int32 N = ListBlocks[block_ptr];
 
@@ -141,9 +141,10 @@ bool FSmallListSet::Remove(int32 ListIndex, int32 Value)
 
 void FSmallListSet::Move(int32 FromIndex, int32 ToIndex)
 {
-	checkSlow(FromIndex >= 0);
-	checkSlow(ToIndex >= 0);
-	checkSlow(ListHeads[ToIndex] == NullValue);
+	check(FromIndex >= 0);
+	check(ToIndex >= 0);
+	check(ListHeads[ToIndex] == NullValue);
+	check(ListHeads[FromIndex] != NullValue);
 	ListHeads[ToIndex] = ListHeads[FromIndex];
 	ListHeads[FromIndex] = NullValue;
 }
@@ -153,7 +154,7 @@ void FSmallListSet::Move(int32 FromIndex, int32 ToIndex)
 
 void FSmallListSet::Clear(int32 ListIndex)
 {
-	checkSlow(ListIndex >= 0);
+	check(ListIndex >= 0);
 	int32 block_ptr = ListHeads[ListIndex];
 	if (block_ptr != NullValue)
 	{
@@ -184,7 +185,7 @@ void FSmallListSet::Clear(int32 ListIndex)
 
 bool FSmallListSet::Contains(int32 ListIndex, int32 Value) const
 {
-	checkSlow(ListIndex >= 0);
+	check(ListIndex >= 0);
 	int32 block_ptr = ListHeads[ListIndex];
 	if (block_ptr != NullValue)
 	{

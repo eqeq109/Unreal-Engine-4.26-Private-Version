@@ -10,7 +10,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "Async/Async.h"
 #include "Misc/ScopeLock.h"
-#include "Misc/ScopeTryLock.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
 
@@ -19,15 +18,17 @@
 #include "EditorViewportClient.h"
 #endif
 
+FCriticalSection ProxyComponentMapLock;
+TMap<TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe>, TWeakObjectPtr<ULidarPointCloudComponent>> ProxyComponentMap;
+
 DECLARE_CYCLE_STAT(TEXT("Node Selection"), STAT_NodeSelection, STATGROUP_LidarPointCloud)
 DECLARE_CYCLE_STAT(TEXT("Node Processing"), STAT_NodeProcessing, STATGROUP_LidarPointCloud)
 DECLARE_CYCLE_STAT(TEXT("Render Data Update"), STAT_UpdateRenderData, STATGROUP_LidarPointCloud)
-DECLARE_CYCLE_STAT(TEXT("Node Streaming"), STAT_NodeStreaming, STATGROUP_LidarPointCloud);
 
 DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Total Point Count [thousands]"), STAT_PointCountTotal, STATGROUP_LidarPointCloud)
+DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Points In Frustum"), STAT_PointCountFrustum, STATGROUP_LidarPointCloud)
 DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Point Budget"), STAT_PointBudget, STATGROUP_LidarPointCloud)
 DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Visible Points"), STAT_PointCount, STATGROUP_LidarPointCloud)
-DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Loaded Nodes"), STAT_LoadedNodes, STATGROUP_LidarPointCloud)
 
 static TAutoConsoleVariable<int32> CVarLidarPointBudget(
 	TEXT("r.LidarPointBudget"),
@@ -85,20 +86,14 @@ FLidarPointCloudViewData::FLidarPointCloudViewData(bool bCompute)
 
 void FLidarPointCloudViewData::Compute()
 {
-	bool bForceSkipLocalPlayer = false;
-
-#if WITH_EDITOR
-	bForceSkipLocalPlayer = GIsEditor && GEditor && GEditor->bIsSimulatingInEditor;
-#endif
-
 	// Attempt to get the first local player's viewport
-	if (GEngine && !bForceSkipLocalPlayer)
+	if (GEngine)
 	{
 		ULocalPlayer* const LP = GEngine->FindFirstLocalPlayerFromControllerId(0);
 		if (LP && LP->ViewportClient)
 		{
 			FSceneViewProjectionData ProjectionData;
-			if (LP->GetProjectionData(LP->ViewportClient->Viewport, GEngine->IsStereoscopic3D() ? eSSP_LEFT_EYE : eSSP_FULL, ProjectionData))
+			if (LP->GetProjectionData(LP->ViewportClient->Viewport, eSSP_FULL, ProjectionData))
 			{
 				ViewOrigin = ProjectionData.ViewOrigin;
 				FMatrix ViewRotationMatrix = ProjectionData.ViewRotationMatrix;
@@ -172,158 +167,150 @@ bool FLidarPointCloudViewData::ComputeFromEditorViewportClient(FViewportClient* 
 	return false;
 }
 
-int32 FLidarPointCloudTraversalOctree::GetVisibleNodes(TArray<FLidarPointCloudTraversalOctreeNodeSizeData>& NodeSizeData, const FLidarPointCloudViewData* ViewData, const int32& ProxyIndex, const FLidarPointCloudNodeSelectionParams& SelectionParams)
+void FLidarPointCloudTraversalOctree::GetVisibleNodes(TArray<FLidarPointCloudLODManager::FNodeSizeData>& NodeSizeData, const FLidarPointCloudViewData& ViewData, const int32& ProxyIndex, const FLidarPointCloudNodeSelectionParams& SelectionParams, const float& CurrentTime)
 {
-	const int32 CurrentNodeCount = NodeSizeData.Num();
-
-	// Only process, if the asset is visible
-	if (ViewData->ViewFrustum.IntersectBox(GetCenter(), GetExtent()))
+	// Skip processing, if the asset is not visible
+	if (!ViewData.ViewFrustum.IntersectBox(GetCenter(), GetExtent()))
 	{
-		const float BoundsScaleSq = SelectionParams.BoundsScale * SelectionParams.BoundsScale;
-		const float BaseLODImportance = FMath::Max(0.0f, CVarBaseLODImportance.GetValueOnAnyThread());
+		return;
+	}
 
-		bool bStartClipped = false;
-		if (SelectionParams.ClippingVolumes)
+	float MinScreenSizeSq = SelectionParams.MinScreenSize * SelectionParams.MinScreenSize;
+	float BoundsScaleSq = SelectionParams.BoundsScale * SelectionParams.BoundsScale;
+
+	const float BaseLODImportance = FMath::Max(0.0f, CVarBaseLODImportance.GetValueOnAnyThread());
+
+	bool bStartClipped = false;
+	if (SelectionParams.ClippingVolumes)
+	{
+		for (const ALidarClippingVolume* Volume : *SelectionParams.ClippingVolumes)
 		{
-			for (const FLidarPointCloudClippingVolumeParams& Volume : *SelectionParams.ClippingVolumes)
+			if (Volume->Mode == ELidarClippingVolumeMode::ClipOutside)
 			{
-				if (Volume.Mode == ELidarClippingVolumeMode::ClipOutside)
-				{
-					bStartClipped = true;
-					break;
-				}
-			}
-		}
-
-		TQueue<FLidarPointCloudTraversalOctreeNode*> Nodes;
-		FLidarPointCloudTraversalOctreeNode* CurrentNode = nullptr;
-		Nodes.Enqueue(&Root);
-		while (Nodes.Dequeue(CurrentNode))
-		{
-			// Reset selection flag
-			CurrentNode->bSelected = false;
-
-			// Update number of visible points, if needed
-			CurrentNode->DataNode->UpdateNumVisiblePoints();
-
-			const FVector NodeExtent = Extents[CurrentNode->Depth] * SelectionParams.BoundsScale;
-
-			bool bFullyContained = true;
-
-			if (SelectionParams.bUseFrustumCulling && (CurrentNode->Depth == 0 || !CurrentNode->bFullyContained) && !ViewData->ViewFrustum.IntersectBox(CurrentNode->Center, NodeExtent, bFullyContained))
-			{
-				continue;
-			}
-
-			const FBox NodeBounds(CurrentNode->Center - NodeExtent, CurrentNode->Center + NodeExtent);
-
-			// Check vs Clipping Volumes
-			bool bClip = bStartClipped;
-			if (SelectionParams.ClippingVolumes)
-			{
-				for (const FLidarPointCloudClippingVolumeParams& Volume : *SelectionParams.ClippingVolumes)
-				{
-					if (Volume.Mode == ELidarClippingVolumeMode::ClipOutside)
-					{
-						if (Volume.Bounds.Intersect(NodeBounds))
-						{
-							bClip = false;
-						}
-					}
-					else
-					{
-						if (Volume.Bounds.IsInside(NodeBounds))
-						{
-							bClip = true;
-						}
-					}
-				}
-
-				if (bClip)
-				{
-					continue;
-				}
-			}
-
-			// Only process this node if it has any visible points - do not use continue; as the children may still contain visible points!
-			if (CurrentNode->DataNode->GetNumVisiblePoints() > 0 && CurrentNode->Depth >= SelectionParams.MinDepth)
-			{
-				float ScreenSizeSq = 0;
-
-				FVector VectorToNode = CurrentNode->Center - ViewData->ViewOrigin;
-				const float DistSq = VectorToNode.SizeSquared();
-				const float AdjustedRadiusSq = RadiiSq[CurrentNode->Depth] * BoundsScaleSq;
-
-				// Make sure to show at least the minimum depth for each visible asset
-				if (CurrentNode->Depth == SelectionParams.MinDepth)
-				{
-					// Add screen size to maintain hierarchy
-					ScreenSizeSq = BaseLODImportance + ViewData->ScreenSizeFactor * AdjustedRadiusSq / FMath::Max(1.0f, DistSq);
-				}
-				else
-				{
-					// If the camera is within this node's bounds, it should always be qualified for rendering
-					if (DistSq <= AdjustedRadiusSq)
-					{
-						// Subtract Depth to maintain hierarchy 
-						ScreenSizeSq = 1000 - CurrentNode->Depth;
-					}
-					else
-					{
-						ScreenSizeSq = ViewData->ScreenSizeFactor * AdjustedRadiusSq / FMath::Max(1.0f, DistSq);
-
-						// Check for minimum screen size
-						if (!ViewData->bSkipMinScreenSize && ScreenSizeSq < SelectionParams.MinScreenSize)
-						{
-							continue;
-						}
-
-						// Add optional preferential selection for nodes closer to the screen center
-						if (SelectionParams.ScreenCenterImportance > 0)
-						{
-							VectorToNode.Normalize();
-							float Dot = FVector::DotProduct(ViewData->ViewDirection, VectorToNode);
-
-							ScreenSizeSq = FMath::Lerp(ScreenSizeSq, ScreenSizeSq * Dot, SelectionParams.ScreenCenterImportance);
-						}
-					}
-				}
-
-				NodeSizeData.Emplace(CurrentNode, ScreenSizeSq, ProxyIndex);
-			}
-
-			if (SelectionParams.MaxDepth < 0 || CurrentNode->Depth < SelectionParams.MaxDepth)
-			{
-				for (FLidarPointCloudTraversalOctreeNode& Child : CurrentNode->Children)
-				{
-					Child.bFullyContained = bFullyContained;
-					Nodes.Enqueue(&Child);
-				}
+				bStartClipped = true;
+				break;
 			}
 		}
 	}
 
-	return NodeSizeData.Num() - CurrentNodeCount;
+	TQueue<FLidarPointCloudTraversalOctreeNode*> Nodes;
+	FLidarPointCloudTraversalOctreeNode* CurrentNode = nullptr;
+	Nodes.Enqueue(&Root);
+	while (Nodes.Dequeue(CurrentNode))
+	{
+		// Reset selection flag
+		CurrentNode->bSelected = false;
+
+		// Update number of visible points, if needed
+		CurrentNode->DataNode->UpdateNumVisiblePoints();
+
+		const FVector NodeExtent = Extents[CurrentNode->Depth] * SelectionParams.BoundsScale;
+
+		bool bFullyContained = true;
+
+		if ((CurrentNode->Depth == 0 || !CurrentNode->bFullyContained) && !ViewData.ViewFrustum.IntersectBox(CurrentNode->Center, NodeExtent, bFullyContained))
+		{
+			continue;
+		}
+
+		const FBox NodeBounds(CurrentNode->Center - NodeExtent, CurrentNode->Center + NodeExtent);
+
+		// Check vs Clipping Volumes
+		bool bClip = bStartClipped;
+		if (SelectionParams.ClippingVolumes)
+		{
+			for (const ALidarClippingVolume* Volume : *SelectionParams.ClippingVolumes)
+			{
+				if (Volume->Mode == ELidarClippingVolumeMode::ClipOutside)
+				{
+					if (Volume->GetBounds().GetBox().Intersect(NodeBounds))
+					{
+						bClip = false;
+					}
+				}
+				else
+				{
+					if (Volume->GetBounds().GetBox().IsInside(NodeBounds))
+					{
+						bClip = true;
+					}
+				}
+			}
+
+			if (bClip)
+			{
+				continue;
+			}
+		}
+
+		// Only process this node if it has any visible points - do not use continue; as the children may still contain visible points!
+		if (CurrentNode->DataNode->GetNumVisiblePoints() > 0 && CurrentNode->Depth >= SelectionParams.MinDepth)
+		{
+			float ScreenSizeSq = 0;
+
+			FVector VectorToNode = CurrentNode->Center - ViewData.ViewOrigin;
+			const float DistSq = VectorToNode.SizeSquared();
+			const float AdjustedRadiusSq = RadiiSq[CurrentNode->Depth] * BoundsScaleSq;
+
+			// Make sure to show at least the minimum depth for each visible asset
+			if (CurrentNode->Depth == SelectionParams.MinDepth)
+			{
+				// Add screen size to maintain hierarchy
+				ScreenSizeSq = BaseLODImportance + ViewData.ScreenSizeFactor * AdjustedRadiusSq / FMath::Max(1.0f, DistSq);
+			}
+			else
+			{
+				// If the camera is within this node's bounds, it should always be qualified for rendering
+				if (DistSq <= AdjustedRadiusSq)
+				{
+					// Subtract Depth to maintain hierarchy 
+					ScreenSizeSq = 1000 - CurrentNode->Depth;
+				}
+				else
+				{
+					ScreenSizeSq = ViewData.ScreenSizeFactor * AdjustedRadiusSq / FMath::Max(1.0f, DistSq);
+
+					// Check for minimum screen size
+					if (!ViewData.bSkipMinScreenSize && ScreenSizeSq < MinScreenSizeSq)
+					{
+						continue;
+					}
+
+					// Add optional preferential selection for nodes closer to the screen center
+					if (SelectionParams.ScreenCenterImportance > 0)
+					{
+						VectorToNode.Normalize();
+						float Dot = FVector::DotProduct(ViewData.ViewDirection, VectorToNode);
+
+						ScreenSizeSq = FMath::Lerp(ScreenSizeSq, ScreenSizeSq * Dot, SelectionParams.ScreenCenterImportance);
+					}
+				}
+			}
+
+			NodeSizeData.Emplace(CurrentNode, ScreenSizeSq, ProxyIndex);
+		}
+
+		if (SelectionParams.MaxDepth < 0 || CurrentNode->Depth < SelectionParams.MaxDepth)
+		{
+			for (FLidarPointCloudTraversalOctreeNode& Child : CurrentNode->Children)
+			{
+				Child.bFullyContained = bFullyContained;
+				Nodes.Enqueue(&Child);
+			}
+		}
+	}
 }
 
 /** Calculates the correct point budget to use for current frame */
-uint32 GetPointBudget(int64 NumPointsInFrustum)
+uint32 GetPointBudget(float DeltaTime, int64 NumPointsInFrustum)
 {
 	constexpr int32 NumFramesToAcumulate = 30;
-	constexpr int32 DeltaBudgetDeadzone = 10000;
 
 	static int64 CurrentPointBudget = 0;
 	static int64 LastDynamicPointBudget = 0;
 	static bool bLastFrameIncremental = false;
 	static FLidarPointCloudViewData LastViewData;
 	static TArray<float> AcumulatedFrameTime;
-	static double CurrentRealTime = 0;
-	static double LastRealTime = 0;
-	static double RealDeltaTime = 0;
-
-	CurrentRealTime = FPlatformTime::Seconds();
-	RealDeltaTime = CurrentRealTime - LastRealTime;
-	LastRealTime = CurrentRealTime;
 
 	if (AcumulatedFrameTime.Num() == 0)
 	{
@@ -359,14 +346,14 @@ uint32 GetPointBudget(int64 NumPointsInFrustum)
 			// Do not recalculate if just exiting incremental budget, to avoid spikes
 			if (!bLastFrameIncremental)
 			{
-				if (AcumulatedFrameTime.Add(RealDeltaTime) == NumFramesToAcumulate)
+				if (AcumulatedFrameTime.Add(DeltaTime) == NumFramesToAcumulate)
 				{
 					AcumulatedFrameTime.RemoveAt(0);
 				}
 
 				const float MaxTickRate = GEngine->GetMaxTickRate(0.001f, false);
 				const float RequestedTargetFPS = CVarTargetFPS.GetValueOnAnyThread();
-				const float TargetFPS = GEngine->bUseFixedFrameRate ? GEngine->FixedFrameRate : (MaxTickRate > 0 ? FMath::Min(RequestedTargetFPS, MaxTickRate) : RequestedTargetFPS);
+				const float TargetFPS = MaxTickRate > 0 ? FMath::Min(RequestedTargetFPS, MaxTickRate) : RequestedTargetFPS;
 
 				// The -0.5f is to prevent the system treating values as unachievable (as the frame time is usually just under)
 				const float AdjustedTargetFPS = FMath::Max(TargetFPS - 0.5f, 1.0f);
@@ -375,16 +362,12 @@ uint32 GetPointBudget(int64 NumPointsInFrustum)
 				CurrentFrameTimes.Sort();
 				const float AvgFrameTime = CurrentFrameTimes[CurrentFrameTimes.Num() / 2];
 
-				const int32 DeltaBudget = (1 / AdjustedTargetFPS - AvgFrameTime) * 10000000 * (GEngine->bUseFixedFrameRate ? 4 : 1);;
+				const int32 DeltaBudget = (1 / AdjustedTargetFPS - AvgFrameTime) * 10000000;
 
-				// Prevent constant small fluctuations, unless using fixed frame rate
-				if (GEngine->bUseFixedFrameRate || FMath::Abs(DeltaBudget) > DeltaBudgetDeadzone)
+				// Not having enough points in frustum to fill the requested budget would otherwise continually increase the value
+				if (DeltaBudget < 0 || NumPointsInFrustum >= CurrentPointBudget)
 				{
-					// Not having enough points in frustum to fill the requested budget would otherwise continually increase the value
-					if (DeltaBudget < 0 || NumPointsInFrustum >= CurrentPointBudget)
-					{
-						CurrentPointBudget += DeltaBudget;
-					}
+					CurrentPointBudget += DeltaBudget;
 				}
 			}
 		}
@@ -425,16 +408,24 @@ void FLidarPointCloudLODManager::Tick(float DeltaTime)
 
 	Time += DeltaTime;
 
-	const uint32 PointBudget = GetPointBudget(NumPointsInFrustum.GetValue());
+	const uint32 PointBudget = GetPointBudget(DeltaTime, NumPointsInFrustum.GetValue());
 
 	SET_DWORD_STAT(STAT_PointBudget, PointBudget);
 
 	PrepareProxies();
 
-	Async(EAsyncExecution::ThreadPool, [this, CurrentRegisteredProxies = RegisteredProxies, PointBudget, ClippingVolumes = GetClippingVolumes()]
+	// Gather clipping volumes
+	TArray<const ALidarClippingVolume*> ClippingVolumes = GetClippingVolumes();
+
+	// Sort clipping volumes by priority
+	Algo::Sort(ClippingVolumes, [](const ALidarClippingVolume* A, const ALidarClippingVolume* B) { return (A->Priority < B->Priority) || (A->Priority == B->Priority && A->Mode > B->Mode); });
+
+	// A copy of the array will be passed, to avoid concurrency issues
+	TArray<FRegisteredProxy> CurrentRegisteredProxies = RegisteredProxies;
+
+	Async(EAsyncExecution::ThreadPool, [this, CurrentRegisteredProxies, ClippingVolumes, PointBudget]
 	{
 		NumPointsInFrustum.Set(ProcessLOD(CurrentRegisteredProxies, Time, PointBudget, ClippingVolumes));
-		bProcessing = false;
 	});
 }
 
@@ -448,33 +439,19 @@ void FLidarPointCloudLODManager::RegisterProxy(ULidarPointCloudComponent* Compon
 	if (IsValid(Component))
 	{
 		static FLidarPointCloudLODManager Instance;
-		static FCriticalSection ProxyLock;
 
 		if (TSharedPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapperShared = SceneProxyWrapper.Pin())
 		{
-			FScopeLock Lock(&ProxyLock);
+			FScopeLock Lock(&ProxyComponentMapLock);
+
 			Instance.RegisteredProxies.Emplace(Component, SceneProxyWrapper);
+			ProxyComponentMap.Add(SceneProxyWrapper, Component);
 		}
 	}
 }
 
-int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODManager::FRegisteredProxy>& InRegisteredProxies, const float CurrentTime, const uint32 PointBudget, const TArray<FLidarPointCloudClippingVolumeParams>& ClippingVolumes)
+int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODManager::FRegisteredProxy>& InRegisteredProxies, const float CurrentTime, const uint32 PointBudget, const TArray<const ALidarClippingVolume*>& ClippingVolumes)
 {
-	struct FSelectionFilterParams
-	{
-		float MinScreenSize;
-		uint32 NumNodes;
-	};
-
-	static TArray<FSelectionFilterParams> SelectionFilterParams;
-	{
-		const int32 DeltaSize = InRegisteredProxies.Num() - SelectionFilterParams.Num();
-		if (DeltaSize > 0)
-		{
-			SelectionFilterParams.AddZeroed(DeltaSize);
-		}
-	}
-
 	uint32 TotalPointsSelected = 0;
 	int64 NewNumPointsInFrustum = 0;
 
@@ -485,9 +462,10 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 		SCOPE_CYCLE_COUNTER(STAT_NodeSelection);
 
 		const float ScreenCenterImportance = CVarLidarScreenCenterImportance.GetValueOnAnyThread();
+
 		int32 NumSelectedNodes = 0;
 
-		TArray<FLidarPointCloudTraversalOctreeNodeSizeData> NodeSizeData;
+		TArray<FNodeSizeData> NodeSizeData;
 
 		for (int32 i = 0; i < InRegisteredProxies.Num(); ++i)
 		{
@@ -496,6 +474,14 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 			// Acquire a Shared Pointer from the Weak Pointer and check that it references a valid object
 			if (TSharedPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper = RegisteredProxy.SceneProxyWrapper.Pin())
 			{
+				FScopeLock OctreeLock(&RegisteredProxy.PointCloud->Octree.DataLock);
+
+				// If the octree has been invalidated, skip processing
+				if (!RegisteredProxy.TraversalOctree->bValid)
+				{
+					continue;
+				}
+
 #if WITH_EDITOR
 				// Avoid doubling the point allocation of the same asset (once in Editor world and once in PIE world)
 				if (RegisteredProxy.bSkip)
@@ -504,34 +490,28 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 				}
 #endif
 
-				// Attempt to get a data lock and check if the traversal octree is still valid
-				FScopeTryLock OctreeLock(&RegisteredProxy.Octree->DataLock);
-				if (OctreeLock.IsLocked() && RegisteredProxy.TraversalOctree->bValid)
-				{
-					FLidarPointCloudNodeSelectionParams SelectionParams;
-					SelectionParams.MinScreenSize = SelectionFilterParams[i].MinScreenSize;
-					SelectionParams.ScreenCenterImportance = ScreenCenterImportance;
-					SelectionParams.MinDepth = RegisteredProxy.ComponentRenderParams.MinDepth;
-					SelectionParams.MaxDepth = RegisteredProxy.ComponentRenderParams.MaxDepth;
-					SelectionParams.BoundsScale = RegisteredProxy.ComponentRenderParams.BoundsScale;
-					SelectionParams.bUseFrustumCulling = RegisteredProxy.ComponentRenderParams.bUseFrustumCulling;
-					SelectionParams.ClippingVolumes = RegisteredProxy.ComponentRenderParams.bOwnedByEditor ? nullptr : &ClippingVolumes; // Ignore clipping if in editor viewport
+				// Construct selection params
+				FLidarPointCloudNodeSelectionParams SelectionParams;
+				SelectionParams.MinScreenSize = FMath::Max(RegisteredProxy.Component->MinScreenSize, 0.0f);
+				SelectionParams.ScreenCenterImportance = ScreenCenterImportance;
+				SelectionParams.MinDepth = RegisteredProxy.Component->MinDepth;
+				SelectionParams.MaxDepth = RegisteredProxy.Component->MaxDepth;
+				SelectionParams.BoundsScale = RegisteredProxy.Component->BoundsScale;
 
-					// Append visible nodes
-					SelectionFilterParams[i].NumNodes = RegisteredProxy.TraversalOctree->GetVisibleNodes(NodeSizeData, &RegisteredProxy.ViewData, i, SelectionParams);
-				}
+				// Ignore clipping if in editor viewport
+				SelectionParams.ClippingVolumes = RegisteredProxy.Component->IsOwnedByEditor() ? nullptr : &ClippingVolumes;
+
+				// Append visible nodes
+				RegisteredProxy.TraversalOctree->GetVisibleNodes(NodeSizeData, RegisteredProxy.ViewData, i, SelectionParams, CurrentTime);
 			}
 		}
 
 		// Sort Nodes
-		Algo::Sort(NodeSizeData, [](const FLidarPointCloudTraversalOctreeNodeSizeData& A, const FLidarPointCloudTraversalOctreeNodeSizeData& B) { return A.Size > B.Size; });
-
-		TArray<float> NewMinScreenSizes;
-		NewMinScreenSizes.AddZeroed(InRegisteredProxies.Num());
+		Algo::Sort(NodeSizeData, [](const FNodeSizeData& A, const FNodeSizeData& B) { return A.Size > B.Size; });
 
 		// Limit nodes using specified Point Budget
 		SelectedNodesData.AddDefaulted(InRegisteredProxies.Num());
-		for (FLidarPointCloudTraversalOctreeNodeSizeData& Element : NodeSizeData)
+		for (FNodeSizeData& Element : NodeSizeData)
 		{
 			const uint32 NumPoints = Element.Node->DataNode->GetNumVisiblePoints();
 			const uint32 NewNumPointsSelected = TotalPointsSelected + NumPoints;
@@ -539,131 +519,99 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 
 			if (NewNumPointsSelected <= PointBudget)
 			{
-				NewMinScreenSizes[Element.ProxyIndex] = FMath::Max(Element.Size, 0.0f);
 				SelectedNodesData[Element.ProxyIndex].Add(Element.Node);
 				TotalPointsSelected = NewNumPointsSelected;
 				Element.Node->bSelected = true;
-				--SelectionFilterParams[Element.ProxyIndex].NumNodes;
 				++NumSelectedNodes;
 			}
 		}
 
-		for (int32 i = 0; i < InRegisteredProxies.Num(); ++i)
-		{
-			// If point budget is saturated, apply new Min Screen Sizes
-			// Otherwise, decrease Min Screen Sizes, to allow for more points
-			SelectionFilterParams[i].MinScreenSize = SelectionFilterParams[i].NumNodes > 0 ? NewMinScreenSizes[i] : (SelectionFilterParams[i].MinScreenSize * 0.9f);
-		}
-
 		SET_DWORD_STAT(STAT_PointCount, TotalPointsSelected);
+		SET_DWORD_STAT(STAT_PointCountFrustum, NewNumPointsInFrustum);
 	}
 
 	// Used to pass render data updates to render thread
 	TArray<FLidarPointCloudProxyUpdateData> ProxyUpdateData;
 
-	// Holds a per-octree list of nodes to stream-in or extend
-	TMultiMap<FLidarPointCloudOctree*, TArray<FLidarPointCloudOctreeNode*>> OctreeStreamingMap;
-
 	// Process Nodes
 	{
 		SCOPE_CYCLE_COUNTER(STAT_NodeProcessing);
 
-		const bool bUseStaticBuffers = GetDefault<ULidarPointCloudSettings>()->bUseFastRendering;
+		// Set when to release the BulkData, if no longer visible
+		const float BulkDataLifetime = CurrentTime + GetDefault<ULidarPointCloudSettings>()->CachedNodeLifetime;
 
 		for (int32 i = 0; i < SelectedNodesData.Num(); ++i)
 		{
 			const FLidarPointCloudLODManager::FRegisteredProxy& RegisteredProxy = InRegisteredProxies[i];
 
-			// Attempt to get a data lock and check if the traversal octree is still valid
-			FScopeTryLock OctreeLock(&RegisteredProxy.Octree->DataLock);
-			if (OctreeLock.IsLocked() && RegisteredProxy.TraversalOctree->bValid)
+			// Only calculate if needed
+			if (RegisteredProxy.Component->PointSize > 0)
 			{
-				FLidarPointCloudProxyUpdateData UpdateData;
-				UpdateData.SceneProxyWrapper = RegisteredProxy.SceneProxyWrapper;
-				UpdateData.NumElements = 0;
-				UpdateData.VDMultiplier = RegisteredProxy.TraversalOctree->ReversedVirtualDepthMultiplier;
-				UpdateData.RootCellSize = RegisteredProxy.Octree->GetRootCellSize();
-				UpdateData.ClippingVolumes = ClippingVolumes;
-				UpdateData.bUseStaticBuffers = bUseStaticBuffers && !RegisteredProxy.Octree->IsOptimizedForDynamicData();
-				UpdateData.RenderParams = RegisteredProxy.ComponentRenderParams;
-
-#if !(UE_BUILD_SHIPPING)
-				const bool bDrawNodeBounds = RegisteredProxy.ComponentRenderParams.bDrawNodeBounds;
-				if (bDrawNodeBounds)
+				for (FLidarPointCloudTraversalOctreeNode* Node : SelectedNodesData[i])
 				{
-					UpdateData.Bounds.Reset(SelectedNodesData[i].Num());
+					Node->CalculateVirtualDepth(RegisteredProxy.TraversalOctree->LevelWeights, RegisteredProxy.TraversalOctree->VirtualDepthMultiplier, RegisteredProxy.Component->PointSizeBias);
 				}
-#endif
-				const bool bCalculateVirtualDepth = RegisteredProxy.ComponentRenderParams.PointSize > 0;
+			}
 
-				TArray<float> LocalLevelWeights;
-				TArray<float>* LevelWeightsPtr = &RegisteredProxy.TraversalOctree->LevelWeights;
-				float PointSizeBias = RegisteredProxy.ComponentRenderParams.PointSizeBias;
+			FLidarPointCloudProxyUpdateData UpdateData;
+			UpdateData.SceneProxyWrapper = RegisteredProxy.SceneProxyWrapper;
+			UpdateData.NumElements = 0;
+			UpdateData.VDMultiplier = RegisteredProxy.TraversalOctree->ReversedVirtualDepthMultiplier;
+			UpdateData.RootCellSize = RegisteredProxy.PointCloud->Octree.GetRootCellSize();
+			UpdateData.ClippingVolumes = ClippingVolumes;
 
-				// Only calculate if needed
-				if (bCalculateVirtualDepth && (RegisteredProxy.ComponentRenderParams.ScalingMethod == ELidarPointCloudScalingMethod::PerNodeAdaptive || RegisteredProxy.ComponentRenderParams.ScalingMethod == ELidarPointCloudScalingMethod::PerPoint))
+			const bool bUseNormals = RegisteredProxy.Component->ShouldRenderFacingNormals();
+
+			// Since the process is async, make sure we can access the data!
+			{
+				FScopeLock OctreeLock(&RegisteredProxy.PointCloud->Octree.DataLock);
+				
+				// If the octree has been invalidated, skip processing
+				if (!RegisteredProxy.TraversalOctree->bValid)
 				{
-					RegisteredProxy.TraversalOctree->CalculateLevelWeightsForSelectedNodes(LocalLevelWeights);
-					LevelWeightsPtr = &LocalLevelWeights;
-					PointSizeBias = 0;
+					continue;
 				}
 
 				// Queue nodes to be streamed
-				TArray<FLidarPointCloudOctreeNode*>& NodesToStream = OctreeStreamingMap.FindOrAdd(RegisteredProxy.Octree);
-				NodesToStream.Reserve(NodesToStream.Num() + SelectedNodesData[i].Num());
 				for (FLidarPointCloudTraversalOctreeNode* Node : SelectedNodesData[i])
 				{
-					NodesToStream.Add(Node->DataNode);
+					RegisteredProxy.PointCloud->Octree.QueueNode(Node->DataNode, BulkDataLifetime);
 
 					if (Node->DataNode->HasData())
 					{
-						// Only calculate if needed
-                        if (bCalculateVirtualDepth)
-                        {
-							Node->CalculateVirtualDepth(*LevelWeightsPtr, PointSizeBias);
-                        }
-						
-						const uint32 NumVisiblePoints = Node->DataNode->GetNumVisiblePoints();
-						UpdateData.NumElements += NumVisiblePoints;
-						UpdateData.SelectedNodes.Emplace(bCalculateVirtualDepth ? Node->VirtualDepth : 0, NumVisiblePoints, Node->DataNode);
-#if !(UE_BUILD_SHIPPING)
-						if (bDrawNodeBounds)
-						{
-							const FVector Extent = RegisteredProxy.TraversalOctree->Extents[Node->Depth];
-							UpdateData.Bounds.Emplace(Node->Center - Extent, Node->Center + Extent);
-						}
-#endif
+						UpdateData.NumElements += Node->DataNode->GetNumVisiblePoints();
+						UpdateData.SelectedNodes.Emplace(Node->VirtualDepth, Node->DataNode->GetNumVisiblePoints(), Node->DataNode);
 					}
 				}
-
-				// Only calculate if needed
-				if (bCalculateVirtualDepth && RegisteredProxy.ComponentRenderParams.ScalingMethod == ELidarPointCloudScalingMethod::PerPoint)
-				{
-					RegisteredProxy.TraversalOctree->CalculateVisibilityStructure(UpdateData.TreeStructure);
-				}
-
-				ProxyUpdateData.Add(UpdateData);
 			}
+
+#if !(UE_BUILD_SHIPPING)
+			// Prepare bounds
+			if (RegisteredProxy.Component->bDrawNodeBounds)
+			{
+				UpdateData.Bounds.Reset(SelectedNodesData[i].Num());
+
+				for (FLidarPointCloudTraversalOctreeNode* Node : SelectedNodesData[i])
+				{
+					FVector Extent = RegisteredProxy.TraversalOctree->Extents[Node->Depth];
+					UpdateData.Bounds.Emplace(Node->Center - Extent, Node->Center + Extent);
+				}
+			}
+#endif
+
+			ProxyUpdateData.Add(UpdateData);
 		}
 	}
 
-	// Set when to release the BulkData, if no longer visible
-	const float BulkDataLifetime = CurrentTime + GetDefault<ULidarPointCloudSettings>()->CachedNodeLifetime;
-
-	// Perform data streaming in a separate thread
-	Async(EAsyncExecution::ThreadPool, [OctreeStreamingMap = MoveTemp(OctreeStreamingMap), CurrentTime, BulkDataLifetime]() mutable
+	// Begin streaming data
+	for (int32 i = 0; i < InRegisteredProxies.Num(); ++i)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_NodeStreaming);
+		const FLidarPointCloudLODManager::FRegisteredProxy& RegisteredProxy = InRegisteredProxies[i];
 
-		int32 LoadedNodes = 0;
-		for (TPair<FLidarPointCloudOctree*, TArray<FLidarPointCloudOctreeNode*>>& OctreeStreamingData : OctreeStreamingMap)
-		{
-			OctreeStreamingData.Key->StreamNodes(OctreeStreamingData.Value, CurrentTime);
-			LoadedNodes += OctreeStreamingData.Key->GetNumNodesInUse();
-		}
-
-		SET_DWORD_STAT(STAT_LoadedNodes, LoadedNodes);
-	});
+		FScopeLock OctreeLock(&RegisteredProxy.PointCloud->Octree.DataLock);
+		RegisteredProxy.PointCloud->Octree.UnloadOldNodes(CurrentTime);
+		RegisteredProxy.PointCloud->Octree.StreamQueuedNodes();
+	}
 
 	// Update Render Data
 	if (TotalPointsSelected > 0)
@@ -673,10 +621,6 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 			SCOPE_CYCLE_COUNTER(STAT_UpdateRenderData);
 
 			uint32 MaxPointsPerNode = 0;
-
-			const double ProcessingTime = FPlatformTime::Seconds();
-			const bool bUseRenderDataSmoothing = GetDefault<ULidarPointCloudSettings>()->bUseRenderDataSmoothing;
-			const float RenderDataSmoothingMaxFrametime = GetDefault<ULidarPointCloudSettings>()->RenderDataSmoothingMaxFrametime;
 
 			// Iterate over proxies and, if valid, update their data
 			for (const FLidarPointCloudProxyUpdateData& UpdateData : ProxyUpdateData)
@@ -688,15 +632,9 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 					{
 						for (const FLidarPointCloudProxyUpdateDataNode& Node : UpdateData.SelectedNodes)
 						{
-							if (Node.DataNode->BuildDataCache(UpdateData.bUseStaticBuffers))
+							if (Node.DataNode->BuildDataCache())
 							{
 								MaxPointsPerNode = FMath::Max(MaxPointsPerNode, Node.DataNode->GetNumVisiblePoints());
-							}
-
-							// Split building render data across multiple frames, to avoid stuttering
-							if (bUseRenderDataSmoothing && (FPlatformTime::Seconds() - ProcessingTime > RenderDataSmoothingMaxFrametime))
-							{
-								break;
 							}
 						}
 
@@ -711,6 +649,8 @@ int64 FLidarPointCloudLODManager::ProcessLOD(const TArray<FLidarPointCloudLODMan
 			}
 		});
 	}
+
+	bProcessing = false;
 
 	return NewNumPointsInFrustum;
 }
@@ -733,69 +673,73 @@ void FLidarPointCloudLODManager::PrepareProxies()
 		// Acquire a Shared Pointer from the Weak Pointer and check that it references a valid object
 		if (TSharedPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper = RegisteredProxy.SceneProxyWrapper.Pin())
 		{
-			if (ULidarPointCloudComponent* Component = RegisteredProxy.Component.Get())
+			ULidarPointCloudComponent* Component = nullptr;
+			if (TWeakObjectPtr<ULidarPointCloudComponent>* PtrToWeakComponent = ProxyComponentMap.Find(RegisteredProxy.SceneProxyWrapper))
 			{
-				if (ULidarPointCloud* PointCloud = RegisteredProxy.PointCloud.Get())
+				Component = (*PtrToWeakComponent).Get();
+
+				if (!Component)
 				{
-					// Just in case
-					if (Component->GetPointCloud() == PointCloud)
-					{
+					ProxyComponentMap.Remove(SceneProxyWrapper);
+				}
+			}
+
+			if (Component)
+			{
+				if (ULidarPointCloud* PointCloud = Component->GetPointCloud())
+				{
 #if WITH_EDITOR
-						// Avoid doubling the point allocation of the same asset (once in Editor world and once in PIE world)
-						RegisteredProxy.bSkip = ViewData.bPIE && Component->GetWorld() && Component->GetWorld()->WorldType == EWorldType::Type::Editor;
+					// Avoid doubling the point allocation of the same asset (once in Editor world and once in PIE world)
+					RegisteredProxy.bSkip = ViewData.bPIE && Component->GetWorld() && Component->GetWorld()->WorldType == EWorldType::Type::Editor;
 #endif
 
-						// Check if the component's transform has changed, and invalidate the Traversal Octree if so
-						const FTransform Transform = Component->GetComponentTransform();
-						if (!RegisteredProxy.LastComponentTransform.Equals(Transform))
-						{
-							RegisteredProxy.TraversalOctree->bValid = false;
-							RegisteredProxy.LastComponentTransform = Transform;
-						}
+					// Check if the component's transform has changed, and invalidate the Traversal Octree if so
+					const FTransform Transform = Component->GetComponentTransform();
+					if (!RegisteredProxy.LastComponentTransform.Equals(Transform))
+					{
+						RegisteredProxy.TraversalOctree->bValid = false;
+						RegisteredProxy.LastComponentTransform = Transform;
+					}
 
-						// Re-initialize the traversal octree, if needed
-						if (!RegisteredProxy.TraversalOctree->bValid)
-						{
-							// Update asset reference
-							RegisteredProxy.PointCloud = PointCloud;
+					// Re-initialize the traversal octree, if needed
+					if (!RegisteredProxy.TraversalOctree->bValid)
+					{
+						// Update asset reference
+						RegisteredProxy.PointCloud = PointCloud;
 
-							// Recreate the Traversal Octree
-							RegisteredProxy.TraversalOctree = MakeShareable(new FLidarPointCloudTraversalOctree(&PointCloud->Octree, Component->GetComponentTransform()));
-							RegisteredProxy.PointCloud->Octree.RegisterTraversalOctree(RegisteredProxy.TraversalOctree);
-						}
+						// Recreate the Traversal Octree
+						RegisteredProxy.TraversalOctree = MakeShareable(new FLidarPointCloudTraversalOctree(&PointCloud->Octree, Component->GetComponentTransform()));
+						RegisteredProxy.PointCloud->Octree.RegisterTraversalOctree(RegisteredProxy.TraversalOctree);
+					}
 
-						// If this is an editor component, use its own ViewportClient
-						if (TSharedPtr<FViewportClient> Client = Component->GetOwningViewportClient().Pin())
-						{
-							// If the ViewData cannot be successfully retrieved from the editor viewport, fall back to using main view
-							if (!RegisteredProxy.ViewData.ComputeFromEditorViewportClient(Client.Get()))
-							{
-								RegisteredProxy.ViewData = ViewData;
-							}
-						}
-						// ... otherwise, use the ViewData provided
-						else
+					// If this is an editor component, use its own ViewportClient
+					if (TSharedPtr<FViewportClient> Client = Component->GetOwningViewportClient().Pin())
+					{
+						// If the ViewData cannot be successfully retrieved from the editor viewport, fall back to using main view
+						if (!RegisteredProxy.ViewData.ComputeFromEditorViewportClient(Client.Get()))
 						{
 							RegisteredProxy.ViewData = ViewData;
 						}
-
-						// Increase priority, if the viewport has focus
-						if (bPrioritizeActiveViewport && RegisteredProxy.ViewData.bHasFocus)
-						{
-							RegisteredProxy.ViewData.ScreenSizeFactor *= 6;
-						}
-
-						// Don't count the skippable proxies
-						if (!RegisteredProxy.bSkip)
-						{
-							TotalPointCount += PointCloud->GetNumPoints();
-						}
-
-						// Update render params
-						RegisteredProxy.ComponentRenderParams.UpdateFromComponent(Component);
-
-						bValidProxy = true;
 					}
+					// ... otherwise, use the ViewData provided
+					else
+					{
+						RegisteredProxy.ViewData = ViewData;
+					}
+
+					// Increase priority, if the viewport has focus
+					if (bPrioritizeActiveViewport && RegisteredProxy.ViewData.bHasFocus)
+					{
+						RegisteredProxy.ViewData.ScreenSizeFactor *= 6;
+					}
+
+					// Don't count the skippable proxies
+					if (!RegisteredProxy.bSkip)
+					{
+						TotalPointCount += PointCloud->GetNumPoints();
+					}
+
+					bValidProxy = true;
 				}
 			}
 		}
@@ -810,14 +754,14 @@ void FLidarPointCloudLODManager::PrepareProxies()
 	SET_DWORD_STAT(STAT_PointCountTotal, TotalPointCount / 1000);
 }
 
-TArray<FLidarPointCloudClippingVolumeParams> FLidarPointCloudLODManager::GetClippingVolumes() const
+TArray<const ALidarClippingVolume*> FLidarPointCloudLODManager::GetClippingVolumes() const
 {
-	TArray<FLidarPointCloudClippingVolumeParams> ClippingVolumes;
+	TArray<const ALidarClippingVolume*> ClippingVolumes;
 	TArray<UWorld*> Worlds;
 
 	for (int32 i = 0; i < RegisteredProxies.Num(); ++i)
 	{
-		if (ULidarPointCloudComponent* Component = RegisteredProxies[i].Component.Get())
+		if (ULidarPointCloudComponent* Component = RegisteredProxies[i].Component)
 		{
 			if (!Component->IsOwnedByEditor())
 			{
@@ -836,24 +780,21 @@ TArray<FLidarPointCloudClippingVolumeParams> FLidarPointCloudLODManager::GetClip
 			ALidarClippingVolume* Volume = *It;
 			if (Volume->bEnabled)
 			{
-				ClippingVolumes.Emplace(Volume);
+				ClippingVolumes.Add(Volume);
 			}
 		}
 	}
 
-	ClippingVolumes.Sort();
-
 	return ClippingVolumes;
 }
 
-FLidarPointCloudLODManager::FRegisteredProxy::FRegisteredProxy(TWeakObjectPtr<ULidarPointCloudComponent> Component, TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper)
+FLidarPointCloudLODManager::FRegisteredProxy::FRegisteredProxy(ULidarPointCloudComponent* Component, TWeakPtr<FLidarPointCloudSceneProxyWrapper, ESPMode::ThreadSafe> SceneProxyWrapper)
 	: Component(Component)
 	, PointCloud(Component->GetPointCloud())
-	, Octree(&PointCloud->Octree)
 	, SceneProxyWrapper(SceneProxyWrapper)
-	, TraversalOctree(new FLidarPointCloudTraversalOctree(Octree, Component->GetComponentTransform()))
+	, TraversalOctree(new FLidarPointCloudTraversalOctree(&PointCloud->Octree, Component->GetComponentTransform()))
 	, LastComponentTransform(Component->GetComponentTransform())
 	, bSkip(false)
 {
-	Octree->RegisterTraversalOctree(TraversalOctree);
+	PointCloud->Octree.RegisterTraversalOctree(TraversalOctree);
 }

@@ -7,33 +7,28 @@
 #include "Components/BillboardComponent.h"
 #include "Engine/Texture2D.h"
 #include "WaterRuntimeSettings.h"
-#include "WaterSubsystem.h"
-#include "Modules/ModuleManager.h"
-#include "WaterModule.h"
 
-UBillboardComponent* FWaterIconHelper::EnsureSpriteComponentCreated_Internal(AActor* Actor, UClass* InClass, const TCHAR* InIconTextureName)
+UBillboardComponent* FWaterIconHelper::EnsureSpriteComponentCreated(AActor* Actor, const TCHAR* InIconTextureName, const FText& InDisplayName)
 {
 	UBillboardComponent* ActorIcon = nullptr;
-	
-	ActorIcon = Actor->FindComponentByClass<UBillboardComponent>();
-	if (ActorIcon == nullptr)
+	if (!Actor->IsTemplate())
 	{
-		ActorIcon = Actor->CreateEditorOnlyDefaultSubobject<UBillboardComponent>(TEXT("Sprite"), true);
-	}
-	if (ActorIcon != nullptr)
-	{
-		ConstructorHelpers::FObjectFinderOptional<UTexture2D> Texture(InIconTextureName);
-		IWaterModuleInterface& WaterModule = FModuleManager::GetModuleChecked<IWaterModuleInterface>(TEXT("Water"));
-		if (IWaterEditorServices* WaterEditorServices = WaterModule.GetWaterEditorServices())
+		ActorIcon = Actor->FindComponentByClass<UBillboardComponent>();
+		if (ActorIcon == nullptr)
 		{
-			WaterEditorServices->RegisterWaterActorSprite(InClass, Texture.Get());
+			ActorIcon = Actor->CreateEditorOnlyDefaultSubobject<UBillboardComponent>(TEXT("Sprite"), true);
 		}
-		ActorIcon->Sprite = Texture.Get();
-		ActorIcon->bHiddenInGame = true;
-		ActorIcon->SpriteInfo.Category = TEXT("Water");
-		ActorIcon->SpriteInfo.DisplayName = NSLOCTEXT("SpriteCategory", "Water", "Water");
-		ActorIcon->SetupAttachment(Actor->GetRootComponent());
-		UpdateSpriteComponent(Actor, ActorIcon->Sprite);
+
+		if (ActorIcon != nullptr)
+		{
+			ConstructorHelpers::FObjectFinderOptional<UTexture2D> Texture(InIconTextureName);
+			ActorIcon->Sprite = Texture.Get();
+			ActorIcon->bHiddenInGame = true;
+			ActorIcon->SpriteInfo.Category = TEXT("Water");
+			ActorIcon->SpriteInfo.DisplayName = InDisplayName;
+			ActorIcon->SetupAttachment(Actor->GetRootComponent());
+			UpdateSpriteComponent(Actor, ActorIcon->Sprite);
+		}
 	}
 	return ActorIcon;
 }

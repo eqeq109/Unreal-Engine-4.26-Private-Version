@@ -29,7 +29,11 @@ private:
 	FName SessionName;
 
 	/** Hidden on purpose */
-	FOnlineAsyncTaskSteamCreateServer() = delete;
+	FOnlineAsyncTaskSteamCreateServer() : 
+		bInit(false),
+		SessionName(NAME_None)
+	{
+	}
 
 public:
 
@@ -161,7 +165,11 @@ public:
 class FPendingSearchResultSteam final : public ISteamMatchmakingRulesResponse
 {
 	/** Hidden on purpose */
-	FPendingSearchResultSteam() = delete;
+	FPendingSearchResultSteam() :
+		ParentQuery(NULL),
+		ServerQueryHandle(HSERVERQUERY_INVALID)
+	{
+	}
 
 PACKAGE_SCOPE:
 
@@ -170,7 +178,7 @@ PACKAGE_SCOPE:
 	/** Handle to current rules response request with Steam */
 	HServerQuery ServerQueryHandle;
     /** Steam Id of the server result */
-	FUniqueNetIdSteamRef ServerId;
+	FUniqueNetIdSteam ServerId;
     /** Host address of the server result (PublicIP) */
 	TSharedPtr<FInternetAddr> HostAddr;
 	/** Placeholder for all returned rules until RulesRefreshComplete call */
@@ -195,8 +203,7 @@ public:
     /** Constructor */
 	FPendingSearchResultSteam(class FOnlineAsyncTaskSteamFindServerBase* InParentQuery):
 		ParentQuery(InParentQuery),
-		ServerQueryHandle(HSERVERQUERY_INVALID),
-		ServerId(FUniqueNetIdSteam::EmptyId())
+		ServerQueryHandle(HSERVERQUERY_INVALID)
 	{
 
 	}
@@ -322,7 +329,7 @@ public:
 };
 
 
-DECLARE_MULTICAST_DELEGATE_FourParams(FOnAsyncFindServerInviteCompleteWithNetId, const bool, const int32, FUniqueNetIdPtr, const class FOnlineSessionSearchResult&);
+DECLARE_MULTICAST_DELEGATE_FourParams(FOnAsyncFindServerInviteCompleteWithNetId, const bool, const int32, TSharedPtr< const FUniqueNetId >, const class FOnlineSessionSearchResult&);
 typedef FOnAsyncFindServerInviteCompleteWithNetId::FDelegate FOnAsyncFindServerInviteCompleteWithNetIdDelegate;
 
 class FOnlineAsyncTaskSteamFindServerForInviteSession : public FOnlineAsyncTaskSteamFindServerBase
@@ -422,20 +429,24 @@ public:
 class FOnlineAsyncEventSteamInviteAccepted : public FOnlineAsyncEvent<FOnlineSubsystemSteam>
 {
 	/** Friend who invited the user */
-	FUniqueNetIdSteamRef FriendId;
+	FUniqueNetIdSteam FriendId;
 	/** Connection string */
 	FString ConnectionURL;
 	/** User initiating the request */
 	int32 LocalUserNum;
 
 	/** Hidden on purpose */
-	FOnlineAsyncEventSteamInviteAccepted() = delete;
+	FOnlineAsyncEventSteamInviteAccepted() :
+		FOnlineAsyncEvent(NULL),
+		FriendId((uint64)0)
+	{
+	}
 
 public:
 
 	FOnlineAsyncEventSteamInviteAccepted(FOnlineSubsystemSteam* InSubsystem, const FUniqueNetIdSteam& InFriendId, const FString& InConnectionURL) :
 	  FOnlineAsyncEvent(InSubsystem),
-	  FriendId(FUniqueNetIdSteam::EmptyId()),
+	  FriendId((uint64)0),
 	  ConnectionURL(InConnectionURL),
 	  LocalUserNum(0)
 	{
@@ -450,7 +461,7 @@ public:
 	 */
 	virtual FString ToString() const override
 	{
-		return FString::Printf(TEXT("FOnlineAsyncEventSteamInviteAccepted Friend: %s URL: %s"), *FriendId->ToDebugString(), *ConnectionURL);
+		return FString::Printf(TEXT("FOnlineAsyncEventSteamInviteAccepted Friend: %s URL: %s"), *FriendId.ToDebugString(), *ConnectionURL);
 	}
 
 	/**

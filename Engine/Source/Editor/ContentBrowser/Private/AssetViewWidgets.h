@@ -146,7 +146,6 @@ public:
 	virtual void OnDragLeave( const FDragDropEvent& DragDropEvent ) override;
 	virtual FReply OnDragOver( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent ) override;
 	virtual FReply OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent ) override;
-	virtual FReply OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent, const TSharedRef<SWidget>& InParentWidget);
 	virtual bool OnVisualizeTooltip( const TSharedPtr<SWidget>& TooltipContent ) override;
 	virtual void OnToolTipClosing() override;
 
@@ -686,7 +685,7 @@ public:
 
 	virtual FReply OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override
 	{
-		return AssetColumnItem->OnDrop(MyGeometry, DragDropEvent, AsShared());
+		return AssetColumnItem->OnDrop(MyGeometry, DragDropEvent);
 	}
 
 	virtual bool OnVisualizeTooltip(const TSharedPtr<SWidget>& TooltipContent) override

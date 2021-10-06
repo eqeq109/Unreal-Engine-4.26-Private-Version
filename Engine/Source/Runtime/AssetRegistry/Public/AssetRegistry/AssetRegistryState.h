@@ -18,40 +18,46 @@ struct FARCompiledFilter;
 struct FAssetRegistrySerializationOptions
 {
 	/** True rather to load/save registry at all */
-	bool bSerializeAssetRegistry = false;
+	bool bSerializeAssetRegistry;
 
 	/** True rather to load/save dependency info. If true this will handle hard and soft package references */
-	bool bSerializeDependencies = false;
+	bool bSerializeDependencies;
 
 	/** True rather to load/save dependency info for Name references,  */
-	bool bSerializeSearchableNameDependencies = false;
+	bool bSerializeSearchableNameDependencies;
 
 	/** True rather to load/save dependency info for Manage references,  */
-	bool bSerializeManageDependencies = false;
+	bool bSerializeManageDependencies;
 
 	/** If true will read/write FAssetPackageData */
-	bool bSerializePackageData = false;
+	bool bSerializePackageData;
 
 	/** True if CookFilterlistTagsByClass is a whitelist. False if it is a blacklist. */
-	bool bUseAssetRegistryTagsWhitelistInsteadOfBlacklist = false;
+	bool bUseAssetRegistryTagsWhitelistInsteadOfBlacklist;
 
 	/** True if we want to only write out asset data if it has valid tags. This saves memory by not saving data for things like textures */
-	bool bFilterAssetDataWithNoTags = false;
+	bool bFilterAssetDataWithNoTags;
 
 	/** True if we also want to filter out dependency data for assets that have no tags. Only filters if bFilterAssetDataWithNoTags is also true */
-	bool bFilterDependenciesWithNoTags = false;
+	bool bFilterDependenciesWithNoTags;
 
 	/** Filter out searchable names from dependency data */
-	bool bFilterSearchableNames = false;
+	bool bFilterSearchableNames;
 
 	/** The map of classname to tag set of tags that are allowed in cooked builds. This is either a whitelist or blacklist depending on bUseAssetRegistryTagsWhitelistInsteadOfBlacklist */
 	TMap<FName, TSet<FName>> CookFilterlistTagsByClass;
 
-	/** Tag keys whose values should be stored as FName in cooked builds */
-	TSet<FName> CookTagsAsName;
-
-	/** Tag keys whose values should be stored as FRegistryExportPath in cooked builds */
-	TSet<FName> CookTagsAsPath;
+	FAssetRegistrySerializationOptions()
+		: bSerializeAssetRegistry(false)
+		, bSerializeDependencies(false)
+		, bSerializeSearchableNameDependencies(false)
+		, bSerializeManageDependencies(false)
+		, bSerializePackageData(false)
+		, bUseAssetRegistryTagsWhitelistInsteadOfBlacklist(false)
+		, bFilterAssetDataWithNoTags(false)
+		, bFilterDependenciesWithNoTags(false)
+		, bFilterSearchableNames(false)
+	{}
 
 	/** Options used to read/write the DevelopmentAssetRegistry, which includes all data */
 	void ModifyForDevelopment()
@@ -69,30 +75,12 @@ struct FAssetRegistrySerializationOptions
 	}
 };
 
-struct FAssetRegistryLoadOptions
-{
-	FAssetRegistryLoadOptions() = default;
-	explicit FAssetRegistryLoadOptions(const FAssetRegistrySerializationOptions& Options)
-		: bLoadDependencies(Options.bSerializeDependencies)
-		, bLoadPackageData(Options.bSerializePackageData)
-	{}
-
-	bool bLoadDependencies = true;
-	bool bLoadPackageData = true;
-	int32 ParallelWorkers = 0;
-};
-
 /** The state of an asset registry, this is used internally by IAssetRegistry to represent the disk cache, and is also accessed directly to save/load cooked caches */
 class ASSETREGISTRY_API FAssetRegistryState
 {
 public:
-	FAssetRegistryState() = default;
-	FAssetRegistryState(const FAssetRegistryState&) = delete;
-	FAssetRegistryState(FAssetRegistryState&& Rhs) { *this = MoveTemp(Rhs); }
+	FAssetRegistryState();
 	~FAssetRegistryState();
-
-	FAssetRegistryState& operator=(const FAssetRegistryState&) = delete;
-	FAssetRegistryState& operator=(FAssetRegistryState&& O);
 
 	/**
 	 * Enum controlling how we initialize this state
@@ -106,10 +94,9 @@ public:
 
 	/**
 	 * Does the given path contain assets?
-	 * @param bARFiltering Whether to apply filtering from UE::AssetRegistry::FFiltering (false by default)
 	 * @note This function doesn't recurse into sub-paths.
 	 */
-	bool HasAssets(const FName PackagePath, bool bARFiltering=false) const;
+	bool HasAssets(const FName PackagePath) const;
 
 	/**
 	 * Gets asset data for all assets that match the filter.
@@ -119,9 +106,8 @@ public:
 	 * @param Filter filter to apply to the assets in the AssetRegistry
 	 * @param PackageNamesToSkip explicit list of packages to skip, because they were already added
 	 * @param OutAssetData the list of assets in this path
-	 * @param bARFiltering Whether to apply filtering from UE::AssetRegistry::FFiltering (false by default)
 	 */
-	bool GetAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData, bool bARFiltering = false) const;
+	bool GetAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData) const;
 
 	/**
 	 * Enumerate asset data for all assets that match the filter.
@@ -131,27 +117,24 @@ public:
 	 * @param Filter filter to apply to the assets in the AssetRegistry
 	 * @param PackageNamesToSkip explicit list of packages to skip, because they were already added
 	 * @param Callback function to call for each asset data enumerated
-	 * @param bARFiltering Whether to apply filtering from UE::AssetRegistry::FFiltering (false by default)
 	 */
-	bool EnumerateAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback, bool bARFiltering = false) const;
+	bool EnumerateAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback) const;
 
 	/**
 	 * Gets asset data for all assets in the registry state.
 	 *
 	 * @param PackageNamesToSkip explicit list of packages to skip, because they were already added
 	 * @param OutAssetData the list of assets
-	 * @param bARFiltering Whether to apply filtering from UE::AssetRegistry::FFiltering (false by default)
 	 */
-	bool GetAllAssets(const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData, bool bARFiltering = false) const;
+	bool GetAllAssets(const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData) const;
 
 	/**
 	 * Enumerates asset data for all assets in the registry state.
 	 *
 	 * @param PackageNamesToSkip explicit list of packages to skip, because they were already added
 	 * @param Callback function to call for each asset data enumerated
-	 * @param bARFiltering Whether to apply filtering from UE::AssetRegistry::FFiltering (false by default)
 	 */
-	bool EnumerateAllAssets(const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback, bool bARFiltering = false) const;
+	bool EnumerateAllAssets(const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback) const;
 
 	UE_DEPRECATED(4.26, "Use GetDependencies that takes a UE::AssetRegistry::EDependencyCategory instead")
 	bool GetDependencies(const FAssetIdentifier& AssetIdentifier, TArray<FAssetIdentifier>& OutDependencies, EAssetRegistryDependencyType::Type InDependencyType) const;
@@ -202,14 +185,16 @@ public:
 	 * @param PackageName the path of the package to be looked up
 	 * @return an array of AssetData*, empty if nothing found
 	 */
-	TArrayView<FAssetData const* const> GetAssetsByPackageName(const FName PackageName) const
+	const TArray<const FAssetData*>& GetAssetsByPackageName(const FName PackageName) const
 	{
-		if (const TArray<FAssetData*, TInlineAllocator<1>>* FoundAssetArray = CachedAssetsByPackageName.Find(PackageName))
+		static TArray<const FAssetData*> InvalidArray;
+		const TArray<FAssetData*>* FoundAssetArray = CachedAssetsByPackageName.Find(PackageName);
+		if (FoundAssetArray)
 		{
-			return MakeArrayView(*FoundAssetArray);
+			return reinterpret_cast<const TArray<const FAssetData*>&>(*FoundAssetArray);
 		}
 
-		return TArrayView<FAssetData* const>();
+		return InvalidArray;
 	}
 
 	/**
@@ -285,6 +270,14 @@ public:
 	/** Finds an existing package data, or creates a new one to modify */
 	FAssetPackageData* CreateOrGetAssetPackageData(FName PackageName);
 
+	/**
+	 * Removes a key from the key value pairs for an object
+	 *
+	 * @param ObjectPath the path of the object to be trimmed
+	 * @param Key the key to remove
+	 */
+	void StripAssetRegistryKeyForObject(FName ObjectPath, FName Key);
+
 	/** Removes existing package data */
 	bool RemovePackageData(FName PackageName);
 
@@ -335,10 +328,6 @@ public:
 	/** Serialize the registry to/from a file, skipping editor only data */
 	bool Serialize(FArchive& Ar, const FAssetRegistrySerializationOptions& Options);
 
-	/** Save without editor-only data */
-	bool Save(FArchive& Ar, const FAssetRegistrySerializationOptions& Options);
-	bool Load(FArchive& Ar, const FAssetRegistryLoadOptions& Options = FAssetRegistryLoadOptions());
-
 	/** Returns memory size of entire registry, optionally logging sizes */
 	uint32 GetAllocatedSize(bool bLogDetailed = false) const;
 
@@ -360,12 +349,6 @@ public:
 #endif
 
 private:
-	template<class Archive>
-	void Load(Archive&& Ar, FAssetRegistryVersion::Type Version, const FAssetRegistryLoadOptions& Options);
-
-	/** Initialize the lookup maps */
-	void SetAssetDatas(TArrayView<FAssetData> AssetDatas, const FAssetRegistryLoadOptions& Options);
-
 	/** Find the first non-redirector dependency node starting from InDependency. */
 	FDependsNode* ResolveRedirector(FDependsNode* InDependency, TMap<FName, FAssetData*>& InAllowedAssets, TMap<FDependsNode*, FDependsNode*>& InCache);
 
@@ -378,17 +361,22 @@ private:
 	/** Removes the depends node and updates the dependencies to no longer contain it as as a referencer. */
 	bool RemoveDependsNode(const FAssetIdentifier& Identifier);
 
+	/** Shrink all contained data structures. */
+	void Shrink();
+
 	/** Filter a set of tags and output a copy of the filtered set. */
 	static void FilterTags(const FAssetDataTagMapSharedView& InTagsAndValues, FAssetDataTagMap& OutTagsAndValues, const TSet<FName>* ClassSpecificFilterlist, const FAssetRegistrySerializationOptions & Options);
 
-	void LoadDependencies(FArchive& Ar);
-	void LoadDependencies_BeforeFlags(FArchive& Ar, bool bSerializeDependencies, FAssetRegistryVersion::Type Version);
+	/** Set up the data structures for USE_COMPACT_ASSET_REGISTRY, doesn't really belong here */
+	static void IngestIniSettingsForCompact(TArray<FString>& AsFName, TArray<FString>& AsPathName, TArray<FString>& AsLocText);
+
+	void LegacySerializeLoad_BeforeAssetRegistryDependencyFlags(FArchive& Ar, const FAssetRegistrySerializationOptions& Options, FAssetRegistryVersion::Type Version);
 
 	/** The map of ObjectPath names to asset data for assets saved to disk */
 	TMap<FName, FAssetData*> CachedAssetsByObjectPath;
 
 	/** The map of package names to asset data for assets saved to disk */
-	TMap<FName, TArray<FAssetData*, TInlineAllocator<1>> > CachedAssetsByPackageName;
+	TMap<FName, TArray<FAssetData*> > CachedAssetsByPackageName;
 
 	/** The map of long package path to asset data for assets saved to disk */
 	TMap<FName, TArray<FAssetData*> > CachedAssetsByPath;
@@ -411,9 +399,9 @@ private:
 	TArray<FAssetPackageData*> PreallocatedPackageDataBuffers;
 
 	/** Counters for asset/depends data memory allocation to ensure that every FAssetData and FDependsNode created is deleted */
-	int32 NumAssets = 0;
-	int32 NumDependsNodes = 0;
-	int32 NumPackageData = 0;
+	int32 NumAssets;
+	int32 NumDependsNodes;
+	int32 NumPackageData;
 
 	friend class UAssetRegistryImpl;
 };

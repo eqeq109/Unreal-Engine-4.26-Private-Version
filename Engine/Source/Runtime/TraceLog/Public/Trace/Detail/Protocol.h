@@ -36,10 +36,4 @@ enum ETransport : uint8
 	TidPacket	= 3,
 };
 
-enum ETransportTid : uint32
-{
-	Internal	= 0,
-	Bias		= 1,
-};
-
 } // namespace Trace

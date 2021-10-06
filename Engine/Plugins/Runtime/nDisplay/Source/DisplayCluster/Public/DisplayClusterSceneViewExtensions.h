@@ -5,8 +5,6 @@
 #include "CoreMinimal.h"
 #include "SceneViewExtension.h"
 
-class IDisplayClusterViewportManager;
-
 /** Contains information about the context in which this scene view extension will be used. */
 struct FDisplayClusterSceneViewExtensionContext : public FSceneViewExtensionContext
 {
@@ -18,22 +16,14 @@ private:
 public:
 
 	// The id of the nDisplay viewport being rendered.
-	const FString ViewportId;
-	const IDisplayClusterViewportManager* ViewportManager;
+	FString ViewportId;
 
 	FDisplayClusterSceneViewExtensionContext()
-		: FSceneViewExtensionContext()
-	{ }
+		: FSceneViewExtensionContext(nullptr)
+	{}
 
-	FDisplayClusterSceneViewExtensionContext(FViewport* InViewport, IDisplayClusterViewportManager* InViewportManager, const FString& InViewportId)
+	FDisplayClusterSceneViewExtensionContext(FViewport* InViewport, const FString& InViewportId)
 		: FSceneViewExtensionContext(InViewport)
 		, ViewportId(InViewportId)
-		, ViewportManager(InViewportManager)
-	{ }
-
-	FDisplayClusterSceneViewExtensionContext(FSceneInterface* InScene, IDisplayClusterViewportManager* InViewportManager, const FString& InViewportId)
-		: FSceneViewExtensionContext(InScene)
-		, ViewportId(InViewportId)
-		, ViewportManager(InViewportManager)
-	{ }
+	{}
 };

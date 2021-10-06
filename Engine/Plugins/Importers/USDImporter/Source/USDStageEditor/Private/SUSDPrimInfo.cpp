@@ -49,7 +49,7 @@ void SUsdPrimInfo::Construct( const FArguments& InArgs, const UE::FUsdStage& Usd
 			SNew( SBox )
 			.Content()
 			[
-				SAssignNew( PropertiesList, SUsdPrimPropertiesList, UsdStage, PrimPath )
+				SAssignNew( PropertiesList, SUsdPrimPropertiesList, PrimPath )
 			]
 		]
 
@@ -81,7 +81,7 @@ void SUsdPrimInfo::SetPrimPath( const UE::FUsdStage& UsdStage, const TCHAR* Prim
 {
 	if ( PropertiesList )
 	{
-		PropertiesList->SetPrimPath( UsdStage, PrimPath );
+		PropertiesList->SetPrimPath( PrimPath );
 	}
 
 	if ( VariantsList )

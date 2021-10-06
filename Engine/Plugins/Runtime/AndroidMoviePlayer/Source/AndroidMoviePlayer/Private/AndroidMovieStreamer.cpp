@@ -64,19 +64,17 @@ static void DoUpdateTextureMovieSampleExecute(TWeakPtr<FJavaAndroidMediaPlayer, 
 struct FRHICommandUpdateTextureMovieSample final : public FRHICommand<FRHICommandUpdateTextureMovieSample>
 {
 	TWeakPtr<FJavaAndroidMediaPlayer, ESPMode::ThreadSafe> JavaMediaPlayerPtr;
-	FSlateTexture2DRHIRef* DestTexture;
+	int32 DestTexture;
 
-	FORCEINLINE_DEBUGGABLE FRHICommandUpdateTextureMovieSample(TWeakPtr<FJavaAndroidMediaPlayer, ESPMode::ThreadSafe> InJavaMediaPlayerPtr, FSlateTexture2DRHIRef* InDestTexture)
+	FORCEINLINE_DEBUGGABLE FRHICommandUpdateTextureMovieSample(TWeakPtr<FJavaAndroidMediaPlayer, ESPMode::ThreadSafe> InJavaMediaPlayerPtr, int32 InDestTexture)
 		: JavaMediaPlayerPtr(InJavaMediaPlayerPtr)
 		, DestTexture(InDestTexture)
 	{
 	}
 	void Execute(FRHICommandListBase& CmdList)
 	{
-		int32 NativeDestTexture = *reinterpret_cast<int32*>(DestTexture->GetTypedResource().GetReference()->GetNativeResource());
-
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FRHICommandUpdateTextureMovieSample_Execute);
-		DoUpdateTextureMovieSampleExecute(JavaMediaPlayerPtr, NativeDestTexture);
+		DoUpdateTextureMovieSampleExecute(JavaMediaPlayerPtr, DestTexture);
 	}
 };
 
@@ -117,14 +115,14 @@ bool FAndroidMediaPlayerStreamer::Tick(float DeltaTime)
 
 			if (!FAndroidMisc::ShouldUseVulkan())
 			{
+				int32 DestTexture = *reinterpret_cast<int32*>(CurrentTexture->GetTypedResource().GetReference()->GetNativeResource());
 				if (IsRunningRHIInSeparateThread())
 				{
 					FRHICommandListImmediate &RHICommandList = GetImmediateCommandList_ForRenderCommand();
-					new (RHICommandList.AllocCommand<FRHICommandUpdateTextureMovieSample>()) FRHICommandUpdateTextureMovieSample(JavaMediaPlayer, CurrentTexture);
+					new (RHICommandList.AllocCommand<FRHICommandUpdateTextureMovieSample>()) FRHICommandUpdateTextureMovieSample(JavaMediaPlayer, DestTexture);
 				}
 				else
 				{
-					int32 DestTexture = *reinterpret_cast<int32*>(CurrentTexture->GetTypedResource().GetReference()->GetNativeResource());
 					DoUpdateTextureMovieSampleExecute(JavaMediaPlayer, DestTexture);
 				}
 			}
@@ -203,7 +201,7 @@ bool FAndroidMediaPlayerStreamer::StartNextMovie()
 		// possible it is in a PAK file
 		FPakPlatformFile* PakPlatformFile = (FPakPlatformFile*)(FPlatformFileManager::Get().FindPlatformFile(FPakPlatformFile::GetTypeName()));
 
-		TRefCountPtr<FPakFile> PakFile;
+		FPakFile* PakFile = NULL;
 		FPakEntry FileEntry;
 		if (PakPlatformFile == nullptr || !PakPlatformFile->FindFileInPakFiles(*MoviePath, &PakFile, &FileEntry))
 		{

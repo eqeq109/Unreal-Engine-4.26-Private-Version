@@ -52,7 +52,7 @@ private:
 
 		FString ToString() const
 		{
-			return (Line == INDEX_NONE) ? File : FString::Printf(TEXT("%s:%d"), *File, Line);
+			return (Line == INDEX_NONE) ? File : FString::Printf(TEXT("%s - line %d"), *File, Line);
 		}
 
 		FString File;
@@ -121,7 +121,7 @@ private:
 		bool WithinBlockComment;
 		bool WithinLineComment;
 		bool WithinStringLiteral;
-		int32 WithinNamespaceDefineLineNumber;
+		bool WithinNamespaceDefine;
 		const TCHAR* WithinStartingLine;
 
 		//Should editor-only data be included in this gather?
@@ -142,7 +142,7 @@ private:
 			, WithinBlockComment(false)
 			, WithinLineComment(false)
 			, WithinStringLiteral(false)
-			, WithinNamespaceDefineLineNumber(INDEX_NONE)
+			, WithinNamespaceDefine(false)
 			, WithinStartingLine(nullptr)
 			, ShouldGatherFromEditorOnlyData(false)
 			, MacroBlockStack()

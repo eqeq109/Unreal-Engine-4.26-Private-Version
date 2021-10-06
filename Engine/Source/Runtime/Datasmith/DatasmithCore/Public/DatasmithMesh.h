@@ -203,10 +203,8 @@ public:
 	void AddLOD( const FDatasmithMesh& InLODMesh );
 	void AddLOD( FDatasmithMesh&& InLODMesh );
 	int32 GetLODsCount() const;
-
-	/** Gets the FDatasmithMesh LOD at the given index, if the index is invalid returns nullptr */
-	FDatasmithMesh* GetLOD( int32 Index );
-	const FDatasmithMesh* GetLOD( int32 Index ) const;
+	FDatasmithMesh& GetLOD( int32 Index );
+	const FDatasmithMesh& GetLOD( int32 Index ) const;
 
 	//--------------------------
 	// Misc

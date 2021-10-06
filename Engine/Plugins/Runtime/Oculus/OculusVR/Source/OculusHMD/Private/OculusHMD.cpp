@@ -1023,20 +1023,6 @@ namespace OculusHMD
 		return true;
 	}
 
-	FVector2D FOculusHMD::GetPlayAreaBounds(EHMDTrackingOrigin::Type Origin) const
-	{
-		ovrpVector3f Dimensions;
-
-		if (Origin == EHMDTrackingOrigin::Stage &&
-			OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetBoundaryDimensions2(ovrpBoundary_PlayArea, &Dimensions)))
-		{
-			Dimensions.z *= -1.0;
-			FVector Bounds = ConvertVector_M2U(Dimensions);
-			return FVector2D(Bounds.X, Bounds.Z);
-		}
-		return FVector2D::ZeroVector;
-	}
-
 	bool FOculusHMD::IsHMDConnected()
 	{
 		CheckInGameThread();
@@ -1276,7 +1262,7 @@ namespace OculusHMD
 		}
 	}
 
-	void FOculusHMD::SetFinalViewRect(FRHICommandListImmediate& RHICmdList, const enum EStereoscopicPass StereoPass, const FIntRect& FinalViewRect)
+	void FOculusHMD::SetFinalViewRect(const enum EStereoscopicPass StereoPass, const FIntRect& FinalViewRect)
 	{
 		CheckInRenderThread();
 
@@ -1504,7 +1490,7 @@ namespace OculusHMD
 	}
 
 
-	bool FOculusHMD::NeedReAllocateShadingRateTexture(const TRefCountPtr<IPooledRenderTarget>& FoveationTarget)
+	bool FOculusHMD::NeedReAllocateFoveationTexture(const TRefCountPtr<IPooledRenderTarget>& FoveationTarget)
 	{
 		CheckInRenderThread();
 
@@ -1567,7 +1553,7 @@ namespace OculusHMD
 		return false;
 	}
 
-	bool FOculusHMD::AllocateShadingRateTexture(uint32 Index, uint32 RenderSizeX, uint32 RenderSizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags InTexFlags, ETextureCreateFlags InTargetableTextureFlags, FTexture2DRHIRef& OutTexture, FIntPoint& OutTextureSize)
+	bool FOculusHMD::AllocateFoveationTexture(uint32 Index, uint32 RenderSizeX, uint32 RenderSizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags InTexFlags, ETextureCreateFlags InTargetableTextureFlags, FTexture2DRHIRef& OutTexture, FIntPoint& OutTextureSize)
 	{
 		CheckInRenderThread();
 
@@ -1957,34 +1943,12 @@ namespace OculusHMD
 	}
 
 
-	bool FOculusHMD::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+	bool FOculusHMD::IsActiveThisFrame(class FViewport* InViewport) const
 	{
 		// We need to use GEngine->IsStereoscopic3D in case the current viewport disallows running in stereo.
-		return GEngine && GEngine->IsStereoscopic3D(Context.Viewport);
+		return GEngine && GEngine->IsStereoscopic3D(InViewport);
 	}
 
-	bool FOculusHMD::LateLatchingEnabled() const
-	{
-#if OCULUS_HMD_SUPPORTED_PLATFORMS_VULKAN && PLATFORM_ANDROID
-		// No LateLatching supported when occlusion culling is enabled due to mid frame submission
-		// No LateLatching supported for non Multi view ATM due to viewUniformBuffer reusing.
-		// The setting can be disabled in FOculusHMD::UpdateStereoRenderingParams
-		return Settings->bLateLatching;
-#else
-		return false;
-#endif
-	}
-
-
-	void FOculusHMD::PreLateLatchingViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
-	{
-		CheckInRenderThread();
-		FGameFrame* CurrentFrame = GetFrame_RenderThread();
-		if (CurrentFrame)
-		{
-			CurrentFrame->Flags.bRTLateUpdateDone = false; // Allow LateLatching to update poses again
-		}
-	}
 
 	FOculusHMD::FOculusHMD(const FAutoRegister& AutoRegister)
 		: FHeadMountedDisplayBase(nullptr)
@@ -2185,7 +2149,7 @@ namespace OculusHMD
 				initializeFlags |= ovrpInitializeFlag_FocusAware;
 			}
 
-			if (OVRP_FAILURE(FOculusHMDModule::GetPluginWrapper().Initialize6(
+			if (OVRP_FAILURE(FOculusHMDModule::GetPluginWrapper().Initialize5(
 				CustomPresent->GetRenderAPI(),
 				logCallback,
 				activity,
@@ -2193,8 +2157,6 @@ namespace OculusHMD
 				CustomPresent->GetOvrpPhysicalDevice(),
 				CustomPresent->GetOvrpDevice(),
 				CustomPresent->GetOvrpCommandQueue(),
-				nullptr,
-				-1,
 				initializeFlags,
 				{ OVRP_VERSION })))
 			{
@@ -2217,28 +2179,20 @@ namespace OculusHMD
 			UE_LOG(LogHMD, Log, TEXT("OculusHMD plugin supports multiview!"));
 		}
 #endif
-		int flag = ovrpDistortionWindowFlag_None;
+		ovrpDistortionWindowFlag flag = ovrpDistortionWindowFlag_None;
 #if PLATFORM_ANDROID && USE_ANDROID_EGL_NO_ERROR_CONTEXT
 		if (AndroidEGL::GetInstance()->GetSupportsNoErrorContext())
 		{
 			flag = ovrpDistortionWindowFlag_NoErrorContext;
 		}
 #endif // PLATFORM_ANDROID && USE_ANDROID_EGL_NO_ERROR_CONTEXT
-
-#if PLATFORM_ANDROID
-		if (Settings->bPhaseSync)
-		{
-			flag |= ovrpDistortionWindowFlag_PhaseSync;
-		}
-#endif // PLATFORM_ANDROID
-
 		FOculusHMDModule::GetPluginWrapper().SetupDistortionWindow3(flag);
 		FOculusHMDModule::GetPluginWrapper().SetSystemCpuLevel2(Settings->CPULevel);
 		FOculusHMDModule::GetPluginWrapper().SetSystemGpuLevel2(Settings->GPULevel);
 		FOculusHMDModule::GetPluginWrapper().SetTiledMultiResLevel((ovrpTiledMultiResLevel)Settings->FFRLevel);
 		FOculusHMDModule::GetPluginWrapper().SetTiledMultiResDynamic(Settings->FFRDynamic);
 		FOculusHMDModule::GetPluginWrapper().SetAppCPUPriority2(ovrpBool_True);
-		FOculusHMDModule::GetPluginWrapper().SetEyeFovPremultipliedAlphaMode(ovrpBool_False);
+		FOculusHMDModule::GetPluginWrapper().SetReorientHMDOnControllerRecenter(Settings->Flags.bRecenterHMDWithController ? ovrpBool_True : ovrpBool_False);
 
 		OCFlags.NeedSetTrackingOrigin = true;
 		bNeedReAllocateViewportRenderTarget = true;
@@ -2535,19 +2489,6 @@ namespace OculusHMD
 		{
 			Layout = ovrpLayout_Array;
 			Settings->Flags.bIsUsingDirectMultiview = true;
-		}
-		else if (Settings->bLateLatching)
-		{
-			UE_CLOG(true, LogHMD, Error, TEXT("LateLatching can't be used when Multiview is off, force disabling."));
-			Settings->bLateLatching = false;
-		}
-
-		static const auto AllowOcclusionQueriesCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowOcclusionQueries"));
-		const bool bAllowOcclusionQueries = AllowOcclusionQueriesCVar && (AllowOcclusionQueriesCVar->GetValueOnAnyThread() != 0);
-		if (bAllowOcclusionQueries && Settings->bLateLatching)
-		{
-			UE_CLOG(true, LogHMD, Error, TEXT("LateLatching can't used when Occlusion culling is on due to mid frame vkQueueSubmit, force disabling"));
-			Settings->bLateLatching = false;
 		}
 
 #endif
@@ -3617,8 +3558,6 @@ namespace OculusHMD
 		Settings->GPULevel = HMDSettings->GPULevel;
 		Settings->PixelDensityMin = HMDSettings->PixelDensityMin;
 		Settings->PixelDensityMax = HMDSettings->PixelDensityMax;
-		Settings->bLateLatching = HMDSettings->bLateLatching;
-		Settings->bPhaseSync = HMDSettings->bPhaseSync;
 	}
 
 	/// @endcond

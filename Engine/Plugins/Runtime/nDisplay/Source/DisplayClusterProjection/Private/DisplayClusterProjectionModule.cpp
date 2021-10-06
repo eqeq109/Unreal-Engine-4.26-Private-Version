@@ -12,7 +12,6 @@
 #include "Policy/MPCDI/DisplayClusterProjectionMPCDIPolicyFactory.h"
 #include "Policy/Manual/DisplayClusterProjectionManualPolicyFactory.h"
 #include "Policy/Domeprojection/DisplayClusterProjectionDomeprojectionPolicyFactory.h"
-#include "Policy/Link/DisplayClusterProjectionLinkPolicyFactory.h"
 
 #include "Policy/Mesh/DisplayClusterProjectionMeshPolicy.h"
 
@@ -22,13 +21,6 @@
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 
-
-#include "IDisplayCluster.h"
-#include "Render/IDisplayClusterRenderManager.h"
-#include "Render/Viewport/IDisplayClusterViewportManager.h"
-#include "Render/Viewport/IDisplayClusterViewport.h"
-
-#include "Policy/Camera/DisplayClusterProjectionCameraPolicy.h"
 
 FDisplayClusterProjectionModule::FDisplayClusterProjectionModule()
 {
@@ -62,11 +54,6 @@ FDisplayClusterProjectionModule::FDisplayClusterProjectionModule()
 	// Domeprojection projection
 	Factory = MakeShared<FDisplayClusterProjectionDomeprojectionPolicyFactory>();
 	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Domeprojection, Factory);
-
-	// Linkprojection
-	Factory = MakeShared<FDisplayClusterProjectionLinkPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Link, Factory);
-
 
 	UE_LOG(LogDisplayClusterProjection, Log, TEXT("Projection module has been instantiated"));
 }
@@ -140,14 +127,26 @@ TSharedPtr<IDisplayClusterProjectionPolicyFactory> FDisplayClusterProjectionModu
 	return nullptr;
 }
 
-bool FDisplayClusterProjectionModule::CameraPolicySetCamera(const TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe>& InPolicy, UCameraComponent* const NewCamera, const FDisplayClusterProjectionCameraPolicySettings& CamersSettings)
+bool FDisplayClusterProjectionModule::AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
 {
-	if (InPolicy.IsValid())
+	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory = GetProjectionFactory(DisplayClusterProjectionStrings::projection::Mesh);
+	if (Factory.IsValid())
 	{
-		if (FDisplayClusterProjectionCameraPolicy* CameraPolicyInstance = static_cast<FDisplayClusterProjectionCameraPolicy*>(InPolicy.Get()))
+		FDisplayClusterProjectionMPCDIPolicyFactory* MPCDIFactory = static_cast<FDisplayClusterProjectionMPCDIPolicyFactory*>(Factory.Get());
+		if (MPCDIFactory)
 		{
-			CameraPolicyInstance->SetCamera(NewCamera, CamersSettings);
-			return true;
+			TSharedPtr<FDisplayClusterProjectionPolicyBase> ViewportPolicy = MPCDIFactory->GetPolicyByViewport(ViewportId);
+			if (ViewportPolicy.IsValid())
+			{
+				FDisplayClusterProjectionMeshPolicy* MeshPolicy = static_cast<FDisplayClusterProjectionMeshPolicy*>(ViewportPolicy.Get());
+				if (MeshPolicy != nullptr)
+				{
+					if (MeshPolicy->GetWarpType() == FDisplayClusterProjectionMPCDIPolicy::EWarpType::mesh)
+					{
+						return MeshPolicy->AssignWarpMesh(MeshComponent, OriginComponent);
+					}
+				}
+			}
 		}
 	}
 

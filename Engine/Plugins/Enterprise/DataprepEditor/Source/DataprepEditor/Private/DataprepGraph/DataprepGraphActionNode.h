@@ -13,7 +13,6 @@
 class FBlueprintActionDatabaseRegistrar;
 class UDataprepActionAsset;
 class UDataprepActionStep;
-class UDataprepAsset;
 
 /**
  * The UDataprepGraphActionStepNode class is used as the UEdGraphNode associated
@@ -79,10 +78,9 @@ public:
 	virtual void OnRenameNode(const FString& NewName) override;
 	virtual void DestroyNode() override;
 	TSharedPtr<class INameValidatorInterface> MakeNameValidator() const override;
-	virtual void ResizeNode(const FVector2D& NewSize) override;
 	// End EdGraphNode interface
 
-	void Initialize(TWeakObjectPtr<UDataprepAsset> InDataprepAssetPtr, UDataprepActionAsset* InDataprepActionAsset, int32 InExecutionOrder);
+	void Initialize(UDataprepActionAsset* InDataprepActionAsset, int32 InExecutionOrder);
 
 	const UDataprepActionAsset* GetDataprepActionAsset() const { return DataprepActionAsset; }
 	UDataprepActionAsset* GetDataprepActionAsset() { return DataprepActionAsset; }
@@ -97,61 +95,5 @@ protected:
 	UDataprepActionAsset* DataprepActionAsset;
 
 	UPROPERTY()
-	TWeakObjectPtr<UDataprepAsset> DataprepAssetPtr;
-
-	UPROPERTY()
 	int32 ExecutionOrder;
-};
-
-UCLASS(MinimalAPI)
-class UDataprepGraphActionGroupNode final : public UEdGraphNode
-{
-	GENERATED_BODY()
-
-public:
-	UDataprepGraphActionGroupNode();
-
-	// Begin EdGraphNode interface
-	virtual bool ShowPaletteIconOnNode() const override { return false; }
-	virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override;
-	TSharedPtr<class INameValidatorInterface> MakeNameValidator() const override;
-	virtual void ResizeNode(const FVector2D& NewSize) override;
-	// End EdGraphNode interface
-
-	void Initialize(TWeakObjectPtr<UDataprepAsset> InDataprepAssetPtr, TArray<UDataprepActionAsset*>& InActions, int32 InExecutionOrder);
-
-	int32 GetExecutionOrder() const { return ExecutionOrder; }
-
-	int32 GetGroupId() const;
-
-	bool IsGroupEnabled() const;
-
-	UDataprepActionAsset* GetAction(int32 Index) const
-	{
-		check(Index < Actions.Num());
-		return Actions[Index];
-	}
-
-	UDataprepAsset* GetDataprepAsset()
-	{
-		return DataprepAssetPtr.Get();
-	}
-
-	int32 GetActionsCount() const
-	{
-		return Actions.Num();
-	}
-
-protected:
-	UPROPERTY()
-	int32 ExecutionOrder;
-
-	UPROPERTY()
-	FString NodeTitle;
-
-	UPROPERTY()
-	TArray<UDataprepActionAsset*> Actions;
-
-	UPROPERTY()
-	TWeakObjectPtr<UDataprepAsset> DataprepAssetPtr;
 };

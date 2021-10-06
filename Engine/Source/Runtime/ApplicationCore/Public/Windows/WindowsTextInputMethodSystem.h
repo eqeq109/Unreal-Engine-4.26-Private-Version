@@ -9,7 +9,7 @@
 
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <msctf.h>
-#include "Microsoft/COMPointer.h"
+#include "Windows/COMPointer.h"
 
 class FGenericWindow;
 

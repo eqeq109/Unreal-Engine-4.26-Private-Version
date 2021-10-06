@@ -118,13 +118,9 @@ FMDLMaterialSelector::EMaterialType FMDLMaterialSelector::GetMaterialType(const 
 {
 	EMaterialType Type = EMaterialType::Opaque;
 
-	if (MDLImporterImpl::IsMaskedMaterial(MdlMaterial))
+	if (MDLImporterImpl::IsEmissiveMaterial(MdlMaterial))
 	{
-		Type = EMaterialType::Masked;
-	}
-	else if (MDLImporterImpl::IsTransparentMaterial(MdlMaterial))
-	{
-		Type = EMaterialType::Translucent;
+		Type = EMaterialType::Emissive;
 	}
 	else if (MDLImporterImpl::IsCarpaintMaterial(MdlMaterial))
 	{
@@ -134,13 +130,17 @@ FMDLMaterialSelector::EMaterialType FMDLMaterialSelector::GetMaterialType(const 
 	{
 		Type = EMaterialType::Subsurface;
 	}
+	else if (MDLImporterImpl::IsMaskedMaterial(MdlMaterial))
+	{
+		Type = EMaterialType::Masked;
+	}
+	else if (MDLImporterImpl::IsTransparentMaterial(MdlMaterial))
+	{
+		Type = EMaterialType::Translucent;
+	}
 	else if (MDLImporterImpl::IsClearcoatMaterial(MdlMaterial))
 	{
 		Type = EMaterialType::Clearcoat;
-	}
-	else if (MDLImporterImpl::IsEmissiveMaterial(MdlMaterial))
-	{
-		Type = EMaterialType::Emissive;
 	}
 
 	return Type;

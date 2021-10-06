@@ -61,6 +61,8 @@ private:
 	FMemoryTag* Parent = nullptr;
 	TSet<FMemoryTag*> Children;
 	TSet<TSharedPtr<FMemoryGraphTrack>> Tracks; // tracks using this LLM tag
+
+	static uint32 HashSeed;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

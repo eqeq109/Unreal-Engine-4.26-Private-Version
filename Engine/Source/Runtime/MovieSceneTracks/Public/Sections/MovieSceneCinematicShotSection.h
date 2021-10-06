@@ -16,20 +16,23 @@ class MOVIESCENETRACKS_API UMovieSceneCinematicShotSection
 {
 	GENERATED_BODY()
 
-	/** Object constructor. */
-	UMovieSceneCinematicShotSection(const FObjectInitializer& ObjInitializer);
+	/** Default constructor. */
+	UMovieSceneCinematicShotSection();
 
 	/** ~UObject interface */
 	virtual void PostLoad() override;
 
 public:
 
-	/** @return The shot display name. if empty, returns the sequence's name*/
-	UFUNCTION(BlueprintPure, Category = "Sequencer|Section")
-	FString GetShotDisplayName() const;
+	/** @return The shot display name */
+	UFUNCTION(BlueprintPure, Category = "Movie Scene Section")
+	FString GetShotDisplayName() const
+	{
+		return ShotDisplayName;
+	}
 
 	/** Set the shot display name */
-	UFUNCTION(BlueprintCallable, Category = "Sequencer|Section")
+	UFUNCTION(BlueprintCallable, Category = "Movie Scene Section")
 	void SetShotDisplayName(const FString& InShotDisplayName)
 	{
 		if (TryModify())

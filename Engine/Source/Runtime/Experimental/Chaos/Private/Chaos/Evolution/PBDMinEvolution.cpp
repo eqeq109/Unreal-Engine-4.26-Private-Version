@@ -177,7 +177,7 @@ namespace Chaos
 		{
 			// StepFraction: how much of the remaining time this step represents, used to interpolate kinematic targets
 			// E.g., for 4 steps this will be: 1/4, 1/2, 3/4, 1
-			const FReal StepFraction = (FReal)(Step + 1) / (NumSteps);
+			const float StepFraction = (FReal)(Step + 1) / (NumSteps);
 
 			UE_LOG(LogChaosMinEvolution, Verbose, TEXT("Advance dt = %f [%d/%d]"), StepDt, Step + 1, NumSteps);
 
@@ -397,9 +397,9 @@ namespace Chaos
 				// Update world-space bounds
 				if (Particle.HasBounds())
 				{
-					const FAABB3& LocalBounds = Particle.LocalBounds();
+					const TAABB<FReal, 3>& LocalBounds = Particle.LocalBounds();
 					
-					FAABB3 WorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(Particle.P(), Particle.Q()));
+					TAABB<FReal, 3> WorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(Particle.P(), Particle.Q()));
 					WorldSpaceBounds.ThickenSymmetrically(WorldSpaceBounds.Extents() * BoundsExtension);
 
 					// Dynamic bodies may get pulled back into their old positions by joints - make sure we find collisions that may prevent this
@@ -494,7 +494,7 @@ namespace Chaos
 				// Update world-space bounds
 				if (Rigids.HasBounds[ParticleIndex])
 				{
-					FAABB3 WorldSpaceBounds = Rigids.LocalBounds[ParticleIndex].TransformedAABB(FRigidTransform3(Rigids.P[ParticleIndex], Rigids.Q[ParticleIndex]));
+					TAABB<FReal, 3> WorldSpaceBounds = Rigids.LocalBounds[ParticleIndex].TransformedAABB(FRigidTransform3(Rigids.P[ParticleIndex], Rigids.Q[ParticleIndex]));
 					WorldSpaceBounds.ThickenSymmetrically(WorldSpaceBounds.Extents() * BoundsExtension);
 
 					// Dynamic bodies may get pulled back into their old positions by joints - make sure we find collisions that may prevent this
@@ -524,7 +524,6 @@ namespace Chaos
 
 	void FPBDMinEvolution::IntegrateImplISPC(FReal Dt)
 	{
-		check(bRealTypeCompatibleWithISPC);
 #if INTEL_ISPC
 		FPBDRigidArrays Rigids = FPBDRigidArrays(Particles.GetDynamicParticles());
 		ispc::MinEvolutionIntegrate(Dt, (ispc::FPBDRigidArrays&)Rigids, (ispc::FSimulationSpace&)SimulationSpace, (ispc::FSimulationSpaceSettings&)SimulationSpaceSettings, (ispc::FVector&)Gravity, BoundsExtension, CollisionDetector.GetBroadPhase().GetCullDistance());
@@ -620,12 +619,12 @@ namespace Chaos
 			// Update world space bouunds
 			if (Particle.HasBounds())
 			{
-				const FAABB3& LocalBounds = Particle.LocalBounds();
+				const TAABB<FReal, 3>& LocalBounds = Particle.LocalBounds();
 				
-				FAABB3 WorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(Particle.X(), Particle.R()));
+				TAABB<FReal, 3> WorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(Particle.X(), Particle.R()));
 				WorldSpaceBounds.ThickenSymmetrically(WorldSpaceBounds.Extents() * BoundsExtension);
 
-				//FAABB3 PrevWorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(PrevX, PrevR));
+				//TAABB<FReal, 3> PrevWorldSpaceBounds = LocalBounds.TransformedAABB(FRigidTransform3(PrevX, PrevR));
 				//WorldSpaceBounds.GrowToInclude(PrevWorldSpaceBounds);
 
 				Particle.SetWorldSpaceInflatedBounds(WorldSpaceBounds);
@@ -692,7 +691,7 @@ namespace Chaos
 	{
 		SCOPE_CYCLE_COUNTER(STAT_MinEvolution_UpdateVelocites);
 
-		FPerParticlePBDUpdateFromDeltaPosition UpdateVelocityRule;
+		TPerParticlePBDUpdateFromDeltaPosition<FReal, 3> UpdateVelocityRule;
 		for (auto& Particle : Particles.GetActiveParticlesView())
 		{
 			UpdateVelocityRule.Apply(Particle, Dt);

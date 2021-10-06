@@ -101,15 +101,14 @@ enum ControllerClassType
 	Generic,
 	XBoxWired,
 	XBoxWireless,
-	PlaystationWireless
+	PS4Wireless
 };
 
 enum ButtonRemapType
 {
 	Normal,
 	XBox,
-	PS4,
-	PS5
+	PS4
 };
 
 struct FAndroidInputDeviceInfo {
@@ -250,7 +249,6 @@ public:
 	static void JoystickAxisEvent(int32 deviceId, int32 axisId, float axisValue);
 	static void JoystickButtonEvent(int32 deviceId, int32 buttonId, bool buttonDown);
 
-	static int32 GetAlternateKeyEventForMouse(int32 deviceID, int32 buttonID);
 	static void MouseMoveEvent(int32 deviceId, float absoluteX, float absoluteY, float deltaX, float deltaY);
 	static void MouseWheelEvent(int32 deviceId, float wheelDelta);
 	static void MouseButtonEvent(int32 deviceId, int32 buttonId, bool buttonDown);

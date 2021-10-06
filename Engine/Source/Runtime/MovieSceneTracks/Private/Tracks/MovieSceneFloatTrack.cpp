@@ -1,7 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneFloatTrack.h"
+#include "MovieSceneCommonHelpers.h"
 #include "Sections/MovieSceneFloatSection.h"
+#include "Evaluation/MovieScenePropertyTemplates.h"
+
 
 UMovieSceneFloatTrack::UMovieSceneFloatTrack( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )

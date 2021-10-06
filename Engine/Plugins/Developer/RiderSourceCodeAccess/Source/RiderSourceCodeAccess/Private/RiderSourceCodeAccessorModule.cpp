@@ -47,7 +47,7 @@ void FRiderSourceCodeAccessModule::GenerateSlnAccessors(const TArray<FInstallInf
 		RiderSourceCodeAccessors.Add(RiderSourceCodeAccessor->GetFName(), RiderSourceCodeAccessor);
 	}
 
-	const TSharedRef<FRiderSourceCodeAccessor> RiderSourceCodeAccessor = MakeShareable(new FRiderSourceCodeAccessor());
+	TSharedRef<FRiderSourceCodeAccessor> RiderSourceCodeAccessor = MakeShareable(new FRiderSourceCodeAccessor());
 	RiderSourceCodeAccessor->Init(InstallInfos.Last(), FRiderSourceCodeAccessor::EProjectModel::Sln,
 	                              FRiderSourceCodeAccessor::EAccessType::Aggregate);
 	IModularFeatures::Get().RegisterModularFeature(FRiderSourceCodeAccessor::FeatureType(), &RiderSourceCodeAccessor.Get());
@@ -72,7 +72,7 @@ void FRiderSourceCodeAccessModule::GenerateUprojectAccessors(const TArray<FInsta
 		RiderSourceCodeAccessors.Add(RiderSourceCodeAccessor->GetFName(), RiderSourceCodeAccessor);
 	}
 
-	const TSharedRef<FRiderSourceCodeAccessor> RiderSourceCodeAccessor = MakeShareable(new FRiderSourceCodeAccessor());
+	TSharedRef<FRiderSourceCodeAccessor> RiderSourceCodeAccessor = MakeShareable(new FRiderSourceCodeAccessor());
 	RiderSourceCodeAccessor->Init(InstallInfos.Last(), FRiderSourceCodeAccessor::EProjectModel::Uproject,
                                   FRiderSourceCodeAccessor::EAccessType::Aggregate);
 	IModularFeatures::Get().RegisterModularFeature(FRiderSourceCodeAccessor::FeatureType(), &RiderSourceCodeAccessor.Get());

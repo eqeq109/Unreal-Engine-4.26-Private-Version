@@ -14,9 +14,6 @@ class IMessageTransport;
 
 struct FMessageAddress;
 
-/** Log category for message bus code */
-DECLARE_LOG_CATEGORY_EXTERN(LogMessaging, Log, All);
-
 /**
  * Interface for messaging modules.
  *

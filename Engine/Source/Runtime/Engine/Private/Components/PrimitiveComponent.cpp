@@ -383,9 +383,6 @@ UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitial
 	bEnableAutoLODGeneration = true;
 	HitProxyPriority = HPP_World;
 #endif // WITH_EDITORONLY_DATA
-
-	bVisibleInSceneCaptureOnly = false;
-	bHiddenInSceneCapture = false;
 }
 
 bool UPrimitiveComponent::UsesOnlyUnlitMaterials() const
@@ -982,8 +979,7 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 			bCullDistanceInvalidated = true;
 		}
 		else if (PropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, bAllowCullDistanceVolume)
-			|| PropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, bNeverDistanceCull)
-			|| PropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, Mobility))
+			|| PropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, bNeverDistanceCull))
 		{
 			bCullDistanceInvalidated = true;
 		}
@@ -1023,8 +1019,8 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 
 	if (bCullDistanceInvalidated)
 	{
-		// Directly use LD cull distance if cull distance volumes are disabled or if the primitive isn't static
-		if (!bAllowCullDistanceVolume || Mobility != EComponentMobility::Static)
+		// Directly use LD cull distance if cull distance volumes are disabled.
+		if (!bAllowCullDistanceVolume)
 		{
 			NewCachedMaxDrawDistance = LDMaxDrawDistance;
 		}
@@ -1467,15 +1463,6 @@ void UPrimitiveComponent::SetCastShadow(bool NewCastShadow)
 	}
 }
 
-void UPrimitiveComponent::SetCastHiddenShadow(bool NewCastHiddenShadow)
-{
-	if (NewCastHiddenShadow != bCastHiddenShadow)
-	{
-		bCastHiddenShadow = NewCastHiddenShadow;
-		MarkRenderStateDirty();
-	}
-}
-
 void UPrimitiveComponent::SetCastInsetShadow(bool bInCastInsetShadow)
 {
 	if(bInCastInsetShadow != bCastInsetShadow)
@@ -1518,15 +1505,6 @@ void UPrimitiveComponent::SetTranslucentSortPriority(int32 NewTranslucentSortPri
 	if (NewTranslucentSortPriority != TranslucencySortPriority)
 	{
 		TranslucencySortPriority = NewTranslucentSortPriority;
-		MarkRenderStateDirty();
-	}
-}
-
-void UPrimitiveComponent::SetTranslucencySortDistanceOffset(float NewTranslucencySortDistanceOffset)
-{
-	if ( !FMath::IsNearlyEqual(NewTranslucencySortDistanceOffset, TranslucencySortDistanceOffset) )
-	{
-		TranslucencySortDistanceOffset = NewTranslucencySortDistanceOffset;
 		MarkRenderStateDirty();
 	}
 }
@@ -3392,7 +3370,6 @@ void UPrimitiveComponent::SetLightingChannels(bool bChannel0, bool bChannel1, bo
 		{
 			SceneProxy->SetLightingChannels_GameThread(LightingChannels);
 		}
-		MarkRenderStateDirty();
 	}
 }
 
@@ -3741,7 +3718,10 @@ void UPrimitiveComponent::SetRenderCustomDepth(bool bValue)
 	if( bRenderCustomDepth != bValue )
 	{
 		bRenderCustomDepth = bValue;
-		MarkRenderStateDirty();
+		if (SceneProxy)
+		{
+			SceneProxy->SetCustomDepthEnabled_GameThread(bRenderCustomDepth);
+		}
 	}
 }
 
@@ -3774,24 +3754,6 @@ void UPrimitiveComponent::SetRenderInMainPass(bool bValue)
 	if (bRenderInMainPass != bValue)
 	{
 		bRenderInMainPass = bValue;
-		MarkRenderStateDirty();
-	}
-}
-
-void UPrimitiveComponent::SetVisibleInSceneCaptureOnly(bool bValue)
-{
-	if (bVisibleInSceneCaptureOnly != bValue)
-	{
-		bVisibleInSceneCaptureOnly = bValue;
-		MarkRenderStateDirty();
-	}
-}
-
-void UPrimitiveComponent::SetHiddenInSceneCapture(bool bValue)
-{
-	if (bHiddenInSceneCapture != bValue)
-	{
-		bHiddenInSceneCapture = bValue;
 		MarkRenderStateDirty();
 	}
 }

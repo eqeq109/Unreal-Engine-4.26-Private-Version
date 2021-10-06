@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "NiagaraParameterMapHistory.h"
 #include "NiagaraStackFunctionInputBinder.h"
 
 class UNiagaraScript;
@@ -15,7 +14,6 @@ class FNiagaraStackFunctionInputCondition
 public:
 	void Initialize(UNiagaraScript* InScript,
 		TArray<UNiagaraScript*> InDependentScripts,
-		FCompileConstantResolver InConstantResolver,
 		FString InOwningEmitterUniqueName,
 		UNiagaraNodeFunctionCall* InFunctionCallNode);
 
@@ -39,8 +37,6 @@ private:
 	UNiagaraScript* Script;
 
 	TArray<UNiagaraScript*> DependentScripts;
-
-	FCompileConstantResolver ConstantResolver;
 
 	FString OwningEmitterUniqueName;
 

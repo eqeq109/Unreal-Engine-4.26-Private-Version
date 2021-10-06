@@ -9,8 +9,6 @@
 
 template <typename RealType> struct TMinVolumeBox3Internal;
 
-class FProgressCancel;
-
 /**
  * Calculate a Minimal-Volume Oriented Box for a set of 3D points.
  * This internally first computes the Convex Hull of the point set. 
@@ -23,10 +21,11 @@ class TMinVolumeBox3
 public:
 	/**
 	 * Calculate the minimal box for the given point set.
+	 * @param bUseExactHull If true, high-precision number types are used for the convex hull calculation, rather than doubles. This is slower but more reliable.
 	 * @param bUseExactBox If true, high-precision number types are used for the minimal-box calculation, rather than doubles. This is *much* slower but more accurate (but not recommended).
 	 * @return true if minimal box was found
 	 */
-	bool Solve(int32 NumPoints, TFunctionRef<FVector3<RealType>(int32)> GetPointFunc, bool bUseExactBox = false, FProgressCancel* Progress = nullptr);
+	bool Solve(int32 NumPoints, TFunctionRef<FVector3<RealType>(int32)> GetPointFunc, bool bUseExactHull = true, bool bUseExactBox = false);
 
 	/** @return true if minimal box is available */
 	bool IsSolutionAvailable() const;
@@ -35,7 +34,7 @@ public:
 	void GetResult(TOrientedBox3<RealType>& BoxOut);
 
 protected:
-	void Initialize(int32 NumPoints, bool bUseExactBox);
+	void Initialize(int32 NumPoints, bool bUseExactHull, bool bUseExactBox);
 
 	TPimplPtr<TMinVolumeBox3Internal<RealType>> Internal;
 };

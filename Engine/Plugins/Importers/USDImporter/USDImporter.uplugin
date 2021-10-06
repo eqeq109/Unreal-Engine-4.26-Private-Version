@@ -14,28 +14,35 @@
 	"CanContainContent": true,
 	"IsBetaVersion": true,
 	"Installed": false,
-	"SupportedTargetPlatforms": [
-		"Win64", "Mac", "Linux"
-	],
 	"Modules": [
 		{
 			"Name": "UnrealUSDWrapper",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		},
 		{
 			"Name": "USDUtilities",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		},
 		{
 			"Name": "USDSchemas",
-			"Type": "Runtime",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "USDUtilities",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "USDSchemas",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		},
 		{
 			"Name": "USDStage",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		},
 		{
@@ -65,7 +72,7 @@
 		},
 		{
 			"Name": "USDClasses",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		},
 		{
@@ -80,19 +87,15 @@
 			"Enabled": true
 		},
 		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
 			"Name": "EditorScriptingUtilities",
 			"Enabled": true
 		},
 		{
 			"Name": "LevelSequenceEditor",
-			"Enabled": true
-		},
-		{
-			"Name": "MDLImporter",
-			"Enabled": true
-		},
-		{
-			"Name": "PythonScriptPlugin",
 			"Enabled": true
 		},
 		{

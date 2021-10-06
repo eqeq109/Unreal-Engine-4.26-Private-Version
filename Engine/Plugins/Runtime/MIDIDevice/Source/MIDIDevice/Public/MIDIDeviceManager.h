@@ -3,11 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/ObjectMacros.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "MIDIDeviceInputController.h"
 #include "MIDIDeviceOutputController.h"
-
 #include "MIDIDeviceManager.generated.h"
+
 
 USTRUCT(BlueprintType)
 struct MIDIDEVICE_API FFoundMIDIDevice
@@ -16,31 +17,31 @@ struct MIDIDEVICE_API FFoundMIDIDevice
 
 	/** The unique ID of this MIDI device */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	int32 DeviceID = 1;
+	int32 DeviceID;
 
-	/** The name of this device.  This name comes from the MIDI hardware, and might not be unique */
+	/** The name of this device.  This name comes from the MIDI hardware, any might not be unique */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
 	FString DeviceName;
 
 	/** True if the device supports sending events to us */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	bool bCanReceiveFrom = false;
+	bool bCanReceiveFrom;
 
 	/** True if the device supports receiving events from us */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	bool bCanSendTo = false;
+	bool bCanSendTo;
 
 	/** Whether the device is already in use.  You might not want to create a controller for devices that are busy.  Someone else could be using it. */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	bool bIsAlreadyInUse = true;
+	bool bIsAlreadyInUse;
 
 	/** True if this is the default MIDI device for input on this system */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	bool bIsDefaultInputDevice = false;
+	bool bIsDefaultInputDevice;
 
 	/** True if this is the default MIDI device for output on this system */
 	UPROPERTY(BlueprintReadOnly, Category="MIDI Device Manager")
-	bool bIsDefaultOutputDevice = false;
+	bool bIsDefaultOutputDevice;
 };
 
 
@@ -51,19 +52,19 @@ struct MIDIDEVICE_API FMIDIDeviceInfo
 
 	/** The unique ID of this MIDI device */
 	UPROPERTY(BlueprintReadOnly, Category = "MIDI Device Manager")
-	int32 DeviceID = 1;
+	int32 DeviceID;
 
-	/** The name of this device.  This name comes from the MIDI hardware, and might not be unique */
+	/** The name of this device.  This name comes from the MIDI hardware, any might not be unique */
 	UPROPERTY(BlueprintReadOnly, Category = "MIDI Device Manager")
 	FString DeviceName;
 
 	/** Whether the device is already in use.  You might not want to create a controller for devices that are busy.  Someone else could be using it. */
 	UPROPERTY(BlueprintReadOnly, Category = "MIDI Device Manager")
-	bool bIsAlreadyInUse = true;
+	bool bIsAlreadyInUse;
 
 	/** True if this is the default MIDI device for input on this system */
 	UPROPERTY(BlueprintReadOnly, Category = "MIDI Device Manager")
-	bool bIsDefaultDevice = false;
+	bool bIsDefaultDevice;
 };
 
 UCLASS()
@@ -107,7 +108,7 @@ public:
 	 * @param	DeviceID		The Device ID of the MIDI input device with that name.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MIDI Device Manager")
-	static void GetDefaultMIDIInputDeviceID(int32& DeviceID);
+	static void GetDefaultIMIDIInputDeviceID(int32& DeviceID);
 
 	/**
 	 * Retrieves the MIDI output device ID by name. Call "Find All MIDI Device Info" beforehand to enumerate the available output devices.
@@ -124,7 +125,7 @@ public:
 	 * @param	DeviceID		The Device ID of the MIDI output device with that name.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MIDI Device Manager")
-	static void GetDefaultMIDIOutputDeviceID(int32& DeviceID);
+	static void GetDefaultIMIDIOutputDeviceID(int32& DeviceID);
 
 	/**
 	 * Creates an instance of a MIDI device controller that can be used to interact with a connected MIDI device
@@ -152,6 +153,7 @@ public:
 	 * Creates an instance of a MIDI output device controller that can be used to interact with a connected MIDI device
 	 *
 	 * @param	DeviceID		The ID of the MIDI device you want to talk to.  Call "Find MIDI Devices" to enumerate the available devices.
+	 * @param	MIDIBufferSize	How large the buffer size (in number of MIDI events) should be for incoming MIDI data.  Larger values can incur higher latency costs for incoming events, but don't set it too low or you'll miss events and your stuff will sound bad.
 	 *
 	 * @return	If everything goes okay, a valid MIDI device controller object will be returned.  If anything goes wrong, a null reference will be returned.
 	 */
@@ -170,16 +172,7 @@ public:
 
 
 private:
-	/** Called internally to update device info.  */
-	static void ReinitializeDeviceManager();
 
-	/** Implementation of FindMIDIDevices that does't reinitialize the Device Manager. */
-	static void FindMIDIDevicesInternal(TArray<FFoundMIDIDevice>& OutMIDIDevices);
-
-	/** Implementation of FindMIDIDeviceInfo that does't reinitialize the Device Manager. */
-	static void FindAllMIDIDeviceInfoInternal(TArray<FMIDIDeviceInfo>& OutMIDIInputDevices, TArray<FMIDIDeviceInfo>& OutMIDIOutputDevices);
-
-private:
 	/** True if everything is initialized OK */
 	static bool bIsInitialized;
 

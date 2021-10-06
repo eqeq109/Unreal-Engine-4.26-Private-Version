@@ -158,12 +158,14 @@ FString FMediaPlayerEditorToolkit::GetDocumentationLink() const
 }
 
 
-void FMediaPlayerEditorToolkit::OnClose()
+bool FMediaPlayerEditorToolkit::OnRequestClose()
 {
 	if (MediaPlayer != nullptr)
 	{
 		MediaPlayer->Close();
 	}
+
+	return FAssetEditorToolkit::OnRequestClose();
 }
 
 

@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "Containers/StringView.h"
 
+class FFreeTypeAdvanceCache;
 class FFreeTypeFace;
-class FFreeTypeCacheDirectory;
+class FFreeTypeGlyphCache;
+class FFreeTypeKerningPairCache;
 
 #ifndef WITH_HARFBUZZ
 	#define WITH_HARFBUZZ 0
@@ -49,7 +51,7 @@ void AppendStringToBuffer(const FStringView InString, const int32 InStartIndex, 
 class FHarfBuzzFontFactory
 {
 public:
-	FHarfBuzzFontFactory(FFreeTypeCacheDirectory* InFTCacheDirectory);
+	FHarfBuzzFontFactory(FFreeTypeGlyphCache* InFTGlyphCache, FFreeTypeAdvanceCache* InFTAdvanceCache, FFreeTypeKerningPairCache* InFTKerningPairCache);
 	~FHarfBuzzFontFactory();
 
 #if WITH_HARFBUZZ
@@ -58,7 +60,9 @@ public:
 #endif // WITH_HARFBUZZ
 
 private:
-	FFreeTypeCacheDirectory* FTCacheDirectory;
+	FFreeTypeGlyphCache* FTGlyphCache;
+	FFreeTypeAdvanceCache* FTAdvanceCache;
+	FFreeTypeKerningPairCache* FTKerningPairCache;
 
 #if WITH_HARFBUZZ
 	hb_font_funcs_t* CustomHarfBuzzFuncs;

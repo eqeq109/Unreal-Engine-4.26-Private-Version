@@ -67,11 +67,6 @@ void FGenericPlatformProcess::SetThreadAffinityMask( uint64 AffinityMask )
 	// Not implemented cross-platform. Each platform may or may not choose to implement this.
 }
 
-uint32 FGenericPlatformProcess::GetStackSize()
-{
-	return 0;
-}
-
 bool FGenericPlatformProcess::ShouldSaveToUserDir()
 {
 	// default to use the engine/game directories
@@ -94,12 +89,6 @@ const TCHAR *FGenericPlatformProcess::UserTempDir()
 {
 	// default to the root directory
 	return FPlatformMisc::RootDir();
-}
-
-const TCHAR *FGenericPlatformProcess::UserHomeDir()
-{
-    // default to the root directory
-    return FPlatformMisc::RootDir();
 }
 
 const TCHAR* FGenericPlatformProcess::ApplicationSettingsDir()
@@ -354,11 +343,6 @@ void FGenericPlatformProcess::SleepInfinite()
 	pause();
 }
 
-void FGenericPlatformProcess::YieldThread()
-{
-	sched_yield();
-}
-
 #endif // PLATFORM_HAS_BSD_TIME 
 
 void FGenericPlatformProcess::ConditionalSleep(TFunctionRef<bool()> Condition, float SleepTime /*= 0.0f*/)
@@ -385,7 +369,7 @@ bool FPThreadEvent::Wait(uint32 WaitTime, const bool bIgnoreThreadIdleStats /*= 
 	WaitForStats();
 
 	SCOPE_CYCLE_COUNTER(STAT_EventWait);
-	CSV_SCOPED_WAIT(WaitTime);
+	CSV_SCOPED_WAIT_CONDITIONAL(WaitTime > 0 && IsInGameThread());
 	FThreadIdleStats::FScopeIdle Scope(bIgnoreThreadIdleStats);
 
 	check(bInitialized);

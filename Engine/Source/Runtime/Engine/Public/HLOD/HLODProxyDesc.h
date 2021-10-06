@@ -19,16 +19,16 @@ struct FHLODISMComponentDesc
 
 public:
 	FHLODISMComponentDesc() = default;
-	FHLODISMComponentDesc(const UInstancedStaticMeshComponent* InISMComponent);
+	FHLODISMComponentDesc(const UInstancedStaticMeshComponent* InISMComponent, const UMaterialInterface* InMaterial);
 
 	bool operator == (const FHLODISMComponentDesc& Other) const;
 
 public:
 	UPROPERTY()
-	UStaticMesh* StaticMesh = nullptr;
+	UStaticMesh* StaticMesh;
 	
 	UPROPERTY()
-	const UMaterialInterface* Material = nullptr;
+	const UMaterialInterface* Material;
 
 	UPROPERTY()
 	TArray<FTransform> Instances;
@@ -100,9 +100,6 @@ private:
 
 	UPROPERTY()
 	FVector Location;
-
-	UPROPERTY()
-	FTransform HLODBakingTransform;
 
 	UPROPERTY()
 	TArray<TSoftObjectPtr<UHLODProxyDesc>> SubHLODDescs;

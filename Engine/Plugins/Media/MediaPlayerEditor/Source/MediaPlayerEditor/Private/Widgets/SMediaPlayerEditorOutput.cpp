@@ -44,8 +44,6 @@ SMediaPlayerEditorOutput::~SMediaPlayerEditorOutput()
 	{
 		SoundComponent->Stop();
 		SoundComponent->RemoveFromRoot();
-		SoundComponent->SetMediaPlayer(nullptr);
-		SoundComponent->UpdatePlayer();
 		SoundComponent = nullptr;
 	}
 }

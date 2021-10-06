@@ -10,21 +10,21 @@
 #include "Math/Vector.h"
 
 /**
-* FFieldContextIndex
+* FFieldContext
 *   The Context is passed into the field evaluation pipeline during evaluation. The Nodes
 *   will have access to the samples and indices for evaluation. The MetaData is a optional
 *   data package that the nodes will use during evaluation, the context does not assume
 *   ownership of the metadata but assumes it will remain in scope during evaluation.
 */
-struct CHAOS_API FFieldContextIndex
+struct CHAOS_API ContextIndex
 {
-	FFieldContextIndex(int32 InSample = INDEX_NONE, int32 InResult = INDEX_NONE)
+	ContextIndex(int32 InSample = INDEX_NONE, int32 InResult = INDEX_NONE)
 		: Sample(InSample)
 		, Result(InResult)
 	{}
 
 	static void ContiguousIndices(
-		TArray<FFieldContextIndex>& Array,
+		TArray<ContextIndex>& Array,
 		const int NumParticles,
 		const bool bForce = true)
 	{
@@ -61,8 +61,7 @@ public:
 		ECommandData_ProcessingResolution,
 		ECommandData_Results,
 		ECommandData_Iteration,
-		ECommandData_Culling,
-		ECommandData_Filter
+		ECommandData_Culling
 	};
 
 
@@ -80,16 +79,6 @@ public:
 	virtual FFieldSystemMetaData* NewCopy() const { return new FFieldSystemMetaDataProcessingResolution(ProcessingResolution); }
 
 	EFieldResolutionType ProcessingResolution;
-};
-
-class CHAOS_API FFieldSystemMetaDataFilter : public FFieldSystemMetaData {
-public:
-	FFieldSystemMetaDataFilter(EFieldFilterType FilterTypeIn) : FilterType(FilterTypeIn) {};
-	virtual ~FFieldSystemMetaDataFilter() {};
-	virtual EMetaType Type() const { return EMetaType::ECommandData_Filter; }
-	virtual FFieldSystemMetaData* NewCopy() const { return new FFieldSystemMetaDataFilter(FilterType); }
-
-	EFieldFilterType FilterType;
 };
 
 template<class T>
@@ -136,7 +125,7 @@ public:
 
 	bool bCullingActive;
 	int32 MaxSize;
-	TArray<FFieldContextIndex> EvaluatedIndexBuffer;
+	TArray<ContextIndex> EvaluatedIndexBuffer;
 };
 
 struct CHAOS_API FFieldContext
@@ -151,11 +140,10 @@ struct CHAOS_API FFieldContext
 	FFieldContext& operator =(const FFieldContext&) = delete;
 	FFieldContext & operator =(FFieldContext&&) = delete;
 
-	FFieldContext(const TArrayView< FFieldContextIndex >& SampleIndicesIn, const TArrayView<FVector>& SamplesIn,
-		const UniquePointerMap & MetaDataIn, const float TimeSecondsIn)
+	FFieldContext(const TArrayView< ContextIndex >& SampleIndicesIn, const TArrayView<FVector>& SamplesIn,
+		const UniquePointerMap & MetaDataIn )
 		: SampleIndices(SampleIndicesIn)
 		, Samples(SamplesIn)
-		, TimeSeconds(TimeSecondsIn)
 
 	{
 		for (const TPair<FFieldSystemMetaData::EMetaType, TUniquePtr<FFieldSystemMetaData>>& Meta : MetaDataIn)
@@ -166,18 +154,17 @@ struct CHAOS_API FFieldContext
 		CullingData = MakeUnique<FFieldSystemMetaDataCulling>(SampleIndices.Num());
 		MetaData.Add(FFieldSystemMetaData::EMetaType::ECommandData_Culling, CullingData.Get());
 	}
-	FFieldContext(const TArrayView< FFieldContextIndex >& SampleIndicesIn, const TArrayView<FVector>& SamplesIn,
-		const PointerMap & MetaDataIn, const float TimeSecondsIn)
+	FFieldContext(const TArrayView< ContextIndex >& SampleIndicesIn, const TArrayView<FVector>& SamplesIn,
+		const PointerMap & MetaDataIn)
 		: SampleIndices(SampleIndicesIn)
 		, Samples(SamplesIn)
 		, MetaData(MetaDataIn)
-		, TimeSeconds(TimeSecondsIn)
 	{
 		CullingData = MakeUnique<FFieldSystemMetaDataCulling>(SampleIndices.Num());
 		MetaData.Add(FFieldSystemMetaData::EMetaType::ECommandData_Culling, CullingData.Get());
 	}
 
-	TArrayView<FFieldContextIndex> GetEvaluatedSamples()
+	TArrayView<ContextIndex> GetEvaluatedSamples()
 	{
 		if(!CullingData->bCullingActive)
 		{
@@ -196,11 +183,10 @@ struct CHAOS_API FFieldContext
 	// traversed also needs to change; possibly to some load balanced threaded iterator 
 	// or task based paradigm.
 
-	const TArrayView<FFieldContextIndex>& SampleIndices;
+	const TArrayView<ContextIndex>& SampleIndices;
 	const TArrayView<FVector>& Samples;
 	PointerMap MetaData;
 	TUniquePtr<FFieldSystemMetaDataCulling> CullingData;
-	float TimeSeconds;
 };
 
 /** 
@@ -273,7 +259,6 @@ public:
 		FieldNode_FSumVector,
 		FieldNode_FConversionField,
 		FieldNode_FCullingField,
-		FieldNode_FWaveScalar,
 		FieldNode_FReturnResultsTerminal
 	};
 
@@ -312,6 +297,7 @@ public:
 
 	static EFieldType StaticType();
 	virtual EFieldType Type() const { return StaticType(); }
+
 };
 
 template<> inline FFieldNodeBase::EFieldType FFieldNode<int32>::StaticType() { return EFieldType::EField_Int32; }
@@ -334,16 +320,10 @@ public:
 	FFieldSystemCommand()
 		: TargetAttribute("")
 		, RootNode(nullptr)
-		, CommandName("")
-		, TimeCreation(0.0)
-		, BoundingBox(FVector(-FLT_MAX), FVector(FLT_MAX))
 	{}
 	FFieldSystemCommand(FName TargetAttributeIn, FFieldNodeBase * RootNodeIn)
 		: TargetAttribute(TargetAttributeIn)
 		, RootNode(RootNodeIn)
-		, CommandName("")
-		, TimeCreation(0.0)
-		, BoundingBox(FVector(-FLT_MAX), FVector(FLT_MAX))
 	{}
 
 	// Commands are copied when moved from the one thread to 
@@ -351,9 +331,6 @@ public:
 	FFieldSystemCommand(const FFieldSystemCommand& Other)
 		: TargetAttribute(Other.RootNode ? Other.TargetAttribute:"")
 		, RootNode(Other.RootNode?Other.RootNode->NewCopy():nullptr)
-		, CommandName(Other.CommandName)
-		, TimeCreation(Other.TimeCreation)
-		, BoundingBox(Other.BoundingBox)
 	{
 		for (const TPair<FFieldSystemMetaData::EMetaType, TUniquePtr<FFieldSystemMetaData>>& Meta : Other.MetaData)
 		{
@@ -388,24 +365,12 @@ public:
 		MetaData[Key].Reset(Value);
 	}
 
-	void InitFieldNodes(const float& TimeSeconds, const FName& Name)
-	{
-		CommandName = Name;
-		TimeCreation = TimeSeconds;
-	}
-
 	void Serialize(FArchive& Ar);
-	bool operator==(const FFieldSystemCommand&) const;
-	bool operator!=(const FFieldSystemCommand& Other) const { return !this->operator==(Other); }
+	bool operator==(const FFieldSystemCommand&);
+	bool operator!=(const FFieldSystemCommand& Other) { return !this->operator==(Other); }
 
 	FName TargetAttribute;
 	TUniquePtr<FFieldNodeBase> RootNode;
-
-	FName CommandName;
-	float TimeCreation;
-
-	FBox BoundingBox;
-
 	TMap<FFieldSystemMetaData::EMetaType, TUniquePtr<FFieldSystemMetaData> > MetaData;
 };
 

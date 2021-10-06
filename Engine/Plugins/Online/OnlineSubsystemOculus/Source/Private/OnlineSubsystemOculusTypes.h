@@ -7,9 +7,6 @@
 #include "OnlineSubsystemOculusPackage.h"
 #include "OVR_Platform.h"
 
-using FUniqueNetIdOculusPtr = TSharedPtr<const class FUniqueNetIdOculus, UNIQUENETID_ESPMODE>;
-using FUniqueNetIdOculusRef = TSharedRef<const class FUniqueNetIdOculus, UNIQUENETID_ESPMODE>;
-
 class FUniqueNetIdOculus : public FUniqueNetId {
 private:
 	ovrID ID;
@@ -31,24 +28,33 @@ protected:
 	}
 
 public:
-	template<typename... TArgs>
-	static FUniqueNetIdOculusRef Create(TArgs&&... Args)
+	/** Default constructor */
+	FUniqueNetIdOculus()
 	{
-		return MakeShared<FUniqueNetIdOculus, UNIQUENETID_ESPMODE>(Forward<TArgs>(Args)...);
+		ID = 0;
 	}
 
-	/** Allow MakeShared to see private constructors */
-	friend class SharedPointerInternals::TIntrusiveReferenceController<FUniqueNetIdOculus>;
-
-	static const FUniqueNetIdOculus& Cast(const FUniqueNetId& NetId)
+	FUniqueNetIdOculus(const ovrID& id)
 	{
-		check(NetId.GetType() == OCULUS_SUBSYSTEM);
-		return *static_cast<const FUniqueNetIdOculus*>(&NetId);
+		ID = id;
 	}
 
-	FUniqueNetIdOculusRef AsShared() const
+	FUniqueNetIdOculus(const FString& id)
 	{
-		return StaticCastSharedRef<const FUniqueNetIdOculus>(FUniqueNetId::AsShared());
+		ovrID_FromString(&ID, TCHAR_TO_ANSI(*id));
+	}
+
+	/**
+	* Copy Constructor
+	*
+	* @param Src the id to copy
+	*/
+	explicit FUniqueNetIdOculus(const FUniqueNetId& Src)
+	{
+		if (Src.GetSize() == sizeof(ovrID))
+		{
+			ID = static_cast<const FUniqueNetIdOculus&>(Src).ID;
+		}
 	}
 
 	virtual FName GetType() const override
@@ -97,40 +103,10 @@ public:
 	}
 
 	/** global static instance of invalid (zero) id */
-	static const FUniqueNetIdOculusRef& EmptyId()
+	static const TSharedRef<const FUniqueNetId>& EmptyId()
 	{
-		static const FUniqueNetIdOculusRef EmptyId(Create());
+		static const TSharedRef<const FUniqueNetId> EmptyId(MakeShared<FUniqueNetIdOculus>());
 		return EmptyId;
-	}
-
-private:
-	/** Default constructor */
-	FUniqueNetIdOculus()
-	{
-		ID = 0;
-	}
-
-	FUniqueNetIdOculus(const ovrID& id)
-	{
-		ID = id;
-	}
-
-	FUniqueNetIdOculus(const FString& id)
-	{
-		ovrID_FromString(&ID, TCHAR_TO_ANSI(*id));
-	}
-
-	/**
-	* Copy Constructor
-	*
-	* @param Src the id to copy
-	*/
-	explicit FUniqueNetIdOculus(const FUniqueNetId& Src)
-	{
-		if (Src.GetType() == OCULUS_SUBSYSTEM)
-		{
-			ID = FUniqueNetIdOculus::Cast(Src).ID;
-		}
 	}
 };
 
@@ -142,15 +118,22 @@ class FOnlineSessionInfoOculus : public FOnlineSessionInfo
 protected:
 
 	/** Hidden on purpose */
-	FOnlineSessionInfoOculus(const FOnlineSessionInfoOculus& Src) = delete;
-	FOnlineSessionInfoOculus& operator=(const FOnlineSessionInfoOculus& Src) = delete;
+	FOnlineSessionInfoOculus(const FOnlineSessionInfoOculus& Src)
+	{
+	}
+
+	/** Hidden on purpose */
+	FOnlineSessionInfoOculus& operator=(const FOnlineSessionInfoOculus& Src)
+	{
+		return *this;
+	}
 
 PACKAGE_SCOPE:
 
 	FOnlineSessionInfoOculus(ovrID RoomId);
 
 	/** Unique Id for this session */
-	FUniqueNetIdOculusRef SessionId;
+	FUniqueNetIdOculus SessionId;
 
 public:
 
@@ -158,7 +141,7 @@ public:
 
 	bool operator==(const FOnlineSessionInfoOculus& Other) const
 	{
-		return *Other.SessionId == *SessionId;
+		return Other.SessionId == SessionId;
 	}
 
 	virtual const uint8* GetBytes() const override
@@ -178,16 +161,16 @@ public:
 
 	virtual FString ToString() const override
 	{
-		return SessionId->ToString();
+		return SessionId.ToString();
 	}
 
 	virtual FString ToDebugString() const override
 	{
-		return FString::Printf(TEXT("SessionId: %s"), *SessionId->ToDebugString());
+		return FString::Printf(TEXT("SessionId: %s"), *SessionId.ToDebugString());
 	}
 
 	virtual const FUniqueNetId& GetSessionId() const override
 	{
-		return *SessionId;
+		return SessionId;
 	}
 };

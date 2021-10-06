@@ -630,12 +630,6 @@ public:
 		return nullptr;
 	}
 
-	static FName GetModularFeatureName()
-	{
-		static FName FeatureName = FName(TEXT("VoiceChat"));
-		return FeatureName;
-	}
-
 	/**
 	 * Initialize VoiceChat synchronously
 	 */
@@ -721,4 +715,11 @@ public:
 	 * @param VoiceChatUser the user interface to release.
 	 */
 	virtual void ReleaseUser(IVoiceChatUser* VoiceChatUser) = 0;
+
+private:
+	static FName GetModularFeatureName()
+	{
+		static FName FeatureName = FName(TEXT("VoiceChat"));
+		return FeatureName;
+	}
 };

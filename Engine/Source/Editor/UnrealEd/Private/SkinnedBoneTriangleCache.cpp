@@ -164,5 +164,5 @@ FVector FSkinnedBoneTriangleCache::VertexPosition(const FSkinnedVertexIndex Vert
 
 FMatrix FSkinnedBoneTriangleCache::BoneTransformMatrix(FBoneIndex BoneIndex) const
 {
-	return SkeletalMesh.GetRefBasesInvMatrix()[BoneIndex];
+	return SkeletalMesh.RefBasesInvMatrix[BoneIndex];
 }

@@ -9,7 +9,7 @@
 #include "PhysicsEngine/ConvexElem.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Engine/StaticMesh.h"
-#include "Algo/ForEach.h"
+#include "Algo/Transform.h"
 
 #if WITH_CHAOS
 // for working around Chaos issue
@@ -29,7 +29,7 @@ AWaterBodyRiver::AWaterBodyRiver(const FObjectInitializer& ObjectInitializer)
 	WaterBodyType = GetWaterBodyType();
 
 #if WITH_EDITOR
-	ActorIcon = FWaterIconHelper::EnsureSpriteComponentCreated(this, TEXT("/Water/Icons/WaterBodyRiverSprite"));
+	ActorIcon = FWaterIconHelper::EnsureSpriteComponentCreated(this, TEXT("/Water/Icons/WaterBodyRiverSprite"), NSLOCTEXT("Water", "WaterBodyRiverSpriteName", "Water Body River Sprite"));
 #endif
 
 	// @todo_water : Remove these checks (Once AWaterBody is no more Blueprintable, these methods should become PURE_VIRTUAL and this class should overload them)
@@ -103,13 +103,7 @@ TArray<UPrimitiveComponent*> AWaterBodyRiver::GetBrushRenderableComponents() con
 	{
 		const TArray<USplineMeshComponent*>& SplineMeshComponents = RiverGenerator->GetSplineMeshComponents();
 		BrushRenderableComponents.Reserve(SplineMeshComponents.Num());
-		Algo::ForEach(SplineMeshComponents, [&BrushRenderableComponents](USplineMeshComponent* Comp)
-		{
-			if (Comp != nullptr)
-			{
-				BrushRenderableComponents.Add(StaticCast<UPrimitiveComponent*>(Comp));
-			}
-		});
+		Algo::Transform(SplineMeshComponents, BrushRenderableComponents, [](USplineMeshComponent* PrimitiveComponent) { return StaticCast<UPrimitiveComponent*>(PrimitiveComponent); });
 	}
 	return BrushRenderableComponents;
 }
@@ -175,7 +169,7 @@ void URiverGenerator::OnUpdateBody(bool bWithExclusionVolumes)
 	{
 		const int32 NumSplinePoints = WaterSplineComp->GetNumberOfSplinePoints();
 		const int32 NumberOfMeshComponentsNeeded = WaterSplineComp->IsClosedLoop() ? NumSplinePoints : NumSplinePoints - 1;
-		if (SplineMeshComponents.Num() != NumberOfMeshComponentsNeeded)
+		if (NumSplinePoints > 1 && SplineMeshComponents.Num() != NumberOfMeshComponentsNeeded)
 		{
 			GenerateMeshes();
 		}
@@ -207,7 +201,7 @@ TArray<UPrimitiveComponent*> URiverGenerator::GetCollisionComponents() const
 	Result.Reserve(SplineMeshComponents.Num());
 	for (USplineMeshComponent* Comp : SplineMeshComponents)
 	{
-		if ((Comp != nullptr) && (Comp->GetCollisionEnabled() != ECollisionEnabled::NoCollision))
+		if (Comp->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
 		{
 			Result.Add(Comp);
 		}
@@ -299,15 +293,14 @@ void URiverGenerator::UpdateSplineMesh(USplineMeshComponent* MeshComp, int32 Spl
 			for (FKConvexElem& Elem : MeshComp->GetBodySetup()->AggGeom.ConvexElems)
 			{
 				int32 NumHullVerts = Elem.VertexData.Num();
-				TArray<Chaos::FVec3> ConvexVertices;
-				ConvexVertices.SetNum(NumHullVerts);
+				Chaos::TParticles<Chaos::FReal, 3> ConvexParticles;
+				ConvexParticles.AddParticles(NumHullVerts);
 				for (int32 VertIndex = 0; VertIndex < NumHullVerts; ++VertIndex)
 				{
-					ConvexVertices[VertIndex] = Elem.VertexData[VertIndex];
+					const FVector& HullVert = Elem.VertexData[VertIndex];
+					ConvexParticles.X(VertIndex) = FVector(HullVert.X, HullVert.Y, HullVert.Z);
 				}
-
-				TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe> ChaosConvex = MakeShared<Chaos::FConvex, ESPMode::ThreadSafe>(ConvexVertices, 0.0f);
-
+				TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe> ChaosConvex = MakeShared<Chaos::FConvex, ESPMode::ThreadSafe>(ConvexParticles, 0.0f);
 				Elem.SetChaosConvexMesh(MoveTemp(ChaosConvex));
 			}
 

@@ -179,8 +179,6 @@ namespace Chaos
 			CollisionData.Modify(true,DirtyFlags,Proxy, ShapeIdx,[InTraceFlag](FCollisionData& Data){ Data.CollisionTraceType = InTraceFlag; });
 		}
 
-		const FCollisionData& GetCollisionData() const { return CollisionData.Read(); }
-
 		void SetCollisionData(const FCollisionData& Data)
 		{
 			CollisionData.Write(Data,true,DirtyFlags,Proxy, ShapeIdx);
@@ -283,6 +281,19 @@ namespace Chaos
 		return ::GetTypeHash(Unique.GlobalID);
 	}
 
+	//Used for down casting when iterating over multiple SOAs.
+	enum class EParticleType : uint8
+	{
+		Static,
+		Kinematic,
+		Rigid,
+		Clustered,	//only applicable on physics thread side
+		StaticMesh,
+		SkeletalMesh,
+		GeometryCollection,
+		Unknown
+	};
+
 	//Holds the data for getting back at the real handle if it's still valid
 	//Systems should not use this unless clean-up of direct handle is slow, this uses thread safe shared ptr which is not cheap
 	class FWeakParticleHandle
@@ -341,7 +352,6 @@ namespace Chaos
 			TArrayCollection::AddArray(&MSharedGeometry);
 			TArrayCollection::AddArray(&MDynamicGeometry);
 			TArrayCollection::AddArray(&MParticleIDs);
-			TArrayCollection::AddArray(&MHasCollision);
 			TArrayCollection::AddArray(&MShapesArray);
 			TArrayCollection::AddArray(&ImplicitShapeMap);
 			TArrayCollection::AddArray(&MLocalBounds);
@@ -374,7 +384,6 @@ namespace Chaos
 			, MDynamicGeometry(MoveTemp(Other.MDynamicGeometry))
 			, MGeometryParticleHandle(MoveTemp(Other.MGeometryParticleHandle))
 			, MGeometryParticle(MoveTemp(Other.MGeometryParticle))
-			, MHasCollision(MoveTemp(Other.MHasCollision))
 			, MShapesArray(MoveTemp(Other.MShapesArray))
 			, ImplicitShapeMap(MoveTemp(Other.ImplicitShapeMap))
 			, MLocalBounds(MoveTemp(Other.MLocalBounds))
@@ -396,7 +405,6 @@ namespace Chaos
 			TArrayCollection::AddArray(&MGeometry);
 			TArrayCollection::AddArray(&MSharedGeometry);
 			TArrayCollection::AddArray(&MDynamicGeometry);
-			TArrayCollection::AddArray(&MHasCollision);
 			TArrayCollection::AddArray(&MShapesArray);
 			TArrayCollection::AddArray(&ImplicitShapeMap);
 			TArrayCollection::AddArray(&MLocalBounds);
@@ -433,7 +441,6 @@ namespace Chaos
 			TArrayCollection::AddArray(&MGeometry);
 			TArrayCollection::AddArray(&MSharedGeometry);
 			TArrayCollection::AddArray(&MDynamicGeometry);
-			TArrayCollection::AddArray(&MHasCollision);
 			TArrayCollection::AddArray(&MShapesArray);
 			TArrayCollection::AddArray(&ImplicitShapeMap);
 			TArrayCollection::AddArray(&MLocalBounds);
@@ -462,11 +469,14 @@ namespace Chaos
 		CHAOS_API virtual ~TGeometryParticlesImp()
 		{}
 
-		FORCEINLINE const TRotation<T, d>& R(const int32 Index) const { return MR[Index]; }
-		FORCEINLINE TRotation<T, d>& R(const int32 Index) { return MR[Index]; }
+		CHAOS_API const TRotation<T, d>& R(const int32 Index) const { return MR[Index]; }
+		CHAOS_API TRotation<T, d>& R(const int32 Index) { return MR[Index]; }
 
 		CHAOS_API FUniqueIdx UniqueIdx(const int32 Index) const { return MUniqueIdx[Index]; }
 		CHAOS_API FUniqueIdx& UniqueIdx(const int32 Index) { return MUniqueIdx[Index]; }
+
+		CHAOS_API void*& UserData(const int32 Index) { return MUserData[Index]; }
+		CHAOS_API const void* UserData(const int32 Index) const { return MUserData[Index]; }
 
 		CHAOS_API ESyncState& SyncState(const int32 Index) { return MSyncState[Index].State; }
 		CHAOS_API ESyncState SyncState(const int32 Index) const { return MSyncState[Index].State; }
@@ -476,9 +486,6 @@ namespace Chaos
 		CHAOS_API const TUniquePtr<FImplicitObject>& DynamicGeometry(const int32 Index) const { return MDynamicGeometry[Index]; }
 
 		CHAOS_API const TSharedPtr<FImplicitObject, ESPMode::ThreadSafe>& SharedGeometry(const int32 Index) const { return MSharedGeometry[Index]; }
-
-		CHAOS_API bool HasCollision(const int32 Index) const { return MHasCollision[Index]; }
-		CHAOS_API bool& HasCollision(const int32 Index) { return MHasCollision[Index]; }
 
 		CHAOS_API const FShapesArray& ShapesArray(const int32 Index) const { return MShapesArray[Index]; }
 
@@ -588,7 +595,7 @@ namespace Chaos
 		const TArray<TSerializablePtr<FImplicitObject>>& GetAllGeometry() const { return MGeometry; }
 
 		typedef TGeometryParticleHandle<T, d> THandleType;
-		FORCEINLINE THandleType* Handle(int32 Index) const { return const_cast<THandleType*>(MGeometryParticleHandle[Index].Get()); }
+		CHAOS_API THandleType* Handle(int32 Index) const { return const_cast<THandleType*>(MGeometryParticleHandle[Index].Get()); }
 
 		CHAOS_API void SetHandle(int32 Index, TGeometryParticleHandle<T, d>* Handle);
 		
@@ -708,7 +715,7 @@ public:
 			}
 		}
 
-		FORCEINLINE EParticleType ParticleType() const { return MParticleType; }
+		CHAOS_API EParticleType ParticleType() const { return MParticleType; }
 
 		CHAOS_API const FPerShapeData* GetImplicitShape(int32 Index, const FImplicitObject* InObject)
 		{
@@ -748,7 +755,6 @@ public:
 		TArrayCollectionArray<TUniquePtr<FImplicitObject>> MDynamicGeometry;
 		TArrayCollectionArray<TSerializablePtr<TGeometryParticleHandle<T, d>>> MGeometryParticleHandle;
 		TArrayCollectionArray<TGeometryParticle<T, d>*> MGeometryParticle;
-		TArrayCollectionArray<bool> MHasCollision;
 		TArrayCollectionArray<FShapesArray> MShapesArray;
 		TArrayCollectionArray<TMap<const FImplicitObject*, int32>> ImplicitShapeMap;
 		TArrayCollectionArray<TAABB<T,d>> MLocalBounds;
@@ -796,17 +802,17 @@ public:
 	}
 
 	template <>
-	void TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>::SetHandle(int32 Index, TGeometryParticleHandle<FReal, 3>* Handle);
+	void TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>::SetHandle(int32 Index, TGeometryParticleHandle<float, 3>* Handle);
 
 	template<>
-	TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>* TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>::SerializationFactory(FChaosArchive& Ar, TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>* Particles);
+	TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>* TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>::SerializationFactory(FChaosArchive& Ar, TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>* Particles);
 
 #if PLATFORM_MAC || PLATFORM_LINUX
-	extern template class CHAOS_API TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::RigidBodySim>;
-	extern template class CHAOS_API TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>;
+	extern template class CHAOS_API TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::RigidBodySim>;
+	extern template class CHAOS_API TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>;
 #else
-	extern template class TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::RigidBodySim>;
-	extern template class TGeometryParticlesImp<FReal, 3, EGeometryParticlesSimType::Other>;
+	extern template class TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::RigidBodySim>;
+	extern template class TGeometryParticlesImp<float, 3, EGeometryParticlesSimType::Other>;
 #endif
 
 }

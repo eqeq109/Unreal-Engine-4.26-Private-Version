@@ -78,8 +78,4 @@ public class FDatasmithFacadeActorMesh : FDatasmithFacadeActor {
     if (DatasmithFacadeCSharpPINVOKE.SWIGPendingException.Pending) throw DatasmithFacadeCSharpPINVOKE.SWIGPendingException.Retrieve();
   }
 
-  public void ResetMaterialOverrides() {
-    DatasmithFacadeCSharpPINVOKE.FDatasmithFacadeActorMesh_ResetMaterialOverrides(swigCPtr);
-  }
-
 }

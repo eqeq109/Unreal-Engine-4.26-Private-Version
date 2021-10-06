@@ -17,7 +17,6 @@ namespace DTLSContext
 	static const char* CipherListCert = "HIGH";
 
 	TAutoConsoleVariable<int32> CVarCertLifetime(TEXT("DTLS.CertLifetime"), 4 * 60 * 60, TEXT("Lifetime to set on generated certificates, in seconds."));
-	TAutoConsoleVariable<int32> CVarHandshakeRetry(TEXT("DTLS.HandshakeRetry"), 500, TEXT("Handshake retry time, in milliseconds."));
 }
 
 const TCHAR* LexToString(EDTLSContextType ContextType)
@@ -31,11 +30,6 @@ const TCHAR* LexToString(EDTLSContextType ContextType)
 	default:
 		return TEXT("Unknown");
 	}
-}
-
-static unsigned int DTLSTimerCallback(SSL* SSlPtr, unsigned int TimerInUS)
-{
-	return DTLSContext::CVarHandshakeRetry.GetValueOnAnyThread() * 1000;
 }
 
 static int DTLSCertVerifyCallback(X509_STORE_CTX* Context, void* UserData)
@@ -126,12 +120,7 @@ static int DTLSCertVerifyCallback(X509_STORE_CTX* Context, void* UserData)
 
 static void DTLSInfoCallback(const SSL* SSLPtr, int InfoType, int Value)
 {
-	UE_LOG(LogDTLSHandler, Verbose, TEXT("SSL Info State: %s"), ANSI_TO_TCHAR(SSL_state_string_long(SSLPtr)));
-	
-	if (InfoType & SSL_CB_ALERT)
-	{
-		UE_LOG(LogDTLSHandler, Warning, TEXT("    Alert: %s Desc: %s"), ANSI_TO_TCHAR(SSL_alert_type_string_long(Value)), ANSI_TO_TCHAR(SSL_alert_desc_string_long(Value)));
-	}
+	UE_LOG(LogDTLSHandler, Verbose, TEXT("SSL Info State: %s Alert: %s Desc: %s"), ANSI_TO_TCHAR(SSL_state_string_long(SSLPtr)), ANSI_TO_TCHAR(SSL_alert_type_string_long(Value)), ANSI_TO_TCHAR(SSL_alert_desc_string_long(Value)));
 }
 
 static unsigned int DTLSPSKClientCallback(SSL* SSLPtr, const char* Hint, char* Identity, unsigned int MaxIdentityLength, unsigned char* PSK, unsigned int MaxPSKLength)
@@ -144,7 +133,7 @@ static unsigned int DTLSPSKClientCallback(SSL* SSLPtr, const char* Hint, char* I
 			if (!PSKIdentity.IsEmpty())
 			{
 				auto IdentityAnsi = StringCast<ANSICHAR>(*PSKIdentity);
-				int32 IdentityLen = FCStringAnsi::Strlen(IdentityAnsi.Get()) + 1;
+				int32 IdentityLen = FCStringAnsi::Strlen(IdentityAnsi.Get());
 
 				check(IdentityLen <= (int32)MaxIdentityLength);
 				FCStringAnsi::Strncpy(Identity, IdentityAnsi.Get(), IdentityLen);
@@ -154,8 +143,6 @@ static unsigned int DTLSPSKClientCallback(SSL* SSLPtr, const char* Hint, char* I
 
 			check(KeyView.Num() <= (int32)MaxPSKLength);
 			FMemory::Memcpy(PSK, KeyView.GetData(), KeyView.Num());
-
-			UE_LOG(LogDTLSHandler, Log, TEXT("DTLSPSKClientCallback: Key successfully set, Identity: %s"), ANSI_TO_TCHAR(Identity));
 		
 			return KeyView.Num();
 		}
@@ -186,7 +173,7 @@ static unsigned int DTLSPSKServerCallback(SSL* SSLPtr, const char* Identity, uns
 
 				if (FCStringAnsi::Strcmp(Identity, IdentityAnsi.Get()) != 0)
 				{
-					UE_LOG(LogDTLSHandler, Error, TEXT("DTLSPSKServerCallback: Unexpected identity: %s Expected: %s"), ANSI_TO_TCHAR(Identity), *PSKIdentity);
+					UE_LOG(LogDTLSHandler, Error, TEXT("DTLSPSKServerCallback: Unexpected identity: %s"), ANSI_TO_TCHAR(Identity));
 					return 0;
 				}
 			}
@@ -195,8 +182,6 @@ static unsigned int DTLSPSKServerCallback(SSL* SSLPtr, const char* Identity, uns
 
 			check(KeyView.Num() <= (int32)MaxPSKLength);
 			FMemory::Memcpy(PSK, KeyView.GetData(), KeyView.Num());
-
-			UE_LOG(LogDTLSHandler, Log, TEXT("DTLSPSKServerCallback: Key successfully set"));
 
 			return KeyView.Num();
 		}
@@ -270,9 +255,7 @@ long FMTUFilter::Ctrl(BIO* BIOPtr, int CtrlCommand, long, void*)
 	case BIO_CTRL_FLUSH:
 		return 1;
 	case BIO_CTRL_DGRAM_QUERY_MTU:
-		ensureMsgf(0, TEXT("Filter BIO received an MTU query, this should have been disabled on the context."));
-		return 0;
-	case BIO_CTRL_DGRAM_GET_MTU_OVERHEAD:
+		check(0);
 		return 0;
 	case BIO_CTRL_WPENDING:
 		return 0;
@@ -287,11 +270,7 @@ long FMTUFilter::Ctrl(BIO* BIOPtr, int CtrlCommand, long, void*)
 		MTUFilter->FragmentSizes.RemoveAt(0);
 		return FragmentSize;
 	}
-	case BIO_CTRL_PUSH:
-	case BIO_CTRL_POP:
-		return 0;
 	default:
-		UE_LOG(LogDTLSHandler, Warning, TEXT("FMTUFilter::Ctrl Unhandled command: %d"), CtrlCommand);
 		break;
 	}
 
@@ -353,11 +332,8 @@ bool FDTLSContext::Initialize(const int32 MaxPacketSize, const FString& CertId, 
 	}
 
 	SSL_CTX_set_app_data(SSLContext, this);
-
-	SSL_CTX_set_mode(SSLContext, SSL_MODE_AUTO_RETRY); // should be on by default in 1.1.1+ ?
-
+	SSL_CTX_set_mode(SSLContext, SSL_MODE_AUTO_RETRY);
 	SSL_CTX_set_options(SSLContext, SSL_OP_NO_QUERY_MTU);
-	SSL_CTX_set_options(SSLContext, SSL_OP_CIPHER_SERVER_PREFERENCE);
 
 	if (bPreSharedKeys)
 	{
@@ -439,8 +415,6 @@ bool FDTLSContext::Initialize(const int32 MaxPacketSize, const FString& CertId, 
 	{
 		SSL_set_connect_state(SSLPtr);
 	}
-
-	DTLS_set_timer_cb(SSLPtr, DTLSTimerCallback);
 
 	return true;
 }

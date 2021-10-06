@@ -4,7 +4,7 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "EnhancedPlayerInput.h"
-#include "GameFramework/PlayerController.h"
+
 
 // Abstract trigger bases
 ETriggerState UInputTrigger::UpdateState_Implementation(const UEnhancedPlayerInput* PlayerInput, FInputActionValue ModifiedValue, float DeltaTime)
@@ -16,11 +16,11 @@ ETriggerState UInputTriggerTimedBase::UpdateState_Implementation(const UEnhanced
 {
 	ETriggerState State = ETriggerState::None;
 
-	// Transition to Ongoing on actuation. Update the held duration.
+	// Transition to Ongoing on actuation.
 	if (IsActuated(ModifiedValue))
 	{
 		State = ETriggerState::Ongoing;
-		HeldDuration = CalculateHeldDuration(PlayerInput, DeltaTime);
+		HeldDuration += DeltaTime;	// TODO: When attached directly to an Action this will tick N times a frame where N is the number of evaluated (actively held) mappings.
 	}
 	else
 	{
@@ -29,15 +29,6 @@ ETriggerState UInputTriggerTimedBase::UpdateState_Implementation(const UEnhanced
 	}
 
 	return State;
-}
-
-float UInputTriggerTimedBase::CalculateHeldDuration(const UEnhancedPlayerInput* const PlayerInput, const float DeltaTime) const
-{
-	check(PlayerInput && PlayerInput->GetOuterAPlayerController());
-	const float TimeDilation = PlayerInput->GetOuterAPlayerController()->GetActorTimeDilation();
-	
-	// Calculates the new held duration, applying time dilation if desired
-	return HeldDuration + (!bAffectedByTimeDilation ? DeltaTime : DeltaTime * TimeDilation);
 }
 
 
@@ -92,7 +83,7 @@ ETriggerState UInputTriggerHoldAndRelease::UpdateState_Implementation(const UEnh
 {
 	// Evaluate the updated held duration prior to calling Super to update the held timer
 	// This stops us failing to trigger if the input is released on the threshold frame due to HeldDuration being 0.
-	const float TickHeldDuration = CalculateHeldDuration(PlayerInput, DeltaTime);
+	float TickHeldDuration = HeldDuration + DeltaTime;
 
 	// Update HeldDuration and derive base state
 	ETriggerState State = Super::UpdateState_Implementation(PlayerInput, ModifiedValue, DeltaTime);
@@ -127,41 +118,20 @@ ETriggerState UInputTriggerTap::UpdateState_Implementation(const UEnhancedPlayer
 	return State;
 }
 
-ETriggerState UInputTriggerPulse::UpdateState_Implementation(const UEnhancedPlayerInput* PlayerInput, FInputActionValue ModifiedValue, float DeltaTime)
-{
-	// Update HeldDuration and derive base state
-	ETriggerState State = Super::UpdateState_Implementation(PlayerInput, ModifiedValue, DeltaTime);
-
-	if (State == ETriggerState::Ongoing)
-	{
-		// If the repeat count limit has not been reached
-		if (TriggerLimit == 0 || TriggerCount < TriggerLimit)
-		{
-			// Trigger when HeldDuration exceeds the interval threshold, optionally trigger on initial actuation
-			if (HeldDuration > (Interval * (bTriggerOnStart ? TriggerCount : TriggerCount + 1)))
-			{
-				++TriggerCount;
-				State = ETriggerState::Triggered;
-			}
-		}
-		else
-		{
-			State = ETriggerState::None;
-		}
-	}
-	else
-	{
-		// Reset repeat count
-		TriggerCount = 0;
-	}
-
-	return State;
-}
-
-
 ETriggerState UInputTriggerChordAction::UpdateState_Implementation(const UEnhancedPlayerInput* PlayerInput, FInputActionValue ModifiedValue, float DeltaTime)
 {
-	// Inherit state from the chorded action
-	const FInputActionInstance* EventData = PlayerInput->FindActionInstanceData(ChordAction);
-	return EventData ? EventData->MappingTriggerState : ETriggerState::None;
+	if (const FInputActionInstance* EventData = PlayerInput->FindActionInstanceData(ChordAction))
+	{
+		// Inherit state from the chorded action
+		switch (EventData->GetTriggerEvent())
+		{
+		case ETriggerEvent::Started:
+		case ETriggerEvent::Ongoing:
+			return ETriggerState::Ongoing;
+		case ETriggerEvent::Triggered:
+			return ETriggerState::Triggered;
+		}
+	}
+	return ETriggerState::None;
 };
+

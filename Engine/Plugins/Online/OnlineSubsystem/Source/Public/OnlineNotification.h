@@ -25,8 +25,8 @@ struct ONLINESUBSYSTEM_API FOnlineNotification
 	FOnlineNotification(
 		const FString& InTypeStr,
 		const TSharedPtr<FJsonValue>& InPayload,
-		FUniqueNetIdPtr InToUserId = nullptr,
-		FUniqueNetIdPtr InFromUserId = nullptr
+		TSharedPtr<const FUniqueNetId> InToUserId = nullptr,
+		TSharedPtr<const FUniqueNetId> InFromUserId = nullptr
 	);
 
 	/**
@@ -36,8 +36,8 @@ struct ONLINESUBSYSTEM_API FOnlineNotification
 	FOnlineNotification(
 		const FString& InTypeStr,
 		const TSharedPtr<FJsonObject>& InPayload,
-		FUniqueNetIdPtr InToUserId = nullptr,
-		FUniqueNetIdPtr InFromUserId = nullptr
+		TSharedPtr<const FUniqueNetId> InToUserId = nullptr,
+		TSharedPtr<const FUniqueNetId> InFromUserId = nullptr
 	)
 	: TypeStr(InTypeStr)
 	, Payload(InPayload)
@@ -81,8 +81,8 @@ struct ONLINESUBSYSTEM_API FOnlineNotification
 	TSharedPtr<FJsonObject> Payload;
 
 	/** User to deliver the notification to.  Can be null for system notifications. */
-	FUniqueNetIdPtr ToUserId;
+	TSharedPtr<const FUniqueNetId> ToUserId;
 
 	/** User who sent the notification, optional. */
-	FUniqueNetIdPtr FromUserId;
+	TSharedPtr<const FUniqueNetId> FromUserId;
 };

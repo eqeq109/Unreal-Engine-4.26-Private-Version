@@ -196,7 +196,7 @@ bool ProcessCommandLine()
 	return false;
 }
 
-LAUNCH_API int32 LaunchWindowsStartup( HINSTANCE hInInstance, HINSTANCE hPrevInstance, char*, int32 nCmdShow, const TCHAR* CmdLine )
+int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ char*, _In_ int32 nCmdShow )
 {
 	TRACE_BOOKMARK(TEXT("WinMain.Enter"));
 
@@ -205,17 +205,13 @@ LAUNCH_API int32 LaunchWindowsStartup( HINSTANCE hInInstance, HINSTANCE hPrevIns
 
 	int32 ErrorLevel			= 0;
 	hInstance				= hInInstance;
+	const TCHAR* CmdLine = ::GetCommandLineW();
 
-	if (!CmdLine)
+	// Attempt to process the command-line arguments using the standard Windows implementation
+	// (This ensures behavior parity with other platforms where argc and argv are used.)
+	if ( ProcessCommandLine() )
 	{
-		CmdLine = ::GetCommandLineW();
-
-		// Attempt to process the command-line arguments using the standard Windows implementation
-		// (This ensures behavior parity with other platforms where argc and argv are used.)
-		if ( ProcessCommandLine() )
-		{
-			CmdLine = *GSavedCommandLine;
-		}
+		CmdLine = *GSavedCommandLine;
 	}
 
 	// If we're running in unattended mode, make sure we never display error dialogs if we crash.
@@ -250,11 +246,10 @@ LAUNCH_API int32 LaunchWindowsStartup( HINSTANCE hInInstance, HINSTANCE hPrevIns
 	}
 #endif	
 
-	// When we're running embedded, assume that the outer application is going to be handling crash reporting
 #if UE_BUILD_DEBUG
-	if (GUELibraryOverrideSettings.bIsEmbedded || !GAlwaysReportCrash)
+	if( true && !GAlwaysReportCrash )
 #else
-	if (GUELibraryOverrideSettings.bIsEmbedded || bNoExceptionHandler || (FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash))
+	if( bNoExceptionHandler || (FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash ))
 #endif
 	{
 		// Don't use exception handling when a debugger is attached to exactly trap the crash. This does NOT check
@@ -293,13 +288,6 @@ LAUNCH_API int32 LaunchWindowsStartup( HINSTANCE hInInstance, HINSTANCE hPrevIns
 #endif
 	}
 
-	TRACE_BOOKMARK(TEXT("WinMain.Exit"));
-
-	return ErrorLevel;
-}
-
-LAUNCH_API void LaunchWindowsShutdown()
-{
 	// Final shut down.
 	FEngineLoop::AppExit();
 
@@ -308,18 +296,17 @@ LAUNCH_API void LaunchWindowsShutdown()
 	ReleaseNamedMutex();
 #endif
 
+	
+
 	// pause if we should
 	if (GShouldPauseBeforeExit)
 	{
 		Sleep(INFINITE);
 	}
-}
 
-int32 WINAPI WinMain(_In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ char* pCmdLine, _In_ int32 nCmdShow)
-{
-	int32 Result = LaunchWindowsStartup(hInInstance, hPrevInstance, pCmdLine, nCmdShow, nullptr);
-	LaunchWindowsShutdown();
-	return Result;
+	TRACE_BOOKMARK(TEXT("WinMain.Exit"));
+
+	return ErrorLevel;
 }
 
 #endif //WINDOWS_USE_FEATURE_LAUNCH

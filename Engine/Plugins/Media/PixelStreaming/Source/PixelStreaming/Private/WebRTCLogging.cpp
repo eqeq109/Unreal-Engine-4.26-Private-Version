@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "WebRTCLogging.h"
+#include "WebRtcLogging.h"
 
 #include "Utils.h"
 
@@ -41,7 +41,7 @@ private:
 		const char* tag) override
 	{
 #if !NO_LOGGING
-		static const ELogVerbosity::Type RtcToUnrealLogCategoryMap[] =
+		static const ELogVerbosity::Type RtcToUE4LogCategoryMap[] =
 		{
 			ELogVerbosity::VeryVerbose,
 			ELogVerbosity::Verbose,
@@ -50,7 +50,7 @@ private:
 			ELogVerbosity::Error
 		};
 
-		if (PixelStreamingWebRTC.IsSuppressed(RtcToUnrealLogCategoryMap[severity]))
+		if (PixelStreamingWebRTC.IsSuppressed(RtcToUE4LogCategoryMap[severity]))
 		{
 			return;
 		}
@@ -70,6 +70,9 @@ private:
 
 		switch (severity)
 		{
+		case rtc::LS_SENSITIVE:
+			UE_LOG(PixelStreamingWebRTC, VeryVerbose, TEXT("%s"), *Msg);
+			break;
 		case rtc::LS_VERBOSE:
 			UE_LOG(PixelStreamingWebRTC, Verbose, TEXT("%s"), *Msg);
 			break;
@@ -88,12 +91,11 @@ private:
 
 	void OnLogMessage(const std::string& message) override
 	{
-		//unimplemented();
-		UE_LOG(PixelStreamingWebRTC, Verbose, TEXT("%s"), *FString(message.c_str()));
+		unimplemented();
 	}
 };
 
-void RedirectWebRtcLogsToUnreal(rtc::LoggingSeverity Verbosity)
+void RedirectWebRtcLogsToUE4(rtc::LoggingSeverity Verbosity)
 {
 #if !UE_BUILD_SHIPPING
 	static FWebRtcLogsRedirector Redirector{ Verbosity };

@@ -57,10 +57,6 @@ bool FExtrudeMesh::ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals
 		return false;
 	}
 	int NumInitialLoops = Region.InitialLoops.GetLoopCount();
-	if (bSkipClosedComponents && NumInitialLoops == 0)
-	{
-		return true;
-	}
 
 	MeshIndexUtil::TriangleToVertexIDs(Mesh, Region.InitialTriangles, Region.InitialVertices);
 

@@ -25,7 +25,6 @@ public class CoreUObject : ModuleRules
 		PrivateDependencyModuleNames.Add("Projects");
         PrivateDependencyModuleNames.Add("Json");
 
-		PublicDefinitions.Add("UNIQUENETID_ESPMODE=ESPMode::Fast");
 	}
 
 }

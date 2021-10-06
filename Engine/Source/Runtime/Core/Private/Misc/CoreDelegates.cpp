@@ -190,10 +190,6 @@ FCoreDelegates::FShouldLaunchUrl FCoreDelegates::ShouldLaunchUrl;
 
 FCoreDelegates::FOnGCFinishDestroyTimeExtended FCoreDelegates::OnGCFinishDestroyTimeExtended;
 
-FCoreDelegates::FAccesExtraBinaryConfigData FCoreDelegates::AccessExtraBinaryConfigData;
-
-FCoreDelegates::FOnLogVerbosityChanged FCoreDelegates::OnLogVerbosityChanged;
-
 FCoreDelegates::FApplicationNetworkInitializationChanged FCoreDelegates::ApplicationNetworkInitializationChanged;
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS

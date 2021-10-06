@@ -327,8 +327,6 @@ public:
 
 	void ToggleEventFilterByEventType(const uint64 EventType);
 
-	bool IsFilterByEventType(const uint64 EventType) const;
-
 	const TSharedPtr<FBaseTimingTrack> GetTrackAt(float InPosX, float InPosY) const;
 
 protected:

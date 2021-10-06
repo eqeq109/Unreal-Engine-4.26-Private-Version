@@ -2,29 +2,28 @@
 
 #include "RenderDocPluginModule.h"
 
-#include "Windows/AllowWindowsPlatformTypes.h"
-
-#include "Engine/Engine.h"
-#include "Engine/GameViewportClient.h"
-#include "Async/Async.h"
-#include "HAL/FileManager.h"
 #include "Internationalization/Internationalization.h"
-#include "Misc/ConfigCacheIni.h"
-#include "RenderDocPluginNotification.h"
-#include "RenderDocPluginSettings.h"
 #include "RendererInterface.h"
 #include "RenderingThread.h"
 
+#include "RenderDocPluginNotification.h"
+#include "RenderDocPluginSettings.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Async/Async.h"
+#include "HAL/FileManager.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Engine/GameViewportClient.h"
+#include "RenderCaptureInterface.h"
+#include "Misc/AutomationTest.h"
+
 #if WITH_EDITOR
-#include "Editor.h"
+#include "UnrealClient.h"
 #include "Editor/EditorEngine.h"
+extern UNREALED_API UEditorEngine* GEditor;
 #include "ISettingsModule.h"
 #include "ISettingsSection.h"
-#include "LevelEditor.h"
-#include "SRenderDocPluginEditorExtension.h"
-#include "UnrealClient.h"
-extern UNREALED_API UEditorEngine* GEditor;
-#endif // WITH_EDITOR
+#include "Editor.h"
+#endif
 
 DEFINE_LOG_CATEGORY(RenderDocPlugin);
 
@@ -102,38 +101,19 @@ public:
 
 	}
 
-	static void BeginFrameCapture(HWND WindowHandle, FRenderDocPluginLoader::RENDERDOC_API_CONTEXT* RenderDocAPI)
+	static void BeginCapture(HWND WindowHandle, FRenderDocPluginLoader::RENDERDOC_API_CONTEXT* RenderDocAPI, FRenderDocPluginModule* Plugin)
 	{
 		UE4_GEmitDrawEvents_BeforeCapture = GetEmitDrawEvents();
 		SetEmitDrawEvents(true);
 		RenderDocAPI->StartFrameCapture(GetRenderdocDevicePointer(), WindowHandle);
 	}
 
-	static uint32 EndFrameCapture(HWND WindowHandle, FRenderDocPluginLoader::RENDERDOC_API_CONTEXT* RenderDocAPI)
+	static void EndCapture(HWND WindowHandle, FRenderDocPluginLoader::RENDERDOC_API_CONTEXT* RenderDocAPI, FRenderDocPluginModule* Plugin, const FString& DestPath, FRenderDocPluginModule::ELaunchAfterCapture LaunchOption)
 	{
 		FRHICommandListExecutor::GetImmediateCommandList().SubmitCommandsAndFlushGPU();
-		uint32 Result = RenderDocAPI->EndFrameCapture(GetRenderdocDevicePointer(), WindowHandle);
+		RenderDocAPI->EndFrameCapture(GetRenderdocDevicePointer(), WindowHandle);
+
 		SetEmitDrawEvents(UE4_GEmitDrawEvents_BeforeCapture);
-		return Result;
-	}
-
-	static FString MakeRenderDocCaptureFilePath(FString const& InFileName)
-	{
-		if (InFileName.IsEmpty())
-		{
-			return InFileName;
-		}
-
-		const bool bAbsoluteFileName = !FPaths::IsRelative(InFileName);
-		FString FileName = bAbsoluteFileName ? InFileName : FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / FString("RenderDocCaptures") / InFileName);
-		FileName = FPaths::SetExtension(FileName, "rdc");
-		FPaths::MakePlatformFilename(FileName);
-		return FileName;
-	}
-
-	static void SaveAndLaunch(FRenderDocPluginModule* Plugin, uint32 Flags, const FString& InDestPath)
-	{
-		FString DestPath = MakeRenderDocCaptureFilePath(InDestPath);
 
 		bool bLaunchDestPath = false;
 		if (!DestPath.IsEmpty())
@@ -171,7 +151,7 @@ public:
 			}
 		}
 
-		if (Flags & IRenderCaptureProvider::ECaptureFlags_Launch)
+		if (LaunchOption == FRenderDocPluginModule::ELaunchAfterCapture::Yes)
 		{	
 			TGraphTask<FRenderDocAsyncGraphTask>::CreateTask().ConstructAndDispatchWhenReady(ENamedThreads::GameThread, [Plugin, DestPath, bLaunchDestPath]()
 			{
@@ -229,13 +209,13 @@ TSharedPtr<class IInputDevice> FRenderDocPluginModule::CreateInputDevice(const T
 
 void FRenderDocPluginModule::StartupModule()
 {
-#if !UE_BUILD_SHIPPING // Disable in shipping builds
+#if WITH_EDITOR && !UE_BUILD_SHIPPING // Disable in shipping builds
 	Loader.Initialize();
 	RenderDocAPI = nullptr;
 
 #if WITH_EDITOR
 	EditorExtensions = nullptr;
-#endif // WITH_EDITOR
+#endif
 
 	if (Loader.RenderDocAPI == nullptr)
 	{
@@ -260,9 +240,7 @@ void FRenderDocPluginModule::StartupModule()
 	RenderDocAPI = Loader.RenderDocAPI;
 	check(RenderDocAPI);
 
-	IModularFeatures::Get().RegisterModularFeature(IRenderCaptureProvider::GetModularFeatureName(), (IRenderCaptureProvider*)this);
-
-	IModularFeatures::Get().RegisterModularFeature(IInputDeviceModule::GetModularFeatureName(), (IInputDeviceModule*)this);
+	IModularFeatures::Get().RegisterModularFeature(GetModularFeatureName(), this);
 	DelayedCaptureTick = 0;
 	DelayedCaptureSeconds = 0.0;
 	CaptureFrameCount = 0;
@@ -271,7 +249,6 @@ void FRenderDocPluginModule::StartupModule()
 	bPendingCapture = false;
 	bCaptureInProgress = false;
 	bShouldCaptureAllActivity = false;
-	CaptureFlags = 0;
 
 	// Setup RenderDoc settings
 	FString RenderDocCapturePath = FPaths::ProjectSavedDir() / TEXT("RenderDocCaptures");
@@ -295,27 +272,29 @@ void FRenderDocPluginModule::StartupModule()
 
 	RenderDocAPI->MaskOverlayBits(eRENDERDOC_Overlay_None, eRENDERDOC_Overlay_None);
 
+#if WITH_EDITOR
+	EditorExtensions = new FRenderDocPluginEditorExtension(this);
+#endif
+
 	static FAutoConsoleCommand CCmdRenderDocCaptureFrame = FAutoConsoleCommand(
 		TEXT("renderdoc.CaptureFrame"),
 		TEXT("Captures the rendering commands of the next frame and launches RenderDoc"),
 		FConsoleCommandDelegate::CreateRaw(this, &FRenderDocPluginModule::CaptureFrame)
 	);
 
-#if WITH_EDITOR
 	static FAutoConsoleCommand CCmdRenderDocCapturePIE = FAutoConsoleCommand(
 		TEXT("renderdoc.CapturePIE"),
 		TEXT("Starts a PIE session and captures the specified number of frames from the start."),
 		FConsoleCommandWithArgsDelegate::CreateRaw(this, &FRenderDocPluginModule::CapturePIE)
 	);
 
-	EditorExtensions = new FRenderDocPluginEditorExtension(this);
-#endif // WITH_EDITOR
+	BindCaptureCallbacks();
 
 	UE_LOG(RenderDocPlugin, Log, TEXT("RenderDoc plugin is ready!"));
-#endif // !UE_BUILD_SHIPPING
+#endif
 }
 
-void FRenderDocPluginModule::BeginFrameCapture()
+void FRenderDocPluginModule::BeginCapture()
 {
 	UE_LOG(RenderDocPlugin, Log, TEXT("Capture frame and launch renderdoc!"));
 	ShowNotification(LOCTEXT("RenderDocBeginCaptureNotification", "RenderDoc capture started"), true);
@@ -333,7 +312,7 @@ void FRenderDocPluginModule::BeginFrameCapture()
 	ENQUEUE_RENDER_COMMAND(StartRenderDocCapture)(
 		[Plugin, WindowHandle, RenderDocAPILocal](FRHICommandListImmediate& RHICmdList)
 		{
-			FRenderDocFrameCapturer::BeginFrameCapture(WindowHandle, RenderDocAPILocal);
+			FRenderDocFrameCapturer::BeginCapture(WindowHandle, RenderDocAPILocal, Plugin);
 		});
 }
 
@@ -347,9 +326,9 @@ void FRenderDocPluginModule::ShowNotification(const FText& Message, bool bForceN
 {
 #if WITH_EDITOR
 	FRenderDocPluginNotification::Get().ShowNotification(Message, bForceNewNotification);
-#else // WITH_EDITOR
+#else
 	GEngine->AddOnScreenDebugMessage((uint64)-1, 2.0f, FColor::Emerald, Message.ToString());
-#endif // !WITH_EDITOR
+#endif
 }
 
 void FRenderDocPluginModule::InjectDebugExecKeybind()
@@ -373,7 +352,7 @@ void FRenderDocPluginModule::InjectDebugExecKeybind()
 	}
 }
 
-void FRenderDocPluginModule::EndFrameCapture(void* HWnd, uint32 Flags, const FString& DestFileName)
+void FRenderDocPluginModule::EndCapture(void* HWnd, const FString& DestPath, ELaunchAfterCapture LaunchOption)
 {
 	HWND WindowHandle = (HWnd) ? reinterpret_cast<HWND>(HWnd) : GetActiveWindow();
 
@@ -381,10 +360,9 @@ void FRenderDocPluginModule::EndFrameCapture(void* HWnd, uint32 Flags, const FSt
 	FRenderDocPluginModule* Plugin = this;
 	FRenderDocPluginLoader::RENDERDOC_API_CONTEXT* RenderDocAPILocal = RenderDocAPI;
 	ENQUEUE_RENDER_COMMAND(EndRenderDocCapture)(
-		[WindowHandle, RenderDocAPILocal, Plugin, Flags, DestFileName](FRHICommandListImmediate& RHICmdList)
+		[WindowHandle, RenderDocAPILocal, Plugin, DestPath, LaunchOption](FRHICommandListImmediate& RHICmdList)
 		{
-			FRenderDocFrameCapturer::EndFrameCapture(WindowHandle, RenderDocAPILocal);
-			FRenderDocFrameCapturer::SaveAndLaunch(Plugin, Flags, DestFileName);
+			FRenderDocFrameCapturer::EndCapture(WindowHandle, RenderDocAPILocal, Plugin, DestPath, LaunchOption);
 		});
 
 	DelayedCaptureTick = 0;
@@ -395,10 +373,8 @@ void FRenderDocPluginModule::EndFrameCapture(void* HWnd, uint32 Flags, const FSt
 	bCaptureInProgress = false;
 }
 
-void FRenderDocPluginModule::CaptureFrame(FViewport* InViewport, uint32 InFlags, FString const& InDestFileName)
+void FRenderDocPluginModule::CaptureFrame(FViewport* InViewport, const FString& DestPath, ELaunchAfterCapture LaunchOption)
 {
-	check(IsInGameThread());
-
 	int32 FrameDelay = CVarRenderDocCaptureDelay.GetValueOnAnyThread();
 
 	// Don't do anything if we're currently already waiting for a capture to end : 
@@ -407,20 +383,20 @@ void FRenderDocPluginModule::CaptureFrame(FViewport* InViewport, uint32 InFlags,
 		return;
 	}
 
-	// In case there's no delay and we capture the current viewport, we can trigger the capture immediately : 
+	// in case there's no delay and we capture the current viewport, we can trigger the capture immediately : 
 	bShouldCaptureAllActivity = ShouldCaptureAllActivity();
 	if ((FrameDelay == 0) && !bShouldCaptureAllActivity)
 	{
-		DoFrameCaptureCurrentViewport(InViewport, InFlags, InDestFileName);
+		DoCaptureCurrentViewport(InViewport, DestPath, LaunchOption);
 	}
 	else
 	{
-		if (InViewport || !InDestFileName.IsEmpty() || (InFlags & ECaptureFlags_Launch))
+		if (InViewport || !DestPath.IsEmpty() || LaunchOption != ELaunchAfterCapture::Yes)
 		{
 			UE_LOG(RenderDocPlugin, Warning, TEXT("Deferred captures only support default params. Passed in params will be ignored."));
 		}
 
-		// store all CVars at beginning of capture in case they change while the capture is occurring : 
+		// store all CVars at beginning of capture in case they change while the capture is occuring : 
 		CaptureFrameCount = CVarRenderDocCaptureFrameCount.GetValueOnAnyThread();
 		bCaptureDelayInSeconds = CVarRenderDocCaptureDelayInSeconds.GetValueOnAnyThread() > 0;
 
@@ -436,7 +412,7 @@ void FRenderDocPluginModule::CaptureFrame(FViewport* InViewport, uint32 InFlags,
 			// frames. Multiple frames might get rendered in a single engine update tick.
 			// All active windows are updated, in a round-robin fashion, within a single
 			// engine tick. This includes thumbnail images for material preview, material
-			// editor previews, cascade/persona previews, etc.
+			// editor previews, cascade/persona previes, etc.
 			DelayedCaptureTick = GFrameCounter + FrameDelay;
 		}
 
@@ -444,12 +420,6 @@ void FRenderDocPluginModule::CaptureFrame(FViewport* InViewport, uint32 InFlags,
 	}
 }
 
-void FRenderDocPluginModule::CaptureFrame()
-{
-	CaptureFrame(nullptr, ECaptureFlags_Launch, FString());
-}
-
-#if WITH_EDITOR
 void FRenderDocPluginModule::CapturePIE(const TArray<FString>& Args)
 {
 	if (Args.Num() < 1)
@@ -473,11 +443,10 @@ void FRenderDocPluginModule::CapturePIE(const TArray<FString>& Args)
 	// present, and we want to catch the first PIE frame.
 	StartPIEDelayFrames = 1;
 }
-#endif // WITH_EDITOR
 
-void FRenderDocPluginModule::DoFrameCaptureCurrentViewport(FViewport* InViewport, uint32 InFlags, const FString& InDestFileName)
+void FRenderDocPluginModule::DoCaptureCurrentViewport(FViewport* InViewport, const FString& DestPath, ELaunchAfterCapture LaunchOption)
 {
-	BeginFrameCapture();
+	BeginCapture();
 
 	// infer the intended viewport to intercept/capture:
 	FViewport* Viewport = InViewport;
@@ -501,12 +470,12 @@ void FRenderDocPluginModule::DoFrameCaptureCurrentViewport(FViewport* InViewport
 		// button is clicked versus the one which the console is attached to)
 		Viewport = GEditor->GetActiveViewport();
 	}
-#endif // WITH_EDITOR
+#endif
 
 	check(Viewport);
 	Viewport->Draw(true);
 
-	EndFrameCapture(Viewport->GetWindow(), InFlags, InDestFileName);
+	EndCapture(Viewport->GetWindow(), DestPath, LaunchOption);
 }
 
 void FRenderDocPluginModule::Tick(float DeltaTime)
@@ -525,7 +494,7 @@ void FRenderDocPluginModule::Tick(float DeltaTime)
 		EditorEngine->RequestPlaySession(SessionParams);
 		StartPIEDelayFrames = -1;
 	}
-#endif // WITH_EDITOR
+#endif
 
 	if (!bPendingCapture && !bCaptureInProgress)
 		return;
@@ -550,12 +519,12 @@ void FRenderDocPluginModule::Tick(float DeltaTime)
 			// are we capturing only the current viewport?
 			if (!bShouldCaptureAllActivity)
 			{
-				DoFrameCaptureCurrentViewport(nullptr, ECaptureFlags_Launch, FString());
-				check(!bCaptureInProgress && !bPendingCapture); // EndFrameCapture must have been called
+				DoCaptureCurrentViewport(nullptr, FString(), ELaunchAfterCapture::Yes);
+				check(!bCaptureInProgress && !bPendingCapture); // EndCapture must have been called
 			}
 			else
 			{
-				BeginFrameCapture();
+				BeginCapture();
 				// from now on, we'll detect the end of the capture by counting ticks : 
 				CaptureEndTick = GFrameCounter + CaptureFrameCount + 1;
 				bCaptureInProgress = true;
@@ -578,7 +547,7 @@ void FRenderDocPluginModule::Tick(float DeltaTime)
 
 		if (GFrameCounter == CaptureEndTick)
 		{
-			EndFrameCapture(nullptr, ECaptureFlags_Launch, FString());
+			EndCapture(nullptr, FString(), ELaunchAfterCapture::Yes);
 		}
 		else
 		{
@@ -639,53 +608,75 @@ void FRenderDocPluginModule::ShutdownModule()
 	if (GUsingNullRHI)
 		return;
 
-	IModularFeatures::Get().UnregisterModularFeature(IRenderCaptureProvider::GetModularFeatureName(), (IRenderCaptureProvider*)this);
+	UnBindCaptureCallbacks();
 
 #if WITH_EDITOR
 	delete EditorExtensions;
-#endif // WITH_EDITOR
+#endif
 
 	Loader.Release();
 
 	RenderDocAPI = nullptr;
 }
 
-void FRenderDocPluginModule::BeginCapture(FRHICommandListImmediate* InRHICommandList, uint32 InFlags, FString const& InDestFileName)
-{
-	CaptureFlags = InFlags;
-	CaptureFileName = InDestFileName;
-	BeginCapture_RenderThread(InRHICommandList);
-}
-
-void FRenderDocPluginModule::EndCapture(FRHICommandListImmediate* InRHICommandList)
-{
-	EndCapture_RenderThread(InRHICommandList, CaptureFlags, CaptureFileName);
-	CaptureFlags = 0;
-	CaptureFileName.Reset();
-}
-
-void FRenderDocPluginModule::BeginCapture_RenderThread(FRHICommandListImmediate* InRHICommandList)
+void FRenderDocPluginModule::BeginCaptureBracket(FRHICommandListImmediate* RHICommandList)
 {
 	RENDERDOC_DevicePointer Device = FRenderDocFrameCapturer::GetRenderdocDevicePointer();
-	InRHICommandList->SubmitCommandsAndFlushGPU();
-	InRHICommandList->EnqueueLambda([this, Device](FRHICommandListImmediate& RHICommandList)
+	RHICommandList->SubmitCommandsAndFlushGPU();
+	RHICommandList->EnqueueLambda([this, Device](FRHICommandListImmediate& CmdList)
 	{
 		RenderDocAPI->StartFrameCapture(Device, NULL);
 	});
 }
 
-void FRenderDocPluginModule::EndCapture_RenderThread(FRHICommandListImmediate* InRHICommandList, uint32 InFlags, FString const& InDestFileName)
+void FRenderDocPluginModule::EndCaptureBracket(FRHICommandListImmediate* RHICommandList)
 {
 	RENDERDOC_DevicePointer Device = FRenderDocFrameCapturer::GetRenderdocDevicePointer();
-	InRHICommandList->SubmitCommandsAndFlushGPU();
-	InRHICommandList->EnqueueLambda([this, Device, InFlags, DestFileName = InDestFileName](FRHICommandListImmediate& RHICommandList)
+	RHICommandList->SubmitCommandsAndFlushGPU();
+	RHICommandList->EnqueueLambda([this, Device](FRHICommandListImmediate& CmdList)
 	{
-		uint32 Result = RenderDocAPI->EndFrameCapture(Device, NULL);
-		if (Result == 1)
+		uint32 result = RenderDocAPI->EndFrameCapture(Device, NULL);
+		if (result == 1)
 		{
-			FRenderDocFrameCapturer::SaveAndLaunch(this, InFlags, DestFileName);
+			TGraphTask<FRenderDocAsyncGraphTask>::CreateTask().ConstructAndDispatchWhenReady(ENamedThreads::GameThread, [this]()
+			{
+				StartRenderDoc(FString());
+			});
 		}
 	});
+}
+
+void FRenderDocPluginModule::BindCaptureCallbacks()
+{
+	RenderCaptureInterface::RegisterCallbacks(
+		RenderCaptureInterface::FOnBeginCaptureDelegate::CreateLambda([this](FRHICommandListImmediate* RHICommandList, TCHAR const* Name)
+		{
+			BeginCaptureBracket(RHICommandList);
+		}),
+		RenderCaptureInterface::FOnEndCaptureDelegate::CreateLambda([this](FRHICommandListImmediate* RHICommandList)
+		{
+			EndCaptureBracket(RHICommandList);
+		})
+	);
+
+	if (FAutomationTestFramework::Get().OnCaptureFrameTrace.IsBound())
+	{
+		UE_LOG(RenderDocPlugin, Warning, TEXT("Automation OnCaptureFrameTrace delegate already bound. RenderDoc capture will not be bound."));
+	}
+	else
+	{
+		FAutomationTestFramework::Get().OnCaptureFrameTrace.BindLambda(
+			[](const FString& DestPath, FViewport* InViewport)
+			{
+				FRenderDocPluginModule& PluginModule = FModuleManager::GetModuleChecked<FRenderDocPluginModule>("RenderDocPlugin");
+				PluginModule.CaptureFrame(InViewport, DestPath, ELaunchAfterCapture::No);
+			});
+	}
+}
+
+void FRenderDocPluginModule::UnBindCaptureCallbacks()
+{
+	RenderCaptureInterface::UnregisterCallbacks();
 }
 
 #undef LOCTEXT_NAMESPACE

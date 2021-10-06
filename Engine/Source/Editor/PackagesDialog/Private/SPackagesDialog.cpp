@@ -14,7 +14,6 @@
 #include "EditorStyleSet.h"
 #include "IAssetTools.h"
 #include "IAssetTypeActions.h"
-#include "AssetRegistry/IAssetRegistry.h"
 #include "AssetToolsModule.h"
 
 #define LOCTEXT_NAMESPACE "SPackagesDialog"
@@ -42,7 +41,7 @@ UObject* FPackageItem::GetPackageObject() const
 		GetObjectsWithPackage(Package, ObjectsInPackage, false);
 		for (UObject* Obj : ObjectsInPackage)
 		{
-			if (Obj->IsAsset() && !UE::AssetRegistry::FFiltering::ShouldSkipAsset(Obj))
+			if (Obj->IsAsset())
 			{
 				return Obj;
 			}
@@ -61,7 +60,7 @@ bool FPackageItem::HasMultipleAssets() const
 		UObject* FirstObj = nullptr;
 		for (UObject* Obj : ObjectsInPackage)
 		{
-			if (Obj->IsAsset() && !UE::AssetRegistry::FFiltering::ShouldSkipAsset(Obj))
+			if (Obj->IsAsset())
 			{
 				if(FirstObj == nullptr)
 				{

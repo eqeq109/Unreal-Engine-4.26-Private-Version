@@ -4,24 +4,44 @@
 #include "Internationalization/Text.h"
 
 FCamelCaseBreakIterator::FCamelCaseBreakIterator()
-	: CurrentPosition(0)
+	: String()
+	, CurrentPosition(0)
 {
 	BreakPoints.Add(0);
 }
 
-void FCamelCaseBreakIterator::SetString(FString&& InString)
+void FCamelCaseBreakIterator::SetString(const FText& InText)
 {
-	InternalString = MoveTemp(InString);
-	String = InternalString;
+	String = InText.ToString();
 	UpdateBreakPointsArray();
 	ResetToBeginning();
 }
 
-void FCamelCaseBreakIterator::SetStringRef(FStringView InString)
+void FCamelCaseBreakIterator::SetString(const FString& InString)
 {
-	InternalString.Reset();
 	String = InString;
 	UpdateBreakPointsArray();
+	ResetToBeginning();
+}
+
+void FCamelCaseBreakIterator::SetString(const TCHAR* const InString, const int32 InStringLength) 
+{
+	String = FString(InStringLength, InString);
+	UpdateBreakPointsArray();
+	ResetToBeginning();
+}
+
+void FCamelCaseBreakIterator::SetStringRef(const FString* InString)
+{
+	// TODO: Support external string references as an optimization
+	SetString(*InString);
+}
+
+void FCamelCaseBreakIterator::ClearString()
+{
+	String.Reset();
+	BreakPoints.Empty(1);
+	BreakPoints.Add(0);
 	ResetToBeginning();
 }
 
@@ -86,12 +106,12 @@ int32 FCamelCaseBreakIterator::MoveToCandidateAfter(const int32 InIndex)
 
 void FCamelCaseBreakIterator::UpdateBreakPointsArray()
 {
-	FTokensArray Tokens;
+	TArray<FToken> Tokens;
 	TokenizeString(Tokens);
 	PopulateBreakPointsArray(Tokens);
 }
 
-void FCamelCaseBreakIterator::PopulateBreakPointsArray(const FTokensArray& InTokens)
+void FCamelCaseBreakIterator::PopulateBreakPointsArray(const TArray<FToken>& InTokens)
 {
 	BreakPoints.Empty(InTokens.Num());
 
@@ -99,14 +119,6 @@ void FCamelCaseBreakIterator::PopulateBreakPointsArray(const FTokensArray& InTok
 	// ICU|Break|Iterator|1234|_|Ext|
 
 	BreakPoints.Add(0); // start of the string
-
-	auto AddBreakPoint = [this](int32 StrIndex)
-	{
-		if (StrIndex > BreakPoints.Last())
-		{
-			BreakPoints.Add(StrIndex);
-		}
-	};
 
 	ETokenType TokenRunType = ETokenType::Other;
 	for(int32 TokenIndex = 0; TokenIndex < InTokens.Num(); ++TokenIndex)
@@ -116,7 +128,7 @@ void FCamelCaseBreakIterator::PopulateBreakPointsArray(const FTokensArray& InTok
 		// End of string?
 		if(Token.TokenType == ETokenType::Null)
 		{
-			AddBreakPoint(Token.StrIndex);
+			BreakPoints.AddUnique(Token.StrIndex);
 			break;
 		}
 
@@ -137,14 +149,14 @@ void FCamelCaseBreakIterator::PopulateBreakPointsArray(const FTokensArray& InTok
 			const int32 BreakTokenIndex = TokenIndex - ((TokenRunType == ETokenType::Uppercase && Token.TokenType == ETokenType::Lowercase) ? 1 : 0);
 			if(BreakTokenIndex > 0)
 			{
-				AddBreakPoint(InTokens[BreakTokenIndex].StrIndex);
+				BreakPoints.AddUnique(InTokens[BreakTokenIndex].StrIndex);
 			}
 		}
 
 		// Always add "other" tokens as break points
 		if(Token.TokenType == ETokenType::Other)
 		{
-			AddBreakPoint(Token.StrIndex);
+			BreakPoints.AddUnique(Token.StrIndex);
 		}
 
 		TokenRunType = Token.TokenType;

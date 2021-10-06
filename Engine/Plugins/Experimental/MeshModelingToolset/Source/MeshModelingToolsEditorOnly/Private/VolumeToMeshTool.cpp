@@ -150,10 +150,6 @@ void UVolumeToMeshTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
 }
 
-bool UVolumeToMeshTool::CanAccept() const
-{
-	return bResultValid && CurrentMesh.TriangleCount() > 0;
-}
 
 
 void UVolumeToMeshTool::UpdateLineSet()

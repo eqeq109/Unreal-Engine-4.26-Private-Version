@@ -240,8 +240,7 @@ class FRayTracingDeferredReflectionsRGS : public FGlobalShader
 	class FDeferredMaterialMode : SHADER_PERMUTATION_ENUM_CLASS("DIM_DEFERRED_MATERIAL_MODE", EDeferredMaterialMode);
 	class FMissShaderLighting : SHADER_PERMUTATION_BOOL("DIM_MISS_SHADER_LIGHTING");
 	class FGenerateRays : SHADER_PERMUTATION_BOOL("DIM_GENERATE_RAYS"); // Whether to generate rays in the RGS or in a separate CS
-	class FAMDHitToken : SHADER_PERMUTATION_BOOL("DIM_AMD_HIT_TOKEN");
-	using FPermutationDomain = TShaderPermutationDomain<FDeferredMaterialMode, FMissShaderLighting, FGenerateRays, FAMDHitToken>;
+	using FPermutationDomain = TShaderPermutationDomain<FDeferredMaterialMode, FMissShaderLighting, FGenerateRays>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, RayTracingResolution)
@@ -299,11 +298,6 @@ class FRayTracingDeferredReflectionsRGS : public FGlobalShader
 			return false;
 		}
 
-		if (PermutationVector.Get<FAMDHitToken>() && !(IsD3DPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform)))
-		{
-			return false;
-		}
-
 		return ShouldCompileRayTracingShadersForProject(Parameters.Platform);
 	}
 
@@ -322,9 +316,6 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingDeferredReflections(const F
 
 	const bool bGenerateRaysWithRGS = CVarRayTracingReflectionsGenerateRaysWithRGS.GetValueOnRenderThread() == 1;
 	const bool bMissShaderLighting = CanUseRayTracingLightingMissShader(View.GetShaderPlatform());
-	const bool bHitTokenEnabled = CanUseRayTracingAMDHitToken();
-
-	PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FAMDHitToken>(bHitTokenEnabled);
 
 	{
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Gather);
@@ -405,9 +396,7 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingDeferredReflectionsDeferred
 	FRayTracingDeferredReflectionsRGS::FPermutationDomain PermutationVector;
 
 	const bool bGenerateRaysWithRGS = CVarRayTracingReflectionsGenerateRaysWithRGS.GetValueOnRenderThread() == 1;
-	const bool bHitTokenEnabled = CanUseRayTracingAMDHitToken();
 
-	PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FAMDHitToken>(bHitTokenEnabled);
 	PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Gather);
 	PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FGenerateRays>(bGenerateRaysWithRGS);
 	auto RayGenShader = View.ShaderMap->GetShader<FRayTracingDeferredReflectionsRGS>(PermutationVector);
@@ -548,8 +537,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 		CommonParameters.SceneTextures.GBufferVelocityTexture = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 	}
 
-	const bool bHitTokenEnabled = CanUseRayTracingAMDHitToken();
-
 	// Generate sorted reflection rays
 
 	const uint32 TileAlignedNumRays          = TileAlignedResolution.X * TileAlignedResolution.Y;
@@ -579,7 +566,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 		PassParameters.ReflectionDenoiserData = GraphBuilder.CreateUAV(ReflectionDenoiserData);
 
 		FRayTracingDeferredReflectionsRGS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FAMDHitToken>(bHitTokenEnabled);
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Gather);
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FGenerateRays>(bGenerateRaysWithRGS);
 
@@ -617,7 +603,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDeferredReflections(
 		PassParameters.ReflectionDenoiserData = GraphBuilder.CreateUAV(ReflectionDenoiserData);
 
 		FRayTracingDeferredReflectionsRGS::FPermutationDomain PermutationVector;
-		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FAMDHitToken>(bHitTokenEnabled);
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FDeferredMaterialMode>(EDeferredMaterialMode::Shade);
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FMissShaderLighting>(bMissShaderLighting);
 		PermutationVector.Set<FRayTracingDeferredReflectionsRGS::FGenerateRays>(false);

@@ -42,13 +42,13 @@ bool FOnlinePresenceTencent::Init()
 			rail::RailResult Result = RailFriends->GetFriendsList(&Friends);
 			if (Result == rail::kSuccess)
 			{
-				TArray<FUniqueNetIdRef> FriendIds;
+				TArray<TSharedRef<const FUniqueNetId>> FriendIds;
 				for (uint32 RailIdx = 0; RailIdx < Friends.size(); ++RailIdx)
 				{
 					const rail::RailFriendInfo& RailFriendInfo(Friends[RailIdx]);
 					if (RailFriendInfo.friend_rail_id != rail::kInvalidRailId)
 					{
-						FUniqueNetIdRef FriendId(FUniqueNetIdRail::Create(RailFriendInfo.friend_rail_id));
+						TSharedRef<const FUniqueNetId> FriendId(MakeShared<const FUniqueNetIdRail>(RailFriendInfo.friend_rail_id));
 						UE_LOG_ONLINE_PRESENCE(VeryVerbose, TEXT("Friend Id: %s State: %s"), *FriendId->ToDebugString(), *LexToString(RailFriendInfo.online_state.friend_online_state));
 
 						SetUserOnlineState(*FriendId, RailOnlineStateToOnlinePresence(RailFriendInfo.online_state.friend_online_state));
@@ -98,7 +98,7 @@ void FOnlinePresenceTencent::OnLoginChanged(int32 LocalUserNum)
 	IOnlineIdentityPtr IdentityInt = TencentSubsystem->GetIdentityInterface();
 	if (IdentityInt.IsValid())
 	{
-		FUniqueNetIdRailPtr UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
+		TSharedPtr<const FUniqueNetIdRail> UserId = StaticCastSharedPtr<const FUniqueNetIdRail>(IdentityInt->GetUniquePlayerId(LocalUserNum));
 		if (UserId.IsValid())
 		{
 			ELoginStatus::Type LoginStatus = IdentityInt->GetLoginStatus(LocalUserNum);
@@ -129,7 +129,7 @@ bool IsPresenceEqual(const FOnlineUserPresenceStatus& A, const FOnlineUserPresen
 void FOnlinePresenceTencent::SetPresence(const FUniqueNetId& User, const FOnlineUserPresenceStatus& Status, const FOnPresenceTaskCompleteDelegate& Delegate)
 {
 	bool bNeedsUpdate = true;
-	FUniqueNetIdRef UserPtr = User.AsShared();
+	TSharedRef<const FUniqueNetId> UserPtr = User.AsShared();
 	TSharedRef<FOnlineUserPresenceTencent>* Cached = CachedPresence.Find(User.AsShared());
 	if (Cached != nullptr)
 	{
@@ -225,7 +225,7 @@ void FOnlinePresenceTencent::UpdatePresenceFromSessionData()
 
 void FOnlinePresenceTencent::QueryPresence(const FUniqueNetId& User, const FOnPresenceTaskCompleteDelegate& Delegate)
 {
-	FUniqueNetIdRef UserPtr = User.AsShared();
+	TSharedRef<const FUniqueNetId> UserPtr = User.AsShared();
 	TSharedRef<FOnlinePresenceTencent, ESPMode::ThreadSafe> StrongThis = AsShared();
 	FOnlineAsyncTaskRailGetUserPresence* NewTask = new FOnlineAsyncTaskRailGetUserPresence(TencentSubsystem, (const FUniqueNetIdRail&)User, FOnOnlineAsyncTaskRailGetUserMetadataComplete::CreateLambda([StrongThis, Delegate, UserPtr](const FGetUserMetadataTaskResult& InResult)
 	{
@@ -264,7 +264,7 @@ void FOnlinePresenceTencent::QueryPresence(const FUniqueNetId& User, const FOnPr
 				PresenceSessionIdData->GetValue(SessionIdStr);
 				if (!SessionIdStr.IsEmpty())
 				{
-					(*Cached)->SessionId = FUniqueNetIdString::Create(SessionIdStr);
+					(*Cached)->SessionId = MakeShared<const FUniqueNetIdString>(SessionIdStr);
 				}
 			}
 			else

@@ -81,8 +81,6 @@ private:
 
 	mutable TOptional<bool> bCanResetToBaseCache;
 
-	mutable TOptional<FText> DisplayNameCache;
-
 	TArray<FNiagaraVariable> MissingAttributes;
 
 	UPROPERTY()

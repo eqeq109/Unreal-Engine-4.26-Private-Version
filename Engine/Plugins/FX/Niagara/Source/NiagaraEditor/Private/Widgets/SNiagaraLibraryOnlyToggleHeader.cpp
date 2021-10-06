@@ -20,13 +20,12 @@ void SNiagaraLibraryOnlyToggleHeader::Construct(const FArguments& InArgs)
 		.AutoWidth()
 		[
 			SNew(STextBlock)
-			.Visibility(InArgs._bShowHeaderLabel ? EVisibility::Visible : EVisibility::Collapsed)
 			.Text(InArgs._HeaderLabelText)
 		]
 
 		// Library Only Toggle
 		+SHorizontalBox::Slot()
-		.HAlign(HAlign_Center)
+		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Center)
 		[
 			SNew(SCheckBox)

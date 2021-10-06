@@ -6,40 +6,8 @@
 #include "RemoteControlField.h"
 #include "RemoteControlModels.h"
 #include "RemoteControlPreset.h"
-#include "RemoteControlRoute.h"
-
 
 #include "RemoteControlResponse.generated.h"
-
-USTRUCT()
-struct FAPIInfoResponse
-{
-	GENERATED_BODY()
-	
-	FAPIInfoResponse() = default;
-
-	FAPIInfoResponse(const TArray<FRemoteControlRoute>& InRoutes, bool bInPackaged, URemoteControlPreset* InActivePreset)
-		: IsPackaged(bInPackaged)
-		, ActivePreset(InActivePreset) 
-	{
-		HttpRoutes.Append(InRoutes);
-	}
-
-private:
-	/**
-	 * Whether this is a packaged build or not.
-	 */
-	bool IsPackaged = false;
-
-	/**
-	 * Descriptions for all the routes that make up the remote control API.
-	 */
-	UPROPERTY()
-	TArray<FRemoteControlRouteDescription> HttpRoutes;
-
-	UPROPERTY()
-	FRCShortPresetDescription ActivePreset;
-};
 
 USTRUCT()
 struct FListPresetsResponse
@@ -48,14 +16,11 @@ struct FListPresetsResponse
 	
 	FListPresetsResponse() = default;
 
-	FListPresetsResponse(const TArray<FAssetData>& InPresets)
+	FListPresetsResponse(const TArray<TSoftObjectPtr<URemoteControlPreset>>& InPresets)
 	{
 		Presets.Append(InPresets);
 	}
-
-	/**
-	 * The list of available remote control presets. 
-	 */
+	
 	UPROPERTY()
 	TArray<FRCShortPresetDescription> Presets;
 };
@@ -88,7 +53,7 @@ struct FDescribeObjectResponse
 	{
 		for (TFieldIterator<FProperty> It(Object->GetClass()); It; ++It)
 		{
-			if (!It->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected | CPF_NativeAccessSpecifierPrivate | CPF_DisableEditOnInstance))
+			if (It->HasAnyPropertyFlags(CPF_NativeAccessSpecifierProtected | CPF_NativeAccessSpecifierPrivate | CPF_DisableEditOnInstance))
 			{
 				Properties.Emplace(*It);
 			}
@@ -107,7 +72,7 @@ struct FDescribeObjectResponse
 	FString Name;
 
 	UPROPERTY()
-	UClass* Class = nullptr;
+	UClass* Class;
 
 	UPROPERTY()
 	TArray<FRCPropertyDescription> Properties;
@@ -147,7 +112,7 @@ struct FSearchActorResponse
 	}
 
 	UPROPERTY()
-	TArray<FRCObjectDescription> Actors;
+	TArray<FRCActorDescription> Actors;
 };
 
 USTRUCT()
@@ -161,7 +126,6 @@ struct FGetMetadataFieldResponse
 		: Value(MoveTemp(InValue))
 	{}
 
-	/** The metadata value for a given key. */
 	UPROPERTY()
 	FString Value;
 };
@@ -183,33 +147,15 @@ struct FGetMetadataResponse
 };
 
 USTRUCT()
-struct FSetEntityLabelResponse
-{
-	GENERATED_BODY()
-
-	FSetEntityLabelResponse() = default;
-
-	FSetEntityLabelResponse(FString&& InString)
-		: AssignedLabel(MoveTemp(InString))
-	{
-	}
-
-	/** The label that was assigned when requesting to modify an entity's label. */
-	UPROPERTY()
-	FString AssignedLabel;
-};
-
-USTRUCT()
 struct FRCPresetFieldsRenamedEvent
 {
 	GENERATED_BODY()
 
 	FRCPresetFieldsRenamedEvent() = default;
 
-	FRCPresetFieldsRenamedEvent(FName InPresetName, FGuid InPresetId, TArray<TTuple<FName, FName>> InRenamedFields)
+	FRCPresetFieldsRenamedEvent(FName InPresetName, TArray<TTuple<FName, FName>> InRenamedFields)
 		: Type(TEXT("PresetFieldsRenamed"))
 		, PresetName(InPresetName)
-		, PresetId(InPresetId.ToString())
 		, RenamedFields(MoveTemp(InRenamedFields))
 	{
 	}
@@ -221,62 +167,7 @@ struct FRCPresetFieldsRenamedEvent
 	FName PresetName;
 
 	UPROPERTY()
-	FString PresetId;
-
-	UPROPERTY()
 	TArray<FRCPresetFieldRenamed> RenamedFields;
-};
-
-USTRUCT()
-struct FRCPresetMetadataModified
-{
-	GENERATED_BODY()
-
-	FRCPresetMetadataModified() = default;
-
-	FRCPresetMetadataModified(URemoteControlPreset* InPreset)
-		: Type(TEXT("PresetMetadataModified"))
-	{
-		if (InPreset)
-		{
-			PresetName = InPreset->GetFName();
-			PresetId = InPreset->GetPresetId().ToString();
-			Metadata = InPreset->Metadata;
-		}
-	}
-
-	UPROPERTY()
-	FString Type;
-
-	UPROPERTY()
-	FName PresetName;
-
-	UPROPERTY()
-	FString PresetId;
-
-	UPROPERTY()
-	TMap<FString, FString> Metadata;
-};
-
-
-USTRUCT()
-struct FRCPresetLayoutModified
-{
-	GENERATED_BODY()
-
-	FRCPresetLayoutModified() = default;
-
-	FRCPresetLayoutModified(URemoteControlPreset* InPreset)
-		: Type(TEXT("PresetLayoutModified"))
-		, Preset(InPreset)
-	{
-	}
-
-	UPROPERTY()
-	FString Type;
-
-	UPROPERTY()
-	FRCPresetDescription Preset;
 };
 
 USTRUCT()
@@ -286,13 +177,11 @@ struct FRCPresetFieldsRemovedEvent
 
 	FRCPresetFieldsRemovedEvent() = default;
 
-	FRCPresetFieldsRemovedEvent(FName InPresetName, FGuid InPresetId, TArray<FName> InRemovedFields, const TArray<FGuid>& InRemovedFieldIDs)
+	FRCPresetFieldsRemovedEvent(FName InPresetName, TArray<FName> InRemovedFields)
 		: Type(TEXT("PresetFieldsRemoved"))
 		, PresetName(InPresetName)
-		, PresetId(InPresetId.ToString())
 		, RemovedFields(MoveTemp(InRemovedFields))
 	{
-		Algo::Transform(InRemovedFieldIDs, RemovedFieldIds, [](const FGuid& Id){ return Id.ToString(); });
 	}
 
 	UPROPERTY()
@@ -302,13 +191,7 @@ struct FRCPresetFieldsRemovedEvent
 	FName PresetName;
 
 	UPROPERTY()
-	FString PresetId;
-
-	UPROPERTY()
 	TArray<FName> RemovedFields;
-
-	UPROPERTY()
-	TArray<FString> RemovedFieldIds;
 };
 
 USTRUCT()
@@ -318,10 +201,9 @@ struct FRCPresetFieldsAddedEvent
 
 	FRCPresetFieldsAddedEvent() = default;
 
-	FRCPresetFieldsAddedEvent(FName InPresetName, FGuid InPresetId, FRCPresetDescription InPresetAddition)
+	FRCPresetFieldsAddedEvent(FName InPresetName, FRCPresetDescription InPresetAddition)
 		: Type(TEXT("PresetFieldsAdded"))
 		, PresetName(InPresetName)
-		, PresetId(InPresetId.ToString())
 		, Description(MoveTemp(InPresetAddition))
 	{
 	}
@@ -333,52 +215,5 @@ struct FRCPresetFieldsAddedEvent
 	FName PresetName;
 
 	UPROPERTY()
-	FString PresetId;
-
-	UPROPERTY()
 	FRCPresetDescription Description;
-};
-
-/**
- * Event triggered when an exposed entity struct is modified.
- */
-USTRUCT()
-struct FRCPresetEntitiesModifiedEvent
-{
-	GENERATED_BODY()
-
-	FRCPresetEntitiesModifiedEvent() = default;
-
-	FRCPresetEntitiesModifiedEvent(URemoteControlPreset* InPreset, const TArray<FGuid>& InModifiedEntities)
-		: Type(TEXT("PresetEntitiesModified"))
-	{
-		checkSlow(InPreset);
-		PresetName = InPreset->GetFName();
-		PresetId = InPreset->GetPresetId().ToString();
-		ModifiedEntities = FRCPresetModifiedEntitiesDescription{InPreset, InModifiedEntities};
-	}
-
-	/**
-	 * Type of the event.
-	 */
-	UPROPERTY()
-	FString Type;
-
-	/**
-	 * Name of the preset which contains the modified entities.
-	 */
-	UPROPERTY()
-	FName PresetName;
-	
-	/**
-	 * ID of the preset that contains the modified entities.
-	 */
-	UPROPERTY()
-	FString PresetId;
-
-	/**
-	 * The entities that were modified in the last frame.
-	 */
-	UPROPERTY()
-	FRCPresetModifiedEntitiesDescription ModifiedEntities;
 };

@@ -14,7 +14,6 @@
 #include "UObject/UnrealNames.h"
 #include "Templates/Atomic.h"
 #include "Serialization/MemoryLayout.h"
-#include "Misc/StringBuilder.h"
 
 /*----------------------------------------------------------------------------
 	Definitions.
@@ -32,7 +31,7 @@
 
 class FText;
 
-/** Maximum size of name, including the null terminator. */
+/** Maximum size of name. */
 enum {NAME_SIZE	= 1024};
 
 /** Opaque id to a deduplicated name */
@@ -225,6 +224,9 @@ public:
 
 	/** Copy name to a dynamically allocated FString. */
 	CORE_API FString GetPlainNameString() const;
+
+	/** Copy name to a FStringBuilderBase. */
+	CORE_API void GetPlainNameString(FStringBuilderBase& OutString) const;
 
 	/** Appends name to string. May allocate. */
 	CORE_API void AppendNameToString(FString& OutString) const;
@@ -783,7 +785,7 @@ public:
 		: FName(NoInit)
 	{
 		TStringView<CharType> View = Forward<CharRangeType>(Name);
-		*this = FName(View.Len(), View.GetData(), FindType);
+		*this = FName(View.Len(), View.GetData());
 	}
 
 	/**
@@ -807,7 +809,7 @@ public:
 		: FName(NoInit)
 	{
 		TStringView<CharType> View = Forward<CharRangeType>(Name);
-		*this = FName(View.Len(), View.GetData(), InNumber, FindType);
+		*this = FName(View.Len(), View.GetData(), InNumber);
 	}
 
 	/**
@@ -1269,19 +1271,3 @@ public:
 	CORE_API friend bool operator==(const FLazyName& A, const FLazyName& B);
 
 };
-
-/**
- * A string builder with inline storage for FNames.
- */
-class FNameBuilder : public TStringBuilder<FName::StringBufferSize>
-{
-public:
-	FNameBuilder() = default;
-
-	inline explicit FNameBuilder(const FName InName)
-	{
-		InName.AppendString(*this);
-	}
-};
-
-template <> struct TIsContiguousContainer<FNameBuilder> { static constexpr bool Value = true; };

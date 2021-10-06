@@ -18,11 +18,6 @@ struct CORE_API FUnixTime : public FGenericPlatformTime
 
 	static FORCEINLINE double Seconds()
 	{
-		if (UNLIKELY(ClockSource < 0))
-		{
-			ClockSource = CalibrateAndSelectClock();
-		}
-
 		struct timespec ts;
 		clock_gettime(ClockSource, &ts);
 		return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
@@ -30,11 +25,6 @@ struct CORE_API FUnixTime : public FGenericPlatformTime
 
 	static FORCEINLINE uint32 Cycles()
 	{
-		if (UNLIKELY(ClockSource < 0))
-		{
-			ClockSource = CalibrateAndSelectClock();
-		}
-
 		struct timespec ts;
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		return static_cast<uint32>(static_cast<uint64>(ts.tv_sec) * 1000000ULL + static_cast<uint64>(ts.tv_nsec) / 1000ULL);
@@ -46,8 +36,6 @@ struct CORE_API FUnixTime : public FGenericPlatformTime
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		return static_cast<uint64>(static_cast<uint64>(ts.tv_sec) * 1000000ULL + static_cast<uint64>(ts.tv_nsec) / 1000ULL);
 	}
-
-	static bool UpdateCPUTime(float DeltaSeconds);
 
 	static FCPUTime GetCPUTime();	
 

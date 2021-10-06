@@ -46,7 +46,7 @@ public:
 
 	// Offset between sender's engine time and receiver's engine time
 	UPROPERTY()
-	double			MachineTimeOffset = 0.0;
+	double			MachineTimeOffset;
 };
 
 typedef TSharedPtr<FProviderPollResult, ESPMode::ThreadSafe> FProviderPollResultPtr;

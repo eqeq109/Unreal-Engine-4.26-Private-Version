@@ -80,7 +80,8 @@ public:
 		// Compile for materials which modify meshes.
 		const bool bMayModifyMeshes = Parameters.MaterialParameters.bMaterialMayModifyMeshPosition;
 
-		const bool bHasPlatformSupport = PlatformSupportsVelocityRendering(Parameters.Platform);
+		// Compile if supported by the hardware.
+		const bool bIsFeatureSupported = IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 
 		/**
 		 * Any material with a vertex factory incompatible with base pass velocity generation must generate
@@ -93,7 +94,7 @@ public:
 		// The material may explicitly override and request that it be rendered into the velocity pass.
 		const bool bIsSeparateVelocityPassRequiredByMaterial = Parameters.MaterialParameters.bIsTranslucencyWritingVelocity;
 
-		return bHasPlatformSupport && (bIsSeparateVelocityPassRequired || bIsSeparateVelocityPassRequiredByMaterial);
+		return bIsFeatureSupported && (bIsSeparateVelocityPassRequired || bIsSeparateVelocityPassRequiredByMaterial);
 	}
 
 	FVelocityVS() = default;
@@ -206,46 +207,28 @@ bool FDeferredShadingSceneRenderer::ShouldRenderVelocities() const
 	return bNeedsVelocity;
 }
 
-bool FMobileSceneRenderer::ShouldRenderVelocities() const
-{
-	if (!FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform) || ViewFamily.UseDebugViewPS() || !PlatformSupportsVelocityRendering(ShaderPlatform))
-	{
-		return false;
-	}
-
-	bool bNeedsVelocity = false;
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-
-		bool bTemporalAA = (View.AntiAliasingMethod == AAM_TemporalAA) && !View.bCameraCut;
-
-		bNeedsVelocity |= bTemporalAA;
-	}
-
-	return bNeedsVelocity;
-}
-
 BEGIN_SHADER_PARAMETER_STRUCT(FVelocityPassParameters, )
-	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
+	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
-void FSceneRenderer::RenderVelocities(
+void FDeferredShadingSceneRenderer::RenderVelocities(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef DepthTexture,
 	FRDGTextureRef& InOutVelocityTexture,
-	const FSceneTextureShaderParameters& SceneTextures,
+	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 	EVelocityPass VelocityPass,
 	bool bForceVelocity)
 {
+	check(FeatureLevel >= ERHIFeatureLevel::SM5);
+
 	if (!ShouldRenderVelocities())
 	{
 		return;
 	}
 
 	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderVelocities);
-	SCOPED_NAMED_EVENT(FSceneRenderer_RenderVelocities, FColor::Emerald);
+	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
 	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
 	ERenderTargetLoadAction VelocityLoadAction = ERenderTargetLoadAction::ELoad;
@@ -279,20 +262,15 @@ void FSceneRenderer::RenderVelocities(
 
 			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
 
-			const bool bIsParallelVelocity = IsParallelVelocity();
-
-			// Clear velocity render target explicitly when velocity rendering in parallel or no draw but force to.
-			// Avoid adding a separate clear pass in non parallel rendering.
-			const bool bExplicitlyClearVelocity = (VelocityLoadAction == ERenderTargetLoadAction::EClear) && (bIsParallelVelocity || (bForceVelocity && !bHasAnyDraw));
-
-			if (bExplicitlyClearVelocity)
+			if (VelocityLoadAction == ERenderTargetLoadAction::EClear)
 			{
 				AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
 
-				// Parallel render need to use Load action in any case.
-				VelocityLoadAction = ERenderTargetLoadAction::ELoad;
+				if (!View.Family->bMultiGPUForkAndJoin)
+				{
+					VelocityLoadAction = ERenderTargetLoadAction::ELoad;
+				}
 			}
-
 			bVelocityRendered = true;
 
 			if (!bHasAnyDraw)
@@ -301,7 +279,7 @@ void FSceneRenderer::RenderVelocities(
 			}
 
 			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
-			PassParameters->SceneTextures = SceneTextures;
+			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
 			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
 				DepthTexture,
 				ERenderTargetLoadAction::ELoad,
@@ -310,10 +288,10 @@ void FSceneRenderer::RenderVelocities(
 				? FExclusiveDepthStencil::DepthRead_StencilWrite
 				: FExclusiveDepthStencil::DepthWrite_StencilWrite);
 
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, VelocityLoadAction);
-
-			if (bIsParallelVelocity)
+			if (IsParallelVelocity())
 			{
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
+
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("VelocityParallel"),
 					PassParameters,
@@ -327,6 +305,8 @@ void FSceneRenderer::RenderVelocities(
 			}
 			else
 			{
+				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
+
 				GraphBuilder.AddPass(
 					RDG_EVENT_NAME("Velocity"),
 					PassParameters,
@@ -353,8 +333,7 @@ void FSceneRenderer::RenderVelocities(
 
 EPixelFormat FVelocityRendering::GetFormat(EShaderPlatform ShaderPlatform)
 {
-	// Android platform doesn't support unorm G16R16 format, use G16R16F instead.
-	return FDataDrivenShaderPlatformInfo::GetSupportsRayTracing(ShaderPlatform) ? PF_A16B16G16R16 : (IsAndroidOpenGLESPlatform(ShaderPlatform) ? PF_G16R16F : PF_G16R16);
+	return FDataDrivenShaderPlatformInfo::GetSupportsRayTracing(ShaderPlatform) ? PF_A16B16G16R16 : PF_G16R16;
 }
 
 FRDGTextureDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
@@ -416,7 +395,7 @@ bool FVelocityMeshProcessor::PrimitiveHasVelocityForView(const FViewInfo& View, 
 
 bool FOpaqueVelocityMeshProcessor::PrimitiveCanHaveVelocity(EShaderPlatform ShaderPlatform, const FPrimitiveSceneProxy* PrimitiveSceneProxy)
 {
-	if (!FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform) || !PlatformSupportsVelocityRendering(ShaderPlatform))
+	if (!FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform))
 	{
 		return false;
 	}
@@ -463,45 +442,6 @@ bool FOpaqueVelocityMeshProcessor::PrimitiveHasVelocityForFrame(const FPrimitive
 	return true;
 }
 
-bool FOpaqueVelocityMeshProcessor::TryAddMeshBatch(
-	const FMeshBatch& RESTRICT MeshBatch,
-	uint64 BatchElementMask,
-	const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
-	int32 StaticMeshId,
-	const FMaterialRenderProxy* MaterialRenderProxy,
-	const FMaterial* Material)
-{
-	const EBlendMode BlendMode = Material->GetBlendMode();
-	const bool bIsNotTranslucent = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
-
-	bool bResult = true;
-	if (MeshBatch.bUseForMaterial && bIsNotTranslucent && ShouldIncludeMaterialInDefaultOpaquePass(*Material))
-	{
-		// This is specifically done *before* the material swap, as swapped materials may have different fill / cull modes.
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
-
-		/**
-		 * Materials without masking or custom vertex modifications can be swapped out
-		 * for the default material, which simplifies the shader. However, the default
-		 * material also does not support being two-sided.
-		 */
-		const bool bSwapWithDefaultMaterial = Material->WritesEveryPixel() && !Material->IsTwoSided() && !Material->MaterialModifiesMeshPosition_RenderThread();
-
-		if (bSwapWithDefaultMaterial)
-		{
-			MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
-			Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-		}
-
-		check(Material && MaterialRenderProxy);
-
-		bResult = Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
-	}
-	return bResult;
-}
-
 void FOpaqueVelocityMeshProcessor::AddMeshBatch(
 	const FMeshBatch& RESTRICT MeshBatch,
 	uint64 BatchElementMask,
@@ -532,18 +472,33 @@ void FOpaqueVelocityMeshProcessor::AddMeshBatch(
 	}
 
 	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-	while (MaterialRenderProxy)
+	const FMaterial* Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
+	const EBlendMode BlendMode = Material->GetBlendMode();
+	const bool bIsNotTranslucent = BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked;
+
+	if (MeshBatch.bUseForMaterial && bIsNotTranslucent && ShouldIncludeMaterialInDefaultOpaquePass(*Material))
 	{
-		const FMaterial* Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-		if (Material && Material->GetRenderingThreadShaderMap())
+		// This is specifically done *before* the material swap, as swapped materials may have different fill / cull modes.
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+
+		/**
+		 * Materials without masking or custom vertex modifications can be swapped out
+		 * for the default material, which simplifies the shader. However, the default
+		 * material also does not support being two-sided.
+		 */
+		const bool bSwapWithDefaultMaterial = Material->WritesEveryPixel() && !Material->IsTwoSided() && !Material->MaterialModifiesMeshPosition_RenderThread();
+
+		if (bSwapWithDefaultMaterial)
 		{
-			if (TryAddMeshBatch(MeshBatch, BatchElementMask, PrimitiveSceneProxy, StaticMeshId, MaterialRenderProxy, Material))
-			{
-				break;
-			}
+			MaterialRenderProxy = UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
+			Material = MaterialRenderProxy->GetMaterial(FeatureLevel);
 		}
 
-		MaterialRenderProxy = MaterialRenderProxy->GetFallback(FeatureLevel);
+		check(Material && MaterialRenderProxy);
+
+		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
 	}
 }
 
@@ -554,35 +509,12 @@ bool FTranslucentVelocityMeshProcessor::PrimitiveCanHaveVelocity(EShaderPlatform
 	 * Therefore, the primitive can't be filtered based on motion, or it will break post
 	 * effects like depth of field which rely on depth information.
 	 */
-	return FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform) && PlatformSupportsVelocityRendering(ShaderPlatform);
+	return FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform);
 }
 
 bool FTranslucentVelocityMeshProcessor::PrimitiveHasVelocityForFrame(const FPrimitiveSceneProxy* PrimitiveSceneProxy)
 {
 	return true;
-}
-
-bool FTranslucentVelocityMeshProcessor::TryAddMeshBatch(
-	const FMeshBatch& RESTRICT MeshBatch,
-	uint64 BatchElementMask,
-	const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
-	int32 StaticMeshId,
-	const FMaterialRenderProxy* MaterialRenderProxy,
-	const FMaterial* Material)
-{
-	// Whether the primitive is marked to write translucent velocity / depth.
-	const bool bMaterialWritesVelocity = Material->IsTranslucencyWritingVelocity();
-
-	bool bResult = true;
-	if (MeshBatch.bUseForMaterial && bMaterialWritesVelocity)
-	{
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
-
-		bResult = Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
-	}
-	return bResult;
 }
 
 void FTranslucentVelocityMeshProcessor::AddMeshBatch(
@@ -615,22 +547,22 @@ void FTranslucentVelocityMeshProcessor::AddMeshBatch(
 	}
 
 	const FMaterialRenderProxy* MaterialRenderProxy = MeshBatch.MaterialRenderProxy;
-	while (MaterialRenderProxy)
-	{
-		const FMaterial* Material = MaterialRenderProxy->GetMaterialNoFallback(FeatureLevel);
-		if (Material)
-		{
-			if (TryAddMeshBatch(MeshBatch, BatchElementMask, PrimitiveSceneProxy, StaticMeshId, MaterialRenderProxy, Material))
-			{
-				break;
-			}
-		}
+	const FMaterial* Material = &MeshBatch.MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
 
-		MaterialRenderProxy = MaterialRenderProxy->GetFallback(FeatureLevel);
+	// Whether the primitive is marked to write translucent velocity / depth.
+	const bool bMaterialWritesVelocity = Material->IsTranslucencyWritingVelocity();
+
+	if (MeshBatch.bUseForMaterial && bMaterialWritesVelocity)
+	{
+		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+
+		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
 	}
 }
 
-bool GetVelocityPassShaders(
+void GetVelocityPassShaders(
 	const FMaterial& Material,
 	FVertexFactoryType* VertexFactoryType,
 	ERHIFeatureLevel::Type FeatureLevel,
@@ -645,36 +577,31 @@ bool GetVelocityPassShaders(
 		&& VertexFactoryType->SupportsTessellationShaders()
 		&& MaterialTessellationMode != MTM_NoTessellation;
 
-	FMaterialShaderTypes ShaderTypes;
-
 	if (bNeedsHSDS)
 	{
-		ShaderTypes.AddShaderType<FVelocityDS>();
-		ShaderTypes.AddShaderType<FVelocityHS>();
+		DomainShader = Material.GetShader<FVelocityDS>(VertexFactoryType);
+		HullShader = Material.GetShader<FVelocityHS>(VertexFactoryType);
+	}
+
+	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ShaderPipelines"));
+	const bool bUseShaderPipelines = RHISupportsShaderPipelines(GShaderPlatformForFeatureLevel[FeatureLevel]) && !bNeedsHSDS && CVar && CVar->GetValueOnAnyThread() != 0;
+
+	FShaderPipelineRef ShaderPipeline = bUseShaderPipelines ? Material.GetShaderPipeline(&VelocityPipeline, VertexFactoryType, false) : FShaderPipelineRef();
+	if (ShaderPipeline.IsValid())
+	{
+		VertexShader = ShaderPipeline.GetShader<FVelocityVS>();
+		PixelShader = ShaderPipeline.GetShader<FVelocityPS>();
+		check(VertexShader.IsValid() && PixelShader.IsValid());
 	}
 	else
 	{
-		// Don't use pipeline if we have hull/domain shaders
-		ShaderTypes.PipelineType = &VelocityPipeline;
+		VertexShader = Material.GetShader<FVelocityVS>(VertexFactoryType);
+		PixelShader = Material.GetShader<FVelocityPS>(VertexFactoryType);
+		check(VertexShader.IsValid() && PixelShader.IsValid());
 	}
-
-	ShaderTypes.AddShaderType<FVelocityVS>();
-	ShaderTypes.AddShaderType<FVelocityPS>();
-
-	FMaterialShaders Shaders;
-	if (!Material.TryGetShaders(ShaderTypes, VertexFactoryType, Shaders))
-	{
-		return false;
-	}
-
-	Shaders.TryGetVertexShader(VertexShader);
-	Shaders.TryGetPixelShader(PixelShader);
-	Shaders.TryGetHullShader(HullShader);
-	Shaders.TryGetDomainShader(DomainShader);
-	return true;
 }
 
-bool FVelocityMeshProcessor::Process(
+void FVelocityMeshProcessor::Process(
 	const FMeshBatch& MeshBatch,
 	uint64 BatchElementMask,
 	int32 StaticMeshId,
@@ -692,17 +619,15 @@ bool FVelocityMeshProcessor::Process(
 		FVelocityDS,
 		FVelocityPS> VelocityPassShaders;
 
-	if (!GetVelocityPassShaders(
+	GetVelocityPassShaders(
 		MaterialResource,
 		VertexFactory->GetType(),
 		FeatureLevel,
 		VelocityPassShaders.HullShader,
 		VelocityPassShaders.DomainShader,
 		VelocityPassShaders.VertexShader,
-		VelocityPassShaders.PixelShader))
-	{
-		return false;
-	}
+		VelocityPassShaders.PixelShader
+	);
 
 	FMeshMaterialShaderElementData ShaderElementData;
 	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, false);
@@ -722,8 +647,6 @@ bool FVelocityMeshProcessor::Process(
 		SortKey,
 		EMeshPassFeatures::Default,
 		ShaderElementData);
-
-	return true;
 }
 
 FVelocityMeshProcessor::FVelocityMeshProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, const FMeshPassProcessorRenderState& InPassDrawRenderState, FMeshPassDrawListContext* InDrawListContext)
@@ -748,8 +671,6 @@ FMeshPassProcessor* CreateVelocityPassProcessor(const FScene* Scene, const FScen
 }
 
 FRegisterPassProcessorCreateFunction RegisterVelocityPass(&CreateVelocityPassProcessor, EShadingPath::Deferred,  EMeshPass::Velocity, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
-FRegisterPassProcessorCreateFunction MobileRegisterVelocityPass(&CreateVelocityPassProcessor, EShadingPath::Mobile, EMeshPass::Velocity, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
-
 FTranslucentVelocityMeshProcessor::FTranslucentVelocityMeshProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, const FMeshPassProcessorRenderState& InPassDrawRenderState, FMeshPassDrawListContext* InDrawListContext)
 	: FVelocityMeshProcessor(Scene, InViewIfDynamicMeshCommand, InPassDrawRenderState, InDrawListContext)
 {}
@@ -764,4 +685,3 @@ FMeshPassProcessor* CreateTranslucentVelocityPassProcessor(const FScene* Scene, 
 }
 
 FRegisterPassProcessorCreateFunction RegisterTranslucentVelocityPass(&CreateTranslucentVelocityPassProcessor, EShadingPath::Deferred, EMeshPass::TranslucentVelocity, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
-FRegisterPassProcessorCreateFunction RegisterMobileTranslucentVelocityPass(&CreateTranslucentVelocityPassProcessor, EShadingPath::Mobile, EMeshPass::TranslucentVelocity, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);

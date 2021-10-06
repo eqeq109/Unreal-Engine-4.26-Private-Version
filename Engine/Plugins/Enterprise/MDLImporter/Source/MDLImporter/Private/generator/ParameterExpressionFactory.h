@@ -32,7 +32,7 @@ namespace Generator
 
 		void Cleanup();
 
-		void CleanupMaterialExpressions();
+		void Tidy();
 	private:
 		void ImportParameter(const FString& Name, const mi::neuraylib::IValue& Value, mi::neuraylib::ITransaction& Transaction,
 		                     FMaterialExpressionConnectionList& Parameter);

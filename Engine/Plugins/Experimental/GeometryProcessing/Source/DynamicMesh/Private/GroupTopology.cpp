@@ -24,18 +24,6 @@ bool FGroupTopology::FGroupEdge::IsConnectedToVertices(const TSet<int>& Vertices
 FGroupTopology::FGroupTopology(const FDynamicMesh3* MeshIn, bool bAutoBuild)
 {
 	this->Mesh = MeshIn;
-	this->GroupLayer = nullptr;
-	if (bAutoBuild)
-	{
-		RebuildTopology();
-	}
-}
-
-
-FGroupTopology::FGroupTopology(const FDynamicMesh3* MeshIn, const FDynamicMeshPolygroupAttribute* GroupLayerIn, bool bAutoBuild)
-{
-	this->Mesh = MeshIn;
-	this->GroupLayer = GroupLayerIn;
 	if (bAutoBuild)
 	{
 		RebuildTopology();
@@ -475,6 +463,56 @@ void FGroupTopology::CollectGroupBoundaryVertices(int GroupID, TSet<int>& Vertic
 
 
 
+
+
+void FGroupTopology::ForGroupEdges(int GroupID,
+	const TFunction<void(const FGroupEdge& Edge, int EdgeIndex)>& EdgeFunc) const
+{
+	const FGroup* Group = FindGroupByID(GroupID);
+	ensure(Group != nullptr);
+	if (Group != nullptr)
+	{
+		for (const FGroupBoundary& Boundary : Group->Boundaries)
+		{
+			for (int EdgeIndex : Boundary.GroupEdges)
+			{
+				EdgeFunc(Edges[EdgeIndex], EdgeIndex);
+			}
+		}
+	}
+}
+
+
+
+void FGroupTopology::ForGroupSetEdges(const TArray<int>& GroupIDs,
+	const TFunction<void(const FGroupEdge& Edge, int EdgeIndex)>& EdgeFunc) const
+{
+	TArray<int> DoneEdges;
+
+	for (int GroupID : GroupIDs)
+	{
+		const FGroup* Group = FindGroupByID(GroupID);
+		ensure(Group != nullptr);
+		if (Group != nullptr)
+		{
+			for (const FGroupBoundary& Boundary : Group->Boundaries)
+			{
+				for (int EdgeIndex : Boundary.GroupEdges)
+				{
+					if (DoneEdges.Contains(EdgeIndex) == false)
+					{
+						EdgeFunc(Edges[EdgeIndex], EdgeIndex);
+						DoneEdges.Add(EdgeIndex);
+					}
+				}
+			}
+		}
+	}
+}
+
+
+
+
 bool FGroupTopology::ExtractGroupEdges(FGroup& Group)
 {
 	FMeshRegionBoundaryLoops BdryLoops(Mesh, Group.Triangles, true);
@@ -663,28 +701,27 @@ FFrame3d FGroupTopology::GetSelectionFrame(const FGroupTopologySelection& Select
 	FFrame3d StartFrame = (InitialLocalFrame) ? (*InitialLocalFrame) : FFrame3d();
 	if (NumEdges == 1)
 	{
-		int32 EdgeID = Selection.GetASelectedEdgeID();
 		FVector3d Tangent;
-		if (GetGroupEdgeTangent(EdgeID, Tangent))
+		if (GetGroupEdgeTangent(Selection.SelectedEdgeIDs[0], Tangent))
 		{
 			StartFrame.ConstrainedAlignAxis(0, Tangent, StartFrame.Z());
 		}
-		StartFrame.Origin = GetEdgeMidpoint(EdgeID);
+		StartFrame.Origin = GetEdgeMidpoint(Selection.SelectedEdgeIDs[0]);
 		return StartFrame;
 	}
 	if (NumCorners == 1)
 	{
-		StartFrame.Origin = Mesh->GetVertex(Corners[Selection.GetASelectedCornerID()].VertexID);
+		StartFrame.Origin = Mesh->GetVertex(Corners[Selection.SelectedCornerIDs[0]].VertexID);
 		return StartFrame;
 	}
 
-	FVector3d AccumulatedOrigin = FVector3d::Zero();
 	FVector3d AccumulatedNormal = FVector3d::Zero();
 
+	FFrame3d Accumulated;
 	int AccumCount = 0;
 	for (int32 CornerID : Selection.SelectedCornerIDs)
 	{
-		AccumulatedOrigin += Mesh->GetVertex(GetCornerVertexID(CornerID));
+		Accumulated.Origin += Mesh->GetVertex(GetCornerVertexID(CornerID));
 		AccumulatedNormal += FVector3d::UnitZ();
 		AccumCount++;
 	}
@@ -694,7 +731,7 @@ FFrame3d FGroupTopology::GetSelectionFrame(const FGroupTopologySelection& Select
 		const FGroupEdge& Edge = Edges[EdgeID];
 		FVector3d StartPos = Mesh->GetVertex(Edge.Span.Vertices[0]);
 		FVector3d EndPos = Mesh->GetVertex(Edge.Span.Vertices[Edge.Span.Vertices.Num() - 1]);
-		AccumulatedOrigin +=  0.5*(StartPos + EndPos);
+		Accumulated.Origin +=  0.5*(StartPos + EndPos);
 		AccumulatedNormal += FVector3d::UnitZ();
 		AccumCount++;
 	}
@@ -704,36 +741,19 @@ FFrame3d FGroupTopology::GetSelectionFrame(const FGroupTopologySelection& Select
 		if (FindGroupByID(GroupID) != nullptr)
 		{
 			FFrame3d GroupFrame = GetGroupFrame(GroupID);
-			AccumulatedOrigin += GroupFrame.Origin;
+			Accumulated.Origin += GroupFrame.Origin;
 			AccumulatedNormal += GroupFrame.Z();
 			AccumCount++;
 		}
 	}
 
-	FFrame3d AccumulatedFrame;
 	if (AccumCount > 0)
 	{
-		AccumulatedOrigin /= (double)AccumCount;
-		AccumulatedNormal.Normalize();
-
-		// We set our frame Z to be accumulated normal, and the other two axes are unconstrained, so
-		// we want to set them to something that will make our frame generally more useful. If the normal
-		// is aligned with world Z, then the entire frame might as well be aligned with world.
-		if (1 - AccumulatedNormal.Dot(FVector3d::UnitZ()) < KINDA_SMALL_NUMBER)
-		{
-			AccumulatedFrame = FFrame3d(AccumulatedOrigin, FQuaterniond::Identity());
-		}
-		else
-		{
-			// Otherwise, let's place one of the other axes into the XY plane so that the frame is more
-			// useful for translation. We somewhat arbitrarily choose Y for this. 
-			FVector3d FrameY = AccumulatedNormal.Cross(FVector3d::UnitZ()).Normalized(); // orthogonal to world Z and frame Z 
-			FVector3d FrameX = FrameY.Cross(AccumulatedNormal); // safe to not normalize because already orthogonal
-			AccumulatedFrame = FFrame3d(AccumulatedOrigin, FrameX, FrameY, AccumulatedNormal);
-		}
+		Accumulated.Origin /= (double)AccumCount;
+		Accumulated.AlignAxis(2, AccumulatedNormal);
 	}
 
-	return AccumulatedFrame;
+	return Accumulated;
 }
 
 

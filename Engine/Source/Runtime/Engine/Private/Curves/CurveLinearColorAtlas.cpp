@@ -14,8 +14,6 @@ UCurveLinearColorAtlas::UCurveLinearColorAtlas(const FObjectInitializer& ObjectI
 	: Super(ObjectInitializer)
 {
 	TextureSize = 256;
-	bSquareResolution = true;
-	TextureHeight = 256;
 #if WITH_EDITORONLY_DATA
 	bHasAnyDirtyTextures = false;
 	bShowDebugColorsForNullGradients = false;
@@ -27,39 +25,8 @@ UCurveLinearColorAtlas::UCurveLinearColorAtlas(const FObjectInitializer& ObjectI
 	AddressX = TA_Clamp;
 	AddressY = TA_Clamp;
 	CompressionSettings = TC_HDR;
-#if WITH_EDITORONLY_DATA
-	bDisableAllAdjustments = false;
-	bHasCachedColorAdjustments = false;
-#endif
 }
 #if WITH_EDITOR
-bool UCurveLinearColorAtlas::CanEditChange(const FProperty* InProperty) const
-{
-	if (!Super::CanEditChange(InProperty))
-	{
-		return false;
-	}
-
-	if (bDisableAllAdjustments &&
-		(InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightness) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightnessCurve) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightness) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustSaturation) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustVibrance) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustRGBCurve) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustHue) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustMinAlpha) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, AdjustMaxAlpha) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, bChromaKeyTexture) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, ChromaKeyThreshold) ||
-		 InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UTexture, ChromaKeyColor)))
-	{
-		return false;
-	}
-
-	return true;
-}
-
 void UCurveLinearColorAtlas::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -70,33 +37,26 @@ void UCurveLinearColorAtlas::PostEditChangeProperty(struct FPropertyChangedEvent
 	{
 		const FName PropertyName(PropertyChangedEvent.Property->GetFName());
 		// if Resizing
-		if (PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, TextureSize) || 
-			PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, bSquareResolution) ||
-			PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, TextureHeight))
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, TextureSize))
 		{
-			if (bSquareResolution)
-			{
-				TextureHeight = TextureSize;
-			}
-
-			if ((uint32)GradientCurves.Num() > TextureHeight)
+			if ((uint32)GradientCurves.Num() > TextureSize)
 			{
 				int32 OldCurveCount = GradientCurves.Num();
-				GradientCurves.RemoveAt(TextureHeight, OldCurveCount - TextureHeight);
+				GradientCurves.RemoveAt(TextureSize, OldCurveCount - TextureSize);
 			}
 
-			Source.Init(TextureSize, TextureHeight, 1, 1, TSF_RGBA16F);
+			Source.Init(TextureSize, TextureSize, 1, 1, TSF_RGBA16F);
 
 			SizeXY = { (float)TextureSize, 1.0f };
 			UpdateTextures();
 			bRequiresNotifyMaterials = true;
 		}
-		else if (PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, GradientCurves))
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, GradientCurves))
 		{
-			if ((uint32)GradientCurves.Num() > TextureHeight)
+			if ((uint32)GradientCurves.Num() > TextureSize)
 			{
 				int32 OldCurveCount = GradientCurves.Num();
-				GradientCurves.RemoveAt(TextureHeight, OldCurveCount - TextureHeight);
+				GradientCurves.RemoveAt(TextureSize, OldCurveCount - TextureSize);
 			}
 			else
 			{
@@ -111,114 +71,12 @@ void UCurveLinearColorAtlas::PostEditChangeProperty(struct FPropertyChangedEvent
 				bRequiresNotifyMaterials = true;
 			}
 		}	
-		else if (PropertyName == GET_MEMBER_NAME_CHECKED(UCurveLinearColorAtlas, bDisableAllAdjustments))
-		{
-			if (bDisableAllAdjustments)
-			{
-				CacheAndResetColorAdjustments();
-			}
-			else
-			{
-				RestoreCachedColorAdjustments();
-			}
-
-			UpdateTextures();
-			bRequiresNotifyMaterials = true;
-		}
-		else if (bDisableAllAdjustments)
-		{
-			if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightness))
-			{
-				AdjustBrightness = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightnessCurve))
-			{
-				AdjustBrightnessCurve = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustBrightness))
-			{
-				AdjustBrightness = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustSaturation))
-			{
-				AdjustSaturation = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustVibrance))
-			{
-				AdjustVibrance = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustRGBCurve))
-			{
-				AdjustRGBCurve = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustHue))
-			{
-				AdjustHue = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustMinAlpha))
-			{
-				AdjustMinAlpha = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, AdjustMaxAlpha))
-			{
-				AdjustMaxAlpha = 0.0f;
-			}
-			else if (PropertyName == GET_MEMBER_NAME_CHECKED(UTexture, bChromaKeyTexture))
-			{
-				bChromaKeyTexture = false;
-			}
-		}
 	}
 
 	// Notify any loaded material instances if changed our compression format
 	if (bRequiresNotifyMaterials)
 	{
 		NotifyMaterials();
-	}
-}
-
-void UCurveLinearColorAtlas::CacheAndResetColorAdjustments()
-{
-	Modify();
-
-	bHasCachedColorAdjustments = true;
-
-	CachedColorAdjustments.bChromaKeyTexture = bChromaKeyTexture;
-	CachedColorAdjustments.AdjustBrightness = AdjustBrightness;
-	CachedColorAdjustments.AdjustBrightnessCurve = AdjustBrightnessCurve;
-	CachedColorAdjustments.AdjustVibrance = AdjustVibrance;
-	CachedColorAdjustments.AdjustSaturation = AdjustSaturation;
-	CachedColorAdjustments.AdjustRGBCurve = AdjustRGBCurve;
-	CachedColorAdjustments.AdjustHue = AdjustHue;
-	CachedColorAdjustments.AdjustMinAlpha = AdjustMinAlpha;
-	CachedColorAdjustments.AdjustMaxAlpha = AdjustMaxAlpha;
-
-	AdjustBrightness = 1.0f;
-	AdjustBrightnessCurve = 1.0f;
-	AdjustVibrance = 0.0f;
-	AdjustSaturation = 1.0f;
-	AdjustRGBCurve = 1.0f;
-	AdjustHue = 0.0f;
-	AdjustMinAlpha = 0.0f;
-	AdjustMaxAlpha = 1.0f;
-	bChromaKeyTexture = false;
-}
-
-void UCurveLinearColorAtlas::RestoreCachedColorAdjustments()
-{
-	if (bHasCachedColorAdjustments)
-	{
-		Modify();
-
-		AdjustBrightness = CachedColorAdjustments.AdjustBrightness;
-		AdjustBrightnessCurve = CachedColorAdjustments.AdjustBrightnessCurve;
-		AdjustVibrance = CachedColorAdjustments.AdjustVibrance;
-		AdjustSaturation = CachedColorAdjustments.AdjustSaturation;
-		AdjustRGBCurve = CachedColorAdjustments.AdjustRGBCurve;
-		AdjustHue = CachedColorAdjustments.AdjustHue;
-		AdjustMinAlpha = CachedColorAdjustments.AdjustMinAlpha;
-		AdjustMaxAlpha = CachedColorAdjustments.AdjustMaxAlpha;
-		bChromaKeyTexture = CachedColorAdjustments.bChromaKeyTexture;
 	}
 }
 #endif
@@ -238,12 +96,7 @@ void UCurveLinearColorAtlas::PostLoad()
 			GradientCurves[i]->OnUpdateCurve.AddUObject(this, &UCurveLinearColorAtlas::OnCurveUpdated);
 		}
 	}
-	
-	if (bSquareResolution)
-	{
-		TextureHeight = TextureSize;
-	}
-	Source.Init(TextureSize, TextureHeight, 1, 1, TSF_RGBA16F);
+	Source.Init(TextureSize, TextureSize, 1, 1, TSF_RGBA16F);
 	SizeXY = { (float)TextureSize, 1.0f };
 	UpdateTextures();
 #endif
@@ -252,7 +105,7 @@ void UCurveLinearColorAtlas::PostLoad()
 }
 
 #if WITH_EDITOR
-static void RenderGradient(TArray<FFloat16Color>& InSrcData, UObject* Gradient, int32 StartXY, FVector2D SizeXY, bool bUseUnadjustedColor)
+static void RenderGradient(TArray<FFloat16Color>& InSrcData, UObject* Gradient, int32 StartXY, FVector2D SizeXY)
 {
 	if (Gradient == nullptr)
 	{
@@ -270,14 +123,7 @@ static void RenderGradient(TArray<FFloat16Color>& InSrcData, UObject* Gradient, 
 	{
 		// Render a gradient
 		UCurveLinearColor* GradientCurve = CastChecked<UCurveLinearColor>(Gradient);
-		if (bUseUnadjustedColor)
-		{
-			GradientCurve->PushUnadjustedToSourceData(InSrcData, StartXY, SizeXY);
-		}
-		else
-		{
-			GradientCurve->PushToSourceData(InSrcData, StartXY, SizeXY);
-		}
+		GradientCurve->PushToSourceData(InSrcData, StartXY, SizeXY);
 	}
 }
 
@@ -313,7 +159,7 @@ void UCurveLinearColorAtlas::OnCurveUpdated(UCurveBase* Curve, EPropertyChangeTy
 			int32 StartXY = SlotIndex * TextureSize;
 
 			// Render the single gradient to the render target
-			RenderGradient(SrcData, Gradient, StartXY, SizeXY, bDisableAllAdjustments);
+			RenderGradient(SrcData, Gradient, StartXY, SizeXY);
 
 			UpdateTexture(*this);
 		}
@@ -332,16 +178,20 @@ void UCurveLinearColorAtlas::UpdateTextures()
 	int32 NumSlotsToRender = FMath::Min(GradientCurves.Num(), (int32)MaxSlotsPerTexture());
 	for (int32 i = 0; i < NumSlotsToRender; ++i)
 	{
-		int32 StartXY = i * TextureSize;
-		RenderGradient(SrcData, GradientCurves[i], StartXY, SizeXY, bDisableAllAdjustments);
+		if (GradientCurves[i] != nullptr)
+		{
+			int32 StartXY = i * TextureSize;
+			RenderGradient(SrcData, GradientCurves[i], StartXY, SizeXY);
+		}
+
 	}
 
-	for (uint32 y = GradientCurves.Num(); y < TextureHeight; y++)
+	for (uint32 y = 0; y < TextureSize; y++)
 	{
 		// Create base mip for the texture we created.
-		for (uint32 x = 0; x < TextureSize; x++)
+		for (uint32 x = GradientCurves.Num(); x < TextureSize; x++)
 		{
-			SrcData[y*TextureSize + x] = FLinearColor::White;
+			SrcData[x*TextureSize + y] = FLinearColor::White;
 		}
 	}
 

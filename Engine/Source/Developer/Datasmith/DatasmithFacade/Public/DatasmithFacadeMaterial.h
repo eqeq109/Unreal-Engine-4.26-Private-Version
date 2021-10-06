@@ -32,6 +32,9 @@ protected:
 		const TSharedRef<IDatasmithBaseMaterialElement>& InMaterial
 	);
 
+	// Build a Datasmith material element and add it to the Datasmith scene.
+	virtual void BuildScene( FDatasmithFacadeScene& SceneRef ) override;
+
 	TSharedRef<IDatasmithBaseMaterialElement> GetDatasmithBaseMaterial() const;
 
 	static FDatasmithFacadeBaseMaterial* GetNewFacadeBaseMaterialFromSharedPtr(

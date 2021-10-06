@@ -642,6 +642,7 @@ struct op_base
 		if (component->last_read <= op_idx || component->last_read == INDEX_NONE)
 		{
 			//It's possible that some components can have invalid indices here. We let the calling operations deal with this as they see fit.
+			check(component->offset == INDEX_NONE);
 			return false;
 		}
 

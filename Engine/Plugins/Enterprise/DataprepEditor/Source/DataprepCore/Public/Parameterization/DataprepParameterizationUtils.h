@@ -56,7 +56,7 @@ struct FDataprepPropertyLink
 	FName PropertyName;
 
 	UPROPERTY()
-	int32 ContainerIndex = INDEX_NONE;
+	int32 ContainerIndex;
 };
 
 uint32 GetTypeHash(const FDataprepPropertyLink& PropertyLink);

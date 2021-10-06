@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "IConcertClientTransactionBridge.h"
 #include "IConcertModule.h"
 #include "ConcertActionDefinition.h"
 #include "ConcertSyncSessionFlags.h"
@@ -13,7 +12,7 @@ class IConcertClientWorkspace;
 class IConcertClientPresenceManager;
 class IConcertClientSequencerManager;
 struct FConcertSessionClientInfo;
-class IConcertClientTransactionBridge;
+
 class IConcertSyncClient;
 class IConcertFileSharingService;
 
@@ -90,7 +89,4 @@ public:
 
 	/** Set the file sharing service, enabling the server to work with large files. The client and the server must use compatible sharing services. The service must be set prior establishing a connection. */
 	virtual void SetFileSharingService(TSharedPtr<IConcertFileSharingService> InFileSharingService) = 0;
-
-	/** Get the current transaction bridge for this client */
-	virtual IConcertClientTransactionBridge* GetTransactionBridge() const = 0;
 };

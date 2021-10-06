@@ -14,19 +14,19 @@ struct FLiveLinkInnerTestInternal
 	GENERATED_BODY()
 
 	UPROPERTY()
-	float InnerSingleFloat = 0.f;
+	float InnerSingleFloat;
 
 	UPROPERTY()
-	int32 InnerSingleInt = 0;
+	int32 InnerSingleInt;
 
 	UPROPERTY()
-	FVector InnerVectorDim[2] = {FVector::ZeroVector, FVector::ZeroVector };
+	FVector InnerVectorDim[2];
 
 	UPROPERTY()
-	float InnerFloatDim[2] = {0.f, 0.f};
+	float InnerFloatDim[2];
 
 	UPROPERTY()
-	int32 InnerIntDim[2] = {0, 0};
+	int32 InnerIntDim[2];
 
 	UPROPERTY()
 	TArray<int32> InnerIntArray;
@@ -38,19 +38,19 @@ struct FLiveLinkTestFrameDataInternal : public FLiveLinkBaseFrameData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	float NotInterpolated = 0.f;
+	float NotInterpolated;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Test", Interp)
-	FVector SingleVector = FVector::ZeroVector;
+	FVector SingleVector;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Test", Interp)
 	FLiveLinkInnerTestInternal SingleStruct;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Test", Interp)
-	float SingleFloat = 0.f;
+	float SingleFloat;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Test", Interp)
-	int32 SingleInt = 0;
+	int32 SingleInt;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Test", Interp)
 	TArray<FVector> VectorArray;

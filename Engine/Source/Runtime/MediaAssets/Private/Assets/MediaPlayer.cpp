@@ -26,9 +26,6 @@
 #include "MediaSource.h"
 #include "StreamMediaSource.h"
 
-#if WITH_EDITOR
-#include "EngineAnalytics.h"
-#endif
 
 /* UMediaPlayer structors
  *****************************************************************************/
@@ -470,12 +467,7 @@ bool UMediaPlayer::OpenPlaylistIndex(UMediaPlaylist* InPlaylist, int32 Index)
 	return PlayerFacade->Open(MediaSource->GetUrl(), MediaSource);
 }
 
-/**
- * @EventName MediaFramework.MediaSourceOpened
- * @Trigger Triggered when a media source is opened in a media player.
- * @Type Client
- * @Owner MediaIO Team
- */
+
 bool UMediaPlayer::OpenSourceInternal(UMediaSource* MediaSource, const FMediaPlayerOptions* PlayerOptions)
 {
 	Close();
@@ -499,15 +491,6 @@ bool UMediaPlayer::OpenSourceInternal(UMediaSource* MediaSource, const FMediaPla
 	PlayOnNext |= PlayerFacade->IsPlaying();
 	Playlist->GetNext(PlaylistIndex);
 
-#if WITH_EDITOR
-	if (FEngineAnalytics::IsAvailable())
-	{
-		TArray<FAnalyticsEventAttribute> EventAttributes;
-		EventAttributes.Add(FAnalyticsEventAttribute(TEXT("MediaSourceType"), MediaSource->GetClass()->GetName()));
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("MediaFramework.MediaSourceOpened"), EventAttributes);	
-	}
-#endif
-	
 	RegisterWithMediaModule();
 	return PlayerFacade->Open(MediaSource->GetUrl(), MediaSource, PlayerOptions);
 }
@@ -628,13 +611,6 @@ void UMediaPlayer::SetBlockOnTime(const FTimespan& Time)
 {
 	UE_LOG(LogMediaAssets, VeryVerbose, TEXT("%s.SetBlockOnTime %s"), *GetFName().ToString(), *Time.ToString(TEXT("%h:%m:%s.%t")));
 	return PlayerFacade->SetBlockOnTime(Time);
-}
-
-
-void UMediaPlayer::SetBlockOnTimeRange(const TRange<FTimespan>& TimeRange)
-{
-	UE_LOG(LogMediaAssets, VeryVerbose, TEXT("%s.SetBlockOnRange %s"), *GetFName().ToString(), *TimeRange.GetLowerBoundValue().ToString(TEXT("%h:%m:%s.%t")));
-	return PlayerFacade->SetBlockOnTimeRange(TimeRange);
 }
 
 

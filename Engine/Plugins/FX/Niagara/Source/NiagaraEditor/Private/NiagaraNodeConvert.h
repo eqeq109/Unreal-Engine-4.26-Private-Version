@@ -73,8 +73,6 @@ struct FNiagaraConvertConnection
 		, DestinationPath(InDestinationPath)
 	{
 	}
-
-	FString ToString() const;
 };
 
 
@@ -92,7 +90,7 @@ public:
 	virtual TSharedPtr<SGraphNode> CreateVisualWidget() override;
 	virtual void  AutowireNewNode(UEdGraphPin* FromPin)override;
 	virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override;
-	virtual bool CanMovePin(const UEdGraphPin* Pin, int32 DirectionToMove) const override { return false; }
+	virtual bool CanMovePin(const UEdGraphPin* Pin) const override { return false; }
 
 	//~ UNiagaraNode interface
 	virtual void Compile(class FHlslNiagaraTranslator* Translator, TArray<int32>& Outputs) override;

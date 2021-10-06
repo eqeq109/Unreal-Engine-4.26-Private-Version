@@ -328,11 +328,6 @@ namespace UE4PushModelPrivate
 		return bMakeBpPropertiesPushModel;
 	}
 
-	static FString ToString(const FNetPushObjectId Id)
-	{
-		return FString::Printf(TEXT("%d"), Id);
-	}
-
 	/**
 	 * Marks a specified property as dirty, causing it to be compared the next time the owner is considered
 	 * for Replication.
@@ -375,8 +370,6 @@ namespace UE4PushModelPrivate
 	NETCORE_API void RemovePushModelObject(const FPushModelPerNetDriverHandle Handle);
 
 	NETCORE_API class FPushModelPerNetDriverState* GetPerNetDriverState(const FPushModelPerNetDriverHandle Handle);
-
-	NETCORE_API bool ValidateObjectIdReassignment(FNetPushObjectId CurrentId, FNetPushObjectId NewId);
 }
 
 

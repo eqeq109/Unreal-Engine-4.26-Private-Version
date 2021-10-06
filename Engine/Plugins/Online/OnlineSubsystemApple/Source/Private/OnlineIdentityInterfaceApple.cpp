@@ -22,7 +22,7 @@
 
 // FUserOnlineAccountApple
 
-FUniqueNetIdRef FUserOnlineAccountApple::GetUserId() const
+TSharedRef<const FUniqueNetId> FUserOnlineAccountApple::GetUserId() const
 {
 	return UserIdPtr;
 }
@@ -208,7 +208,7 @@ void FOnlineIdentityApple::AddCachedAccount(int32 LocalUserNum, TSharedRef<FUser
 }
 
 
-void FOnlineIdentityApple::OnExternalUILoginComplete(FUniqueNetIdPtr UniqueId, const int ControllerIndex, const FOnlineError& Error)
+void FOnlineIdentityApple::OnExternalUILoginComplete(TSharedPtr<const FUniqueNetId> UniqueId, const int ControllerIndex, const FOnlineError& Error)
 {
 	const FString& ErrorStr = Error.GetErrorCode();
 	OnLoginAttemptComplete(ControllerIndex, ErrorStr);
@@ -220,7 +220,7 @@ void FOnlineIdentityApple::OnLoginAttemptComplete(int32 LocalUserNum, const FStr
 	if (GetLoginStatus(LocalUserNum) == ELoginStatus::LoggedIn)
 	{
 		UE_LOG_ONLINE_IDENTITY(Display, TEXT("Apple login was successful"));
-		FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+		TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 		check(UserId.IsValid());
 
 		Subsystem->ExecuteNextTick([this, UserId, LocalUserNum, ErrorStrCopy]()
@@ -246,7 +246,7 @@ bool FOnlineIdentityApple::Logout(int32 LocalUserNum)
 	if (LoginStatus == ELoginStatus::LoggedIn)
 	{
 		UE_LOG_ONLINE_IDENTITY(Verbose, TEXT("FOnlineIdentityApple::Logout complete"));
-		FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+		TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 		if (UserId.IsValid())
 		{
 			// remove cached user account
@@ -291,7 +291,7 @@ bool FOnlineIdentityApple::AutoLogin(int32 LocalUserNum)
 
 ELoginStatus::Type FOnlineIdentityApple::GetLoginStatus(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		return GetLoginStatus(*UserId);
@@ -309,9 +309,9 @@ ELoginStatus::Type FOnlineIdentityApple::GetLoginStatus(const FUniqueNetId& User
 	return ELoginStatus::NotLoggedIn;
 }
 
-FUniqueNetIdPtr FOnlineIdentityApple::GetUniquePlayerId(int32 LocalUserNum) const
+TSharedPtr<const FUniqueNetId> FOnlineIdentityApple::GetUniquePlayerId(int32 LocalUserNum) const
 {
-	const FUniqueNetIdPtr* FoundId = UserIds.Find(LocalUserNum);
+	const TSharedPtr<const FUniqueNetId>* FoundId = UserIds.Find(LocalUserNum);
 
 	if (FoundId != nullptr)
 	{
@@ -321,7 +321,7 @@ FUniqueNetIdPtr FOnlineIdentityApple::GetUniquePlayerId(int32 LocalUserNum) cons
 	return nullptr;
 }
 
-FUniqueNetIdPtr FOnlineIdentityApple::CreateUniquePlayerId(uint8* Bytes, int32 Size)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityApple::CreateUniquePlayerId(uint8* Bytes, int32 Size)
 {
 	if (Bytes && Size == sizeof(uint64))
 	{
@@ -336,14 +336,14 @@ FUniqueNetIdPtr FOnlineIdentityApple::CreateUniquePlayerId(uint8* Bytes, int32 S
 	return nullptr;
 }
 
-FUniqueNetIdPtr FOnlineIdentityApple::CreateUniquePlayerId(const FString& Str)
+TSharedPtr<const FUniqueNetId> FOnlineIdentityApple::CreateUniquePlayerId(const FString& Str)
 {
 	return MakeShareable(new FUniqueNetIdApple(Str));
 }
 
 FString FOnlineIdentityApple::GetPlayerNickname(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		return GetPlayerNickname(*UserId);
@@ -364,7 +364,7 @@ FString FOnlineIdentityApple::GetPlayerNickname(const FUniqueNetId& UserId) cons
 
 FString FOnlineIdentityApple::GetAuthToken(int32 LocalUserNum) const
 {
-	FUniqueNetIdPtr UserId = GetUniquePlayerId(LocalUserNum);
+	TSharedPtr<const FUniqueNetId> UserId = GetUniquePlayerId(LocalUserNum);
 	if (UserId.IsValid())
 	{
 		TSharedPtr<FUserOnlineAccount> UserAccount = GetUserAccount(*UserId);
@@ -379,7 +379,7 @@ FString FOnlineIdentityApple::GetAuthToken(int32 LocalUserNum) const
 void FOnlineIdentityApple::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate)
 {
 	UE_LOG_ONLINE_IDENTITY(Display, TEXT("FOnlineIdentityApple::RevokeAuthToken not implemented"));
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	Subsystem->ExecuteNextTick([UserIdRef, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, FOnlineError(FString(TEXT("RevokeAuthToken not implemented"))));
@@ -388,7 +388,7 @@ void FOnlineIdentityApple::RevokeAuthToken(const FUniqueNetId& UserId, const FOn
 
 void FOnlineIdentityApple::GetUserPrivilege(const FUniqueNetId& UserId, EUserPrivileges::Type Privilege, const FOnGetUserPrivilegeCompleteDelegate& Delegate)
 {
-	FUniqueNetIdRef UserIdRef(UserId.AsShared());
+	TSharedRef<const FUniqueNetId> UserIdRef(UserId.AsShared());
 	Subsystem->ExecuteNextTick([UserIdRef, Privilege, Delegate]()
 	{
 		Delegate.ExecuteIfBound(*UserIdRef, Privilege, (uint32)EPrivilegeResults::NoFailures);
@@ -399,7 +399,7 @@ FPlatformUserId FOnlineIdentityApple::GetPlatformUserIdFromUniqueNetId(const FUn
 {
 	for (int i = 0; i < MAX_LOCAL_PLAYERS; ++i)
 	{
-		FUniqueNetIdPtr CurrentUniqueId = GetUniquePlayerId(i);
+		TSharedPtr<const FUniqueNetId> CurrentUniqueId = GetUniquePlayerId(i);
 		if (CurrentUniqueId.IsValid() && (*CurrentUniqueId == InUniqueNetId))
 		{
 			return i;

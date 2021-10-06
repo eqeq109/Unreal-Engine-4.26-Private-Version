@@ -64,9 +64,9 @@ void FSteamVRHMD::PostRenderView_RenderThread(FRHICommandListImmediate& RHICmdLi
 	UpdateStereoLayers_RenderThread();
 }
 
-bool FSteamVRHMD::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+bool FSteamVRHMD::IsActiveThisFrame(class FViewport* InViewport) const
 {
-	return GEngine && GEngine->IsStereoscopic3D(Context.Viewport) && !IsMetalPlatform(GMaxRHIShaderPlatform);
+	return GEngine && GEngine->IsStereoscopic3D(InViewport) && !IsMetalPlatform(GMaxRHIShaderPlatform);
 }
 
 static void DrawOcclusionMesh(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass, const FHMDViewMesh MeshAssets[])

@@ -29,30 +29,22 @@ namespace OSSConsoleVariables
 
 FOnlineAsyncTaskManager::FOnlineAsyncTaskManager() :
 	ActiveTask(nullptr),
-	MaxParallelTasks(8),
-	bReloadMaxParallelTasksConfig(false),
-	WorkEvent(FPlatformProcess::GetSynchEventFromPool()),
+	WorkEvent(nullptr),
 	PollingInterval(POLLING_INTERVAL_MS),
 	bRequestingExit(false),
 	OnlineThreadId(0)
 {
 }
 
-FOnlineAsyncTaskManager::~FOnlineAsyncTaskManager()
-{
-	FPlatformProcess::ReturnSynchEventToPool(WorkEvent);
-}
-
 bool FOnlineAsyncTaskManager::Init(void)
 {
+	WorkEvent = FPlatformProcess::GetSynchEventFromPool();
 	int32 PollingConfig = POLLING_INTERVAL_MS;
 	// Read the polling interval to use from the INI file
 	if (GConfig->GetInt(TEXT("OnlineSubsystem"), TEXT("PollingIntervalInMs"), PollingConfig, GEngineIni))
 	{
 		PollingInterval = (uint32)PollingConfig;
 	}
-
-	GConfig->GetInt(TEXT("OnlineSubsystem"), TEXT("MaxParallelTasks"), MaxParallelTasks, GEngineIni);
 
 	return WorkEvent != nullptr;
 }
@@ -105,6 +97,9 @@ void FOnlineAsyncTaskManager::Exit(void)
 {
 	UE_LOG_ONLINE(VeryVerbose, TEXT("FOnlineAsyncTaskManager::Exit() started"));
 
+	FPlatformProcess::ReturnSynchEventToPool(WorkEvent);
+	WorkEvent = nullptr;
+
 	OnlineThreadId = 0;
 	InvocationCount--;
 
@@ -125,9 +120,11 @@ void FOnlineAsyncTaskManager::AddToOutQueue(FOnlineAsyncItem* CompletedItem)
 
 void FOnlineAsyncTaskManager::AddToParallelTasks(FOnlineAsyncTask* NewTask)
 {
-	bReloadMaxParallelTasksConfig = true;
+	NewTask->Initialize();
 
-	QueuedParallelTasks.Enqueue(NewTask);
+	FScopeLock LockParallelTasks(&ParallelTasksLock);
+
+	ParallelTasks.Add( NewTask );
 }
 
 void FOnlineAsyncTaskManager::RemoveFromParallelTasks(FOnlineAsyncTask* OldTask)
@@ -141,27 +138,6 @@ void FOnlineAsyncTaskManager::GameTick()
 {
 	// assert if not game thread
 	check(IsInGameThread());
-
-	if (bReloadMaxParallelTasksConfig)
-	{
-		bReloadMaxParallelTasksConfig = false;
-		GConfig->GetInt(TEXT("OnlineSubsystem"), TEXT("MaxParallelTasks"), MaxParallelTasks, GEngineIni);
-	}
-
-	int32 NumParallelTasksToStart = 0;
-	{
-		FScopeLock LockParallelTasks(&ParallelTasksLock);
-		NumParallelTasksToStart = MaxParallelTasks - ParallelTasks.Num();
-	}
-
-	FOnlineAsyncTask* ParallelTask = nullptr;
-	while (NumParallelTasksToStart-- > 0 && QueuedParallelTasks.Dequeue(ParallelTask))
-	{
-		ParallelTask->Initialize();
-
-		FScopeLock LockParallelTasks(&ParallelTasksLock);
-		ParallelTasks.Add(ParallelTask);
-	}
 
 	FOnlineAsyncItem* Item = nullptr;
 	int32 CurrentQueueSize = 0;

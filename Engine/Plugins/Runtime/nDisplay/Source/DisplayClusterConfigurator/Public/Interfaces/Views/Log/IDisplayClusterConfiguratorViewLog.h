@@ -10,9 +10,6 @@ class IDisplayClusterConfiguratorViewLog
 	: public IDisplayClusterConfiguratorView
 {
 public:
-	virtual ~IDisplayClusterConfiguratorViewLog() = default;
-
-public:
 	enum class EVerbosityLevel
 	{
 		Log,

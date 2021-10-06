@@ -111,18 +111,6 @@ static float GHairVirtualVoxelRaytracing_SkyOcclusionThreshold = 1;
 static FAutoConsoleVariableRef CVarHairVirtualVoxelRaytracing_ShadowOcclusionThreshold(TEXT("r.RayTracing.Shadows.HairOcclusionThreshold"), GHairVirtualVoxelRaytracing_ShadowOcclusionThreshold, TEXT("Define the number of hair that need to be crossed, before casting occlusion (default = 1)"), ECVF_RenderThreadSafe);
 static FAutoConsoleVariableRef CVarHairVirtualVoxelRaytracing_SkyOcclusionThreshold(TEXT("r.RayTracing.Sky.HairOcclusionThreshold"), GHairVirtualVoxelRaytracing_SkyOcclusionThreshold, TEXT("Define the number of hair that need to be crossed, before casting occlusion (default = 1)"), ECVF_RenderThreadSafe);
 
-static int32 GHairVirtualVoxelAdaptive_Enable				= 1;
-static float GHairVirtualVoxelAdaptive_CorrectionSpeed		= 0.1f;
-static float GHairVirtualVoxelAdaptive_CorrectionThreshold	= 0.90f;
-static FAutoConsoleVariableRef CVarHairVirtualVoxelAdaptive_Enable				(TEXT("r.HairStrands.Voxelization.Virtual.Adaptive"),						GHairVirtualVoxelAdaptive_Enable				, TEXT("Enable adaptive voxel allocation (default = 1)"), ECVF_RenderThreadSafe);
-static FAutoConsoleVariableRef CVarHairVirtualVoxelAdaptive_CorrectionSpeed		(TEXT("r.HairStrands.Voxelization.Virtual.Adaptive.CorrectionSpeed"),		GHairVirtualVoxelAdaptive_CorrectionSpeed		, TEXT("Define the speed at which allocation adaption runs (value in 0..1, default = 0.25). A higher number means faster adaptation, but with a risk of oscillation i.e. over and under allocation"), ECVF_RenderThreadSafe);
-static FAutoConsoleVariableRef CVarHairVirtualVoxelAdaptive_CorrectionThreshold	(TEXT("r.HairStrands.Voxelization.Virtual.Adaptive.CorrectionThreshold"),	GHairVirtualVoxelAdaptive_CorrectionThreshold	, TEXT("Define the allocation margin to limit over allocation (value in 0..1, default = 0.95)"), ECVF_RenderThreadSafe);
-
-bool IsHairStrandsAdaptiveVoxelAllocationEnable()
-{
-	return GHairVirtualVoxelAdaptive_Enable > 0;
-}
-
 bool IsHairStrandsVoxelizationEnable()
 {
 	return GHairVoxelizationEnable > 0;
@@ -410,8 +398,7 @@ class FVoxelAddIndirectBufferCS : public FGlobalShader
 		SHADER_PARAMETER(uint32, PageResolution)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer, OutPageIndexGlobalCounter)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer, OutIndirectArgsBuffer)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer, OutTotalRequestedPageAllocationBuffer)
-	END_SHADER_PARAMETER_STRUCT()
+		END_SHADER_PARAMETER_STRUCT()
 
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return IsHairStrandsSupported(EHairStrandsShaderType::Strands, Parameters.Platform); }
@@ -498,8 +485,7 @@ static void AddAllocateVoxelPagesPass(
 	FRDGBufferRef& OutNodeDescBuffer,
 	FRDGBufferRef& OutIndirectArgsBuffer,
 	FRDGBufferRef& OutPageIndexGlobalCounter, 
-	FRDGBufferRef& OutVoxelizationViewInfoBuffer,
-	FRDGBufferRef& OutTotalRequestedPageAllocationBuffer)
+	FRDGBufferRef& OutVoxelizationViewInfoBuffer)
 {
 	const uint32 GroupSize = 32;
 	const bool bIsGPUDriven = GHairVirtualVoxelGPUDriven > 0;
@@ -553,9 +539,7 @@ static void AddAllocateVoxelPagesPass(
 	// Over-allocation (upper bound)
 	if (bIsGPUDriven)
 	{
-		// Use the max between the estimated size on CPU and a pseudo-conservative side driven by settings. The CPU estimation is no necessarely correct as the bounds are not reliable on skel. mesh.
-		const uint32 MaxPageIndexCount = GHairVirtualVoxelGPUDrivenMaxPageIndexRes * GHairVirtualVoxelGPUDrivenMaxPageIndexRes * GHairVirtualVoxelGPUDrivenMaxPageIndexRes;
-		OutTotalPageIndexCount = FMath::Max(MaxPageIndexCount, OutTotalPageIndexCount);
+		OutTotalPageIndexCount = GHairVirtualVoxelGPUDrivenMaxPageIndexRes * GHairVirtualVoxelGPUDrivenMaxPageIndexRes * GHairVirtualVoxelGPUDrivenMaxPageIndexRes;
 	}
 	check(OutTotalPageIndexCount > 0);
 	
@@ -569,8 +553,6 @@ static void AddAllocateVoxelPagesPass(
 	const uint32 TotalPageCount = PageCountResolution.X * PageCountResolution.Y * PageCountResolution.Z;
 	FRDGBufferRef PageToPageIndexBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), TotalPageCount), TEXT("PageToPageIndexBuffer"));
 
-	FRDGBufferRef ReadBackBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("ReadBackAllocations"));
-
 	FRDGBufferUAVRef PageIndexBufferUAV = GraphBuilder.CreateUAV(PageIndexBuffer, PF_R32_UINT);
 	FRDGBufferUAVRef PageIndexOccupancyBufferUAV = GraphBuilder.CreateUAV(PageIndexOccupancyBuffer, PF_R32G32_UINT);
 	FRDGBufferUAVRef PageIndexGlobalCounterUAV = GraphBuilder.CreateUAV(PageIndexGlobalCounter, PF_R32_UINT);
@@ -581,20 +563,14 @@ static void AddAllocateVoxelPagesPass(
 	FRDGBufferRef PageIndexResolutionBuffer = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(MacroGroupCount * 4 * sizeof(uint32), OutTotalPageIndexCount), TEXT("PageIndexResolutionBuffer"));
 	FRDGBufferRef PageIndexAllocationIndirectBufferArgs = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateIndirectDesc<FRHIDispatchIndirectParameters>(MacroGroupCount), TEXT("PageIndexAllocationIndirectBufferArgs"));
 
-	// Store the total requested page allocation (for feedback purpose)
-	FRDGBufferDesc TotalRequestDesc = FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1);
-	TotalRequestDesc.Usage |= BUF_SourceCopy;
-	OutTotalRequestedPageAllocationBuffer = GraphBuilder.CreateBuffer(TotalRequestDesc, TEXT("TotalRequestedPageAllocationBuffer"));
-	FRDGBufferUAVRef TotalRequestedPageAllocationBufferUAV = GraphBuilder.CreateUAV(OutTotalRequestedPageAllocationBuffer, PF_R32_UINT);
-	AddClearUAVPass(GraphBuilder, TotalRequestedPageAllocationBufferUAV, 0u);
-	
 	AddClearUAVPass(GraphBuilder, PageIndexBufferUAV, 0u);
 	AddClearUAVPass(GraphBuilder, PageIndexOccupancyBufferUAV, 0u);
 	AddClearUAVPass(GraphBuilder, PageIndexGlobalCounterUAV, 0u);
 
 	// Allocate page index for all instance group
 //	if (bIsGPUDriven)
-	{
+	{		
+
 		FVoxelAllocatePageIndexCS::FParameters* Parameters = GraphBuilder.AllocParameters<FVoxelAllocatePageIndexCS::FParameters>();
 		Parameters->PageWorldSize = PageWorldSize;
 		Parameters->TotalPageIndexCount = OutTotalPageIndexCount;
@@ -832,7 +808,6 @@ static void AddAllocateVoxelPagesPass(
 			Parameters->IndirectGroupSize = IndirectDispatchGroupSize;
 			Parameters->OutPageIndexGlobalCounter = GraphBuilder.CreateUAV(PageIndexGlobalCounter, PF_R32_UINT);
 			Parameters->OutIndirectArgsBuffer = GraphBuilder.CreateUAV(IndirectArgsBuffer);
-			Parameters->OutTotalRequestedPageAllocationBuffer = TotalRequestedPageAllocationBufferUAV;
 
 			const FIntVector DispatchCount(1, 1, 1);
 			TShaderMapRef<FVoxelAddIndirectBufferCS> ComputeShader(View.ShaderMap);
@@ -850,106 +825,21 @@ static void AddAllocateVoxelPagesPass(
 	OutVoxelizationViewInfoBuffer = VoxelizationViewInfoBuffer;
 }
 
-static FVirtualVoxelResources AllocateVirtualVoxelResources(
+FVirtualVoxelResources AllocateVirtualVoxelResources(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	FHairStrandsMacroGroupDatas& MacroGroups, 
-	FRDGBufferRef& PageToPageIndexBuffer, 
-	FHairStrandsViewData* OutViewData)
+	FRDGBufferRef& PageToPageIndexBuffer)
 {
 	DECLARE_GPU_STAT(HairStrandsVoxelPageAllocation);
 	RDG_EVENT_SCOPE(GraphBuilder, "HairStrandsVoxelPageAllocation");
 	RDG_GPU_STAT_SCOPE(GraphBuilder, HairStrandsVoxelPageAllocation);
 
-	// Init. default page table size and voxel size
-	FIntVector PageCountResolution = FIntVector(GHairVirtualVoxel_PageCountPerDim, GHairVirtualVoxel_PageCountPerDim, GHairVirtualVoxel_PageCountPerDim);
-	uint32 PageCount = PageCountResolution.X * PageCountResolution.Y * PageCountResolution.Z;
-	const float MinVoxelWorldSize = 0.01f;
-	const float MaxVoxelWorldSize = 10.f;
-
-	float VoxelWorldSize = FMath::Clamp(GHairVirtualVoxel_VoxelWorldSize, MinVoxelWorldSize, MaxVoxelWorldSize);
-
-	// Readback allocated value to adapt the voxel size in order to fit max page allocation
-	const bool bAdaptiveResolution = OutViewData && OutViewData->IsInit();
-	FRHIGPUBufferReadback* ReadbackBuffer = nullptr;
-	bool bEnqueueNewReadbackQuery = false;
-	if (bAdaptiveResolution)
-	{
-		// First initialization (no query has been issued yet)
-		if (OutViewData->VoxelWorldSize == 0)
-		{
-			OutViewData->VoxelWorldSize = VoxelWorldSize;
-			bEnqueueNewReadbackQuery = true;
-		}
-
-		uint32 AllocatedPageCount = PageCount;
-		ReadbackBuffer = OutViewData->GetBuffer();
-		if (ReadbackBuffer->IsReady())
-		{
-			bEnqueueNewReadbackQuery = true;
-
-			ReadbackBuffer = OutViewData->GetBuffer();
-			AllocatedPageCount = *(uint32*)(ReadbackBuffer->Lock(sizeof(uint32)));
-			ReadbackBuffer->Unlock();
-
-			// ...
-			const float Threshold = FMath::Clamp(GHairVirtualVoxelAdaptive_CorrectionThreshold, 0.f, 1.f);
-			const float Factor = FMath::Clamp(GHairVirtualVoxelAdaptive_CorrectionSpeed, 0.f, 1.f);
-
-			// Voxel pages are represent a volume. To derive a better estimate of the ratio by which voxel size needs to be scale, 
-			// compute the cubic root of this ratio.
-			//
-			// AllocatedPage   AllocatedRes^3
-			// ------------- = --------------  = VolumeRatio = LinearRatio^3
-			//    MaxPage          MaxRes^3
-
-			// Ratio used for predicting voxel size increase
-			const float VolumeRatio = float(AllocatedPageCount) / float(PageCount);
-			const float LinearRatio = FMath::Pow(VolumeRatio, 1.f/3.f);
-
-			// Ratio used for predicting voxel size decrease (i.e. when requested allocation fit, 
-			// but the voxel size does not match the (more precise) target).
-			// In this case, we add a threshold/margin to to the target, so that there is no oscillation.
-			const float VolumeRatio_Thres = float(AllocatedPageCount) / float(PageCount * Threshold);
-			const float LinearRatio_Thres = FMath::Pow(VolumeRatio_Thres, 1.f / 3.f);
-
-			const float PrevWorldVoxelSize = OutViewData->VoxelWorldSize;
-
-			// If the page pool is not large enough increase voxel size
-			if (AllocatedPageCount > PageCount)
-			{
-				VoxelWorldSize = PrevWorldVoxelSize * LinearRatio;
-			}
-			// If the page pool is large enough but the voxel are larger than the requested size decrease voxel size
-			else if (AllocatedPageCount < PageCount && PrevWorldVoxelSize > VoxelWorldSize)
-			{
-				const float TargetVoxelWorldSize = PrevWorldVoxelSize * LinearRatio_Thres;
-				VoxelWorldSize = FMath::Max(VoxelWorldSize, FMath::Lerp(PrevWorldVoxelSize, TargetVoxelWorldSize, Factor));
-			}
-			else
-			{
-				VoxelWorldSize = PrevWorldVoxelSize;
-			}
-
-			// Clamp voxel size into a reasonable amount (e.g. 0.1mm - 100mm)
-			VoxelWorldSize = FMath::Clamp(VoxelWorldSize, MinVoxelWorldSize, MaxVoxelWorldSize);
-		}
-		else
-		{
-			// Use previous frame prediction by default (a readback is currently in-flight, but not ready for this frame)
-			VoxelWorldSize = OutViewData->VoxelWorldSize;
-		}
-
-		// Update state data
-		OutViewData->VoxelWorldSize		= VoxelWorldSize;
-		OutViewData->AllocatedPageCount = AllocatedPageCount;
-	}
-
 	FVirtualVoxelResources Out;
 
-	Out.Parameters.Common.PageCountResolution		= PageCountResolution;
-	Out.Parameters.Common.PageCount					= PageCount;
-	Out.Parameters.Common.VoxelWorldSize			= VoxelWorldSize;
+	Out.Parameters.Common.PageCountResolution		= FIntVector(GHairVirtualVoxel_PageCountPerDim, GHairVirtualVoxel_PageCountPerDim, GHairVirtualVoxel_PageCountPerDim);
+	Out.Parameters.Common.PageCount					= Out.Parameters.Common.PageCountResolution.X * Out.Parameters.Common.PageCountResolution.Y * Out.Parameters.Common.PageCountResolution.Z;
+	Out.Parameters.Common.VoxelWorldSize			= FMath::Clamp(GHairVirtualVoxel_VoxelWorldSize, 0.01f, 10.f);
 	Out.Parameters.Common.PageResolution			= FMath::RoundUpToPowerOfTwo(FMath::Clamp(GHairVirtualVoxel_PageResolution, 2, 256));
 	Out.Parameters.Common.PageTextureResolution		= Out.Parameters.Common.PageCountResolution * Out.Parameters.Common.PageResolution;
 
@@ -978,7 +868,6 @@ static FVirtualVoxelResources AllocateVirtualVoxelResources(
 	Out.Parameters.Common.HairCoverageLUT					= GetHairLUT(GraphBuilder, View).Textures[HairLUTType_Coverage];
 	Out.Parameters.Common.HairCoverageSampler				= TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 
-	FRDGBufferRef TotalRequestedPageAllocationBuffer;
 	AddAllocateVoxelPagesPass(
 		GraphBuilder, 
 		View, 
@@ -997,14 +886,7 @@ static FVirtualVoxelResources AllocateVirtualVoxelResources(
 		Out.NodeDescBuffer,
 		Out.IndirectArgsBuffer,
 		Out.PageIndexGlobalCounter,
-		Out.VoxelizationViewInfoBuffer,
-		TotalRequestedPageAllocationBuffer);
-
-	// Enque next adaptive feedback buffer
-	if (bEnqueueNewReadbackQuery)
-	{
-		AddEnqueueCopyPass(GraphBuilder, ReadbackBuffer, TotalRequestedPageAllocationBuffer, 4);
-	}
+		Out.VoxelizationViewInfoBuffer);
 
 	{
 		// Allocation should be conservative
@@ -1112,7 +994,6 @@ class FVoxelRasterComputeCS : public FGlobalShader
 		SHADER_PARAMETER(uint32,  HairStrandsVF_VertexCount)
 		SHADER_PARAMETER(FMatrix, HairStrandsVF_LocalToWorldPrimitiveTransform)
 		SHADER_PARAMETER_SRV(Buffer, HairStrandsVF_PositionBuffer)
-		SHADER_PARAMETER_SRV(Buffer, HairStrandsVF_PositionOffsetBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer, HairStrandsVF_CullingIndirectBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer, HairStrandsVF_CullingIndexBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer, HairStrandsVF_CullingRadiusScaleBuffer)
@@ -1184,7 +1065,6 @@ static void AddVirtualVoxelizationComputeRasterPass(
 
 				PassParameters->HairStrandsVF_PositionBuffer = VFInput.Strands.PositionBuffer;
 				PassParameters->HairStrandsVF_PositionOffset = VFInput.Strands.PositionOffset;
-				PassParameters->HairStrandsVF_PositionOffsetBuffer = VFInput.Strands.PositionOffsetBuffer;
 				PassParameters->HairStrandsVF_VertexCount = VFInput.Strands.VertexCount;
 				PassParameters->HairStrandsVF_Radius = VFInput.Strands.HairRadius;
 				PassParameters->HairStrandsVF_Length = VFInput.Strands.HairLength;
@@ -1516,7 +1396,7 @@ static void AddVirtualVoxelGenerateMipPass(
 void VoxelizeHairStrands(
 	FRDGBuilder& GraphBuilder, 
 	const FScene* Scene, 
-	TArray<FViewInfo>& Views,
+	const TArray<FViewInfo>& Views,
 	FHairStrandsMacroGroupViews& MacroGroupsViews)
 {
 	if (!IsHairStrandsVoxelizationEnable())
@@ -1528,7 +1408,7 @@ void VoxelizeHairStrands(
 		if (ViewIndex >= MacroGroupsViews.Views.Num())
 			continue;
 
-		FViewInfo& View = Views[ViewIndex];
+		const FViewInfo& View = Views[ViewIndex];
 		FHairStrandsMacroGroupDatas& MacroGroupDatas = MacroGroupsViews.Views[ViewIndex];
 
 		if (MacroGroupDatas.Datas.Num() == 0)
@@ -1544,8 +1424,7 @@ void VoxelizeHairStrands(
 			// generates internally a non-transient constant buffer which initialized VirtualVoxelResources. This 
 			// needs to be rewritten/worked out.
 			FRDGBufferRef PageToPageIndexBuffer = nullptr;
-			FHairStrandsViewData* HairStrandsViewData = View.ViewState ? &View.ViewState->HairStrandsViewData : nullptr;
-			MacroGroupDatas.VirtualVoxelResources = AllocateVirtualVoxelResources(GraphBuilder, View, MacroGroupDatas, PageToPageIndexBuffer, HairStrandsViewData);
+			MacroGroupDatas.VirtualVoxelResources = AllocateVirtualVoxelResources(GraphBuilder, View, MacroGroupDatas, PageToPageIndexBuffer);
 
 			FRDGBufferRef ClearIndArgsBuffer = IndirectVoxelPageClear(GraphBuilder, View, MacroGroupDatas.VirtualVoxelResources);
 

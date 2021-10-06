@@ -10,11 +10,9 @@
 namespace GeometryCollectionTest
 {
 	using namespace ChaosTest;
-
-	// These were previously integers outside of range of event enum, deliberately not using existing events. API changed,
-	// and we need to provide enum. Casting int out of range of enum to enum is undefined, so just using existing events. 
-	static const EEventType CustomEvent1 = EEventType::Breaking;
-	static const EEventType CustomEvent2 = EEventType::Sleeping;
+	// deliberately choosing values outside EEventType defaults
+	static const int32 CustomEvent1 = 5;
+	static const int32 CustomEvent2 = 6;
 
 	struct EventTestData
 	{
@@ -30,11 +28,12 @@ namespace GeometryCollectionTest
 		FVector Data2;
 	};
 
+	template <typename Traits>
 	class MyEventHandler
 	{
 	public:
 
-		MyEventHandler(Chaos::FEventManager& InEventManager) : EventManager(InEventManager)
+		MyEventHandler(Chaos::TEventManager<Traits>& InEventManager) : EventManager(InEventManager)
 		{
 		}
 		~MyEventHandler()
@@ -79,17 +78,18 @@ namespace GeometryCollectionTest
 		TArray<EventTestData> ResultFromHandler2;
 
 	private:
-		Chaos::FEventManager& EventManager;
+		Chaos::TEventManager<Traits>& EventManager;
 	};
 
 
-	GTEST_TEST(AllTraits, GeometryCollection_EventBufferTest_Event_Handler)
+	TYPED_TEST(AllTraits, GeometryCollection_EventBufferTest_Event_Handler)
 	{
-		Chaos::FEventManager EventManager(Chaos::EMultiBufferMode::Single);
-		Chaos::FPBDRigidsSolver* Solver = FChaosSolversModule::GetModule()->CreateSolver(nullptr);
+		using Traits = TypeParam;
+		Chaos::TEventManager<Traits> EventManager(Chaos::EMultiBufferMode::Single);
+		Chaos::TPBDRigidsSolver<Traits>* Solver = FChaosSolversModule::GetModule()->CreateSolver<Traits>(nullptr);
 
-		MyEventHandler HandlerTest(EventManager);
-		MyEventHandler AnotherHandlerTest(EventManager);
+		MyEventHandler<Traits> HandlerTest(EventManager);
+		MyEventHandler<Traits> AnotherHandlerTest(EventManager);
 
 		// the data injected into the buffer for CustomEvent1 will be whatever is currently the variable TestData
 		EventTestData TestData;

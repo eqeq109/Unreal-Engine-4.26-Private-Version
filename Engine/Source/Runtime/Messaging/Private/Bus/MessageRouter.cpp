@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Bus/MessageRouter.h"
-#include "IMessagingModule.h"
 #include "HAL/PlatformProcess.h"
 #include "Bus/MessageDispatchTask.h"
 #include "IMessageSubscription.h"
@@ -9,7 +8,6 @@
 #include "IMessageInterceptor.h"
 #include "IMessageBusListener.h"
 #include "Misc/ConfigCacheIni.h"
-
 
 /* FMessageRouter structors
  *****************************************************************************/
@@ -120,35 +118,16 @@ void FMessageRouter::DispatchMessage(const TSharedRef<IMessageContext, ESPMode::
 	{
 		TArray<TSharedPtr<IMessageReceiver, ESPMode::ThreadSafe>> Recipients;
 
-		int32 RecipientCount = Context->GetRecipients().Num();
-
 		// get recipients, either from the context...
-		if (RecipientCount > 0)
+		if (Context->GetRecipients().Num() > 0)
 		{
-			if (UE_GET_LOG_VERBOSITY(LogMessaging) >= ELogVerbosity::Verbose)
-			{
-				FString RecipientStr = FString::JoinBy(Context->GetRecipients(), TEXT("+"), &FMessageAddress::ToString);
-				UE_LOG(LogMessaging, Verbose, TEXT("Dispatching %s from %s to %s"), *Context->GetMessageType().ToString(), *Context->GetSender().ToString(), *RecipientStr);
-			}
-
 			FilterRecipients(Context, Recipients);
-
-			if (Recipients.Num() < RecipientCount)
-			{
-				UE_LOG(LogMessaging, Verbose, TEXT("%d recipients were filtered out"), RecipientCount - Recipients.Num());
-			}
 		}
 		// ... or from subscriptions
 		else
 		{
 			FilterSubscriptions(ActiveSubscriptions.FindOrAdd(Context->GetMessageType()), Context, Recipients);
 			FilterSubscriptions(ActiveSubscriptions.FindOrAdd(NAME_All), Context, Recipients);
-
-			if (UE_GET_LOG_VERBOSITY(LogMessaging) >= ELogVerbosity::Verbose)
-			{
-				FString RecipientStr = FString::JoinBy(Context->GetRecipients(), TEXT("+"), &FMessageAddress::ToString);
-				UE_LOG(LogMessaging, Verbose, TEXT("Dispatching %s from %s to %s subscribers"), *Context->GetMessageType().ToString(), *Context->GetSender().ToString(), *RecipientStr);
-			}
 		}
 
 		// dispatch the message
@@ -280,8 +259,6 @@ void FMessageRouter::Tick()
 
 void FMessageRouter::HandleAddInterceptor(TSharedRef<IMessageInterceptor, ESPMode::ThreadSafe> Interceptor, FName MessageType)
 {
-	UE_LOG(LogMessaging, Verbose, TEXT("Adding %s as intereceptor for %s messages"), *Interceptor->GetDebugName().ToString(), *MessageType.ToString());
-
 	ActiveInterceptors.FindOrAdd(MessageType).AddUnique(Interceptor);
 	Tracer->TraceAddedInterceptor(Interceptor, MessageType);
 }
@@ -293,8 +270,6 @@ void FMessageRouter::HandleAddRecipient(FMessageAddress Address, TWeakPtr<IMessa
 
 	if (Recipient.IsValid())
 	{
-		UE_LOG(LogMessaging, Verbose, TEXT("Adding %s on %s as recipient"), *Recipient->GetDebugName().ToString(), *Address.ToString());
-
 		ActiveRecipients.FindOrAdd(Address) = Recipient;
 		Tracer->TraceAddedRecipient(Address, Recipient.ToSharedRef());
 		NotifyRegistration(Address, EMessageBusNotification::Registered);
@@ -304,13 +279,6 @@ void FMessageRouter::HandleAddRecipient(FMessageAddress Address, TWeakPtr<IMessa
 
 void FMessageRouter::HandleAddSubscriber(TSharedRef<IMessageSubscription, ESPMode::ThreadSafe> Subscription)
 {
-	auto Subscriber = Subscription->GetSubscriber().Pin();
-
-	if (Subscriber.IsValid())
-	{
-		UE_LOG(LogMessaging, Verbose, TEXT("Adding %s as a subscriber for %s messages"), *Subscriber->GetDebugName().ToString(), *Subscription->GetMessageType().ToString());
-	}
-
 	ActiveSubscriptions.FindOrAdd(Subscription->GetMessageType()).AddUnique(Subscription);
 	Tracer->TraceAddedSubscription(Subscription);
 }
@@ -318,8 +286,6 @@ void FMessageRouter::HandleAddSubscriber(TSharedRef<IMessageSubscription, ESPMod
 
 void FMessageRouter::HandleRemoveInterceptor(TSharedRef<IMessageInterceptor, ESPMode::ThreadSafe> Interceptor, FName MessageType)
 {
-	UE_LOG(LogMessaging, Verbose, TEXT("Removing %s as intereceptor for %s messages"), *Interceptor->GetDebugName().ToString(), *MessageType.ToString());
-
 	if (MessageType == NAME_All)
 	{
 		for (auto& InterceptorsPair : ActiveInterceptors)
@@ -342,8 +308,6 @@ void FMessageRouter::HandleRemoveRecipient(FMessageAddress Address)
 
 	if (Recipient.IsValid())
 	{
-		UE_LOG(LogMessaging, Verbose, TEXT("Removing %s on %s as recipient"), *Recipient->GetDebugName().ToString(), *Address.ToString());
-
 		ActiveRecipients.Remove(Address);
 		Tracer->TraceRemovedRecipient(Address);
 		NotifyRegistration(Address, EMessageBusNotification::Unregistered);
@@ -375,8 +339,6 @@ void FMessageRouter::HandleRemoveSubscriber(TWeakPtr<IMessageReceiver, ESPMode::
 
 			if (Subscription->GetSubscriber().Pin() == Subscriber)
 			{
-				UE_LOG(LogMessaging, Verbose, TEXT("Removing %s as a subscriber for %s messages"), *Subscriber->GetDebugName().ToString(), *Subscription->GetMessageType().ToString());
-
 				Subscriptions.RemoveAtSwap(SubscriptionIndex);
 				Tracer->TraceRemovedSubscription(Subscription.ToSharedRef(), MessageType);
 
@@ -389,8 +351,6 @@ void FMessageRouter::HandleRemoveSubscriber(TWeakPtr<IMessageReceiver, ESPMode::
 
 void FMessageRouter::HandleRouteMessage(TSharedRef<IMessageContext, ESPMode::ThreadSafe> Context)
 {
-	UE_LOG(LogMessaging, Verbose, TEXT("Routing %s message from %s"), *Context->GetMessageType().ToString(), *Context->GetSender().ToString());
-
 	Tracer->TraceRoutedMessage(Context);
 
 	// intercept routing
@@ -400,8 +360,6 @@ void FMessageRouter::HandleRouteMessage(TSharedRef<IMessageContext, ESPMode::Thr
 	{
 		if (Interceptor->InterceptMessage(Context))
 		{
-			UE_LOG(LogMessaging, Verbose, TEXT("Message was intercepted by %s"), *Interceptor->GetDebugName().ToString());
-
 			Tracer->TraceInterceptedMessage(Context, Interceptor.ToSharedRef());
 
 			return;
@@ -411,8 +369,6 @@ void FMessageRouter::HandleRouteMessage(TSharedRef<IMessageContext, ESPMode::Thr
 	// dispatch the message
 	if (bAllowDelayedMessaging && (Context->GetTimeSent() > CurrentTime))
 	{
-		UE_LOG(LogMessaging, Verbose, TEXT("Queued message for dispatch"));
-
 		DelayedMessages.HeapPush(FDelayedMessage(Context, ++DelayedMessagesSequence));
 	}
 	else

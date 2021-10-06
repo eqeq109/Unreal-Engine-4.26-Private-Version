@@ -9,6 +9,9 @@
 
 struct FSwitchboardMessageFuture
 {
+	/** Switchboard Task Type associated with this message. */
+	ESwitchboardTaskType TaskType;
+
 	/** Endpoint where this message should be sent to */
 	FIPv4Endpoint InEndpoint;
 

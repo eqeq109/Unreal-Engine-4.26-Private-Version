@@ -190,12 +190,6 @@ public:
 	void RemoveGPUSimulation(FParticleSimulationGPU* Simulation);
 
 	/**
-	 * Notifies the system that the SimulationPhase of a particular simulation has
-	 * changed.
-	 */
-	void OnSimulationPhaseChanged(const FParticleSimulationGPU* Simulation, EParticleSimulatePhase::Type PrevPhase);
-
-	/**
 	 * Retrieve GPU particle rendering resources.
 	 */
 	FParticleSimulationResources* GetParticleSimulationResources()
@@ -321,8 +315,6 @@ private:
 	FVectorFieldInstanceList VectorFields;
 	/** List of all active GPU simulations. */
 	TSparseArray<FParticleSimulationGPU*> GPUSimulations;
-	/** Number of simulations of each type. */
-	int32 NumGPUSimulations[EParticleSimulatePhase::Last + 1] = {};
 	/** Particle render resources. */
 	FParticleSimulationResources* ParticleSimulationResources;
 	/** Feature level of this effects system */
@@ -344,7 +336,7 @@ private:
 
 #if WITH_MGPU
 	EParticleSimulatePhase::Type PhaseToWaitForTemporalEffect = EParticleSimulatePhase::First;
-	EParticleSimulatePhase::Type PhaseToBroadcastTemporalEffect = EParticleSimulatePhase::First;
+	EParticleSimulatePhase::Type PhaseToBroadcastTemporalEffect = EParticleSimulatePhase::Last;
 #endif
 };
 

@@ -155,6 +155,7 @@ public:
 		FRDGTextureRef SceneColorTexture;
 		FRDGTextureRef SceneDepthTexture;
 		FRDGTextureRef SceneVelocityTexture;
+		FRDGTextureRef EyeAdaptationTexture;
 	};
 
 	virtual ~ITemporalUpscaler() {};

@@ -1094,9 +1094,9 @@ TSharedRef<SGraphNode> SGraphNode_BehaviorTree::GetNodeUnderMouse(const FGeometr
 	return SubNode.IsValid() ? SubNode.ToSharedRef() : StaticCastSharedRef<SGraphNode>(AsShared());
 }
 
-void SGraphNode_BehaviorTree::MoveTo(const FVector2D& NewPosition, FNodeSet& NodeFilter, bool bMarkDirty)
+void SGraphNode_BehaviorTree::MoveTo(const FVector2D& NewPosition, FNodeSet& NodeFilter)
 {
-	SGraphNodeAI::MoveTo(NewPosition, NodeFilter, bMarkDirty);
+	SGraphNodeAI::MoveTo(NewPosition, NodeFilter);
 
 	// keep node order (defined by linked pins) up to date with actual positions
 	// this function will keep spamming on every mouse move update

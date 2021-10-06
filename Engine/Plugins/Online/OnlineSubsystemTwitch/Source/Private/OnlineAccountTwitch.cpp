@@ -4,7 +4,7 @@
 #include "OnlineAccountTwitch.h"
 #include "TwitchTokenValidationResponse.h"
 
-FUniqueNetIdRef FUserOnlineAccountTwitch::GetUserId() const
+TSharedRef<const FUniqueNetId> FUserOnlineAccountTwitch::GetUserId() const
 {
 	return UserId;
 }
@@ -51,7 +51,7 @@ bool FUserOnlineAccountTwitch::Parse(const FString& InAuthTicket, FTwitchTokenVa
 	{
 		if (ValidationResponse.bTokenIsValid)
 		{
-			UserId = FUniqueNetIdTwitch::Create(ValidationResponse.UserId);
+			UserId = MakeShared<FUniqueNetIdTwitch>(ValidationResponse.UserId);
 			if (!ValidationResponse.UserName.IsEmpty())
 			{
 				SetAccountData(USER_ATTR_DISPLAYNAME, ValidationResponse.UserName);

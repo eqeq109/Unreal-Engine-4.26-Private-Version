@@ -108,9 +108,7 @@ public:
 		check(IsInRenderingThread());
 		FRHIComputeShader* ComputeShaderRHI = RHICmdList.GetBoundComputeShader();
 
-		//-Note: Scene textures will not exist in the Mobile rendering path
 		TUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformParams = GNiagaraViewDataManager.GetSceneTextureUniformParameters();
-		check(!PassUniformBuffer.IsBound() || SceneTextureUniformParams);
 		SetUniformBufferParameter(RHICmdList, ComputeShaderRHI, PassUniformBuffer, SceneTextureUniformParams);
 
 		FRHISamplerState* VelocitySamplerState = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -142,8 +140,7 @@ void UNiagaraDataInterfaceGBuffer::PostInitProperties()
 
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
-		ENiagaraTypeRegistryFlags Flags = ENiagaraTypeRegistryFlags::AllowAnyVariable | ENiagaraTypeRegistryFlags::AllowParameter;
-		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), Flags);
+		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 }
 
@@ -173,7 +170,11 @@ void UNiagaraDataInterfaceGBuffer::GetFunctions(TArray<FNiagaraFunctionSignature
 	}
 }
 
-#if WITH_EDITORONLY_DATA
+void UNiagaraDataInterfaceGBuffer::GetCommonHLSL(FString& OutHLSL)
+{
+	OutHLSL += TEXT("#include \"/Plugin/FX/Niagara/Private/NiagaraDataInterfaceGBuffer.ush\"\n");
+}
+
 bool UNiagaraDataInterfaceGBuffer::AppendCompileHash(FNiagaraCompileHashVisitor* InVisitor) const
 {
 	if (!Super::AppendCompileHash(InVisitor))
@@ -183,12 +184,6 @@ bool UNiagaraDataInterfaceGBuffer::AppendCompileHash(FNiagaraCompileHashVisitor*
 	InVisitor->UpdateString(TEXT("NiagaraDataInterfaceGBufferHLSLSource"), Hash.ToString());
 	return true;
 }
-
-void UNiagaraDataInterfaceGBuffer::GetCommonHLSL(FString& OutHLSL)
-{
-	OutHLSL += TEXT("#include \"/Plugin/FX/Niagara/Private/NiagaraDataInterfaceGBuffer.ush\"\n");
-}
-
 bool UNiagaraDataInterfaceGBuffer::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
 {
 	using namespace NiagaraDataInterfaceGBufferLocal;
@@ -213,4 +208,3 @@ bool UNiagaraDataInterfaceGBuffer::GetFunctionHLSL(const FNiagaraDataInterfaceGP
 
 	return false;
 }
-#endif

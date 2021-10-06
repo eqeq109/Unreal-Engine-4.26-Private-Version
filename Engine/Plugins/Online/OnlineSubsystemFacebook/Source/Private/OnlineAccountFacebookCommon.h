@@ -25,7 +25,7 @@ public:
 
 	// FOnlineUser
 	
-	virtual FUniqueNetIdRef GetUserId() const override;
+	virtual TSharedRef<const FUniqueNetId> GetUserId() const override;
 	virtual FString GetRealName() const override;
 	virtual FString GetDisplayName(const FString& Platform = FString()) const override;
 	virtual bool GetUserAttribute(const FString& AttrName, FString& OutAttrValue) const override;
@@ -39,7 +39,7 @@ public:
 	// FUserOnlineAccountFacebookCommon
 
 	explicit FUserOnlineAccountFacebookCommon(const FString& InUserId = FString(), const FString& InAuthTicket = FString())
-		: UserIdPtr(FUniqueNetIdFacebook::Create(InUserId))
+		: UserIdPtr(new FUniqueNetIdFacebook(InUserId))
 		, UserId(InUserId)
 		, AuthTicket(InAuthTicket)
 	{
@@ -98,7 +98,7 @@ protected:
 	}
 
 	/** User Id represented as a FUniqueNetId */
-	FUniqueNetIdRef UserIdPtr;
+	TSharedRef<const FUniqueNetId> UserIdPtr;
 	/** Id associated with the user account provided by the online service during registration */
 	FString UserId;
 	/** Real name */

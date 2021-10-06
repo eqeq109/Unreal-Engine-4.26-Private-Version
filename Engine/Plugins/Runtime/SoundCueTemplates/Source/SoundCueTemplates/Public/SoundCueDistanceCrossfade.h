@@ -33,7 +33,7 @@ struct FSoundCueCrossfadeInfo
 	FDistanceDatum DistanceInfo;
 
 	UPROPERTY(EditAnywhere, Category = "Crossfade Info")
-	USoundWave* Sound = nullptr;
+	USoundWave* Sound;
 };
 
 UCLASS(hidecategories = object, BlueprintType)

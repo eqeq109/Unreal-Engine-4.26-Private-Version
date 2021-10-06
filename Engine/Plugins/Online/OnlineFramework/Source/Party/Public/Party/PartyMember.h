@@ -5,7 +5,6 @@
 #include "Party/PartyTypes.h"
 #include "Party/PartyDataReplicator.h"
 
-#include "PartyPackage.h"
 #include "PartyMember.generated.h"
 
 class USocialUser;
@@ -99,7 +98,7 @@ public:
 
 	FString ToDebugString(bool bIncludePartyId = true) const;
 
-PACKAGE_SCOPE:
+PARTY_SCOPE:
 	void InitializePartyMember(const FOnlinePartyMemberConstRef& OssMember, const FSimpleDelegate& OnInitComplete);
 
 	FPartyMemberRepData& GetMutableRepData() { return *MemberDataReplicator; }

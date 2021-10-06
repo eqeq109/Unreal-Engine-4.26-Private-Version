@@ -804,9 +804,6 @@ public:
 	mutable int32 NumMeshCommandReferencesForDebugging = 0;
 #endif
 
-	virtual int32 GetPatchingFrameNumber() const { return -1; }
-	virtual void SetPatchingFrameNumber(int32 FrameNumber) { }
-
 private:
 	/** Layout of the uniform buffer. */
 	const FRHIUniformBufferLayout* Layout;
@@ -1053,11 +1050,6 @@ public:
 			return NULL;
 		}
 		return &LastRenderTime;
-	}
-
-	FORCEINLINE_DEBUGGABLE void SetDefaultLastRenderTimeContainer()
-	{
-		LastRenderTime = DefaultLastRenderTime;
 	}
 
 	void SetName(const FName& InName)
@@ -1307,8 +1299,8 @@ public:
 class RHI_API FRHITimestampCalibrationQuery : public FRHIResource
 {
 public:
-	uint64 GPUMicroseconds[MAX_NUM_GPUS] = {};
-	uint64 CPUMicroseconds[MAX_NUM_GPUS] = {};
+	uint64 GPUMicroseconds = 0;
+	uint64 CPUMicroseconds = 0;
 };
 
 /*
@@ -1502,10 +1494,6 @@ public:
 	 * Ticks the viewport on the Game thread
 	 */
 	virtual void Tick(float DeltaTime) {}
-
-	virtual void WaitForFrameEventCompletion() { }
-
-	virtual void IssueFrameEvent() { }
 };
 
 //
@@ -1792,8 +1780,7 @@ public:
 	bool bClearDepth;
 	bool bClearStencil;
 
-	FRHITexture* ShadingRateTexture;
-	EVRSRateCombiner ShadingRateTextureCombiner;
+	FRHITexture* FoveationTexture;
 
 	uint8 MultiViewCount;
 
@@ -1802,7 +1789,7 @@ public:
 		bClearColor(false),
 		bHasResolveAttachments(false),
 		bClearDepth(false),
-		ShadingRateTexture(nullptr),
+		FoveationTexture(nullptr),
 		MultiViewCount(0)
 	{}
 
@@ -1812,8 +1799,7 @@ public:
 		bHasResolveAttachments(false),
 		DepthStencilRenderTarget(InDepthStencilRenderTarget),		
 		bClearDepth(InDepthStencilRenderTarget.Texture && InDepthStencilRenderTarget.DepthLoadAction == ERenderTargetLoadAction::EClear),
-		ShadingRateTexture(nullptr),
-		ShadingRateTextureCombiner(VRSRB_Passthrough)
+		FoveationTexture(nullptr)
 	{
 		check(InNumColorRenderTargets <= 0 || InColorRenderTargets);
 		for (int32 Index = 0; Index < InNumColorRenderTargets; ++Index)
@@ -1841,7 +1827,7 @@ public:
 		// Need a separate struct so we can memzero/remove dependencies on reference counts
 		struct FHashableStruct
 		{
-			// *2 for color and resolves, depth goes in the second-to-last slot, shading rate goes in the last slot
+			// *2 for color and resolves, depth goes in the second-to-last slot, fixed foveation goes in the last slot
 			FRHITexture* Texture[MaxSimultaneousRenderTargets*2 + 2];
 			uint32 MipIndex[MaxSimultaneousRenderTargets];
 			uint32 ArraySliceIndex[MaxSimultaneousRenderTargets];
@@ -1875,7 +1861,7 @@ public:
 				}
 
 				Texture[MaxSimultaneousRenderTargets] = RTInfo.DepthStencilRenderTarget.Texture;
-				Texture[MaxSimultaneousRenderTargets + 1] = RTInfo.ShadingRateTexture;
+				Texture[MaxSimultaneousRenderTargets + 1] = RTInfo.FoveationTexture;
 				DepthLoadAction = RTInfo.DepthStencilRenderTarget.DepthLoadAction;
 				DepthStoreAction = RTInfo.DepthStencilRenderTarget.DepthStoreAction;
 				StencilLoadAction = RTInfo.DepthStencilRenderTarget.StencilLoadAction;
@@ -2586,8 +2572,8 @@ struct FRHIRenderPassInfo
 	FResolveParams ResolveParameters;
 
 	// Some RHIs can use a texture to control the sampling and/or shading resolution of different areas 
-	FTextureRHIRef ShadingRateTexture = nullptr;
-	EVRSRateCombiner ShadingRateTextureCombiner = VRSRB_Passthrough;
+	// (@todo: This implementation is specific to fixed foveated rendering, and will be updated or replaced as a more general pathway comes online)
+	FTextureRHIRef FoveationTexture = nullptr;
 
 	// Some RHIs require a hint that occlusion queries will be used in this render pass
 	uint32 NumOcclusionQueries = 0;
@@ -2784,8 +2770,7 @@ struct FRHIRenderPassInfo
 
 	// Color and depth with resolve and optional sample density
 	explicit FRHIRenderPassInfo(FRHITexture* ColorRT, ERenderTargetActions ColorAction, FRHITexture* ResolveColorRT,
-		FRHITexture* DepthRT, EDepthStencilTargetActions DepthActions, FRHITexture* ResolveDepthRT, 
-		FRHITexture* InShadingRateTexture, EVRSRateCombiner InShadingRateTextureCombiner,
+		FRHITexture* DepthRT, EDepthStencilTargetActions DepthActions, FRHITexture* ResolveDepthRT, FRHITexture* InFoveationTexture,
 		FExclusiveDepthStencil InEDS = FExclusiveDepthStencil::DepthWrite_StencilWrite)
 	{
 		check(ColorRT);
@@ -2800,8 +2785,7 @@ struct FRHIRenderPassInfo
 		DepthStencilRenderTarget.ResolveTarget = ResolveDepthRT;
 		DepthStencilRenderTarget.Action = DepthActions;
 		DepthStencilRenderTarget.ExclusiveDepthStencil = InEDS;
-		ShadingRateTexture = InShadingRateTexture;
-		ShadingRateTextureCombiner = InShadingRateTextureCombiner;
+		FoveationTexture = InFoveationTexture;
 		FMemory::Memzero(&ColorRenderTargets[1], sizeof(FColorEntry) * (MaxSimultaneousRenderTargets - 1));
 	}
 

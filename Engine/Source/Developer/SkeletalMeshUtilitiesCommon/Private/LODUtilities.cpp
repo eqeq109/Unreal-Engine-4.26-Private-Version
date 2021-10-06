@@ -31,9 +31,6 @@
 #include "Animation/SkinWeightProfile.h"
 
 #include "Async/ParallelFor.h"
-#include "Interfaces/ITargetPlatform.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
-#include "Misc/CoreMisc.h"
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, SkeletalMeshUtilitiesCommon)
 
@@ -202,7 +199,7 @@ void FLODUtilities::ProcessImportMeshInfluences(const int32 WedgeCount, TArray<S
 }
 
 
-bool FLODUtilities::RegenerateLOD(USkeletalMesh* SkeletalMesh, const ITargetPlatform* TargetPlatform, int32 NewLODCount /*= 0*/, bool bRegenerateEvenIfImported /*= false*/, bool bGenerateBaseLOD /*= false*/)
+bool FLODUtilities::RegenerateLOD(USkeletalMesh* SkeletalMesh, int32 NewLODCount /*= 0*/, bool bRegenerateEvenIfImported /*= false*/, bool bGenerateBaseLOD /*= false*/)
 {
 	if (SkeletalMesh)
 	{
@@ -244,7 +241,7 @@ bool FLODUtilities::RegenerateLOD(USkeletalMesh* SkeletalMesh, const ITargetPlat
 			for (int32 LODIdx = CurrentNumLODs; LODIdx < LODCount; LODIdx++)
 			{
 				// if no previous setting found, it will use default setting. 
-				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIdx, TargetPlatform, false);
+				FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIdx, false);
 			}
 		}
 		else
@@ -254,7 +251,7 @@ bool FLODUtilities::RegenerateLOD(USkeletalMesh* SkeletalMesh, const ITargetPlat
 				FSkeletalMeshLODInfo& CurrentLODInfo = *(SkeletalMesh->GetLODInfo(LODIdx));
 				if ((bRegenerateEvenIfImported && LODIdx > 0) || (bGenerateBaseLOD && LODIdx == 0) || CurrentLODInfo.bHasBeenSimplified )
 				{
-					FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIdx, TargetPlatform, false);
+					FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIdx, false);
 				}
 			}
 		}
@@ -413,7 +410,7 @@ void FLODUtilities::RemoveLOD(FSkeletalMeshUpdateContext& UpdateContext, int32 D
 		}
 
 		//remove all Morph target data for this LOD
-		for (UMorphTarget* MorphTarget : SkeletalMesh->GetMorphTargets())
+		for (UMorphTarget* MorphTarget : SkeletalMesh->MorphTargets)
 		{
 			if (MorphTarget->HasDataForLOD(DesiredLOD))
 			{
@@ -853,7 +850,7 @@ void CreateLODMorphTarget(USkeletalMesh* SkeletalMesh, FReductionBaseSkeletalMes
 
 	bool bInitializeMorphData = false;
 
-	for (UMorphTarget *MorphTarget : SkeletalMesh->GetMorphTargets())
+	for (UMorphTarget *MorphTarget : SkeletalMesh->MorphTargets)
 	{
 		if (!MorphTarget->HasDataForLOD(SourceLOD))
 		{
@@ -975,7 +972,7 @@ void FLODUtilities::ClearGeneratedMorphTarget(USkeletalMesh* SkeletalMesh, int32
 
 	const FSkeletalMeshLODModel& TargetLODModel = SkeletalMeshResource->LODModels[TargetLOD];
 	//Make sure we have some morph for this LOD
-	for (UMorphTarget *MorphTarget : SkeletalMesh->GetMorphTargets())
+	for (UMorphTarget *MorphTarget : SkeletalMesh->MorphTargets)
 	{
 		if (!MorphTarget->HasDataForLOD(TargetLOD))
 		{
@@ -1019,7 +1016,7 @@ void FLODUtilities::ApplyMorphTargetsToLOD(USkeletalMesh* SkeletalMesh, int32 So
 
 	//Make sure we have some morph for this LOD
 	bool bContainsMorphTargets = false;
-	for (UMorphTarget* MorphTarget : SkeletalMesh->GetMorphTargets())
+	for (UMorphTarget* MorphTarget : SkeletalMesh->MorphTargets)
 	{
 		if (MorphTarget->HasDataForLOD(SourceLOD))
 		{
@@ -1133,7 +1130,7 @@ void FLODUtilities::ApplyMorphTargetsToLOD(USkeletalMesh* SkeletalMesh, int32 So
 	TMap<UMorphTarget *, TMap<uint32, uint32>> PerMorphTargetBaseIndexToMorphTargetDelta;
 	//Create a map from BaseIndex to a list of match target index for all base morph target point
 	TMap<uint32, TArray<uint32>> BaseMorphIndexToTargetIndexList;
-	for (UMorphTarget *MorphTarget : SkeletalMesh->GetMorphTargets())
+	for (UMorphTarget *MorphTarget : SkeletalMesh->MorphTargets)
 	{
 		if (!MorphTarget->HasDataForLOD(SourceLOD))
 		{
@@ -1175,7 +1172,7 @@ void FLODUtilities::ApplyMorphTargetsToLOD(USkeletalMesh* SkeletalMesh, int32 So
 	CreateLODMorphTarget(SkeletalMesh, ReductionBaseSkeletalMeshBulkData, SourceLOD, DestinationLOD, PerMorphTargetBaseIndexToMorphTargetDelta, BaseMorphIndexToTargetIndexList, TargetVertices, TargetMatchData);
 }
 
-void FLODUtilities::SimplifySkeletalMeshLOD( USkeletalMesh* SkeletalMesh, int32 DesiredLOD, const ITargetPlatform* TargetPlatform, bool bRestoreClothing /*= false*/, FThreadSafeBool* OutNeedsPackageDirtied/*= nullptr*/)
+void FLODUtilities::SimplifySkeletalMeshLOD( USkeletalMesh* SkeletalMesh, int32 DesiredLOD, bool bRestoreClothing /*= false*/, FThreadSafeBool* OutNeedsPackageDirtied/*= nullptr*/)
 {
 	IMeshReductionModule& ReductionModule = FModuleManager::Get().LoadModuleChecked<IMeshReductionModule>("MeshReductionInterface");
 	IMeshReduction* MeshReduction = ReductionModule.GetSkeletalMeshReductionInterface();
@@ -1249,8 +1246,8 @@ void FLODUtilities::SimplifySkeletalMeshLOD( USkeletalMesh* SkeletalMesh, int32 
 			if (SkeletalMeshResource->OriginalReductionSourceMeshData[DesiredLOD]->IsEmpty())
 			{
 				TMap<FString, TArray<FMorphTargetDelta>> BaseLODMorphTargetData;
-				BaseLODMorphTargetData.Empty(SkeletalMesh->GetMorphTargets().Num());
-				for (UMorphTarget *MorphTarget : SkeletalMesh->GetMorphTargets())
+				BaseLODMorphTargetData.Empty(SkeletalMesh->MorphTargets.Num());
+				for (UMorphTarget *MorphTarget : SkeletalMesh->MorphTargets)
 				{
 					if (!MorphTarget->HasDataForLOD(DesiredLOD))
 					{
@@ -1281,14 +1278,14 @@ void FLODUtilities::SimplifySkeletalMeshLOD( USkeletalMesh* SkeletalMesh, int32 
 
 				if (DesiredLOD == 0)
 				{
-					SkeletalMesh->GetLODInfo(DesiredLOD)->SourceImportFilename = SkeletalMesh->GetAssetImportData()->GetFirstFilename();
+					SkeletalMesh->GetLODInfo(DesiredLOD)->SourceImportFilename = SkeletalMesh->AssetImportData->GetFirstFilename();
 				}
 			}
 		}
 	}
 	
 
-	if (MeshReduction->ReduceSkeletalMesh(SkeletalMesh, DesiredLOD, TargetPlatform))
+	if (MeshReduction->ReduceSkeletalMesh(SkeletalMesh, DesiredLOD))
 	{
 		check(SkeletalMesh->GetLODNum() >= 1);
 
@@ -1337,7 +1334,7 @@ void FLODUtilities::SimplifySkeletalMeshLOD( USkeletalMesh* SkeletalMesh, int32 
 	}
 }
 
-void FLODUtilities::SimplifySkeletalMeshLOD(FSkeletalMeshUpdateContext& UpdateContext, int32 DesiredLOD, const ITargetPlatform* TargetPlatform, bool bRestoreClothing /*= false*/, FThreadSafeBool* OutNeedsPackageDirtied/*= nullptr*/)
+void FLODUtilities::SimplifySkeletalMeshLOD(FSkeletalMeshUpdateContext& UpdateContext, int32 DesiredLOD, bool bRestoreClothing /*= false*/, FThreadSafeBool* OutNeedsPackageDirtied/*= nullptr*/)
 {
 	USkeletalMesh* SkeletalMesh = UpdateContext.SkeletalMesh;
 	IMeshReductionModule& ReductionModule = FModuleManager::Get().LoadModuleChecked<IMeshReductionModule>("MeshReductionInterface");
@@ -1345,7 +1342,7 @@ void FLODUtilities::SimplifySkeletalMeshLOD(FSkeletalMeshUpdateContext& UpdateCo
 
 	if (MeshReduction && MeshReduction->IsSupported() && SkeletalMesh)
 	{
-		SimplifySkeletalMeshLOD(SkeletalMesh, DesiredLOD, TargetPlatform, bRestoreClothing, OutNeedsPackageDirtied);
+		SimplifySkeletalMeshLOD(SkeletalMesh, DesiredLOD, bRestoreClothing, OutNeedsPackageDirtied);
 		
 		if (UpdateContext.OnLODChanged.IsBound())
 		{
@@ -1385,7 +1382,7 @@ bool FLODUtilities::RestoreSkeletalMeshLODImportedData(USkeletalMesh* SkeletalMe
 		FSkeletalMeshLODModel::CopyStructure(&(SkeletalMesh->GetImportedModel()->LODModels[LodIndex]), &ImportedBaseLODModel);
 		//Copy the morph target deltas
 		bool bInitMorphTargetData = false;
-		for (UMorphTarget *MorphTarget : SkeletalMesh->GetMorphTargets())
+		for (UMorphTarget *MorphTarget : SkeletalMesh->MorphTargets)
 		{
 			if (!ImportedBaseLODMorphTargetData.Contains(MorphTarget->GetFullName()))
 			{
@@ -1410,7 +1407,7 @@ bool FLODUtilities::RestoreSkeletalMeshLODImportedData(USkeletalMesh* SkeletalMe
 
 void FLODUtilities::RefreshLODChange(const USkeletalMesh* SkeletalMesh)
 {
-	for (FThreadSafeObjectIterator Iter(USkeletalMeshComponent::StaticClass()); Iter; ++Iter)
+	for (FObjectIterator Iter(USkeletalMeshComponent::StaticClass()); Iter; ++Iter)
 	{
 		USkeletalMeshComponent* SkeletalMeshComponent = Cast<USkeletalMeshComponent>(*Iter);
 		if  (SkeletalMeshComponent->SkeletalMesh == SkeletalMesh)
@@ -1812,7 +1809,7 @@ bool FLODUtilities::UpdateAlternateSkinWeights(USkeletalMesh* SkeletalMeshDest, 
 	}
 	FSkeletalMeshImportData ImportDataDest;
 	SkeletalMeshDest->LoadLODImportedData(LODIndexDest, ImportDataDest);
-	return UpdateAlternateSkinWeights(LODModelDest, ImportDataDest, SkeletalMeshDest, SkeletalMeshDest->GetRefSkeleton(), ProfileNameDest, LODIndexDest, OverlappingThresholds, ShouldImportNormals, ShouldImportTangents, bUseMikkTSpace, bComputeWeightedNormals);
+	return UpdateAlternateSkinWeights(LODModelDest, ImportDataDest, SkeletalMeshDest, SkeletalMeshDest->RefSkeleton, ProfileNameDest, LODIndexDest, OverlappingThresholds, ShouldImportNormals, ShouldImportTangents, bUseMikkTSpace, bComputeWeightedNormals);
 }
 
 bool FLODUtilities::UpdateAlternateSkinWeights(FSkeletalMeshLODModel& LODModelDest, FSkeletalMeshImportData& ImportDataDest, USkeletalMesh* SkeletalMeshDest, FReferenceSkeleton& RefSkeleton, const FName& ProfileNameDest, int32 LODIndexDest, FOverlappingThresholds OverlappingThresholds, bool ShouldImportNormals, bool ShouldImportTangents, bool bUseMikkTSpace, bool bComputeWeightedNormals)
@@ -2124,7 +2121,6 @@ bool FLODUtilities::UpdateAlternateSkinWeights(FSkeletalMeshLODModel& LODModelDe
 	BuildOptions.bUseMikkTSpace = (bUseMikkTSpace) && (!ShouldImportNormals || !ShouldImportTangents);
 	BuildOptions.bComputeWeightedNormals = bComputeWeightedNormals;
 	BuildOptions.bRemoveDegenerateTriangles = false;
-	BuildOptions.TargetPlatform = GetTargetPlatformManagerRef().GetRunningTargetPlatform();
 
 	//Build the skeletal mesh asset
 	IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
@@ -2132,7 +2128,7 @@ bool FLODUtilities::UpdateAlternateSkinWeights(FSkeletalMeshLODModel& LODModelDe
 	TArray<FName> WarningNames;
 
 	//BaseLOD need to make sure the source data fit with the skeletalmesh materials array before using meshutilities.BuildSkeletalMesh
-	AdjustImportDataFaceMaterialIndex(SkeletalMeshDest->GetMaterials(), ImportDataDest.Materials, LODFacesDest, LODIndexDest);
+	AdjustImportDataFaceMaterialIndex(SkeletalMeshDest->Materials, ImportDataDest.Materials, LODFacesDest, LODIndexDest);
 
 	//Build the destination mesh with the Alternate influences, so the chunking is done properly.
 	bBuildSuccess = MeshUtilities.BuildSkeletalMesh(LODModelDest, SkeletalMeshDest->GetName(), RefSkeleton, LODInfluencesDest, LODWedgesDest, LODFacesDest, LODPointsDest, LODPointToRawMapDest, BuildOptions, &WarningMessages, &WarningNames);
@@ -2286,7 +2282,7 @@ void FLODUtilities::RegenerateAllImportSkinWeightProfileData(FSkeletalMeshLODMod
 	}
 }
 
-void FLODUtilities::RegenerateDependentLODs(USkeletalMesh* SkeletalMesh, int32 LODIndex, const ITargetPlatform* TargetPlatform)
+void FLODUtilities::RegenerateDependentLODs(USkeletalMesh* SkeletalMesh, int32 LODIndex)
 {
 	int32 LODNumber = SkeletalMesh->GetLODNum();
 	TMap<int32, TArray<int32>> Dependencies;
@@ -2378,19 +2374,19 @@ void FLODUtilities::RegenerateDependentLODs(USkeletalMesh* SkeletalMesh, int32 L
 				if (!DepLODInfo || (!DepLODInfo->bHasBeenSimplified || DependentLODIndex == DepLODInfo->ReductionSettings.BaseLOD))
 				{
 					CanReduceLODInParallel[DependentLODIndex] = false;
-					FLODUtilities::SimplifySkeletalMeshLOD(SkeletalMesh, DependentLODIndex, TargetPlatform, false, &bNeedsPackageDirtied);
+					FLODUtilities::SimplifySkeletalMeshLOD(SkeletalMesh, DependentLODIndex, false, &bNeedsPackageDirtied);
 				}
 			}
 			
 			//Reduce LODs in parallel
-			ParallelFor(DependentLODs.Num(), [&DependentLODs, &SkeletalMesh, &bNeedsPackageDirtied, &CanReduceLODInParallel, &TargetPlatform](int32 IterationIndex)
+			ParallelFor(DependentLODs.Num(), [&DependentLODs, &SkeletalMesh, &bNeedsPackageDirtied, &CanReduceLODInParallel](int32 IterationIndex)
 			{
 				check(DependentLODs.IsValidIndex(IterationIndex));
 				int32 DependentLODIndex = DependentLODs[IterationIndex];
 				if (CanReduceLODInParallel[DependentLODIndex])
 				{
 					check(SkeletalMesh->GetLODInfo(DependentLODIndex)); //We cannot add a LOD when reducing with multi thread, so check we already have one
-					FLODUtilities::SimplifySkeletalMeshLOD(SkeletalMesh, DependentLODIndex, TargetPlatform, false, &bNeedsPackageDirtied);
+					FLODUtilities::SimplifySkeletalMeshLOD(SkeletalMesh, DependentLODIndex, false, &bNeedsPackageDirtied);
 				}
 			});
 
@@ -2838,7 +2834,7 @@ void FLODUtilities::BuildMorphTargets(USkeletalMesh* BaseSkelMesh, FSkeletalMesh
 
 			TArray< FMorphTargetDelta >* Deltas = Results[NewMorphDeltasIdx];
 
-			FAsyncTask<FAsyncImportMorphTargetWork>* NewWork = new FAsyncTask<FAsyncImportMorphTargetWork>(&BaseLODModel, BaseSkelMesh->GetRefSkeleton(), BaseImportData,
+			FAsyncTask<FAsyncImportMorphTargetWork>* NewWork = new FAsyncTask<FAsyncImportMorphTargetWork>(&BaseLODModel, BaseSkelMesh->RefSkeleton, BaseImportData,
 				MoveTemp(ShapeImportData.Points), *Deltas, BaseIndexData, BaseWedgePointIndices, WedgePointToVertexIndexMap, OverlappingVertices, MoveTemp(ModifiedPoints), WedgeToFaces, MeshDataBundle, TangentZ,
 				ShouldImportNormals, ShouldImportTangents, bUseMikkTSpace, Thresholds);
 			PendingWork.Add(NewWork);

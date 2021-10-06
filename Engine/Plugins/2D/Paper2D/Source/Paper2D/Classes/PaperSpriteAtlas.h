@@ -18,19 +18,19 @@ struct FPaperSpriteAtlasSlot
 	TSoftObjectPtr<class UPaperSprite> SpriteRef;
 
 	UPROPERTY()
-	int32 AtlasIndex = 0;
+	int32 AtlasIndex;
 
 	UPROPERTY()
-	int32 X = 0;
+	int32 X;
 
 	UPROPERTY()
-	int32 Y = 0;
+	int32 Y;
 
 	UPROPERTY()
-	int32 Width = 0;
+	int32 Width;
 
 	UPROPERTY()
-	int32 Height = 0;
+	int32 Height;
 
 	bool IsValid() { return AtlasIndex >= 0; }
 };

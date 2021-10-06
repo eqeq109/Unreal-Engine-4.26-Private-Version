@@ -116,15 +116,15 @@ struct ENGINE_API FDynamicTextureInstance : public FStreamableTextureInstance
 
 	/** Texture that is used by a dynamic UPrimitiveComponent. */
 	UPROPERTY()
-	UTexture2D*					Texture = nullptr;
+	UTexture2D*					Texture;
 
 	/** Whether the primitive that uses this texture is attached to the scene or not. */
 	UPROPERTY()
-	bool						bAttached = false;
+	bool						bAttached;
 	
 	/** Original bounding sphere radius, at the time the TexelFactor was calculated originally. */
 	UPROPERTY()
-	float						OriginalRadius = 0.0f;
+	float						OriginalRadius;
 
 	/**
 	 * FDynamicTextureInstance serialize operator.
@@ -391,7 +391,7 @@ struct FReplicatedStaticActorDestructionInfo
 	FVector	DestroyedPosition;
 	TWeakObjectPtr<UObject> ObjOuter;
 	UPROPERTY()
-	UClass* ObjClass = nullptr;
+	UClass* ObjClass;
 };
 
 //
@@ -1052,14 +1052,6 @@ public:
 
 #endif
 
-
-#if WITH_EDITOR
-	/** Attempts to detect and fix any issues with the level script blueprint and associated objects */
-	void RepairLevelScript();
-
-	/** Replace the existing LSA (if set) by spawning a new one based on this level's script blueprint */
-	void RegenerateLevelScriptActor();
-#endif // WITH_EDITOR
 };
 
 

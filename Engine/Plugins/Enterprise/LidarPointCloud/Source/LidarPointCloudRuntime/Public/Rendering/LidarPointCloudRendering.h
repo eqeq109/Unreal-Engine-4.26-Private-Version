@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "LidarPointCloudShared.h"
 
 class ILidarPointCloudSceneProxy;
 
@@ -41,19 +40,13 @@ struct FLidarPointCloudProxyUpdateData
 
 	float VDMultiplier;
 	float RootCellSize;
-	
-	bool bUseStaticBuffers;
-
-	TArray<uint32> TreeStructure;
 
 #if !(UE_BUILD_SHIPPING)
 	/** Stores bounds of selected nodes, used for debugging */
 	TArray<FBox> Bounds;
 #endif
 
-	TArray<FLidarPointCloudClippingVolumeParams> ClippingVolumes;
-
-	FLidarPointCloudComponentRenderParams RenderParams;
+	TArray<const class ALidarClippingVolume*> ClippingVolumes;
 
 	FLidarPointCloudProxyUpdateData();
 };
@@ -63,5 +56,5 @@ class ILidarPointCloudSceneProxy
 {
 public:
 	/** Updates necessary render data for the proxy. Initiated via LOD Manager's Tick */
-	virtual void UpdateRenderData(const FLidarPointCloudProxyUpdateData& InRenderData) = 0;
+	virtual void UpdateRenderData(FLidarPointCloudProxyUpdateData InRenderData) = 0;
 };

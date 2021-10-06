@@ -97,7 +97,7 @@ struct FNDIHairStrandsData
 	void Release();
 
 	/** Update the buffers */
-	void Update(UNiagaraDataInterfaceHairStrands* Interface, FNiagaraSystemInstance* SystemInstance, const FHairStrandsDatas* HairStrandsDatas, UGroomAsset* GroomAsset, const int32 GroupIndex, const FTransform& LocalToWorld);
+	void Update(UNiagaraDataInterfaceHairStrands* Interface, FNiagaraSystemInstance* SystemInstance, const FHairStrandsDatas* HairStrandsDatas, UGroomAsset* GroomAsset, const int32 GroupIndex);
 
 	inline void ResetDatas()
 	{
@@ -138,8 +138,6 @@ struct FNDIHairStrandsData
 		StrandsDensity = 1.0;
 		StrandsSmoothing = 0.1;
 		StrandsThickness = 0.01;
-
-		TickingGroup = NiagaraFirstTickGroup;
 
 		for (int32 i = 0; i < 32 * NumScales; ++i)
 		{
@@ -196,8 +194,6 @@ struct FNDIHairStrandsData
 			ParamsScale = OtherDatas->ParamsScale;
 
 			SkeletalMeshes = OtherDatas->SkeletalMeshes;
-
-			TickingGroup = OtherDatas->TickingGroup;
 		}
 	}
 
@@ -296,9 +292,6 @@ struct FNDIHairStrandsData
 
 	/** List of all the skel meshes in the hierarchy*/
 	uint32 SkeletalMeshes;
-
-	/** The instance ticking group */
-	ETickingGroup TickingGroup;
 };
 
 /** Data Interface for the strand base */
@@ -335,17 +328,13 @@ public:
 	virtual int32 PerInstanceDataSize()const override { return sizeof(FNDIHairStrandsData); }
 	virtual bool Equals(const UNiagaraDataInterface* Other) const override;
 	virtual bool HasPreSimulateTick() const override { return true; }
-	virtual bool HasTickGroupPrereqs() const override { return true; }
-	virtual ETickingGroup CalculateTickGroup(const void* PerInstanceData) const override;
 
 	/** GPU simulation  functionality */
-#if WITH_EDITORONLY_DATA
-	virtual void GetCommonHLSL(FString& OutHLSL) override;
 	virtual void GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
-	virtual bool AppendCompileHash(FNiagaraCompileHashVisitor* InVisitor) const override;
-#endif
 	virtual void ProvidePerInstanceDataForRenderThread(void* DataForRenderThread, void* PerInstanceData, const FNiagaraSystemInstanceID& SystemInstance) override;
+	virtual void GetCommonHLSL(FString& OutHLSL) override;
+	virtual bool AppendCompileHash(FNiagaraCompileHashVisitor* InVisitor) const override;
 
 	/** Update the source component */
 	void ExtractSourceComponent(FNiagaraSystemInstance* SystemInstance);
@@ -362,8 +351,7 @@ public:
 		FHairStrandsRestRootResource*& OutStrandsRestRootResource, 
 		FHairStrandsDeformedRootResource*& OutStrandsDeformedRootResource,
 		UGroomAsset*& OutGroomAsset,
-		int32& OutGroupIndex,
-		FTransform& OutLocalToWorld);
+		int32& OutGroupIndex);
 
 	/** Get the number of strands */
 	void GetNumStrands(FVectorVMContext& Context);
@@ -569,9 +557,6 @@ public:
 	/** Check if we have a global interpolation */
 	void HasGlobalInterpolation(FVectorVMContext& Context);
 
-	/** Check if we need a rest pose update */
-	void NeedRestUpdate(FVectorVMContext& Context);
-
 	/** Eval the skinned position given a rest position*/
 	void EvalSkinnedPosition(FVectorVMContext& Context);
 
@@ -613,9 +598,6 @@ public:
 
 	/** Param to check if the roots have been attached to the skin */
 	static const FString InterpolationModeName;
-
-	/** Param to check if we need to update the rest pose */
-	static const FString RestUpdateName;
 
 	/** boolean to check if we need to rest the simulation*/
 	static const FString ResetSimulationName;

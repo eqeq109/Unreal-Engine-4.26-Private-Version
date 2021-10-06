@@ -437,7 +437,3 @@
 #ifndef GET_DEVICE_ID_UNAVAILABLE
 	#define GET_DEVICE_ID_UNAVAILABLE 0
 #endif
-// Controls whether to enable loading cooked packages from I/O store in editor builds
-#ifndef WITH_IOSTORE_IN_EDITOR
-#define WITH_IOSTORE_IN_EDITOR 0
-#endif

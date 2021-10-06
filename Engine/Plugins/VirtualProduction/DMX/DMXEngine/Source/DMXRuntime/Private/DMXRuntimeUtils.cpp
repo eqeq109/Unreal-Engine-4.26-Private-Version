@@ -30,7 +30,7 @@ bool FDMXRuntimeUtils::GetNameAndIndexFromString(const FString& InString, FStrin
 	}
 
 	// Remove separator characters at the end of the string
-	OutName.TrimEndInline();
+	OutName.TrimEnd();
 	DigitIndex = OutName.Len(); // reuse this variable for the separator index
 
 	while (DigitIndex > 0
@@ -54,7 +54,7 @@ TMap<int32, TArray<UDMXEntityFixturePatch*>> FDMXRuntimeUtils::MapToUniverses(co
 	TMap<int32, TArray<UDMXEntityFixturePatch*>> Result;
 	for (UDMXEntityFixturePatch* Patch : AllPatches)
 	{
-		TArray<UDMXEntityFixturePatch*>& UniverseGroup = Result.FindOrAdd(Patch->GetUniverseID());
+		TArray<UDMXEntityFixturePatch*>& UniverseGroup = Result.FindOrAdd(Patch->UniverseID);
 		UniverseGroup.Add(Patch);
 	}
 	return Result;
@@ -89,9 +89,9 @@ FString FDMXRuntimeUtils::GenerateUniqueNameForImportFunction(TMap<FString, uint
 		int32 CountLength = *CountPointer > 0 ? (int32)FGenericPlatformMath::LogX(10.0f, *CountPointer) + 2 : 2;
 
 		// If the length of the final string will be too long, cut off the end so we can fit the number
-		if (CountLength + BaseName.Len() >= NAME_SIZE)
+		if (CountLength + BaseName.Len() > NAME_SIZE)
 		{
-			BaseName = BaseName.Left(NAME_SIZE - CountLength - 1);
+			BaseName = BaseName.Left(NAME_SIZE - CountLength);
 		}
 		
 		if (*CountPointer > 0)

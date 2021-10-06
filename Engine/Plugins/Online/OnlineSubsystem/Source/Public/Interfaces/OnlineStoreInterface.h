@@ -91,7 +91,7 @@ struct FInAppPurchaseProductRequest
 
 	// Flag to determine whether this is a consumable purchase, or not.
 	UPROPERTY(BlueprintReadWrite, Category = ProductInfo)
-	bool bIsConsumable = false;
+	bool bIsConsumable;
 };
 
 
@@ -125,7 +125,7 @@ struct FInAppPurchaseProductInfo
 
 	// Raw price without currency code and symbol
 	UPROPERTY(BlueprintReadOnly, Category = ProductInfo)
-	float RawPrice = 0.0f;
+	float RawPrice;
 
 	// The localized currency code of the price
 	UPROPERTY(BlueprintReadOnly, Category = ProductInfo)

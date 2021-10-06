@@ -393,14 +393,6 @@ void UContentBrowserFileDataSource::Tick(const float InDeltaTime)
 	}
 }
 
-void UContentBrowserFileDataSource::EnumerateRootPaths(const FContentBrowserDataFilter& InFilter, TFunctionRef<void(FName)> InCallback)
-{
-	for (const auto& RegisteredFileMount : RegisteredFileMounts)
-	{
-		InCallback(RegisteredFileMount.Key);
-	}
-}
-
 void UContentBrowserFileDataSource::CompileFilter(const FName InPath, const FContentBrowserDataFilter& InFilter, FContentBrowserDataCompiledFilter& OutCompiledFilter)
 {
 	const FContentBrowserDataObjectFilter* ObjectFilter = InFilter.ExtraFilters.FindFilter<FContentBrowserDataObjectFilter>();
@@ -439,10 +431,11 @@ void UContentBrowserFileDataSource::CompileFilter(const FName InPath, const FCon
 	}
 
 	// Convert the virtual path - if it doesn't exist in this data source then the filter won't include anything
-	TSet<FName> InternalPaths;
-	TMap<FName, TArray<FName>> VirtualPaths;
-	FName SingleInternalPath;
-	ExpandVirtualPath(InPath, InFilter, SingleInternalPath, InternalPaths, VirtualPaths);
+	FName InternalPath;
+	if (!TryConvertVirtualPathToInternal(InPath, InternalPath))
+	{
+		return;
+	}
 
 	auto PassesExternalFilters = [&InFilter](const FName InDiscoveredItemMountPath, const FDiscoveredItem& InDiscoveredItem, const TSharedPtr<const ContentBrowserFileData::FCommonActions>& InCommonActions)
 	{
@@ -525,12 +518,9 @@ void UContentBrowserFileDataSource::CompileFilter(const FName InPath, const FCon
 		}
 	};
 
-	for (const FName InternalPath : InternalPaths)
+	if (const FDiscoveredItem* DiscoveredItem = DiscoveredItems.Find(InternalPath))
 	{
-		if (const FDiscoveredItem* DiscoveredItem = DiscoveredItems.Find(InternalPath))
-		{
-			PopulateMatchingChildItems(*DiscoveredItem);
-		}
+		PopulateMatchingChildItems(*DiscoveredItem);
 	}
 }
 
@@ -1492,24 +1482,7 @@ void UContentBrowserFileDataSource::OnNewFileRequested(const FName InDestFolderP
 		return;
 	}
 
-	FStructOnScope CreationConfig;
-	FString SuggestedFilename;
-	if (InFileActions->ConfigureCreation.IsBound())
-	{
-		if (!InFileActions->ConfigureCreation.Execute(SuggestedFilename, CreationConfig))
-		{
-			return;
-		}
-	}
-
-	if (SuggestedFilename.IsEmpty())
-	{
-		SuggestedFilename = InFileActions->DefaultNewFileName.IsEmpty() ? FString::Printf(TEXT("New%sFile"), *InFileActions->TypeName.ToString()) : InFileActions->DefaultNewFileName;
-	}
-	SuggestedFilename += TEXT(".");
-	SuggestedFilename += InFileActions->TypeExtension;
-
-	FString NewFilename = InDestFolder / SuggestedFilename;
+	FString NewFilename = InDestFolder / (InFileActions->DefaultNewFileName.IsEmpty() ? FString::Printf(TEXT("New%sFile"), *InFileActions->TypeName.ToString()) : InFileActions->DefaultNewFileName) + TEXT(".") + InFileActions->TypeExtension;
 	ContentBrowserFileData::MakeUniqueFilename(NewFilename);
 
 	FString NewFilePath = NewFilename;
@@ -1528,7 +1501,7 @@ void UContentBrowserFileDataSource::OnNewFileRequested(const FName InDestFolderP
 		VirtualizedPath, 
 		*NewFileItemName,
 		FText::AsCultureInvariant(NewFileItemName),
-		MakeShared<FContentBrowserFileItemDataPayload_Creation>(NewInternalFilePath, NewFilename, InFileActions, MoveTemp(CreationConfig))
+		MakeShared<FContentBrowserFileItemDataPayload>(NewInternalFilePath, NewFilename, Config.FindFileActionsForFilename(NewFilename))
 		);
 
 	InOnBeginItemCreation.Execute(FContentBrowserItemDataTemporaryContext(
@@ -1557,7 +1530,7 @@ FContentBrowserItemData UContentBrowserFileDataSource::OnFinalizeCreateFolder(co
 			{
 				if (DirectoryActions->Create.IsBound())
 				{
-					return DirectoryActions->Create.Execute(InNewInternalPath, InNewInternalDiskPath, FStructOnScope());
+					return DirectoryActions->Create.Execute(InNewInternalPath, InNewInternalDiskPath);
 				}
 			}
 
@@ -1582,24 +1555,24 @@ FContentBrowserItemData UContentBrowserFileDataSource::OnFinalizeCreateFile(cons
 	checkf(EnumHasAllFlags(InItemData.GetItemFlags(), EContentBrowserItemFlags::Type_File | EContentBrowserItemFlags::Temporary_Creation), TEXT("OnFinalizeCreateFile called for an instance with the incorrect type flags!"));
 
 	// Committed creation
-	if (TSharedPtr<const FContentBrowserFileItemDataPayload_Creation> CreateFilePayload = StaticCastSharedPtr<const FContentBrowserFileItemDataPayload_Creation>(GetFileItemPayload(InItemData)))
+	if (TSharedPtr<const FContentBrowserFileItemDataPayload> FilePayload = GetFileItemPayload(InItemData))
 	{
-		auto CreateFile = [&CreateFilePayload](const FName InNewInternalPath, const FString& InNewInternalDiskPath)
+		auto CreateFile = [&FilePayload](const FName InNewInternalPath, const FString& InNewInternalDiskPath)
 		{
-			if (TSharedPtr<const ContentBrowserFileData::FFileActions> FileActions = CreateFilePayload->GetFileActions())
+			if (TSharedPtr<const ContentBrowserFileData::FFileActions> FileActions = FilePayload->GetFileActions())
 			{
 				if (FileActions->Create.IsBound())
 				{
-					return FileActions->Create.Execute(InNewInternalPath, InNewInternalDiskPath, CreateFilePayload->GetCreationConfig());
+					return FileActions->Create.Execute(InNewInternalPath, InNewInternalDiskPath);
 				}
 			}
 
 			return FFileHelper::SaveStringToFile(TEXT(""), *InNewInternalDiskPath);
 		};
 
-		const FString Extension = FPaths::GetExtension(CreateFilePayload->GetFilename(), /*bIncludeDot*/true);
-		const FName NewInternalPath = *(FPaths::GetPath(CreateFilePayload->GetInternalPath().ToString()) / InProposedName + Extension);
-		const FString NewPathOnDisk = FPaths::GetPath(CreateFilePayload->GetFilename()) / InProposedName + Extension;
+		const FString Extension = FPaths::GetExtension(FilePayload->GetFilename(), /*bIncludeDot*/true);
+		const FName NewInternalPath = *(FPaths::GetPath(FilePayload->GetInternalPath().ToString()) / InProposedName + Extension);
+		const FString NewPathOnDisk = FPaths::GetPath(FilePayload->GetFilename()) / InProposedName + Extension;
 		if (CreateFile(NewInternalPath, NewPathOnDisk))
 		{
 			return CreateFileItem(NewInternalPath, NewPathOnDisk);

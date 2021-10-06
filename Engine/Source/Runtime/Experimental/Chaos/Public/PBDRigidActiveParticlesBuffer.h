@@ -6,6 +6,7 @@
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/PBDRigidsEvolutionFwd.h"
 
+template <typename T>
 class FSingleParticlePhysicsProxy;
 
 namespace Chaos
@@ -15,7 +16,7 @@ namespace Chaos
 	 */
 	struct CHAOS_API FPBDRigidDirtyParticlesBufferOut
 	{
-		TArray<FSingleParticlePhysicsProxy*> DirtyGameThreadParticles;
+		TArray<FSingleParticlePhysicsProxy<TPBDRigidParticle<float,3> >*> DirtyGameThreadParticles;
 		// Some particle types (clustered) only exist on the game thread, but we
 		// still need to pull data over via their proxies.
 		TSet<IPhysicsProxyBase*> PhysicsParticleProxies;
@@ -29,7 +30,8 @@ namespace Chaos
 	public:
 		FPBDRigidDirtyParticlesBuffer(const Chaos::EMultiBufferMode& InBufferMode, bool bInSingleThreaded);
 
-		void CaptureSolverData(FPBDRigidsSolver* Solver);
+		template <typename Traits>
+		void CaptureSolverData(TPBDRigidsSolver<Traits>* Solver);
 
 		void ReadLock();
 		void ReadUnlock();
@@ -45,7 +47,8 @@ namespace Chaos
 		/**
 		 * Fill data from solver destined for the game thread - used to limit the number of objects updated on the game thread
 		 */
-		void BufferPhysicsResults(FPBDRigidsSolver* Solver);
+		template <typename Traits>
+		void BufferPhysicsResults(TPBDRigidsSolver<Traits>* Solver);
 
 		/**
 		 * Flip should be performed on physics thread side non-game thread
@@ -85,4 +88,14 @@ namespace Chaos
 	private:
 		FPBDRigidDirtyParticlesBuffer* Manager;
 	};
+
+
+#define EVOLUTION_TRAIT(Trait) extern template CHAOS_TEMPLATE_API void Chaos::FPBDRigidDirtyParticlesBuffer::BufferPhysicsResults<Trait>(TPBDRigidsSolver<Trait>* Solver);
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
+
+#define EVOLUTION_TRAIT(Trait) extern template CHAOS_TEMPLATE_API void Chaos::FPBDRigidDirtyParticlesBuffer::CaptureSolverData<Trait>(TPBDRigidsSolver<Trait>* Solver);
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
+
 }

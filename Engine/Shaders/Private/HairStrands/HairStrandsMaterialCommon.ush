@@ -33,7 +33,7 @@ uint MaterialPass_LightChannelMask;
 #define HAIR_MATERIAL_DEBUG_OUTPUT 0
 #endif
 
-#if HAIR_STRAND_MESH_FACTORY
+#if VF_STRAND_HAIR
 struct FEvaluateOutput
 {
 	FHairSample NodeData;

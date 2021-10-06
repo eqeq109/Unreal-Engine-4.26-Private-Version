@@ -107,11 +107,11 @@ struct TIMESYNTH_API FTimeSynthSpectralData
 
 	// The frequency hz of the spectrum value
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
-	float FrequencyHz = 0.0f;
+	float FrequencyHz;
 
 	// The magnitude of the spectrum at this frequency
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpectralData")
-	float Magnitude = 0.0f;
+	float Magnitude;
 };
 
 
@@ -133,23 +133,32 @@ struct TIMESYNTH_API FTimeSynthQuantizationSettings
 
 	// The beats per minute of the pulse. Musical convention gives this as BPM for "quarter notes" (BeatDivision = 4).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "1.0", UIMin = "1.0", ClampMax = "999.0", UIMax = "999.0"))
-	float BeatsPerMinute = 90.0f;
+	float BeatsPerMinute;
 
 	// Defines numerator when determining beat time in seconds
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "1", UIMin = "1"))
-	int32 BeatsPerBar = 4;
+	int32 BeatsPerBar;
 
 	// Amount of beats in a whole note. Defines number of beats in a measure.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "1", UIMin = "1"))
-	ETimeSynthBeatDivision BeatDivision = ETimeSynthBeatDivision::Four;
+	ETimeSynthBeatDivision BeatDivision;
 
 	// The amount of latency to add to time synth events to allow BP delegates to perform logic on game thread
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float EventDelaySeconds = 0.1f;
+	float EventDelaySeconds;
 
 	// This is the rate at which FOnTimeSynthEvent callbacks are made.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip")
-	ETimeSynthEventQuantization GlobalQuantization = ETimeSynthEventQuantization::Bar;
+	ETimeSynthEventQuantization GlobalQuantization;
+
+	FTimeSynthQuantizationSettings()
+		: BeatsPerMinute(90.0f)
+		, BeatsPerBar(4)
+		, BeatDivision(ETimeSynthBeatDivision::Four)
+		, EventDelaySeconds(0.1f)
+		, GlobalQuantization(ETimeSynthEventQuantization::Bar)
+	{
+	}
 };
 
 // Struct using to define a time range for the time synth in quantized time units
@@ -191,11 +200,16 @@ struct TIMESYNTH_API FTimeSynthClipHandle
 
 	// The number of bars
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Synth|TimeSynth")
-	FName ClipName = TEXT("Invalid");
+	FName ClipName;
 
 	// The Id of the clip
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Synth|TimeSynth")
-	int32 ClipId = INDEX_NONE;
+	int32 ClipId;
+
+	FTimeSynthClipHandle()
+		: ClipName(TEXT("Invalid"))
+		, ClipId(INDEX_NONE)
+	{}
 
 	bool operator==(const FTimeSynthClipHandle& Other) const
 	{
@@ -210,15 +224,21 @@ struct TIMESYNTH_API FTimeSynthClipSound
 
 	// The sound wave clip to play
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClipSound")
-	USoundWave* SoundWave = nullptr;
+	USoundWave* SoundWave;
 
 	// The sound wave clip to play
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClipSound")
-	float RandomWeight = 1.0f;
+	float RandomWeight;
 
 	// The distance range of the clip. If zeroed, will play the clip at any range.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClipSound")
-	FVector2D DistanceRange = FVector2D(0.0f, 0.0f);
+	FVector2D DistanceRange;
+
+	FTimeSynthClipSound()
+		: SoundWave(nullptr)
+		, RandomWeight(1.0f)
+		, DistanceRange(0.0f, 0.0f)
+	{}
 };
 
 UCLASS(ClassGroup = Synth, meta = (BlueprintSpawnableComponent))
@@ -298,15 +318,15 @@ struct TIMESYNTH_API FTimeSynthFilterSettings
 
 	// The type of filter to use.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter")
-	ETimeSynthFilterType FilterType = ETimeSynthFilterType::LowPass;
+	ETimeSynthFilterType FilterType;
 
 	// The filter cutoff frequency
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (ClampMin = "20.0", UIMin = "20.0", UIMax = "12000.0"))
-	float CutoffFrequency = 0.0f;
+	float CutoffFrequency;
 
 	// The filter resonance.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (ClampMin = "0.5", ClampMax = "10.0", UIMin = "0.5", UIMax = "10.0"))
-	float FilterQ = 0.0f;
+	float FilterQ;
 };
 
 UENUM(BlueprintType)
@@ -325,19 +345,19 @@ struct TIMESYNTH_API FTimeSynthEnvelopeFollowerSettings
 
 	// The attack time of the envelope follower in milliseconds
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope Follower", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float AttackTime = 0.0f;
+	float AttackTime;
 
 	// The release time of the envelope follower in milliseconds
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope Follower", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float ReleaseTime = 0.0f;
+	float ReleaseTime;
 
 	// The peak mode of the envelope follower
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope Follower")
-	ETimeSynthEnvelopeFollowerPeakMode PeakMode = ETimeSynthEnvelopeFollowerPeakMode::MeanSquared;
+	ETimeSynthEnvelopeFollowerPeakMode PeakMode;
 
 	// Whether or not the envelope follower is in analog mode
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Envelope Follower")
-	bool bIsAnalogMode = false;
+	bool bIsAnalogMode;
 };
 
 class UTimeSynthComponent;

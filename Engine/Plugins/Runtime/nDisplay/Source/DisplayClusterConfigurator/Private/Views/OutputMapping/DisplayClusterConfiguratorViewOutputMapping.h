@@ -5,10 +5,8 @@
 #include "Interfaces/Views/OutputMapping/IDisplayClusterConfiguratorViewOutputMapping.h"
 
 #include "UObject/StrongObjectPtr.h"
-#include "Styling/SlateTypes.h"
 
-class FUICommandList;
-class FDisplayClusterConfiguratorBlueprintEditor;
+class FDisplayClusterConfiguratorToolkit;
 class SDisplayClusterConfiguratorGraphEditor;
 class SDisplayClusterConfiguratorViewOutputMapping;
 class UDisplayClusterConfiguratorGraph;
@@ -17,59 +15,74 @@ class FDisplayClusterConfiguratorViewOutputMapping
 	: public IDisplayClusterConfiguratorViewOutputMapping
 {
 public:
-	FDisplayClusterConfiguratorViewOutputMapping(const TSharedRef<FDisplayClusterConfiguratorBlueprintEditor>& InToolkit);
-	~FDisplayClusterConfiguratorViewOutputMapping();
+	FDisplayClusterConfiguratorViewOutputMapping(const TSharedRef<FDisplayClusterConfiguratorToolkit>& InToolkit);
 
 	//~ Begin IDisplayClusterConfiguratorView Interface
 	virtual TSharedRef<SWidget> CreateWidget() override;
-	virtual TSharedRef<SWidget> GetWidget() override;
+
 	virtual void SetEnabled(bool bInEnabled) override;
 	//~ End IDisplayClusterConfiguratorView Interface
 
 	//~ Begin IDisplayClusterConfiguratorView Interface
-	virtual void Cleanup() override;
+	virtual bool IsRulerVisible() const override;
 
-	virtual FOnOutputMappingBuilt& GetOnOutputMappingBuiltDelegate() override { return OnOutputMappingBuilt; }
+	virtual FDelegateHandle RegisterOnShowWindowInfo(const FOnShowWindowInfoDelegate& Delegate) override;
+
+	virtual void UnregisterOnShowWindowInfo(FDelegateHandle DelegateHandle) override;
+
+	virtual FDelegateHandle RegisterOnShowWindowCornerImage(const FOnShowWindowCornerImageDelegate& Delegate) override;
+
+	virtual void UnregisterOnShowWindowCornerImage(FDelegateHandle DelegateHandle) override;
+
+	virtual FDelegateHandle RegisterOnShowOutsideViewports(const FOnShowOutsideViewportsDelegate& Delegate) override;
+
+	virtual void UnregisterOnShowOutsideViewports(FDelegateHandle DelegateHandle) override;
+
+	virtual FOnOutputMappingBuilt& GetOnOutputMappingBuiltDelegate() override
+	{ return OnOutputMappingBuilt; }
+
 	virtual FDelegateHandle RegisterOnOutputMappingBuilt(const FOnOutputMappingBuiltDelegate& Delegate) override;
+
 	virtual void UnregisterOnOutputMappingBuilt(FDelegateHandle DelegateHandle) override;
 
-	virtual const FOutputMappingSettings& GetOutputMappingSettings() const override { return OutputMappingSettings; }
-	virtual FOutputMappingSettings& GetOutputMappingSettings() override { return OutputMappingSettings; }
+	virtual bool IsShowOutsideViewports() const override
+	{ return bShowOutsideViewports; }
 
-	virtual const FHostNodeArrangementSettings& GetHostArrangementSettings() const override { return HostArrangementSettings; }
-	virtual FHostNodeArrangementSettings& GetHostArrangementSettings() override { return HostArrangementSettings; }
+	virtual bool IsShowWindowInfo() const override
+	{ return bShowWindowInfo; }
 
-	virtual const FNodeAlignmentSettings& GetNodeAlignmentSettings() const override { return NodeAlignmentSettings; }
-	virtual FNodeAlignmentSettings& GetNodeAlignmentSettings() override { return NodeAlignmentSettings; }
+	virtual bool IsShowWindowCornerImage() const override
+	{ return bShowWindowCornerImage; }
 
-	virtual void FindAndSelectObjects(const TArray<UObject*>& ObjectsToSelect) override;
-
-	virtual void JumpToObject(UObject* InObject) override;
-
+	virtual void SetViewportPreviewTexture(const FString& NodeId, const FString& ViewportId, UTexture* InTexture) override;
 	//~ End IDisplayClusterConfiguratorView Interface
 
-	void RefreshNodePositions();
+	void ToggleShowWindowInfo();
 
-private:
-	void BindCommands();
+	void ToggleShowWindowCornerImage();
 
-	void LoadSettings();
-	void SaveSettings();
-
-	void ToggleFlag(bool& bFlag);
-	ECheckBoxState FlagToCheckBoxState(bool bFlag) const;
+	void ToggleShowOutsideViewports();
 
 private:
 	TSharedPtr<SDisplayClusterConfiguratorViewOutputMapping> ViewOutputMapping;
-	TWeakPtr<FDisplayClusterConfiguratorBlueprintEditor> ToolkitPtr;
+
+	TWeakPtr<FDisplayClusterConfiguratorToolkit> ToolkitPtr;
+
 	TSharedPtr<SDisplayClusterConfiguratorGraphEditor> GraphEditor;
+
 	TStrongObjectPtr<UDisplayClusterConfiguratorGraph> GraphObj;
 
-	FOutputMappingSettings OutputMappingSettings;
-	FHostNodeArrangementSettings HostArrangementSettings;
-	FNodeAlignmentSettings NodeAlignmentSettings;
+	bool bShowWindowInfo;
 
-	TSharedPtr<FUICommandList> CommandList;
+	bool bShowWindowCornerImage;
+
+	bool bShowOutsideViewports;
+
+	FOnShowWindowInfo OnShowWindowInfo;
+
+	FOnShowWindowCornerImage OnShowWindowCornerImage;
+
+	FOnShowOutsideViewports OnShowOutsideViewports;
 
 	FOnOutputMappingBuilt OnOutputMappingBuilt;
 };

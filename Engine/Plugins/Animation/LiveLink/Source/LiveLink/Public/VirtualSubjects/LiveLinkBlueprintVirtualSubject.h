@@ -28,13 +28,13 @@ public:
 	void OnUpdate();
 
 	void UpdateVirtualSubjectStaticData(const FLiveLinkBaseStaticData* InStaticData);
-	void UpdateVirtualSubjectFrameData(const FLiveLinkBaseFrameData* InFrameData, bool bInShouldStampCurrentTime);
+	void UpdateVirtualSubjectFrameData(const FLiveLinkBaseFrameData* InFrameData);
 
 	UFUNCTION(BlueprintCallable, CustomThunk, Category = "LiveLink", meta = (CustomStructureParam = "InStruct", BlueprintInternalUseOnly = "true", AllowAbstract = "false"))
 	bool UpdateVirtualSubjectStaticData_Internal(const FLiveLinkBaseStaticData& InStruct);
 
 	UFUNCTION(BlueprintCallable, CustomThunk, Category = "LiveLink", meta = (CustomStructureParam = "InStruct", BlueprintInternalUseOnly = "true", AllowAbstract = "false"))
-	bool UpdateVirtualSubjectFrameData_Internal(const FLiveLinkBaseFrameData& InStruct, bool bInShouldStampCurrentTime);
+	bool UpdateVirtualSubjectFrameData_Internal(const FLiveLinkBaseFrameData& InStruct);
 
 protected:
 	friend class ULiveLinkBlueprintVirtualSubjectFactory;

@@ -63,11 +63,8 @@ FRigUnit_CCDIKPerItem_Execute()
 	TArray<float>& RotationLimitsPerItem = WorkData.RotationLimitsPerItem;
 	FCachedRigElement& CachedEffector = WorkData.CachedEffector;
 
-	if ((Context.State == EControlRigState::Init) ||
-		(
-			(RotationLimits.Num() != RotationLimitIndex.Num()) &&
-			(RotationLimitIndex.Num() > 0))
-		)
+	if (Context.State == EControlRigState::Init ||
+		RotationLimits.Num() != RotationLimitIndex.Num())
 	{
 		CachedItems.Reset();
 		RotationLimitIndex.Reset();

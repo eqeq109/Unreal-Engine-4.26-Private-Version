@@ -13,7 +13,8 @@ namespace Chaos
 	}
 
 
-	void FPBDRigidDirtyParticlesBuffer::CaptureSolverData(FPBDRigidsSolver* Solver)
+	template <typename Traits>
+	void FPBDRigidDirtyParticlesBuffer::CaptureSolverData(TPBDRigidsSolver<Traits>* Solver)
 	{
 		WriteLock();
 		BufferPhysicsResults(Solver);
@@ -21,14 +22,15 @@ namespace Chaos
 		WriteUnlock();
 	}
 
-	void FPBDRigidDirtyParticlesBuffer::BufferPhysicsResults(FPBDRigidsSolver* Solver)
+	template <typename Traits>
+	void FPBDRigidDirtyParticlesBuffer::BufferPhysicsResults(TPBDRigidsSolver<Traits>* Solver)
 	{
 		auto& ActiveGameThreadParticles = SolverDataOut->AccessProducerBuffer()->DirtyGameThreadParticles;
 		auto& PhysicsParticleProxies = SolverDataOut->AccessProducerBuffer()->PhysicsParticleProxies;
 
 		ActiveGameThreadParticles.Empty();
 		PhysicsParticleProxies.Empty();
-		TParticleView<FPBDRigidParticles>& ActiveParticlesView = Solver->GetParticles().GetDirtyParticlesView();
+		TParticleView<TPBDRigidParticles<float, 3>>& ActiveParticlesView = Solver->GetParticles().GetDirtyParticlesView();
 		for (auto& ActiveParticle : ActiveParticlesView)
 		{
 			if (ActiveParticle.Handle())	//can this be null?
@@ -39,10 +41,10 @@ namespace Chaos
 					{
 						if(Proxy != nullptr)	//can this be null?
 						{
-							if(Proxy->GetType() == EPhysicsProxyType::SingleParticleProxy)
+							if(Proxy->GetType() == EPhysicsProxyType::SingleRigidParticleType)
 							{
 								ensure(Proxies->Num() == 1);	//single rigid should only have one proxy
-								ActiveGameThreadParticles.Add(static_cast<FSingleParticlePhysicsProxy*>(Proxy));
+								ActiveGameThreadParticles.Add(static_cast<FSingleParticlePhysicsProxy<TPBDRigidParticle<float,3> >*>(Proxy));
 							}
 							else
 							{
@@ -87,4 +89,13 @@ namespace Chaos
 			ResourceOutLock.WriteUnlock();
 		}
 	}
+
+#define EVOLUTION_TRAIT(Trait) template void Chaos::FPBDRigidDirtyParticlesBuffer::BufferPhysicsResults<Trait>(TPBDRigidsSolver<Trait>* Solver);
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
+
+#define EVOLUTION_TRAIT(Trait) template void Chaos::FPBDRigidDirtyParticlesBuffer::CaptureSolverData<Trait>(TPBDRigidsSolver<Trait>* Solver);
+#include "Chaos/EvolutionTraits.inl"
+#undef EVOLUTION_TRAIT
+
 }

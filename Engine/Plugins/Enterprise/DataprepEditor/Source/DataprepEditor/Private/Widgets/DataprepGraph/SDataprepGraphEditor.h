@@ -16,7 +16,6 @@
 #include "Layout/SlateRect.h"
 #include "NodeFactory.h"
 #include "SGraphNode.h"
-#include "SchemaActions/DataprepSchemaAction.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/SWidget.h"
@@ -120,9 +119,6 @@ public:
 	void DeleteSelectedDuplicatableNodes();
 	/** End of set of methods necessary for copy/paste of action nodes*/
 
-	/** Get the selection of viewport/outliner actors as well as assets from the asset preview tab */
-	TSet<UObject*> GetSelectedActorsAndAssets();
-
 	/** Set of callbacks to rename an action node */
 	bool OnNodeVerifyTitleCommit(const FText& NewText, UEdGraphNode* NodeBeingChanged, FText& OutErrorMessage);
 	void OnNodeTitleCommitted(const FText& NewText, ETextCommit::Type CommitInfo, UEdGraphNode* NodeBeingChanged);
@@ -132,11 +128,6 @@ public:
 
 	/** Callback to create contextual menu for graph nodes in graph panel */
 	FActionMenuContent OnCreateNodeOrPinMenu(UEdGraph* CurrentGraph, const UEdGraphNode* InGraphNode, const UEdGraphPin* InGraphPin, FMenuBuilder* MenuBuilder, bool bIsDebugging);
-
-	/** Callback from the contextual menu to create any entries outside of the action collector */
-	void OnCollectCustomActions(TArray<TSharedPtr<FDataprepSchemaAction>>& OutActions);
-
-	void CreateFilterFromSelection(UDataprepActionAsset* InTargetAction, const TSet< UObject* >& InAssetAndActorSelection);
 
 private:
 	/** Recompute the layout of the displayed graph after a pan, resize and/or zoom */
@@ -160,7 +151,7 @@ private:
 	/** Dimensions of pipeline being displayed */
 	FSlateRect WorkingArea;
 
-	/** The dataprep asset associated with this graph */
+	/** Size of graph being displayed */
 	TWeakObjectPtr<UDataprepAsset> DataprepAssetPtr;
 
 	/** Size of graph being displayed */

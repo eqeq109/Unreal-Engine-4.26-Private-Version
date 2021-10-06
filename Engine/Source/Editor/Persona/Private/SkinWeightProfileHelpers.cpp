@@ -20,9 +20,6 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Misc/MessageDialog.h"
-#include "Interfaces/ITargetPlatform.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
-#include "Misc/CoreMisc.h"
 
 #define LOCTEXT_NAMESPACE "SkinWeightProfileHelpers"
 
@@ -92,7 +89,7 @@ void FSkinWeightProfileHelpers::ImportSkinWeightProfile(USkeletalMesh* InSkeleta
 
 			if(!InSkeletalMesh->IsLODImportedDataBuildAvailable(ImportSettings->LODIndex))
 			{
-				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, ImportSettings->LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, ImportSettings->LODIndex);
 			}
 		}
 	}
@@ -112,7 +109,7 @@ void FSkinWeightProfileHelpers::ImportSkinWeightProfileLOD(USkeletalMesh* InSkel
 		{
 			if(!InSkeletalMesh->IsLODImportedDataBuildAvailable(LODIndex))
 			{
-				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex);
 			}
 
 			FNotificationInfo NotificationInfo(FText::GetEmpty());
@@ -164,7 +161,7 @@ void FSkinWeightProfileHelpers::ReimportSkinWeightProfileLOD(USkeletalMesh* InSk
 				if (!InSkeletalMesh->IsLODImportedDataBuildAvailable(LODIndex))
 				{
 					// Make sure we regenerate any LOD data that is based off the now re imported LOD
-					FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+					FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex);
 				}
 
 				FNotificationInfo NotificationInfo(FText::GetEmpty());
@@ -210,7 +207,7 @@ void FSkinWeightProfileHelpers::RemoveSkinWeightProfile(USkeletalMesh* InSkeleta
 				if (!InSkeletalMesh->IsLODImportedDataBuildAvailable(LODIndex))
 				{
 					// Regenerate this generated LOD
-					FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+					FLODUtilities::SimplifySkeletalMeshLOD(UpdateContext, LODIndex);
 				}
 				// Goto next LOD
 				continue;
@@ -255,7 +252,7 @@ void FSkinWeightProfileHelpers::RemoveSkinWeightProfileLOD(USkeletalMesh* InSkel
 			if (!InSkeletalMesh->IsLODImportedDataBuildAvailable(LODIndex))
 			{
 				//Regenerate dependent LODs if we remove the LOD successfully
-				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex, GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+				FLODUtilities::RegenerateDependentLODs(InSkeletalMesh, LODIndex);
 			}
 
 			FNotificationInfo NotificationInfo(FText::GetEmpty());

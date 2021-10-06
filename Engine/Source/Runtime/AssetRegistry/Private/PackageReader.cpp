@@ -89,7 +89,7 @@ bool FPackageReader::OpenPackageFile(EOpenPackageResult* OutErrorCode)
 	}
 
 	// Check serialized custom versions against latest custom versions.
-	TArray<FCustomVersionDifference> Diffs = FCurrentCustomVersions::Compare(PackageFileSummary.GetCustomVersionContainer().GetAllVersions(), *PackageFilename);
+	TArray<FCustomVersionDifference> Diffs = FCurrentCustomVersions::Compare(PackageFileSummary.GetCustomVersionContainer().GetAllVersions());
 	for (FCustomVersionDifference Diff : Diffs)
 	{
 		if (Diff.Type == ECustomVersionDifference::Missing)
@@ -153,12 +153,7 @@ bool FPackageReader::ReadAssetRegistryData(TArray<FAssetData*>& AssetDataList)
 	}
 
 	// Determine the package name and path
-	FString PackageName;
-	if (!FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageName))
-	{
-		// Path was possibly unmounted
-		return false;
-	}
+	FString PackageName = FPackageName::FilenameToLongPackageName(PackageFilename);
 
 	using namespace UE::AssetRegistry;
 
@@ -335,18 +330,9 @@ bool FPackageReader::ReadAssetRegistryDataIfCookedPackage(TArray<FAssetData*>& A
 
 bool FPackageReader::ReadDependencyData(FPackageDependencyData& OutDependencyData)
 {
-	FString PackageNameString;
-	if (!FPackageName::TryConvertFilenameToLongPackageName(PackageFilename, PackageNameString))
-	{
-		// Path was possibly unmounted
-		return false;
-	}
-
-	OutDependencyData.PackageName = FName(*PackageNameString);
+	OutDependencyData.PackageName = FName(*FPackageName::FilenameToLongPackageName(PackageFilename));
 	OutDependencyData.PackageData.DiskSize = PackageFileSize;
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	OutDependencyData.PackageData.PackageGuid = PackageFileSummary.Guid;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	if (!SerializeNameMap())
 	{

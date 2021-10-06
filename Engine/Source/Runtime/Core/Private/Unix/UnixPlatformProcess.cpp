@@ -3,7 +3,6 @@
 #include "Unix/UnixPlatformProcess.h"
 #include "Unix/UnixPlatformCrashContext.h"
 #include "Unix/UnixPlatformRealTimeSignals.h"
-#include "Unix/UnixForkPageProtector.h"
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "Containers/StringConv.h"
 #include "Logging/LogMacros.h"
@@ -86,11 +85,6 @@ void* FUnixPlatformProcess::GetDllHandle( const TCHAR* Filename )
 		{
 			Handle = dlopen( TCHAR_TO_UTF8(*AbsolutePath), DlOpenMode | RTLD_NOLOAD | RTLD_GLOBAL );
 		}
-	} 
-	else if (!FString(Filename).Contains(TEXT("/")))
-	{
-		// if not found and the filename did not contain a path we search for it in the global path
-		Handle = dlopen( TCHAR_TO_UTF8(Filename), DlOpenMode | RTLD_GLOBAL );
 	}
 
 	if (!Handle)
@@ -262,24 +256,25 @@ const TCHAR* FUnixPlatformProcess::UserHomeDir()
 
 	if (!bHaveHome)
 	{
-		bHaveHome = true;
 		//  get user $HOME var first
 		const char * VarValue = secure_getenv("HOME");
-		if (VarValue && VarValue[0] != '\0')
+		if (VarValue)
 		{
 			FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, UTF8_TO_TCHAR(VarValue));
+			bHaveHome = true;
 		}
 		else
 		{
 			struct passwd * UserInfo = getpwuid(geteuid());
-			if (NULL != UserInfo && NULL != UserInfo->pw_dir && UserInfo->pw_dir[0] != '\0')
+			if (NULL != UserInfo && NULL != UserInfo->pw_dir)
 			{
 				FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, UTF8_TO_TCHAR(UserInfo->pw_dir));
+				bHaveHome = true;
 			}
 			else
 			{
-				FCString::Strcpy(CachedResult, UE_ARRAY_COUNT(CachedResult) - 1, FUnixPlatformProcess::UserTempDir());
-				UE_LOG(LogInit, Warning, TEXT("Could get determine user home directory.  Using temporary directory: %s"), CachedResult);
+				// fail for realz
+				UE_LOG(LogInit, Fatal, TEXT("Could not get determine user home directory."));
 			}
 		}
 	}
@@ -1363,7 +1358,7 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 		sigaction(WAIT_AND_FORK_QUEUE_SIGNAL, &Action, nullptr);
 	}
 
-	UE_LOG(LogHAL, Log, TEXT("   *** WaitAndFork awaiting signal %d to process pid %d create child processes... ***"), WAIT_AND_FORK_QUEUE_SIGNAL, FPlatformProcess::GetCurrentProcessId());
+	UE_LOG(LogHAL, Log, TEXT("   *** WaitAndFork awaiting signal %d to create child processes... ***"), WAIT_AND_FORK_QUEUE_SIGNAL);
 	GLog->Flush();
 
 	struct FMemoryStatsHolder
@@ -1396,8 +1391,6 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 	AllChildren.Reserve(1024); // Sized to be big enough that it probably wont reallocte, but its not the end of the world if it does.
 	while (!IsEngineExitRequested())
 	{
-		BeginExitIfRequested();
-
 		int32 SignalValue = 0;
 		if (WaitAndForkSignalQueue.Dequeue(SignalValue))
 		{
@@ -1431,12 +1424,6 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 			else if (ChildPID == 0)
 			{
 				FForkProcessHelper::SetIsForkedChildProcess();
-
-				if (FPlatformMemory::HasForkPageProtectorEnabled())
-				{
-					UE::FForkPageProtector::OverrideGMalloc();
-					UE::FForkPageProtector::Get().ProtectMemoryRegions();
-				}
 
 				// Child
 				uint16 Cookie = (SignalValue >> 16) & 0xffff;

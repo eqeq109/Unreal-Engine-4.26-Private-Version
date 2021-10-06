@@ -218,7 +218,7 @@ void FMovieSceneChannelData::GetKeyTimes(TArrayView<const FKeyHandle> InHandles,
 	for (int32 Index = 0; Index < InHandles.Num(); ++Index)
 	{
 		const int32 KeyIndex = GetIndex(InHandles[Index]);
-		if (Times->IsValidIndex(KeyIndex))
+		if (KeyIndex != INDEX_NONE)
 		{
 			OutKeyTimes[Index] = (*Times)[KeyIndex];
 		}

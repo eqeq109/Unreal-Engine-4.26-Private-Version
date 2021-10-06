@@ -23,7 +23,7 @@ void FTextureShareDisplayExtension::PostRenderViewFamily_RenderThread(FRHIComman
 	TextureShareDisplayManager.PostRenderViewFamily_RenderThread(RHICmdList, InViewFamily);
 }
 
-bool FTextureShareDisplayExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+bool FTextureShareDisplayExtension::IsActiveThisFrame(class FViewport* InViewport) const
 {
-	return (LinkedViewport == Context.Viewport);
+	return (LinkedViewport == InViewport);
 }

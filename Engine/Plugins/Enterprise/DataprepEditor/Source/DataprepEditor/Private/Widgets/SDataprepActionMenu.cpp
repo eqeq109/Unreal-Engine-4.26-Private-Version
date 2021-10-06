@@ -29,7 +29,6 @@ void SDataprepActionMenu::Construct(const FArguments& InArgs, TUniquePtr<IDatapr
 	NewNodePosition = InArgs._NewNodePosition;
 	DraggedFromPins = InArgs._DraggedFromPins;
 	OnClosedCallback = InArgs._OnClosedCallback;
-	OnCollectCustomActions = InArgs._OnCollectCustomActions;
 
 	ChildSlot
 	[
@@ -64,17 +63,6 @@ SDataprepActionMenu::~SDataprepActionMenu()
 
 void SDataprepActionMenu::CollectActions(FGraphActionListBuilderBase& OutActions)
 {
-	if ( OnCollectCustomActions.IsBound() )
-	{
-		TArray< TSharedPtr<FDataprepSchemaAction> > CustomActions;
-		OnCollectCustomActions.Execute( CustomActions );
-
-		for ( TSharedPtr<FDataprepSchemaAction> Action : CustomActions )
-		{
-			OutActions.AddAction( StaticCastSharedPtr<FEdGraphSchemaAction>( Action ) );
-		}
-	}
-
 	for ( TSharedPtr<FDataprepSchemaAction> Action : MenuActionCollector->CollectActions() )
 	{
 		OutActions.AddAction( StaticCastSharedPtr<FEdGraphSchemaAction>( Action ) );

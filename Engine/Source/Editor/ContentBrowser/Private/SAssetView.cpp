@@ -274,8 +274,6 @@ void SAssetView::Construct( const FArguments& InArgs )
 	HiddenColumnNames = DefaultHiddenColumnNames = InArgs._HiddenColumnNames;
 	CustomColumns = InArgs._CustomColumns;
 	OnSearchOptionsChanged = InArgs._OnSearchOptionsChanged;
-	bShowPathViewFilters = InArgs._bShowPathViewFilters;
-	OnExtendAssetViewOptionsMenuContext = InArgs._OnExtendAssetViewOptionsMenuContext;
 
 	if ( InArgs._InitialViewType >= 0 && InArgs._InitialViewType < EAssetViewType::MAX )
 	{
@@ -1924,28 +1922,6 @@ void SAssetView::RefreshFilteredItems()
 	UE_LOG(LogContentBrowser, VeryVerbose, TEXT("AssetView - RefreshFilteredItems completed in %0.4f seconds"), FPlatformTime::Seconds() - RefreshFilteredItemsStartTime);
 }
 
-void SAssetView::ToggleShowAllFolder()
-{
-	GetMutableDefault<UContentBrowserSettings>()->ShowAllFolder = !GetDefault<UContentBrowserSettings>()->ShowAllFolder;
-	GetMutableDefault<UContentBrowserSettings>()->PostEditChange();
-}
-
-bool SAssetView::IsShowingAllFolder() const
-{
-	return GetDefault<UContentBrowserSettings>()->ShowAllFolder;
-}
-
-void SAssetView::ToggleOrganizeFolders()
-{
-	GetMutableDefault<UContentBrowserSettings>()->OrganizeFolders = !GetDefault<UContentBrowserSettings>()->OrganizeFolders;
-	GetMutableDefault<UContentBrowserSettings>()->PostEditChange();
-}
-
-bool SAssetView::IsOrganizingFolders() const
-{
-	return GetDefault<UContentBrowserSettings>()->OrganizeFolders;
-}
-
 void SAssetView::SetMajorityAssetType(FName NewMajorityAssetType)
 {
 	if (CurrentViewType != EAssetViewType::Column)
@@ -1961,12 +1937,7 @@ void SAssetView::SetMajorityAssetType(FName NewMajorityAssetType)
 		return bIsFixedNameColumn || bIsFixedClassColumn || bIsFixedPathColumn;
 	};
 
-
-	FContentBrowserModule& ContentBrowserModule = FModuleManager::GetModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
-
-	bool bHasDynamicColumns = ContentBrowserModule.IsDynamicTagAssetClass(NewMajorityAssetType);
-
-	if ( NewMajorityAssetType != MajorityAssetType || bHasDynamicColumns)
+	if ( NewMajorityAssetType != MajorityAssetType )
 	{
 		UE_LOG(LogContentBrowser, Verbose, TEXT("The majority of assets in the view are of type: %s"), *NewMajorityAssetType.ToString());
 
@@ -2048,8 +2019,6 @@ void SAssetView::SetMajorityAssetType(FName NewMajorityAssetType)
 		// If we have a new majority type, add the new type's columns
 		if (NewMajorityAssetType != NAME_None)
 		{
-			FContentBrowserItemDataAttributeValues UnionedItemAttributes;
-
 			// Find an item of this type so we can extract the relevant attribute data from it
 			TSharedPtr<FAssetViewItem> MajorityAssetItem;
 			for (const TSharedPtr<FAssetViewItem>& FilteredAssetItem : FilteredAssetItems)
@@ -2057,24 +2026,15 @@ void SAssetView::SetMajorityAssetType(FName NewMajorityAssetType)
 				const FContentBrowserItemDataAttributeValue ClassValue = FilteredAssetItem->GetItem().GetItemAttribute(ContentBrowserItemAttributes::ItemTypeName);
 				if (ClassValue.IsValid() && ClassValue.GetValue<FName>() == NewMajorityAssetType)
 				{
-					if (bHasDynamicColumns)
-					{
-						const FContentBrowserItemDataAttributeValues ItemAttributes = FilteredAssetItem->GetItem().GetItemAttributes(/*bIncludeMetaData*/true);
-						UnionedItemAttributes.Append(ItemAttributes); 
-						MajorityAssetItem = FilteredAssetItem;
-					}
-					else
-					{
-						MajorityAssetItem = FilteredAssetItem;
-						break;
-					}
+					MajorityAssetItem = FilteredAssetItem;
+					break;
 				}
 			}
 
 			// Determine the columns by querying the reference item
 			if (MajorityAssetItem)
 			{
-				FContentBrowserItemDataAttributeValues ItemAttributes = bHasDynamicColumns ? UnionedItemAttributes : MajorityAssetItem->GetItem().GetItemAttributes(/*bIncludeMetaData*/true);
+				const FContentBrowserItemDataAttributeValues ItemAttributes = MajorityAssetItem->GetItem().GetItemAttributes(/*bIncludeMetaData*/true);
 
 				// Add a column for every tag that isn't hidden or using a reserved name
 				for (const auto& TagPair : ItemAttributes)
@@ -2281,12 +2241,6 @@ TSharedRef<SWidget> SAssetView::GetViewButtonContent()
 	UContentBrowserAssetViewContextMenuContext* Context = NewObject<UContentBrowserAssetViewContextMenuContext>();
 	Context->AssetView = SharedThis(this);
 	FToolMenuContext MenuContext(nullptr, MenuExtender, Context);
-
-	if (OnExtendAssetViewOptionsMenuContext.IsBound())
-	{
-		OnExtendAssetViewOptionsMenuContext.Execute(MenuContext);
-	}
-
 	return UToolMenus::Get()->GenerateWidget("ContentBrowser.AssetViewOptions", MenuContext);
 }
 
@@ -2423,41 +2377,6 @@ void SAssetView::PopulateViewButtonMenu(UToolMenu* Menu)
 			),
 			EUserInterfaceActionType::ToggleButton
 		);
-
-		//Section.AddMenuEntry(
-		//	"ShowAllFolder",
-		//	LOCTEXT("ShowAllFolderOption", "Show All Folder"),
-		//	LOCTEXT("ShowAllFolderOptionToolTip", "Show the all folder in the view?"),
-		//	FSlateIcon(),
-		//	FUIAction(
-		//		FExecuteAction::CreateSP(this, &SAssetView::ToggleShowAllFolder),
-		//		FCanExecuteAction(),
-		//		FIsActionChecked::CreateSP(this, &SAssetView::IsShowingAllFolder)
-		//	),
-		//	EUserInterfaceActionType::ToggleButton
-		//);
-
-		//Section.AddMenuEntry(
-		//	"OrganizeFolders",
-		//	LOCTEXT("OrganizeFoldersOption", "Organize Folders"),
-		//	LOCTEXT("OrganizeFoldersOptionToolTip", "Organize folders in the view?"),
-		//	FSlateIcon(),
-		//	FUIAction(
-		//		FExecuteAction::CreateSP(this, &SAssetView::ToggleOrganizeFolders),
-		//		FCanExecuteAction(),
-		//		FIsActionChecked::CreateSP(this, &SAssetView::IsOrganizingFolders)
-		//	),
-		//	EUserInterfaceActionType::ToggleButton
-		//);
-
-		if (bShowPathViewFilters)
-		{
-			Section.AddSubMenu(
-				"PathViewFilters",
-				LOCTEXT("PathViewFilters", "Path View Filters"),
-				LOCTEXT("PathViewFilters_ToolTip", "Path View Filters"),
-				FNewToolMenuDelegate());
-		}
 	}
 
 	{

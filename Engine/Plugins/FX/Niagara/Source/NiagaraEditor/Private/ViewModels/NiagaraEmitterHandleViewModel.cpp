@@ -26,10 +26,9 @@
 
 #define LOCTEXT_NAMESPACE "EmitterHandleViewModel"
 
-FNiagaraEmitterHandleViewModel::FNiagaraEmitterHandleViewModel(bool bInIsForDataProcessingOnly)
-	: EmitterHandleIndex(INDEX_NONE)
-	, EmitterHandle(nullptr)
-	, EmitterViewModel(MakeShared<FNiagaraEmitterViewModel>(bInIsForDataProcessingOnly))
+FNiagaraEmitterHandleViewModel::FNiagaraEmitterHandleViewModel()
+	: EmitterHandle(nullptr)
+	, EmitterViewModel(MakeShared<FNiagaraEmitterViewModel>())
 	, EmitterStackViewModel(NewObject<UNiagaraStackViewModel>(GetTransientPackage()))
 	, bIsRenamePending(false)
 {
@@ -37,16 +36,7 @@ FNiagaraEmitterHandleViewModel::FNiagaraEmitterHandleViewModel(bool bInIsForData
 
 bool FNiagaraEmitterHandleViewModel::IsValid() const
 {
-	if(EmitterHandleIndex != INDEX_NONE && EmitterHandle != nullptr)
-	{
-		TSharedPtr<FNiagaraSystemViewModel> SystemViewModel = OwningSystemViewModelWeak.Pin();
-		if (SystemViewModel.IsValid() && SystemViewModel->IsValid())
-		{
-			UNiagaraSystem& System = SystemViewModel->GetSystem();
-			return EmitterHandleIndex < System.GetNumEmitters() && &System.GetEmitterHandle(EmitterHandleIndex) == EmitterHandle;
-		}
-	}
-	return false;
+	return EmitterHandle != nullptr;
 }
 
 void FNiagaraEmitterHandleViewModel::Cleanup()
@@ -111,11 +101,10 @@ FNiagaraEmitterHandleViewModel::~FNiagaraEmitterHandleViewModel()
 }
 
 
-void FNiagaraEmitterHandleViewModel::Initialize(TSharedRef<FNiagaraSystemViewModel> InOwningSystemViewModel, int32 InEmitterHandleIndex, TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> InSimulation)
+void FNiagaraEmitterHandleViewModel::Initialize(TSharedRef<FNiagaraSystemViewModel> InOwningSystemViewModel, FNiagaraEmitterHandle* InEmitterHandle, TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> InSimulation)
 {
 	OwningSystemViewModelWeak = InOwningSystemViewModel;
-	EmitterHandleIndex = InEmitterHandleIndex;
-	EmitterHandle = &InOwningSystemViewModel->GetSystem().GetEmitterHandle(InEmitterHandleIndex);
+	EmitterHandle = InEmitterHandle;
 	UNiagaraEmitter* Emitter = EmitterHandle != nullptr ? EmitterHandle->GetInstance() : nullptr;
 	EmitterViewModel->Initialize(Emitter, InSimulation);
 	EmitterStackViewModel->InitializeWithViewModels(InOwningSystemViewModel, this->AsShared(), FNiagaraStackViewModelOptions(false, true));
@@ -125,7 +114,6 @@ void FNiagaraEmitterHandleViewModel::Reset()
 {
 	EmitterStackViewModel->Reset();
 	OwningSystemViewModelWeak.Reset();
-	EmitterHandleIndex = INDEX_NONE;
 	EmitterHandle = nullptr;
 	EmitterViewModel->Reset();
 }
@@ -270,19 +258,15 @@ bool FNiagaraEmitterHandleViewModel::GetIsEnabled() const
 	return false;
 }
 
-bool FNiagaraEmitterHandleViewModel::SetIsEnabled(bool bInIsEnabled, bool bRequestRecompile)
+void FNiagaraEmitterHandleViewModel::SetIsEnabled(bool bInIsEnabled)
 {
 	if (EmitterHandle && EmitterHandle->GetIsEnabled() != bInIsEnabled)
 	{
 		FScopedTransaction ScopedTransaction(NSLOCTEXT("NiagaraEmitterEditor", "EditEmitterEnabled", "Change emitter enabled state"));
 		GetOwningSystemViewModel()->GetSystem().Modify();
-		EmitterHandle->SetIsEnabled(bInIsEnabled, GetOwningSystemViewModel()->GetSystem(), bRequestRecompile);
+		EmitterHandle->SetIsEnabled(bInIsEnabled, GetOwningSystemViewModel()->GetSystem(), true);
 		OnPropertyChangedDelegate.Broadcast();
-
-		return true;
 	}
-
-	return false;
 }
 
 bool FNiagaraEmitterHandleViewModel::GetIsIsolated() const
@@ -293,18 +277,14 @@ bool FNiagaraEmitterHandleViewModel::GetIsIsolated() const
 void FNiagaraEmitterHandleViewModel::SetIsIsolated(bool bInIsIsolated)
 {
 	bool bWasIsolated = GetIsIsolated();
-	bool bStateChanged = bWasIsolated != bInIsIsolated;
 
-	TArray<FGuid> EmitterIds;
-
-	if(bStateChanged)
-	{		
-		if(bInIsIsolated)
-		{
-			EmitterIds.Add(EmitterHandle->GetId());
-		}
-
-		GetOwningSystemViewModel()->IsolateEmitters(EmitterIds);
+	if (bWasIsolated == false && bInIsIsolated == true)
+	{
+		GetOwningSystemViewModel()->IsolateEmitters(TArray<FGuid> { EmitterHandle->GetId() });
+	}
+	else if (bWasIsolated == true && bInIsIsolated == false)
+	{
+		GetOwningSystemViewModel()->IsolateEmitters(TArray<FGuid> {});
 	}
 }
 

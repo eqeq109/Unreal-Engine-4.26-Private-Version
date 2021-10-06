@@ -142,7 +142,7 @@ FOnlineEncryptedAppTicketSteam::FOnlineEncryptedAppTicketSteam(FOnlineSubsystemS
 
 FOnlineEncryptedAppTicketSteam::~FOnlineEncryptedAppTicketSteam()
 {
-	OnEncryptedAppTicketResultDelegate.Clear();
+	OnEncryptedAppTicketResultDelegate.Unbind();
 }
 
 bool FOnlineEncryptedAppTicketSteam::RequestEncryptedAppTicket(void* DataToEncrypt, int SizeOfDataToEncrypt)
@@ -174,7 +174,7 @@ void FOnlineEncryptedAppTicketSteam::OnAPICallComplete(bool bEncryptedDataAvaila
 											ESteamEncryptedAppTicketState::TicketFailure;
 
 	// Inform any listeners about the Steam API call result.
-	OnEncryptedAppTicketResultDelegate.Broadcast(bEncryptedDataAvailable, ResultCode);
+	OnEncryptedAppTicketResultDelegate.ExecuteIfBound(bEncryptedDataAvailable, ResultCode);
 }
 
 bool FOnlineEncryptedAppTicketSteam::GetEncryptedAppTicket(TArray<uint8>& OutEncryptedData)

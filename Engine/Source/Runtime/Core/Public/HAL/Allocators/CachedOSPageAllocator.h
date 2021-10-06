@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreTypes.h"
-#include "HAL/CriticalSection.h"
 
 struct FCachedOSPageAllocator
 {
@@ -20,9 +19,9 @@ protected:
 		}
 	};
 
-	void* AllocateImpl(SIZE_T Size, uint32 CachedByteLimit, FFreePageBlock* First, FFreePageBlock* Last, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal, FCriticalSection* Mutex);
-	void FreeImpl(void* Ptr, SIZE_T Size, uint32 NumCacheBlocks, uint32 CachedByteLimit, FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal, FCriticalSection* Mutex);
-	void FreeAllImpl(FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal, FCriticalSection* Mutex);
+	void* AllocateImpl(SIZE_T Size, uint32 CachedByteLimit, FFreePageBlock* First, FFreePageBlock* Last, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
+	void FreeImpl(void* Ptr, SIZE_T Size, uint32 NumCacheBlocks, uint32 CachedByteLimit, FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
+	void FreeAllImpl(FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
 };
 
 template <uint32 NumCacheBlocks, uint32 CachedByteLimit>
@@ -34,18 +33,18 @@ struct TCachedOSPageAllocator : private FCachedOSPageAllocator
 	{
 	}
 
-	FORCEINLINE void* Allocate(SIZE_T Size, uint32 AllocationHint = 0, FCriticalSection* Mutex = nullptr)
+	FORCEINLINE void* Allocate(SIZE_T Size, uint32 AllocationHint = 0)
 	{
-		return AllocateImpl(Size, CachedByteLimit, FreedPageBlocks, FreedPageBlocks + FreedPageBlocksNum, FreedPageBlocksNum, CachedTotal, Mutex);
+		return AllocateImpl(Size, CachedByteLimit, FreedPageBlocks, FreedPageBlocks + FreedPageBlocksNum, FreedPageBlocksNum, CachedTotal);
 	}
 
-	void Free(void* Ptr, SIZE_T Size, FCriticalSection* Mutex = nullptr)
+	void Free(void* Ptr, SIZE_T Size)
 	{
-		return FreeImpl(Ptr, Size, NumCacheBlocks, CachedByteLimit, FreedPageBlocks, FreedPageBlocksNum, CachedTotal, Mutex);
+		return FreeImpl(Ptr, Size, NumCacheBlocks, CachedByteLimit, FreedPageBlocks, FreedPageBlocksNum, CachedTotal);
 	}
-	void FreeAll(FCriticalSection* Mutex = nullptr)
+	void FreeAll()
 	{
-		return FreeAllImpl(FreedPageBlocks, FreedPageBlocksNum, CachedTotal, Mutex);
+		return FreeAllImpl(FreedPageBlocks, FreedPageBlocksNum, CachedTotal);
 	}
 
 	uint64 GetCachedFreeTotal()

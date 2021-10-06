@@ -315,7 +315,6 @@
 
 class Error;
 class FNetGUIDCache;
-struct FNetSyncLoadReport;
 class FNetworkNotify;
 class FNetworkObjectList;
 class FObjectReplicator;
@@ -366,12 +365,6 @@ extern ENGINE_API int32 GNumClientUpdateLevelVisibility;
  */
 DECLARE_DELEGATE_SevenParams(FOnSendRPC, AActor* /*Actor*/, UFunction* /*Function*/, void* /*Parameters*/,
 									FOutParmRec* /*OutParms*/, FFrame* /*Stack*/, UObject* /*SubObject*/, bool& /*bBlockSendRPC*/);
-
-/**
- * Delegate for hooking ShouldSkipRepNotifies
- */
-DECLARE_DELEGATE_RetVal(bool, FShouldSkipRepNotifies);
-
 #endif
 
 //
@@ -847,7 +840,7 @@ public:
 	TMap<FName, FChannelDefinition> ChannelDefinitionMap;
 
 	/** @return true if the specified channel definition exists. */
-	FORCEINLINE bool IsKnownChannelName(const FName& ChName) const
+	FORCEINLINE bool IsKnownChannelName(const FName& ChName)
 	{
 		return ChannelDefinitionMap.Contains(ChName);
 	}
@@ -893,18 +886,8 @@ public:
 	double GetElapsedTime() const { return ElapsedTime; }
 	void ResetElapsedTime() { ElapsedTime = 0.0; }
 
-	bool IsInTick() const { return bInTick; }
-
-	bool GetPendingDestruction() const { return bPendingDestruction; }
-	void SetPendingDestruction(bool bDestroy) { bPendingDestruction = bDestroy; }
-
 private:
 	double						ElapsedTime;
-
-	/** Whether or not the NetDriver is ticking */
-	bool bInTick;
-
-	bool bPendingDestruction;
 
 public:
 	/** Last realtime a tick dispatch occurred. Used currently to try and diagnose timeout issues */
@@ -1059,7 +1042,7 @@ public:
 	uint32																		ReplicationFrame;
 
 	/** Maps FRepLayout to the respective UClass */
-	TMap<TWeakObjectPtr<UObject>, TSharedPtr<FRepLayout>, FDefaultSetAllocator, TWeakObjectPtrMapKeyFuncs<TWeakObjectPtr<UObject>, TSharedPtr<FRepLayout> > >	RepLayoutMap;
+	TMap< TWeakObjectPtr< UObject >, TSharedPtr< FRepLayout > >					RepLayoutMap;
 
 	class FReplicationChangelistMgrWrapper
 	{
@@ -1091,7 +1074,7 @@ public:
 	ENGINE_API TSharedPtr<FRepLayout> GetFunctionRepLayout( UFunction * Function );
 
 	/** Creates if necessary, and returns a FRepLayout that maps to the passed in UStruct */
-	ENGINE_API TSharedPtr<FRepLayout> GetStructRepLayout( UStruct * Struct );
+	TSharedPtr<FRepLayout>		GetStructRepLayout( UStruct * Struct );
 
 	/**
 	 * Returns the FReplicationChangelistMgr that is associated with the passed in object,
@@ -1115,9 +1098,6 @@ public:
 #if !UE_BUILD_SHIPPING
 	/** Delegate for hooking ProcessRemoteFunction */
 	FOnSendRPC	SendRPCDel;
-
-	/** Delegate for hooking ShouldSkipRepNotifies */
-	FShouldSkipRepNotifies SkipRepNotifiesDel;
 #endif
 
 	/** Tracks the amount of time spent during the current frame processing queued bunches. */
@@ -1459,7 +1439,7 @@ public:
 	ENGINE_API virtual class UChildConnection* CreateChild(UNetConnection* Parent);
 
 	/** @return String that uniquely describes the net driver instance */
-	FString GetDescription() const
+	FString GetDescription() 
 	{ 
 		return FString::Printf(TEXT("%s %s%s"), *NetDriverName.ToString(), *GetName(), bIsPeer ? TEXT("(PEER)") : TEXT(""));
 	}
@@ -1518,7 +1498,7 @@ public:
 	virtual bool ShouldClientDestroyTearOffActors() const { return false; }
 
 	/** Returns whether or not properties that are replicating using this driver should not call RepNotify functions. */
-	ENGINE_API virtual bool ShouldSkipRepNotifies() const;
+	virtual bool ShouldSkipRepNotifies() const { return false; }
 
 	/** Returns true if actor channels with InGUID should queue up bunches, even if they wouldn't otherwise be queued. */
 	virtual bool ShouldQueueBunchesForActorGUID(FNetworkGUID InGUID) const { return false; }
@@ -1578,10 +1558,10 @@ public:
 	/** Explicitly sets the ReplicationDriver instance (you instantiate it and initialize it). Shouldn't be done during gameplay: ok to do in GameMode startup or via console commands for testing. Existing ReplicationDriver (if set) is destroyed when this is called.  */
 	ENGINE_API void SetReplicationDriver(UReplicationDriver* NewReplicationManager);
 
-	ENGINE_API UReplicationDriver* GetReplicationDriver() const { return ReplicationDriver; }
+	ENGINE_API UReplicationDriver* GetReplicationDriver() { return ReplicationDriver; }
 
 	template<class T>
-	T* GetReplicationDriver() const { return Cast<T>(ReplicationDriver); }
+	T* GetReplicationDriver() { return Cast<T>(ReplicationDriver); }
 
 	void RemoveClientConnection(UNetConnection* ClientConnectionToRemove);
 
@@ -1734,12 +1714,6 @@ private:
 	void FlushActorDormancyInternal(AActor *Actor);
 
 	void LoadChannelDefinitions();
-
-	/** Used with FNetDelegates::OnSyncLoadDetected to log sync loads */
-	void ReportSyncLoad(const FNetSyncLoadReport& Report);
-
-	/** Handle to FNetDelegates::OnSyncLoadDetected delegate */
-	FDelegateHandle ReportSyncLoadDelegateHandle;
 
 	UPROPERTY(transient)
 	UReplicationDriver* ReplicationDriver;

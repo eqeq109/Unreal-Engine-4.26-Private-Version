@@ -30,9 +30,6 @@ FWmfMediaPlayer::FWmfMediaPlayer(IMediaEventSink& InEventSink)
 {
 	check(Session != NULL);
 	check(Tracks.IsValid());
-#if WMFMEDIA_PLAYER_VERSION >= 2
-	Session->SetTracks(Tracks);
-#endif // WMFMEDIA_PLAYER_VERSION >= 2
 }
 
 
@@ -162,11 +159,8 @@ bool FWmfMediaPlayer::Open(const TSharedRef<FArchive, ESPMode::ThreadSafe>& Arch
 	return InitializePlayer(Archive, OriginalUrl, false, nullptr);
 }
 
-#if WMFMEDIA_PLAYER_VERSION == 1
+
 void FWmfMediaPlayer::TickFetch(FTimespan /*DeltaTime*/, FTimespan /*Timecode*/)
-#else // WMFMEDIA_PLAYER_VERSION == 1
-void FWmfMediaPlayer::Tick()
-#endif // WMFMEDIA_PLAYER_VERSION == 1
 {
 	bool MediaSourceChanged = false;
 	bool TrackSelectionChanged = false;
@@ -206,10 +200,6 @@ void FWmfMediaPlayer::Tick()
 
 void FWmfMediaPlayer::TickInput(FTimespan DeltaTime, FTimespan /*Timecode*/)
 {
-#if WMFMEDIA_PLAYER_VERSION >= 2
-	Tick();
-#endif // WMFMEDIA_PLAYER_VERSION >= 2
-
 	// forward session events
 	TArray<EMediaEvent> OutEvents;
 	Session->GetEvents(OutEvents);
@@ -219,31 +209,6 @@ void FWmfMediaPlayer::TickInput(FTimespan DeltaTime, FTimespan /*Timecode*/)
 		EventSink.ReceiveMediaEvent(Event);
 	}
 }
-
-#if WMFMEDIA_PLAYER_VERSION >= 2
-
-bool FWmfMediaPlayer::FlushOnSeekStarted() const
-{
-	return true;
-}
-
-bool FWmfMediaPlayer::FlushOnSeekCompleted() const
-{
-	return false;
-}
-
-bool FWmfMediaPlayer::GetPlayerFeatureFlag(EFeatureFlag Flag) const
-{
-	switch (Flag)
-	{
-		case EFeatureFlag::UsePlaybackTimingV2:
-		case EFeatureFlag::PlayerUsesInternalFlushOnSeek:
-			return true;
-	}
-	return IMediaPlayer::GetPlayerFeatureFlag(Flag);
-}
-
-#endif // WMFMEDIA_PLAYER_VERSION >= 2
 
 
 /* FWmfMediaPlayer implementation

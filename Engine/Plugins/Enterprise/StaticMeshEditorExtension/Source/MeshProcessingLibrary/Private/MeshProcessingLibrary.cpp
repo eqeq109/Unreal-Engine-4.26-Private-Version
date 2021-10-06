@@ -61,6 +61,56 @@ namespace MeshProcessingUtils
 		return true;
 	}
 
+	// Same as FMeshMergeHelpers::TransformRawMeshVertexData
+	// Transform raw mesh vertex data by the Static Mesh Component's component to world transformation
+	void TransformRawMeshVertexData(const FTransform& InTransform, FMeshDescription &OutRawMesh)
+	{
+		TVertexAttributesRef<FVector> VertexPositions = OutRawMesh.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+		TVertexInstanceAttributesRef<FVector> VertexInstanceNormals = OutRawMesh.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
+		TVertexInstanceAttributesRef<FVector> VertexInstanceTangents = OutRawMesh.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
+		TVertexInstanceAttributesRef<float> VertexInstanceBinormalSigns = OutRawMesh.VertexInstanceAttributes().GetAttributesRef<float>(MeshAttribute::VertexInstance::BinormalSign);
+
+		for (const FVertexID VertexID : OutRawMesh.Vertices().GetElementIDs())
+		{
+			VertexPositions[VertexID] = InTransform.TransformPosition(VertexPositions[VertexID]);
+		}
+
+		auto TransformNormal = [&](FVector& Normal)
+		{
+			FMatrix Matrix = InTransform.ToMatrixWithScale();
+			const float DetM = Matrix.Determinant();
+			FMatrix AdjointT = Matrix.TransposeAdjoint();
+			AdjointT.RemoveScaling();
+
+			Normal = AdjointT.TransformVector(Normal);
+			if (DetM < 0.f)
+			{
+				Normal *= -1.0f;
+			}
+		};
+
+		for (const FVertexInstanceID VertexInstanceID : OutRawMesh.VertexInstances().GetElementIDs())
+		{
+			FVector TangentX = VertexInstanceTangents[VertexInstanceID];
+			FVector TangentZ = VertexInstanceNormals[VertexInstanceID];
+			FVector TangentY = FVector::CrossProduct(TangentZ, TangentX).GetSafeNormal() * VertexInstanceBinormalSigns[VertexInstanceID];
+
+			TransformNormal(TangentX);
+			TransformNormal(TangentY);
+			TransformNormal(TangentZ);
+
+			VertexInstanceTangents[VertexInstanceID] = TangentX;
+			VertexInstanceBinormalSigns[VertexInstanceID] = GetBasisDeterminantSign(TangentX, TangentY, TangentZ);
+			VertexInstanceNormals[VertexInstanceID] = TangentZ;
+		}
+
+		const bool bIsMirrored = InTransform.GetDeterminant() < 0.f;
+		if (bIsMirrored)
+		{
+			OutRawMesh.ReverseAllPolygonFacing();
+		}
+	}
+
 	void UpdateUndoBufferSize()
 	{
 		if (MeshProcessingUtils::CheckIfInEditorAndPIE(TEXT("DefeatureMesh")) && GetDefault< UMeshProcessingEnterpriseSettings >())
@@ -188,7 +238,6 @@ void UMeshProcessingLibrary::DefeatureMesh(FMeshDescription& MeshDescription, co
 #endif // WITH_MESH_SIMPLIFIER
 
 #if WITH_PROXYLOD
-
 // See FVoxelizeMeshMerging::ProxyLOD
 void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& Actors, const UJacketingOptions* Options, TArray<AActor*>& OccludedActorArray, bool bSilent)
 {
@@ -262,7 +311,7 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 	// Geometry input data for voxelizing methods
 	TArray<FMeshMergeData> Geometry;
 	// Store world space mesh for each static mesh component
-	TMap<UStaticMeshComponent*, FMeshDescription*> MeshDescriptions;
+	TMap<UStaticMeshComponent*, FMeshDescription*> RawMeshes;
 	int32 VertexCount = 0;
 	int32 PolygonCount = 0;
 	int32 DeletedPolygonCount = 0;
@@ -275,29 +324,29 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 			continue;
 		}
 
-		// FMeshMergeData will release the allocated MeshDescription...
-		FMeshDescription* MeshDescriptionOriginal = StaticMesh->GetMeshDescription(0);
-		FMeshDescription* MeshDescription = new FMeshDescription();
-		*MeshDescription = *MeshDescriptionOriginal;
+		// FMeshMergeData will release the RawMesh...
+		FMeshDescription* RawMeshOriginal = StaticMesh->GetMeshDescription(0);
+		FMeshDescription* RawMesh = new FMeshDescription();
+		*RawMesh = *RawMeshOriginal;
 		//Make sure all ID are from 0 to N
 		FElementIDRemappings OutRemappings;
-		MeshDescription->Compact(OutRemappings);
+		RawMesh->Compact(OutRemappings);
 
 		const FTransform& ComponentToWorldTransform = StaticMeshComponent->GetComponentTransform();
 
 		// Transform raw mesh vertex data by the Static Mesh Component's component to world transformation
-		FStaticMeshOperations::ApplyTransform(*MeshDescription, ComponentToWorldTransform);
+		MeshProcessingUtils::TransformRawMeshVertexData(ComponentToWorldTransform, *RawMesh);
 
-		VertexCount += MeshDescription->Vertices().Num();
-		PolygonCount += MeshDescription->Polygons().Num();
+		VertexCount += RawMesh->Vertices().Num();
+		PolygonCount += RawMesh->Polygons().Num();
 
-		// Stores transformed MeshDescription for later use
-		MeshDescriptions.Add(StaticMeshComponent, MeshDescription);
+		// Stores transformed RawMesh for later use
+		RawMeshes.Add(StaticMeshComponent, RawMesh);
 
 		FMeshMergeData MergeData;
 		MergeData.bIsClippingMesh = false;
 		MergeData.SourceStaticMesh = StaticMesh;
-		MergeData.RawMesh = MeshDescription;
+		MergeData.RawMesh = RawMesh;
 
 		Geometry.Add(MergeData);
 	}
@@ -413,9 +462,9 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 		if (!bComponentInside)
 		{
 			bComponentInside = true;
-			FMeshDescription* MeshDescription = MeshDescriptions[StaticMeshComponent];
-			TVertexAttributesConstRef<FVector> VertexPositions = MeshDescription->VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-			for (FVertexID VertexID : MeshDescription->Vertices().GetElementIDs())
+			FMeshDescription* RawMesh = RawMeshes[StaticMeshComponent];
+			TVertexAttributesConstRef<FVector> VertexPositions = RawMesh->VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+			for (FVertexID VertexID : RawMesh->Vertices().GetElementIDs())
 			{
 				if (Volume->QueryDistance(VertexPositions[VertexID]) > MaxDistance)
 				{
@@ -427,7 +476,7 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 
 		if (bComponentInside)
 		{
-			DeletedPolygonCount += MeshDescriptions[StaticMeshComponent]->Polygons().Num();
+			DeletedPolygonCount += RawMeshes[StaticMeshComponent]->Polygons().Num();
 			OccludedComponentCount++;
 
 			AActor* Actor = StaticMeshComponent->GetOwner();
@@ -494,8 +543,8 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 			continue;
 		}
 
-		TVertexAttributesConstRef<FVector> VertexPositions = MeshDescriptions[StaticMeshComponent]->VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
-		for (FVertexID VertexID : MeshDescriptions[StaticMeshComponent]->Vertices().GetElementIDs())
+		TVertexAttributesConstRef<FVector> VertexPositions = RawMeshes[StaticMeshComponent]->VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
+		for (FVertexID VertexID : RawMeshes[StaticMeshComponent]->Vertices().GetElementIDs())
 		{
 			VertexDataArray.Emplace(FVertexData(StaticMeshComponent, &VertexPositions[VertexID], false));
 		}
@@ -532,7 +581,7 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 		if (MeshesToRebuild.Find(StaticMeshComponent->GetStaticMesh()) == nullptr)
 		{
 			TVisibilityPair& VisibilityPair = MeshesToRebuild.Add(StaticMeshComponent->GetStaticMesh(), TVisibilityPair(StaticMeshComponent, TArray<bool>()));
-			VisibilityPair.Value.AddZeroed(MeshDescriptions[StaticMeshComponent]->Vertices().Num());
+			VisibilityPair.Value.AddZeroed(RawMeshes[StaticMeshComponent]->Vertices().Num());
 		}
 
 		TArray<bool>& VertexVisibility = MeshesToRebuild[StaticMeshComponent->GetStaticMesh()].Value;
@@ -545,28 +594,27 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 	// Removing occluded triangles from meshes
 	TArray<UStaticMesh*> StaticMeshArray;
 	MeshesToRebuild.GetKeys(StaticMeshArray);
-	ParallelFor(MeshesToRebuild.Num(), [&](int32 Index) 
-	{
+	ParallelFor(MeshesToRebuild.Num(), [&](int32 Index) {
 		UStaticMesh* StaticMesh = StaticMeshArray[Index];
 		TVisibilityPair& VisibilityPair = MeshesToRebuild[StaticMesh];
 		UStaticMeshComponent* StaticMeshComponent = VisibilityPair.Key;
 		TArray<bool>& VertexVisibility = VisibilityPair.Value;
 
-		FMeshDescription* MeshDescription = MeshDescriptions[StaticMeshComponent];
+		FMeshDescription* RawMesh = RawMeshes[StaticMeshComponent];
 
-		if (MeshDescription->Polygons().Num() == 0 || MeshDescription->Vertices().Num() == 0)
+		if (RawMesh->Polygons().Num() == 0 || RawMesh->Vertices().Num() == 0)
 		{
 			VisibilityPair.Key = nullptr;
 			return;
 		}
 
-		FMeshDescription NewMeshDescription = *MeshDescription;
+		FMeshDescription NewRawMesh = *RawMesh;
 
 		TArray<FPolygonID> PolygonToRemove;
-		for (const FPolygonID& PolygonID : NewMeshDescription.Polygons().GetElementIDs())
+		for (const FPolygonID& PolygonID : NewRawMesh.Polygons().GetElementIDs())
 		{
 			TArray<FVertexID> PolygonVertices;
-			NewMeshDescription.GetPolygonVertices(PolygonID, PolygonVertices);
+			NewRawMesh.GetPolygonVertices(PolygonID, PolygonVertices);
 			bool bPolygonVisible = false;
 			for (FVertexID VertexID : PolygonVertices)
 			{
@@ -584,34 +632,34 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 			VisibilityPair.Key = nullptr;
 		}
 		// This should never happen. Such situation should have been caught earlier
-		else if (PolygonToRemove.Num() == NewMeshDescription.Polygons().Num())
+		else if (PolygonToRemove.Num() == NewRawMesh.Polygons().Num())
 		{
 			check(false);
 		}
 		// Update mesh to only contain visible triangles
 		else
 		{
-			NewMeshDescription.DeletePolygons(PolygonToRemove);
+			NewRawMesh.DeletePolygons(PolygonToRemove);
 			
 			//Compact and Remap IDs so we have clean ID from 0 to n since we just erased some polygons
 			FElementIDRemappings RemappingInfos;
-			NewMeshDescription.Compact(RemappingInfos);
+			NewRawMesh.Compact(RemappingInfos);
 
 			FTransform Transform = StaticMeshComponent->GetComponentTransform().Inverse();
 
 			//Apply the inverse component transform
-			FStaticMeshOperations::ApplyTransform(NewMeshDescription, Transform);
+			MeshProcessingUtils::TransformRawMeshVertexData(Transform, NewRawMesh);
 
-			TVertexInstanceAttributesRef<FVector> VertexInstanceNormals = NewMeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
-			TVertexInstanceAttributesRef<FVector> VertexInstanceTangents = NewMeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
+			TVertexInstanceAttributesRef<FVector> VertexInstanceNormals = NewRawMesh.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
+			TVertexInstanceAttributesRef<FVector> VertexInstanceTangents = NewRawMesh.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
 
-			MeshDescription->Empty();
+			RawMesh->Empty();
 
 			//Create the missing normals and tangents on polygons because FStaticMeshOperations::ComputeTangentsAndNormals requires it
-			if(!NewMeshDescription.PolygonAttributes().GetAttributesRef<FVector>(MeshAttribute::Polygon::Normal).IsValid()
-				|| !NewMeshDescription.PolygonAttributes().GetAttributesRef<FVector>(MeshAttribute::Polygon::Tangent).IsValid())
+			if(!NewRawMesh.PolygonAttributes().GetAttributesRef<FVector>(MeshAttribute::Polygon::Normal).IsValid()
+				|| !NewRawMesh.PolygonAttributes().GetAttributesRef<FVector>(MeshAttribute::Polygon::Tangent).IsValid())
 			{
-				FStaticMeshOperations::ComputePolygonTangentsAndNormals(NewMeshDescription);
+				FStaticMeshOperations::ComputePolygonTangentsAndNormals(NewRawMesh);
 			}
 
 			const FMeshBuildSettings& BuildSettings = StaticMesh->GetSourceModel(0).BuildSettings;
@@ -622,18 +670,18 @@ void UMeshProcessingLibrary::ApplyJacketingOnMeshActors(const TArray<AActor*>& A
 			ComputeNTBsOptions |= BuildSettings.bComputeWeightedNormals ? EComputeNTBsFlags::WeightedNTBs : EComputeNTBsFlags::None;
 			ComputeNTBsOptions |= BuildSettings.bRemoveDegenerates ? EComputeNTBsFlags::IgnoreDegenerateTriangles : EComputeNTBsFlags::None;
 
-			FStaticMeshOperations::ComputeTangentsAndNormals(NewMeshDescription, ComputeNTBsOptions);
+			FStaticMeshOperations::ComputeTangentsAndNormals(NewRawMesh, ComputeNTBsOptions);
 			// TODO: Maybe add generation of lightmap UV here.
 
 			// Update mesh description of static mesh with new geometry
-			FMeshDescription* OrigMeshDescription = StaticMesh->GetMeshDescription(0);
-			*OrigMeshDescription = MoveTemp(NewMeshDescription);
+			FMeshDescription* MeshDescription = StaticMesh->GetMeshDescription(0);
+			*MeshDescription = MoveTemp(NewRawMesh);
 		}
 	});
 
 	for (UStaticMesh* StaticMesh : StaticMeshArray)
 	{
-		//Commit the result so the old FMeshDescription is updated
+		//Commit the result so the old FRawMesh is updated
 		StaticMesh->CommitMeshDescription(0);
 	}
 

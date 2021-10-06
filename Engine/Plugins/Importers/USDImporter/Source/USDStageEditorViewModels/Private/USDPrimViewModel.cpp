@@ -3,11 +3,9 @@
 #include "USDPrimViewModel.h"
 
 #include "USDConversionUtils.h"
-#include "USDLog.h"
 #include "USDMemory.h"
 #include "USDTypesConversion.h"
 
-#include "UsdWrappers/SdfLayer.h"
 #include "UsdWrappers/SdfPath.h"
 
 #include "Misc/Paths.h"
@@ -19,7 +17,6 @@
 
 #include "USDIncludesStart.h"
 	#include "pxr/pxr.h"
-	#include "pxr/usd/sdf/namespaceEdit.h"
 	#include "pxr/usd/sdf/path.h"
 	#include "pxr/usd/usd/modelAPI.h"
 	#include "pxr/usd/usd/prim.h"
@@ -128,12 +125,10 @@ void FUsdPrimViewModel::RefreshData( bool bRefreshChildren )
 		return;
 	}
 
-	const bool bIsPseudoRoot = UsdPrim.GetStage().GetPseudoRoot() == UsdPrim;
-
-	RowData->Name = FText::FromName( bIsPseudoRoot ? TEXT("Stage") : UsdPrim.GetName() );
+	RowData->Name = FText::FromName( UsdPrim.GetName() );
 	RowData->bHasCompositionArcs = UsdUtils::HasCompositionArcs( UsdPrim );
 
-	RowData->Type = bIsPseudoRoot ? FText::GetEmpty() : FText::FromName( UsdPrim.GetTypeName() );
+	RowData->Type = FText::FromName( UsdPrim.GetTypeName() );
 	RowData->bHasPayload = UsdPrim.HasPayload();
 	RowData->bIsLoaded = UsdPrim.IsLoaded();
 
@@ -169,20 +164,13 @@ void FUsdPrimViewModel::RefreshData( bool bRefreshChildren )
 bool FUsdPrimViewModel::CanExecutePrimAction() const
 {
 #if USE_USD_SDK
-	if ( UsdPrim.IsPseudoRoot() )
-	{
-		return false;
-	}
+	FScopedUsdAllocs UsdAllocs;
 
-	UE::FSdfPath SpecPath = UsdUtils::GetPrimSpecPathForLayer( UsdPrim, UsdStage.GetEditTarget() );
-	if ( !SpecPath.IsEmpty() )
-	{
-		return true;
-	}
-
-#endif // #if USE_USD_SDK
-
+	pxr::SdfPrimSpecHandle PrimSpec = pxr::UsdStageRefPtr( UsdStage )->GetEditTarget().GetLayer()->GetPrimAtPath( pxr::UsdPrim( UsdPrim ).GetPrimPath() );
+	return (bool)PrimSpec;
+#else
 	return false;
+#endif // #if USE_USD_SDK
 }
 
 bool FUsdPrimViewModel::HasVisibilityAttribute() const
@@ -261,7 +249,45 @@ void FUsdPrimViewModel::DefinePrim( const TCHAR* PrimName )
 
 void FUsdPrimViewModel::AddReference( const TCHAR* AbsoluteFilePath )
 {
-	UsdUtils::AddReference( UsdPrim, AbsoluteFilePath );
+#if USE_USD_SDK
+	FScopedUsdAllocs UsdAllocs;
+
+	const std::string UsdAbsoluteFilePath = UnrealToUsd::ConvertString( AbsoluteFilePath ).Get();
+	pxr::UsdReferences References = pxr::UsdPrim( UsdPrim ).GetReferences();
+
+	pxr::SdfLayerRefPtr ReferenceLayer = pxr::SdfLayer::FindOrOpen( UsdAbsoluteFilePath );
+
+	// Group updates or else the SetTypeName and AddReference calls below will both trigger separate resyncs of the same prim path
+	pxr::SdfChangeBlock ChangeBlock;
+
+	if ( ReferenceLayer )
+	{
+		pxr::SdfPrimSpecHandle DefaultPrimSpec = ReferenceLayer->GetPrimAtPath( pxr::SdfPath( ReferenceLayer->GetDefaultPrim() ) );
+		if ( DefaultPrimSpec )
+		{
+			// Set the same prim type as its reference so that they are compatible
+			pxr::TfType DefaultPrimType = pxr::UsdSchemaRegistry::GetTypeFromName( DefaultPrimSpec->GetTypeName() );
+			if ( DefaultPrimType.IsUnknown() )
+			{
+				pxr::UsdPrim( UsdPrim ).ClearTypeName();
+			}
+			else if ( !pxr::UsdPrim( UsdPrim ).IsA( DefaultPrimType ) )
+			{
+				pxr::UsdPrim( UsdPrim ).SetTypeName( DefaultPrimSpec->GetTypeName() );
+			}
+		}
+	}
+
+	FString RelativePath = AbsoluteFilePath;
+
+	pxr::SdfLayerHandle EditLayer = pxr::UsdStageRefPtr( UsdStage )->GetEditTarget().GetLayer();
+
+	std::string RepositoryPath = EditLayer->GetRepositoryPath().empty() ? EditLayer->GetRealPath() : EditLayer->GetRepositoryPath();
+	FString LayerAbsolutePath = UsdToUnreal::ConvertString( RepositoryPath );
+	FPaths::MakePathRelativeTo( RelativePath, *LayerAbsolutePath );
+
+	References.AddReference( UnrealToUsd::ConvertString( *RelativePath ).Get() );
+#endif // #if USE_USD_SDK
 }
 
 void FUsdPrimViewModel::ClearReferences()

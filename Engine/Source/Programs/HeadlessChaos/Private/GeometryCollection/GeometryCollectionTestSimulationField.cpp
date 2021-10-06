@@ -33,18 +33,19 @@ namespace GeometryCollectionTest
 {
 	using namespace ChaosTest;
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivationOnProxyDuringInit)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivationOnProxyDuringInit)
 	{
+		using Traits = TypeParam;
 		const FVector Translation0(0, 0, 1);
 
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Kinematic;
 		Params.RootTransform.SetLocation(Translation0);
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		Params.RootTransform.SetLocation(FVector(100,0,0));
-		FGeometryCollectionWrapper* CollectionOther = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* CollectionOther = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 		UnitTest.AddSimulationObject(CollectionOther);
 		UnitTest.AddSimulationObject(Collection);
 
@@ -58,7 +59,6 @@ namespace GeometryCollectionTest
 		Collection->PhysObject->BufferCommand(UnitTest.Solver, { TargetNameTmp, RadialMaskTmp });
 
 		UnitTest.Initialize();
-		UnitTest.Advance();
 
 		UnitTest.Solver->RegisterSimOneShotCallback([&]()
 		{
@@ -67,16 +67,17 @@ namespace GeometryCollectionTest
 		});
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivationOnProxyDuringUpdate)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivationOnProxyDuringUpdate)
 	{
+		using Traits = TypeParam;
 		const FVector Translation0(0, 0, 1);
 
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Kinematic;
 		Params.RootTransform.SetLocation(Translation0);
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-		FFramework UnitTest; UnitTest.Dt = 1/24.0;
+		TFramework<Traits> UnitTest; UnitTest.Dt = 1/24.0;
 		UnitTest.AddSimulationObject(Collection);
 
 		UnitTest.Initialize();
@@ -114,16 +115,17 @@ namespace GeometryCollectionTest
 		EXPECT_LE(Transform[0].GetTranslation().Z, 0.f);
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivation)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_KinematicActivation)
 	{
+		using Traits = TypeParam;
 		const FVector Translation0(0, 0, 1);
 
 		CreationParameters Params; 
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Kinematic;
 		Params.RootTransform.SetLocation(Translation0);
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 		UnitTest.AddSimulationObject(Collection);
 
 		UnitTest.Initialize();
@@ -147,7 +149,7 @@ namespace GeometryCollectionTest
 		RadialMask->ExteriorValue = (int32)EObjectStateTypeEnum::Chaos_Object_Kinematic;
 		RadialMask->SetMaskCondition = ESetMaskConditionType::Field_Set_IFF_NOT_Interior;
 		FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_DynamicState);
-		UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, RadialMask });
+		UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, RadialMask });
 
 		for (int i = 0; i < 100; i++)
 		{
@@ -159,9 +161,10 @@ namespace GeometryCollectionTest
 		EXPECT_LE(Transform[0].GetTranslation().Z, 0.f);
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_InitialLinearVelocity)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_InitialLinearVelocity)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		// Physics Object Setup
 		CreationParameters Params;
@@ -170,7 +173,7 @@ namespace GeometryCollectionTest
 
 		Params.InitialVelocityType = EInitialVelocityTypeEnum::Chaos_Initial_Velocity_User_Defined;
 		Params.InitialLinearVelocity = FVector(0.f, 100.f, 0.f);
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -186,7 +189,7 @@ namespace GeometryCollectionTest
 		TManagedArray<FTransform>& Transform = Collection->DynamicCollection->Transform;
 		TManagedArray<int32>& DynamicState = Collection->DynamicCollection->DynamicState;
 
-		FReal PreviousY = 0.f;
+		float PreviousY = 0.f;
 		EXPECT_EQ(Transform[0].GetTranslation().X, 0);
 		EXPECT_EQ(Transform[0].GetTranslation().Y, 0);
 
@@ -218,16 +221,17 @@ namespace GeometryCollectionTest
 		}
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_StayDynamic)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_StayDynamic)
 	{
-		FFramework UnitTest;
-		FReal PreviousHeight = 5.0;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
+		float PreviousHeight = 5.f;
 
 		// Physics Object Setup
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Static;
 		Params.RootTransform.SetLocation(FVector(0.f, 0.f, PreviousHeight));
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -247,7 +251,7 @@ namespace GeometryCollectionTest
 			if (Frame == 5)
 			{
 				FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_DynamicState);
-				UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, RadialMask });
+				UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, RadialMask });
 			}
 
 			UnitTest.Advance();
@@ -269,15 +273,16 @@ namespace GeometryCollectionTest
 
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_LinearForce)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_LinearForce)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		// Physics Object Setup
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic;
 		Params.RootTransform.SetLocation(FVector(0.f, 0.f, 5.f));
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -288,13 +293,13 @@ namespace GeometryCollectionTest
 		UnitTest.Initialize();
 
 		TManagedArray<FTransform>& Transform = Collection->DynamicCollection->Transform;
-		FReal PreviousY = 0.0;
+		float PreviousY = 0.f;
 		for (int Frame = 0; Frame < 10; Frame++)
 		{
 			if (Frame >= 5)
 			{
 				FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_LinearForce);
-				UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, UniformVector->NewCopy() });
+				UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, UniformVector->NewCopy() });
 			}
 
 			UnitTest.Advance();
@@ -315,9 +320,10 @@ namespace GeometryCollectionTest
 		delete UniformVector;
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_Torque)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_Torque)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		// Physics Object Setup
 		FVector Scale = FVector(10.0);
@@ -325,7 +331,7 @@ namespace GeometryCollectionTest
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic;
 		Params.RootTransform.SetLocation(FVector(0.f, 0.f, 5.f));
 		Params.GeomTransform.SetScale3D(Scale);
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -336,13 +342,13 @@ namespace GeometryCollectionTest
 		UnitTest.Initialize();
 
 		TManagedArray<FTransform>& Transform = Collection->DynamicCollection->Transform;
-		FReal PreviousY = 0.0;
+		float PreviousY = 0.f;
 		for (int Frame = 0; Frame < 10; Frame++)
 		{
 			if (Frame >= 5)
 			{
 				FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_AngularTorque);
-				UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, UniformVector->NewCopy() });
+				UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, UniformVector->NewCopy() });
 			}
 
 			UnitTest.Advance();
@@ -363,15 +369,16 @@ namespace GeometryCollectionTest
 
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_Kill)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_Kill)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		// Physics Object Setup
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic;
 		Params.RootTransform.SetLocation(FVector(0.f, 0.f, 20.f));
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -390,7 +397,7 @@ namespace GeometryCollectionTest
 		for(int Frame = 0; Frame < 20; Frame++)
 		{
 			FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_Kill);
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, FalloffField->NewCopy() });
+			UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, FalloffField->NewCopy() });
 
 			UnitTest.Advance();
 
@@ -407,15 +414,16 @@ namespace GeometryCollectionTest
 		EXPECT_GT(Transform[0].GetTranslation().Z, -5.0f);
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_LinearVelocity)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_LinearVelocity)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		// Physics Object Setup
 		CreationParameters Params;
 		Params.DynamicState = EObjectStateTypeEnum::Chaos_Object_Dynamic;
 		Params.RootTransform.SetLocation(FVector(0.f, 0.f, 20.f));
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 
 		// Field setup
@@ -426,14 +434,14 @@ namespace GeometryCollectionTest
 		UnitTest.Initialize();
 
 		FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_LinearVelocity);
-		UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, VectorField->NewCopy() });
+		UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, VectorField->NewCopy() });
 		UnitTest.Advance();
 
-		FReal PreviousX = 0.0;
+		float PreviousX = 0.f;
 		TManagedArray<FTransform>& Transform = Collection->DynamicCollection->Transform;
 		for (int Frame = 1; Frame < 10; Frame++)
 		{
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( { GetFieldPhysicsName(EFieldPhysicsType::Field_LinearVelocity), VectorField->NewCopy() });
+			UnitTest.Solver->GetPerSolverField().BufferCommand( { GetFieldPhysicsName(EFieldPhysicsType::Field_LinearVelocity), VectorField->NewCopy() });
 
 			UnitTest.Advance();
 
@@ -442,16 +450,17 @@ namespace GeometryCollectionTest
 		}
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_CollisionGroup)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_CollisionGroup)
 	{
 		/**
 		 * Create a stack of boxes on the ground and verify that we we change their collision
 		 * group, they drop through the ground.
 		 */
 
-		FFramework UnitTest; UnitTest.Dt = 1/24.0;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest; UnitTest.Dt = 1/24.0;
 
-		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init()->template As<RigidBodyWrapper>();
+		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init<Traits>()->template As<RigidBodyWrapper>();
 		UnitTest.AddSimulationObject(Floor);
 
 		// Generate Geometry - a stack of boxes.
@@ -461,12 +470,12 @@ namespace GeometryCollectionTest
 		FVector Scale = FVector(100);
 		Params.GeomTransform.SetScale3D(Scale);
 
-		FGeometryCollectionWrapper* Collection[4];
+		TGeometryCollectionWrapper<Traits>* Collection[4];
 		for (int n=0; n<3;n++)
 		{
 			Params.RootTransform.SetLocation(FVector(0.f, 0.f, n*200.0f + 100.0f));
 			Params.CollisionType = ECollisionTypeEnum::Chaos_Volumetric;
-			Collection[n+1] = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+			Collection[n+1] = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 			UnitTest.AddSimulationObject(Collection[n+1]);
 		}
 
@@ -506,9 +515,10 @@ namespace GeometryCollectionTest
 
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test1)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test1)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		TSharedPtr<FGeometryCollection> RestCollection = CreateClusteredBody_TwoByTwo_ThreeTransform(FVector(0));
 
@@ -521,10 +531,10 @@ namespace GeometryCollectionTest
 		Params.EnableClustering = true;
 		Params.DamageThreshold = { 1.0 };
 		Params.MaxClusterLevel = 1000;
-		Params.ClusterConnectionMethod = Chaos::FClusterCreationParameters::EConnectionMethod::DelaunayTriangulation;
+		Params.ClusterConnectionMethod = Chaos::FClusterCreationParameters<FReal>::EConnectionMethod::DelaunayTriangulation;
 		Params.ClusterGroupIndex = 0;
 
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 		UnitTest.AddSimulationObject(Collection);
 
@@ -541,10 +551,10 @@ namespace GeometryCollectionTest
 
 		UnitTest.Advance();
 		
-		TArray<Chaos::TPBDRigidClusteredParticleHandle<FReal, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
+		TArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
 		{
 			FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_ExternalClusterStrain);
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, FalloffField->NewCopy() });
+			UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, FalloffField->NewCopy() });
 
 			EXPECT_EQ(ClusterMap.Num(), 3);
 			EXPECT_EQ(ClusterMap[ParticleHandles[4]].Num(), 2);
@@ -588,9 +598,10 @@ namespace GeometryCollectionTest
 		delete FalloffField;
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test2)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test2)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		TSharedPtr<FGeometryCollection> RestCollection = CreateClusteredBody_ThreeByTwo_ThreeTransform(FVector(0));
 
@@ -605,7 +616,7 @@ namespace GeometryCollectionTest
 		Params.MaxClusterLevel = 1000;		
 		Params.ClusterGroupIndex = 0;
 
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 		UnitTest.AddSimulationObject(Collection);
 
@@ -618,7 +629,7 @@ namespace GeometryCollectionTest
 		UnitTest.Initialize();	
 		UnitTest.Advance();
 
-		TArray<Chaos::TPBDRigidClusteredParticleHandle<FReal, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
+		TArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
 		auto& Clustering = UnitTest.Solver->GetEvolution()->GetRigidClustering();
 		const auto& ClusterMap = Clustering.GetChildrenMap();
 
@@ -627,7 +638,7 @@ namespace GeometryCollectionTest
 			FFieldSystemCommand Command(TargetName, FalloffField->NewCopy());
 			FFieldSystemMetaDataProcessingResolution* ResolutionData = new FFieldSystemMetaDataProcessingResolution(EFieldResolutionType::Field_Resolution_Maximum);
 			Command.MetaData.Add(FFieldSystemMetaData::EMetaType::ECommandData_ProcessingResolution, TUniquePtr< FFieldSystemMetaDataProcessingResolution >(ResolutionData));
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( Command);
+			UnitTest.Solver->GetPerSolverField().BufferCommand( Command);
 
 			EXPECT_EQ(ClusterMap.Num(), 3);
 			EXPECT_EQ(ClusterMap[ParticleHandles[6]].Num(), 3);
@@ -653,7 +664,7 @@ namespace GeometryCollectionTest
 			EXPECT_FALSE(ParticleHandles[8]->Disabled());
 
 			UnitTest.Advance();
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( Command);
+			UnitTest.Solver->GetPerSolverField().BufferCommand( Command);
 			UnitTest.Advance();
 
 			EXPECT_EQ(ClusterMap.Num(), 1);
@@ -676,9 +687,10 @@ namespace GeometryCollectionTest
 		delete FalloffField;
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test3)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test3)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		TSharedPtr<FGeometryCollection> RestCollection = CreateClusteredBody_ThreeByTwo_ThreeTransform(FVector(0));
 
@@ -693,7 +705,7 @@ namespace GeometryCollectionTest
 		Params.MaxClusterLevel = 1000;		
 		Params.ClusterGroupIndex = 0;
 
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 		UnitTest.AddSimulationObject(Collection);
 
@@ -709,7 +721,7 @@ namespace GeometryCollectionTest
 		auto& Clustering = UnitTest.Solver->GetEvolution()->GetRigidClustering();
 		const auto& ClusterMap = Clustering.GetChildrenMap();
 
-		TArray<Chaos::TPBDRigidClusteredParticleHandle<FReal, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
+		TArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
 
 		UnitTest.Advance();
 
@@ -718,7 +730,7 @@ namespace GeometryCollectionTest
 			FFieldSystemCommand Command(TargetName, FalloffField->NewCopy());
 			FFieldSystemMetaDataProcessingResolution* ResolutionData = new FFieldSystemMetaDataProcessingResolution(EFieldResolutionType::Field_Resolution_Maximum);
 			Command.MetaData.Add(FFieldSystemMetaData::EMetaType::ECommandData_ProcessingResolution, TUniquePtr< FFieldSystemMetaDataProcessingResolution >(ResolutionData));
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( Command);
+			UnitTest.Solver->GetPerSolverField().BufferCommand( Command);
 		
 			EXPECT_TRUE(ParticleHandles[0]->Disabled());
 			EXPECT_TRUE(ParticleHandles[1]->Disabled());
@@ -758,9 +770,10 @@ namespace GeometryCollectionTest
 
 	}
 
-	GTEST_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test4)
+	TYPED_TEST(AllTraits, GeometryCollection_RigidBodies_Field_ClusterBreak_StrainModel_Test4)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
 		TSharedPtr<FGeometryCollection> RestCollection = CreateClusteredBody_TwoByTwo_ThreeTransform(FVector(0));
 
@@ -775,7 +788,7 @@ namespace GeometryCollectionTest
 		Params.MaxClusterLevel = 1000;		
 		Params.ClusterGroupIndex = 0;
 
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 		UnitTest.AddSimulationObject(Collection);
 		
@@ -791,10 +804,10 @@ namespace GeometryCollectionTest
 		auto& Clustering = UnitTest.Solver->GetEvolution()->GetRigidClustering();
 		const auto& ClusterMap = Clustering.GetChildrenMap();
 
-		TArray<Chaos::TPBDRigidClusteredParticleHandle<FReal, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
+		TArray<Chaos::TPBDRigidClusteredParticleHandle<float, 3>*>& ParticleHandles = Collection->PhysObject->GetSolverParticleHandles();
 		{
 			FName TargetName = GetFieldPhysicsName(EFieldPhysicsType::Field_ExternalClusterStrain);
-			UnitTest.Solver->GetPerSolverField().AddTransientCommand( { TargetName, FalloffField->NewCopy() });
+			UnitTest.Solver->GetPerSolverField().BufferCommand( { TargetName, FalloffField->NewCopy() });
 
 			EXPECT_TRUE(ParticleHandles[0]->Disabled());
 			EXPECT_TRUE(ParticleHandles[1]->Disabled());

@@ -16,10 +16,10 @@ struct FWaterBodyBrushCache
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cache")
-	UTextureRenderTarget2D* CacheRenderTarget = nullptr;
+	UTextureRenderTarget2D* CacheRenderTarget;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cache")
-	bool CacheIsValid = false;
+	bool CacheIsValid;
 };
 
 UCLASS(config = Engine, Blueprintable, BlueprintType)

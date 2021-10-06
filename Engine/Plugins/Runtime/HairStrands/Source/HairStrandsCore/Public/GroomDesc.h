@@ -14,50 +14,58 @@ struct FHairGroupDesc
 {
 	GENERATED_USTRUCT_BODY()
 
+	/** Number of hairs within this hair group. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Groom")
+	int32 HairCount = 0;
+
+	/** Number of simulation guides within this hair group. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Groom")
+	int32 GuideCount = 0;
+
 	/** Length of the longest hair strands */
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Groom")
 	float HairLength = 0;
 
 	/** Hair width (in centimeters) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", meta = (editcondition = "HairWidth_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "1.0", SliderExponent = 6))
-	float HairWidth = 0.1;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "1.0", SliderExponent = 6))
+	float HairWidth = 0;
+	UPROPERTY()
 	bool HairWidth_Override = false;
 
 	/** Scale the hair width at the root */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (editcondition = "HairRootScale_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "2.0", SliderExponent = 6))
-	float HairRootScale = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "2.0", SliderExponent = 6))
+	float HairRootScale = 0;
+	UPROPERTY()
 	bool HairRootScale_Override = false;
 
 	/** Scale the hair with at the tip */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (editcondition = "HairTipScale_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "2.0", SliderExponent = 6))
-	float HairTipScale = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "2.0", SliderExponent = 6))
+	float HairTipScale = 0;
+	UPROPERTY()
 	bool HairTipScale_Override = false;
 
-	/** DEPRECATED: HairClipScale is deprecated and will be removed in next releases. Normalized hair clip scale, i.e. at which normalized length hair will be clipped. 1 means no clipping. 0 means hairs are fully clipped */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (DisplayName = "Hair Clip Scale (DEPRECATED)", DeprecatedProperty, editcondition = "HairClipScale_Override", ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", SliderExponent = 1))
-	float HairClipScale = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
-	bool HairClipScale_Override = false;
+	/** Normalized hair clip length, i.e. at which length hair will be clipped. 1 means no clipping. 0 means hairs are fully clipped */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", SliderExponent = 1))
+	float HairClipLength = 0;
+	UPROPERTY()
+	bool HairClipLength_Override = false;
 
 	/** Override the hair shadow density factor (unit less). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (editcondition = "HairShadowDensity_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
-	float HairShadowDensity = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
+	float HairShadowDensity = 0;
+	UPROPERTY()
 	bool HairShadowDensity_Override = false;
 
 	/** Scale the hair geometry radius for ray tracing effects (e.g. shadow) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (editcondition = "HairRaytracingRadiusScale_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
-	float HairRaytracingRadiusScale = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
+	float HairRaytracingRadiusScale = 0;
+	UPROPERTY()
 	bool HairRaytracingRadiusScale_Override = false;
 
 	/** Enable hair strands geomtry for raytracing */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (editcondition = "bUseHairRaytracingGeometry_Override", ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Groom", AdvancedDisplay, meta = (ClampMin = "0.0001", UIMin = "0.001", UIMax = "10.0", SliderExponent = 6))
 	bool bUseHairRaytracingGeometry = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY()
 	bool bUseHairRaytracingGeometry_Override = false;
 
 	/** Bias the selected LOD. A value >0 will progressively select lower detailed lods. Used when r.HairStrands.Cluster.Culling = 1. */
@@ -65,15 +73,15 @@ struct FHairGroupDesc
 	float LODBias = 0;
 
 	/** Insure the hair does not alias. When enable, group of hairs might appear thicker. Isolated hair should remain thin. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Groom", meta = (editcondition = "bUseStableRasterization_Override"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Groom")
 	bool bUseStableRasterization = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY()
 	bool bUseStableRasterization_Override = false;
 
 	/** Light hair with the scene color. This is used for vellus/short hair to bring light from the surrounding surface, like skin. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Groom", meta = (editcondition = "bScatterSceneLighting_Override"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Groom")
 	bool bScatterSceneLighting = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Overrides, meta = (PinHiddenByDefault, InlineEditConditionToggle))
+	UPROPERTY()
 	bool bScatterSceneLighting_Override = false;
 
 	UPROPERTY()

@@ -71,6 +71,8 @@ DECLARE_DELEGATE_SixParams(FMakeNoiseDelegate, AActor*, float /*Loudness*/, clas
 DECLARE_DELEGATE_RetVal_ThreeParams(bool, FOnProcessEvent, AActor*, UFunction*, void*);
 #endif
 
+DECLARE_CYCLE_STAT_EXTERN(TEXT("GetComponentsTime"),STAT_GetComponentsTime,STATGROUP_Engine,ENGINE_API);
+
 #if WITH_EDITOR
 /** Annotation for actor selection.  This must be in engine instead of editor for ::IsSelected to work */
 extern ENGINE_API FUObjectAnnotationSparseBool GSelectedActorAnnotation;
@@ -195,11 +197,7 @@ private:
 	uint8 bHidden:1;
 
 	UPROPERTY(Replicated)
-	uint8 bTearOff:1;
-
-	/** When set, indicates that external guarantees ensure that this actor's name is deterministic between server and client, and as such can be addressed by its full path */
-	UPROPERTY()
-	uint8 bForceNetAddressable:1;
+	uint8 bTearOff:1; 
 
 public:
 
@@ -489,12 +487,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category=Replication)
 	ENetRole GetRemoteRole() const;
 
-	/**
-	 * Allows this actor to be net-addressable by full path name, even if the actor was spawned after map load.
-	 * @note: The caller is required to ensure that this actor's name is stable between server/client. Must be called before FinishSpawning
-	 */
-	void SetNetAddressable();
-
 private:
 	/** Used for replication of our RootComponent's position and velocity */
 	UPROPERTY(EditDefaultsOnly, ReplicatedUsing=OnRep_ReplicatedMovement, Category=Replication, AdvancedDisplay)
@@ -529,13 +521,6 @@ private:
 	 */
 	UPROPERTY(ReplicatedUsing=OnRep_Owner)
 	AActor* Owner;
-
-#if WITH_EDITOR
-	/**
-	 * Used to track changes to Owner during Undo events.
-	 */
-	TWeakObjectPtr<AActor> IntermediateOwner = nullptr;
-#endif
 
 protected:
 	/** Used to specify the net driver to replicate on (NAME_None || NAME_GameNetDriver is the default net driver) */
@@ -1108,10 +1093,6 @@ public:
 	/** Returns the distance from this Actor to OtherActor, ignoring Z. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
 	float GetHorizontalDistanceTo(const AActor* OtherActor) const;
-
-	/** Returns the squared distance from this Actor to OtherActor, ignoring Z. */
-	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
-	float GetSquaredHorizontalDistanceTo(const AActor* OtherActor) const;
 
 	/** Returns the distance from this Actor to OtherActor, ignoring XY. */
 	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation")
@@ -2202,7 +2183,7 @@ protected:
 	void SyncReplicatedPhysicsSimulation();
 
 public:
-	/**
+	/** 
 	 * Set the owner of this Actor, used primarily for network replication. 
 	 * @param NewOwner	The Actor who takes over ownership of this Actor
 	 */
@@ -3091,6 +3072,8 @@ public:
 	template<class AllocatorType>
 	void GetComponents(TSubclassOf<UActorComponent> ComponentClass, TArray<UActorComponent*, AllocatorType>& OutComponents, bool bIncludeFromChildActors = false) const
 	{
+		SCOPE_CYCLE_COUNTER(STAT_GetComponentsTime);
+
 		OutComponents.Reset();
 		ForEachComponent_Internal<UActorComponent>(ComponentClass, bIncludeFromChildActors, [&](UActorComponent* InComp)
 		{
@@ -3111,6 +3094,8 @@ public:
 	template<class T, class AllocatorType>
 	void GetComponents(TArray<T*, AllocatorType>& OutComponents, bool bIncludeFromChildActors = false) const
 	{
+		SCOPE_CYCLE_COUNTER(STAT_GetComponentsTime);
+
 		OutComponents.Reset();
 		ForEachComponent_Internal<T>(T::StaticClass(), bIncludeFromChildActors, [&](T* InComp)
 		{
@@ -3132,6 +3117,8 @@ public:
 	template<class AllocatorType>
 	void GetComponents(TArray<UActorComponent*, AllocatorType>& OutComponents, bool bIncludeFromChildActors = false) const
 	{
+		SCOPE_CYCLE_COUNTER(STAT_GetComponentsTime);
+
 		OutComponents.Reset();
 		ForEachComponent_Internal<UActorComponent>(UActorComponent::StaticClass(), bIncludeFromChildActors, [&](UActorComponent* InComp)
 		{

@@ -153,12 +153,3 @@ public:
 	UPROPERTY()
 	TEnumAsByte<ERichCurveExtrapolation> PostInfinityExtrap;
 };
-
-template<>
-struct TStructOpsTypeTraits<FRealCurve> : public TStructOpsTypeTraitsBase2<FRealCurve>
-{
-	enum
-	{
-		WithPureVirtual = true,
-	};
-};

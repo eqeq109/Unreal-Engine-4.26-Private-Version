@@ -16,7 +16,7 @@
  *
  * NOTE: All wrapped functions/events, begin with 'UT'
  */
-UCLASS(abstract)
+UCLASS()
 class NETCODEUNITTEST_API UUnitTestBase : public UObject, public FUnitLogInterface
 {
 	GENERATED_UCLASS_BODY()

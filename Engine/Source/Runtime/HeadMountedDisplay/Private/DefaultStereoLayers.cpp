@@ -292,9 +292,9 @@ void FDefaultStereoLayers::PostRenderView_RenderThread(FRHICommandListImmediate&
 	RHICmdList.EndRenderPass();
 }
 
-bool FDefaultStereoLayers::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+bool FDefaultStereoLayers::IsActiveThisFrame(class FViewport* InViewport) const
 {
-	return GEngine && GEngine->IsStereoscopic3D(Context.Viewport);
+	return GEngine && GEngine->IsStereoscopic3D(InViewport);
 }
 
 void FDefaultStereoLayers::SetupViewFamily(FSceneViewFamily& InViewFamily)

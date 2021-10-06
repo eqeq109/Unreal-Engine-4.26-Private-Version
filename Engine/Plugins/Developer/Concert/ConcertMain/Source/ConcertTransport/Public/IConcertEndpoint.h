@@ -111,17 +111,15 @@ public:
 	 * @param Event : the event to send, needs to be a UStruct that derives from FConcertEventData
 	 * @param Endpoint : the remote endpoint Id to send to
 	 * @param Flags : flags for the event (i.e.: is the event reliable)
-	 * @param Annotations : Annotations to attach to the message.
 	 */
 	template<typename EventType>
-	void SendEvent(const EventType& Event, const FGuid& Endpoint, EConcertMessageFlags Flags = EConcertMessageFlags::None, TMap<FName, FString> Annotations = TMap<FName, FString>())
+	void SendEvent(const EventType& Event, const FGuid& Endpoint, EConcertMessageFlags Flags = EConcertMessageFlags::None, const TMap<FName, FString>& Annotations = TMap<FName, FString>()) // TODO: Allow moving
 	{
 		static_assert(TIsDerivedFrom<EventType, FConcertEventData>::IsDerived, "Sent EventType need to be a UStruct deriving of FConcertEventData.");
 		typedef TConcertEvent<EventType> ConcertEventType;
 		TSharedRef<ConcertEventType> EventRef = MakeShared<ConcertEventType>(Event);
 
-		EventRef.Get().SetAnnotations(MoveTemp(Annotations));
-		InternalQueueEvent(EventRef, Endpoint, Flags);
+		InternalQueueEvent(EventRef, Endpoint, Flags, Annotations);
 	}
 
 	/**
@@ -301,9 +299,9 @@ protected:
 	 * Queue an event to be sent to a remote endpoint
 	 * @param Event : the type erased event
 	 * @param Endpoint : the remote endpoint Id to send to
-	 * Flags : flags for the event (i.e.: is the event reliable)
+	 * Flags : flags for the event (i.e.: is the event reliable)	 
 	 */
-	virtual void InternalQueueEvent(const TSharedRef<IConcertEvent>& Event, const FGuid& Endpoint, EConcertMessageFlags Flags) = 0;
+	virtual void InternalQueueEvent(const TSharedRef<IConcertEvent>& Event, const FGuid& Endpoint, EConcertMessageFlags Flags, const TMap<FName, FString>& Annotations) = 0;
 
 	/**
 	 * Publish an event to any listening endpoints

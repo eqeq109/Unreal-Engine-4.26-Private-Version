@@ -153,9 +153,8 @@ private:
 		virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override;
 		virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) override {}
 		virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
-		virtual void LateLatchingViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
 		virtual int32 GetPriority() const override { return -10; }
-		virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const;
+		virtual bool IsActiveThisFrame(class FViewport* InViewport) const;
 
 	private:
 		friend class UMotionControllerComponent;

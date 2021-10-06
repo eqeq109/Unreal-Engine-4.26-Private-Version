@@ -8,8 +8,7 @@
 class FXGEControllerModule : public IDistributedBuildController
 {
 	bool bSupported;
-	bool bModuleInitialized;
-	bool bControllerInitialized;
+	bool bInitialized;
 
 	FThreadSafeCounter NextFileID;
 	FThreadSafeCounter NextTaskID;
@@ -61,8 +60,6 @@ public:
 
 	virtual void StartupModule() override final;
 	virtual void ShutdownModule() override final;
-
-	virtual void InitializeController() override final;
 
 	XGECONTROLLER_API virtual const FString GetName() override final { return FString("XGE Controller"); };
 

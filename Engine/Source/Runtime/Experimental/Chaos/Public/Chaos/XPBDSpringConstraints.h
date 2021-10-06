@@ -16,58 +16,59 @@ namespace Chaos
 // Stiffness is in N/CM^2, so it needs to be adjusted from the PBD stiffness ranging between [0,1]
 static const double XPBDSpringMaxCompliance = 1e-7;  // Max stiffness: 1e+11 N/M^2 = 1e+7 N/CM^2 -> Max compliance: 1e-7 CM^2/N
 
-class FXPBDSpringConstraints : public FPBDSpringConstraintsBase, public FPBDConstraintContainer
+template<class T, int32 d>
+class TXPBDSpringConstraints : public TPBDSpringConstraintsBase<T, d>, public FPBDConstraintContainer
 {
-	typedef FPBDSpringConstraintsBase Base;
+	typedef TPBDSpringConstraintsBase<T, d> Base;
 	using Base::MConstraints;
 	using Base::MDists;
 	using Base::MStiffness;
 
 public:
-	FXPBDSpringConstraints(const FReal Stiffness = (FReal)1.)
-	    : FPBDSpringConstraintsBase(Stiffness)
+	TXPBDSpringConstraints(const T Stiffness = (T)1)
+	    : TPBDSpringConstraintsBase<T, d>(Stiffness)
 	{}
 
-	FXPBDSpringConstraints(const FDynamicParticles& InParticles, TArray<TVec2<int32>>&& Constraints, const FReal Stiffness = (FReal)1., bool bStripKinematicConstraints = false)
-		: FPBDSpringConstraintsBase(InParticles, MoveTemp(Constraints), Stiffness, bStripKinematicConstraints)
+	TXPBDSpringConstraints(const TDynamicParticles<T, d>& InParticles, TArray<TVector<int32, 2>>&& Constraints, const T Stiffness = (T)1., bool bStripKinematicConstraints = false)
+		: TPBDSpringConstraintsBase<T, d>(InParticles, MoveTemp(Constraints), Stiffness, bStripKinematicConstraints)
 	{
-		MLambdas.Init((FReal)0., MConstraints.Num());
+		MLambdas.Init(0.f, MConstraints.Num());
 	}
 
-	FXPBDSpringConstraints(const TRigidParticles<FReal, 3>& InParticles, TArray<TVec2<int32>>&& Constraints, const FReal Stiffness = (FReal)1., bool bStripKinematicConstraints = false)
-		: FPBDSpringConstraintsBase(InParticles, MoveTemp(Constraints), Stiffness, bStripKinematicConstraints)
+	TXPBDSpringConstraints(const TRigidParticles<T, d>& InParticles, TArray<TVector<int32, 2>>&& Constraints, const T Stiffness = (T)1., bool bStripKinematicConstraints = false)
+		: TPBDSpringConstraintsBase<T, d>(InParticles, MoveTemp(Constraints), Stiffness, bStripKinematicConstraints)
 	{
-		MLambdas.Init((FReal)0., MConstraints.Num());
+		MLambdas.Init(0.f, MConstraints.Num());
 	}
 
-	FXPBDSpringConstraints(const FDynamicParticles& InParticles, const TArray<TVec3<int32>>& Constraints, const FReal Stiffness = (FReal)1., bool bStripKinematicConstraints = false)
-		: FPBDSpringConstraintsBase(InParticles, Constraints, Stiffness, bStripKinematicConstraints)
+	TXPBDSpringConstraints(const TDynamicParticles<T, d>& InParticles, const TArray<TVector<int32, 3>>& Constraints, const T Stiffness = (T)1., bool bStripKinematicConstraints = false)
+		: TPBDSpringConstraintsBase<T, d>(InParticles, Constraints, Stiffness, bStripKinematicConstraints)
 	{
-		MLambdas.Init((FReal)0., MConstraints.Num());
+		MLambdas.Init(0.f, MConstraints.Num());
 	}
 
-	FXPBDSpringConstraints(const FDynamicParticles& InParticles, const TArray<TVec4<int32>>& Constraints, const FReal Stiffness = (FReal)1., bool bStripKinematicConstraints = false)
-		: FPBDSpringConstraintsBase(InParticles, Constraints, Stiffness, bStripKinematicConstraints)
+	TXPBDSpringConstraints(const TDynamicParticles<T, d>& InParticles, const TArray<TVector<int32, 4>>& Constraints, const T Stiffness = (T)1., bool bStripKinematicConstraints = false)
+		: TPBDSpringConstraintsBase<T, d>(InParticles, Constraints, Stiffness, bStripKinematicConstraints)
 	{
-		MLambdas.Init((FReal)0., MConstraints.Num());
+		MLambdas.Init(0.f, MConstraints.Num());
 	}
 
-	virtual ~FXPBDSpringConstraints() {}
+	virtual ~TXPBDSpringConstraints() {}
 
-	const TArray<TVec2<int32>>& GetConstraints() const { return MConstraints; }
-	TArray<TVec2<int32>>& GetConstraints() { return MConstraints; }
-	TArray<TVec2<int32>>& Constraints() { return MConstraints; }
+	const TArray<TVector<int32, 2>>& GetConstraints() const { return MConstraints; }
+	TArray<TVector<int32, 2>>& GetConstraints() { return MConstraints; }
+	TArray<TVector<int32, 2>>& Constraints() { return MConstraints; }
 
-	void Init() const { for (FReal& Lambda : MLambdas) { Lambda = (FReal)0.; } }
+	void Init() const { for (T& Lambda : MLambdas) { Lambda = (T)0.; } }
 
-	void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 InConstraintIndex) const
+	void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 InConstraintIndex) const
 	{
 		const int32 i = InConstraintIndex;
 		{
 			const auto& Constraint = MConstraints[i];
 			const int32 i1 = Constraint[0];
 			const int32 i2 = Constraint[1];
-			const FVec3 Delta = GetDelta(InParticles, Dt, i);
+			const TVector<T, d> Delta = GetDelta(InParticles, Dt, i);
 			if (InParticles.InvM(i1) > 0)
 			{
 				InParticles.P(i1) -= InParticles.InvM(i1) * Delta;
@@ -79,7 +80,7 @@ public:
 		}
 	}
 
-	void Apply(FPBDParticles& InParticles, const FReal Dt) const
+	void Apply(TPBDParticles<T, d>& InParticles, const T Dt) const
 	{
 		SCOPE_CYCLE_COUNTER(STAT_XPBD_Spring);
 		for (int32 i = 0; i < MConstraints.Num(); ++i)
@@ -88,35 +89,48 @@ public:
 		}
 	}
 
-private:
-	inline FVec3 GetDelta(const FPBDParticles& InParticles, const FReal Dt, const int32 InConstraintIndex) const
+	void Apply(TPBDRigidParticles<T, d>& InParticles, const T Dt, const TArray<int32>& InConstraintIndices) const
 	{
-		const TVec2<int32>& Constraint = MConstraints[InConstraintIndex];
+		SCOPE_CYCLE_COUNTER(STAT_XPBD_Spring);
+		for (int32 i : InConstraintIndices)
+		{
+			const auto& Constraint = MConstraints[i];
+			const int32 i1 = Constraint[0];
+			const int32 i2 = Constraint[1];
+			check(InParticles.Island(i1) == InParticles.Island(i2) || InParticles.Island(i1) == INDEX_NONE || InParticles.Island(i2) == INDEX_NONE);
+			Apply(InParticles, Dt, i);
+		}
+	}
+
+private:
+	inline TVector<T, d> GetDelta(const TPBDParticles<T, d>& InParticles, const T Dt, const int32 InConstraintIndex) const
+	{
+		const TVector<int32, 2>& Constraint = MConstraints[InConstraintIndex];
 
 		const int32 i1 = Constraint[0];
 		const int32 i2 = Constraint[1];
 
 		if (InParticles.InvM(i2) == 0 && InParticles.InvM(i1) == 0)
-			return FVec3(0.);
-		const FReal CombinedInvMass = InParticles.InvM(i2) + InParticles.InvM(i1);
+			return TVector<T, d>(0);
+		const T CombinedInvMass = InParticles.InvM(i2) + InParticles.InvM(i1);
 
-		const FVec3& P1 = InParticles.P(i1);
-		const FVec3& P2 = InParticles.P(i2);
-		FVec3 Direction = P1 - P2;
-		const FReal Distance = Direction.SafeNormalize();
-		const FReal Offset = Distance - MDists[InConstraintIndex];
+		const TVector<T, d>& P1 = InParticles.P(i1);
+		const TVector<T, d>& P2 = InParticles.P(i2);
+		TVector<T, d> Direction = P1 - P2;
+		const T Distance = Direction.SafeNormalize();
+		const T Offset = Distance - MDists[InConstraintIndex];
 
-		FReal& Lambda = MLambdas[InConstraintIndex];
-		const FReal Alpha = (FReal)XPBDSpringMaxCompliance / (MStiffness * Dt * Dt);
+		T& Lambda = MLambdas[InConstraintIndex];
+		const T Alpha = (T)XPBDSpringMaxCompliance / (MStiffness * Dt * Dt);
 
-		const FReal DLambda = (Offset - Alpha * Lambda) / (CombinedInvMass + Alpha);
-		const FVec3 Delta = DLambda * Direction;
+		const T DLambda = (Offset - Alpha * Lambda) / (CombinedInvMass + Alpha);
+		const TVector<T, d> Delta = DLambda * Direction;
 		Lambda += DLambda;
 
 		return Delta;
 	}
 
 private:
-	mutable TArray<FReal> MLambdas;
+	mutable TArray<T> MLambdas;
 };
 }

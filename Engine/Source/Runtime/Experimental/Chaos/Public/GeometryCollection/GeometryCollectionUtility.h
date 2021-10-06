@@ -46,12 +46,10 @@ namespace GeometryCollection
 		TManagedArray<int32>& MaterialIndex = RestCollection->MaterialIndex;
 		TManagedArray<int32>& MaterialID = RestCollection->MaterialID;
 		TManagedArray<FTransform>& Transform = RestCollection->Transform;
-		TManagedArray<int32>& SimulationType = RestCollection->SimulationType;
 
 		// Set particle info
 		Transform[0] = Xf;
 		Transform[0].NormalizeRotation();
-		SimulationType[0] = FGeometryCollection::ESimulationTypes::FST_Rigid;
 
 		// Set vertex info
 		for (int32 Idx = 0; Idx < PointsIn.Num(); ++Idx)
@@ -170,10 +168,10 @@ void GeometryCollection::AttributeTransfer(const FGeometryCollection * FromColle
 	ParallelFor(ToCollection->NumElements(FGeometryCollection::VerticesGroup), [&](int32 ToIndex)
 	{
 		int32 ClosestFromIndex = -1;
-		Chaos::FReal ClosestDist = MAX_FLT;
+		float ClosestDist = MAX_FLT;
 		for (int32 FromIndex = 0, ni = FromVertex.Num(); FromIndex < ni ; ++FromIndex)
 		{
-			Chaos::FReal CurrDist = FVector::DistSquared(FromVertex[FromIndex], ToVertex[ToIndex]);
+			float CurrDist = FVector::DistSquared(FromVertex[FromIndex], ToVertex[ToIndex]);
 			if (CurrDist < ClosestDist)
 			{
 				ClosestDist = CurrDist;

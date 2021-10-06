@@ -62,7 +62,7 @@ struct FDataprepProducerContext
 /**
  * Abstract class to derived from to be a producer in the Dataprep asset
  */
-UCLASS(Abstract, BlueprintType)
+UCLASS(Experimental, Abstract, BlueprintType)
 class DATAPREPCORE_API UDataprepContentProducer : public UObject
 {
 	GENERATED_BODY()

@@ -350,7 +350,7 @@ FGameInstancePIEResult UGameInstance::StartPlayInEditorGameInstance(ULocalPlayer
 		PIEStartTime = Params.PIEStartTime;
 	}
 
-	BroadcastOnStart();
+	OnStart();
 
 	UEditorEngine* const EditorEngine = CastChecked<UEditorEngine>(GetEngine());
 
@@ -620,12 +620,6 @@ void UGameInstance::StartGameInstance()
 		return;
 	}
 
-	BroadcastOnStart();
-}
-
-void UGameInstance::BroadcastOnStart()
-{
-	FWorldDelegates::OnStartGameInstance.Broadcast(this);
 	OnStart();
 }
 
@@ -949,7 +943,7 @@ APlayerController* UGameInstance::GetPrimaryPlayerController(bool bRequiresValid
 	return PrimaryController;
 }
 
-FUniqueNetIdPtr UGameInstance::GetPrimaryPlayerUniqueId() const
+TSharedPtr<const FUniqueNetId> UGameInstance::GetPrimaryPlayerUniqueId() const
 {
 	ULocalPlayer* PrimaryLP = nullptr;
 
@@ -1007,7 +1001,7 @@ ULocalPlayer* UGameInstance::FindLocalPlayerFromUniqueNetId(const FUniqueNetId& 
 	return nullptr;
 }
 
-ULocalPlayer* UGameInstance::FindLocalPlayerFromUniqueNetId(FUniqueNetIdPtr UniqueNetId) const
+ULocalPlayer* UGameInstance::FindLocalPlayerFromUniqueNetId(TSharedPtr<const FUniqueNetId> UniqueNetId) const
 {
 	if (!UniqueNetId.IsValid())
 	{

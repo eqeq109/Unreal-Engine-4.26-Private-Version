@@ -479,11 +479,6 @@ public:
 	virtual double TranslatePacketTimestamp(const FPacketTimestamp& Timestamp,
 											ETimestampTranslation Translation=ETimestampTranslation::LocalTimestamp);
 
-	/**
-	 * Returns true if FSocket::RecvFromWithPktInfo is supported by this socket subsystem.
-	 */
-	virtual bool IsRecvFromWithPktInfoSupported() const;
-
 protected:
 
 	/**

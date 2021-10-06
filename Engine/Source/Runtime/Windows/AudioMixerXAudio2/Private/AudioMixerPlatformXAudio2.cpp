@@ -90,26 +90,6 @@ static FString GetErrorString(HRESULT Result)
 		}
 	}
 }
-
-static XAUDIO2_PROCESSOR GetXAudio2ProcessorsToUse()
-{
-	XAUDIO2_PROCESSOR ProcessorsToUse = (XAUDIO2_PROCESSOR)FPlatformAffinity::GetAudioThreadMask();
-	// https://docs.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-xaudio2create
-	// Warning If you specify XAUDIO2_ANY_PROCESSOR, the system will use all of the device's processors and, as noted above, create a worker thread for each processor.
-	// We certainly don't want to use all available CPU. XAudio threads are time critical priority and wake up every 10 ms, they may cause lots of unwarranted context switches.
-	// In case no specific affinity is specified, let XAudio choose the default processor. It should allocate a single thread and should be enough.
-	if (ProcessorsToUse == XAUDIO2_ANY_PROCESSOR)
-	{
-	#ifdef XAUDIO2_USE_DEFAULT_PROCESSOR
-		ProcessorsToUse = XAUDIO2_USE_DEFAULT_PROCESSOR;
-	#else
-		ProcessorsToUse = XAUDIO2_DEFAULT_PROCESSOR;
-	#endif
-	}
-
-	return ProcessorsToUse;
-}
-
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 FName GetNextDllToTry(FName Current = NAME_None) 
 {
@@ -237,7 +217,7 @@ namespace Audio
 		Flags |= XAUDIO2_DO_NOT_USE_SHAPE;
 #endif
 
-		if (FAILED(XAudio2Create(&XAudio2System, Flags, GetXAudio2ProcessorsToUse())))
+		if (FAILED(XAudio2Create(&XAudio2System, Flags, (XAUDIO2_PROCESSOR)FPlatformAffinity::GetAudioThreadMask())))
 		{
 			XAudio2System = nullptr;
 			return false;
@@ -301,7 +281,7 @@ namespace Audio
 	{
 		if (bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 already initialized."), Warning);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 already initialized."));
 			return false;
 
 		}
@@ -341,7 +321,7 @@ namespace Audio
 		Flags |= XAUDIO2_DO_NOT_USE_SHAPE;
 #endif
 
-		if (!XAudio2System && FAILED(XAudio2Create(&XAudio2System, Flags, GetXAudio2ProcessorsToUse())))
+		if (!XAudio2System && FAILED(XAudio2Create(&XAudio2System, Flags, (XAUDIO2_PROCESSOR)FPlatformAffinity::GetAudioThreadMask())))
 		{
 			FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("Audio", "XAudio2Error", "Failed to initialize audio. This may be an issue with your installation of XAudio 2.7. XAudio2 is available in the DirectX End-User Runtime (June 2010)."));
 			return false;
@@ -386,7 +366,7 @@ namespace Audio
 	{
 		if (!bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 was already tore down."), Warning);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 was already tore down."));
 			return false;
 		}
 
@@ -441,7 +421,7 @@ namespace Audio
 
 		if (!bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 was not initialized."), Error);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 was not initialized."));
 			return false;
 		}
 
@@ -640,7 +620,7 @@ namespace Audio
 	{
 		if (!bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 was not initialized."), Error);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 was not initialized."));
 			return false;
 		}
 
@@ -896,13 +876,13 @@ namespace Audio
 	{
 		if (!bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 was not initialized."), Error);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 was not initialized."));
 			return false;
 		}
 
 		if (bIsDeviceOpen)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 audio stream already opened."), Warning);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 audio stream already opened."));
 			return false;
 		}
 
@@ -1129,7 +1109,7 @@ namespace Audio
 	{
 		if (!bIsInitialized)
 		{
-			AUDIO_PLATFORM_LOG_ONCE(TEXT("XAudio2 was not initialized."), Warning);
+			AUDIO_PLATFORM_ERROR(TEXT("XAudio2 was not initialized."));
 			return false;
 		}
 

@@ -2142,14 +2142,4 @@ FWheelSetup::FWheelSetup()
 
 }
 
-FReplicatedVehicleState::FReplicatedVehicleState()
-	: SteeringInput(0.0f)
-	, ThrottleInput(0.0f)
-	, BrakeInput(0.0f)
-	, HandbrakeInput(0.0f)
-	, CurrentGear(0)
-{
-
-}
-
 PRAGMA_ENABLE_DEPRECATION_WARNINGS

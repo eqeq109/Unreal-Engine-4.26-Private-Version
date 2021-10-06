@@ -120,10 +120,10 @@ struct FTransformMeshesTarget
 	GENERATED_BODY()
 
 	UPROPERTY()
-	UTransformProxy* TransformProxy = nullptr;
+	UTransformProxy* TransformProxy;
 
 	UPROPERTY()
-	UTransformGizmo* TransformGizmo = nullptr;
+	UTransformGizmo* TransformGizmo;
 };
 
 

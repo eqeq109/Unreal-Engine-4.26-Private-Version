@@ -2,14 +2,10 @@
 
 #pragma once
 
-#include "Interfaces/IDMXProtocolFactory.h"
-
 #include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
 #include "HAL/IConsoleManager.h"
-
-struct FDMXProtocolRegistrationParams;
-
+#include "Interfaces/IDMXProtocolFactory.h"
 
 /**
  */
@@ -31,7 +27,6 @@ private:
 	TUniquePtr<FDMXProtocolFactoryArtNet> FactoryArtNet;
 
 public:
-	UE_DEPRECATED(4.27, "Use DMX_PROTOCOLNAME_ARTNET instead")
 	static FName const NAME_Artnet;
 
 public:
@@ -44,9 +39,6 @@ public:
 	static FDMXProtocolArtNetModule& Get();
 
 private:
-	/** Registers the Art-Net implementation here with the Protocol Module */
-	void RegisterWithProtocolModule(TArray<FDMXProtocolRegistrationParams>& InOutProtocolRegistrationParamsArray);
-
 	/**
 	 * Sending DMX through console command
 	 * Command structure is DMX.ArtNet.SendDMX [UniverseID] Channel:Value Channel:Value Channel:Value ...

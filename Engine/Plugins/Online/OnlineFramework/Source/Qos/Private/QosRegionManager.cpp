@@ -333,16 +333,12 @@ FString UQosRegionManager::GetRegionId() const
 {
 	if (!ForceRegionId.IsEmpty())
 	{
-		UE_LOG(LogQos, VeryVerbose, TEXT("[UQosRegionManager::GetRegionId] Force region: \"%s\""), *ForceRegionId);
-
 		// we may have updated INI to bypass this process
 		return ForceRegionId;
 	}
 
 	if (QosEvalResult == EQosCompletionResult::Invalid)
 	{
-		UE_LOG(LogQos, VeryVerbose, TEXT("[UQosRegionManager::GetRegionId] No QoS result: \"%s\""), NO_REGION);
-
 		// if we haven't run the evaluator just use the region from settings
 		// development dedicated server will come here, live services should use -mcpregion
 		return NO_REGION;
@@ -355,7 +351,6 @@ FString UQosRegionManager::GetRegionId() const
 		return NO_REGION;
 	}
 
-	UE_LOG(LogQos, VeryVerbose, TEXT("[UQosRegionManager::GetRegionId] Selected region: \"%s\""), *SelectedRegionId);
 	return SelectedRegionId;
 }
 
@@ -363,8 +358,6 @@ FString UQosRegionManager::GetBestRegion() const
 {
 	if (!ForceRegionId.IsEmpty())
 	{
-		UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::GetBestRegion] Force region: %s"), *ForceRegionId);
-
 		return ForceRegionId;
 	}
 
@@ -381,9 +374,6 @@ FString UQosRegionManager::GetBestRegion() const
 			BestRegionId = Region.Definition.RegionId;
 		}
 	}
-
-	UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::GetBestRegion] Best region: \"%s\"  (Current selected: \"%s\")"),
-		*BestRegionId, *SelectedRegionId);
 
 	return BestRegionId;
 }
@@ -443,8 +433,6 @@ void UQosRegionManager::ForceSelectRegion(const FString& InRegionId)
 		QosEvalResult = EQosCompletionResult::Success;
 		ForceRegionId = InRegionId.ToUpper();
 
-		UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::ForceSelectRegion] Force region: \"%s\""), *ForceRegionId);
-
 		// make sure we can select this region
 		if (!SetSelectedRegion(ForceRegionId, true))
 		{
@@ -462,15 +450,10 @@ void UQosRegionManager::TrySetDefaultRegion()
 {
 	if (!IsRunningDedicatedServer())
 	{
-		const FString& RegionId = GetRegionId();
-		UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::TrySetDefaultRegion] setting default from GetRegionId() (%s)"), *RegionId);
-
 		// Try to set a default region if one hasn't already been selected
-		if (!SetSelectedRegion(RegionId))
+		if (!SetSelectedRegion(GetRegionId()))
 		{
 			FString BestRegionId = GetBestRegion();
-			UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::TrySetDefaultRegion] setting default from best (%s)"), *BestRegionId);
-
 			if (!SetSelectedRegion(BestRegionId))
 			{
 				UE_LOG(LogQos, Warning, TEXT("Unable to set a good region!"));
@@ -511,9 +494,7 @@ bool UQosRegionManager::SetSelectedRegion(const FString& InRegionId, bool bForce
 			{
 				if (RegionInfo.IsUsable())
 				{
-					UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::SetSelectedRegion] Old: \"%s\"  New: \"%s\"  (force? %s)"),
-						*SelectedRegionId, *RegionId, *LexToString(bForce));
-					SelectedRegionId = MoveTemp(RegionId);
+					SelectedRegionId = RegionId;
 					return true;
 				}
 				else
@@ -533,10 +514,7 @@ bool UQosRegionManager::SetSelectedRegion(const FString& InRegionId, bool bForce
 }
 
 void UQosRegionManager::ClearSelectedRegion()
-{
-	UE_LOG(LogQos, Verbose, TEXT("[UQosRegionManager::ClearSelectedRegion] Selected region: \"%s\"  Forced region: \"%s\"  bRegionForcedViaCommandline=%s"),
-		*SelectedRegionId, *ForceRegionId, *LexToString(bRegionForcedViaCommandline));
-
+{ 
 	// Do not default to NO_REGION
 	SelectedRegionId.Empty();
 	if (!bRegionForcedViaCommandline)

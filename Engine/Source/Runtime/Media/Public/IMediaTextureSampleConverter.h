@@ -22,6 +22,7 @@ public:
 
 	struct FConversionHints
 	{
+		bool bOutputSRGB;
 		uint8 NumMips;
 	};
 

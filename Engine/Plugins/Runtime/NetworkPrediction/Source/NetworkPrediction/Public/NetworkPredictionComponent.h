@@ -74,5 +74,9 @@ protected:
 	FReplicationProxySet GetReplicationProxies()
 	{
 		return FReplicationProxySet{ &ReplicationProxy_ServerRPC, &ReplicationProxy_Autonomous, &ReplicationProxy_Simulated, &ReplicationProxy_Replay };
-	}
+	}	
+
+	void RegisterServerRPCDelegate();
+	void UnregisterServerRPCDelegate();
+	FDelegateHandle ServerRPCHandle;
 };

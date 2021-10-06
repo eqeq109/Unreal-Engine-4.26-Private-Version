@@ -89,26 +89,26 @@ struct FTransformToolOptions
 	GENERATED_BODY()
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float UpperBound = 0.f;
+	float UpperBound;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float LowerBound = 0.f;
+	float LowerBound;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float LeftBound = 0.f;
+	float LeftBound;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float RightBound = 0.f;
+	float RightBound;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float ScaleCenterX = 0.f;
+	float ScaleCenterX;
 
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions)
-	float ScaleCenterY = 0.f;
+	float ScaleCenterY;
 
 	/** specifies the falloff type applied to curve selection */
 	UPROPERTY(Transient, EditAnywhere, Category = ToolOptions, Meta = (ToolTip = "Interpolation type for soft selection (activate by holding ctrl)"))
-	EToolTransformInterpType FalloffInterpType = EToolTransformInterpType::Linear;
+	EToolTransformInterpType FalloffInterpType;
 };
 
 class FCurveEditorTransformTool : public ICurveEditorToolExtension

@@ -27,11 +27,17 @@ FInputActionInstance::FInputActionInstance(const UInputAction* InSourceAction)
 		{
 			if (ToDuplicate)
 			{
-				Modifiers.Add(DuplicateObject<UInputModifier>(ToDuplicate, nullptr));
+				TArray<UInputModifier*>& CopyTo = ToDuplicate->GetExecutionPhase() == EModifierExecutionPhase::FinalValue ? FinalValueModifiers : PerInputModifiers;
+				CopyTo.Add(DuplicateObject<UInputModifier>(ToDuplicate, nullptr));
 			}
 		}
 
 	}
+}
+
+const TArray<UInputModifier*>& FInputActionInstance::GetModifiers(EModifierExecutionPhase ForPhase) const
+{
+	return ForPhase == EModifierExecutionPhase::FinalValue ? FinalValueModifiers : PerInputModifiers;
 }
 
 #if WITH_EDITOR

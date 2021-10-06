@@ -86,9 +86,11 @@ void ITranslationEditor::UnregisterTranslationEditor()
 	OpenTranslationEditors.Remove(ArchiveFilePath);
 }
 
-void ITranslationEditor::OnClose()
+bool ITranslationEditor::OnRequestClose()
 {
 	ITranslationEditor::UnregisterTranslationEditor();
+
+	return true;
 }
 
 

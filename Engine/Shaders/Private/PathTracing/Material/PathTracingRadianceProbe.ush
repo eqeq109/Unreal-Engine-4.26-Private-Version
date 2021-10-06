@@ -11,6 +11,12 @@ PathTracingLambert.usf: Lambertian BRDF sampling functions
 	#include "FirstBounceRayGuidingCommon.ush"
 #endif
 
+float4 CosineSampleHemisphereConcentric( float2 E )
+{
+	float2 d = UniformSampleDiskConcentric(E);
+	return float4(d.x, d.y, sqrt(saturate(1 - d.x * d.x - d.y * d.y)), sqrt(saturate(1 - d.x * d.x - d.y * d.y)) / PI);
+}
+
 float2 InverseConcentricMapping(float2 p)
 {
 	// Handle degeneracy at the origin
@@ -48,10 +54,12 @@ float2 InverseConcentricMapping(float2 p)
 	return float2(x, y);
 }
 
-FMaterialSample RadianceProbe_SampleMaterial(
+void RadianceProbe_SampleMaterial(
 	FMaterialClosestHitPayload Payload,
-	float4 RandSample
-)
+	float4 RandSample,
+	out float3 OutDirection,
+	out float3 OutThroughput,
+	out float OutPdf)
 {
 	float PdfAdjust = 1.0f; 
 	
@@ -115,21 +123,11 @@ FMaterialSample RadianceProbe_SampleMaterial(
 
 	float3 N_World = GetWorldNormal(Payload);
 
-#ifdef LIGHTMAP_PATH_TRACING_MAIN_RG
-	// Use cosine hemisphere sampling for surface lightmaps
 	float4 SampledValue = CosineSampleHemisphereConcentric(RandSample.xy);
-#else
-	// Use uniform hemisphere sampling for volumetric lightmaps (the two hemispheres are meant to be merged)
-	float4 SampledValue = UniformSampleHemisphere(RandSample.xy);
-#endif
-	float3 OutDirection = TangentToWorld(SampledValue.xyz, N_World);
+	OutDirection = TangentToWorld(SampledValue.xyz, N_World);
 
-	PdfAdjust = max(PdfAdjust, 0.00001f);
-	float OutPdf = SampledValue.w * PdfAdjust;
-	// As the name suggests, radiance probe has a combined throughput (Pdf * Weight) == 1
-	float OutWeight = (OutPdf > 0.0f) ? (1.0f / OutPdf) : 0;
-
-	return CreateMaterialSample(OutDirection, OutWeight, OutPdf, 1.0, 1.0);
+	OutThroughput = 1.0f;
+	OutPdf = SampledValue.w * PdfAdjust;
 }
 
 float RadianceProbe_Pdf(float3 OutgoingDirection, FMaterialClosestHitPayload Payload)
@@ -193,18 +191,15 @@ float RadianceProbe_Pdf(float3 OutgoingDirection, FMaterialClosestHitPayload Pay
 #endif	
 #endif
 
-	PdfAdjust = max(PdfAdjust, 0.00001f);
-#ifdef LIGHTMAP_PATH_TRACING_MAIN_RG
 	float NoL = max(dot(N_World, OutgoingDirection), 0.0);
-	return (NoL / PI) * PdfAdjust;
-#else
-	return 1 / (2 * PI) * PdfAdjust;
-#endif
+	return (NoL / PI) * max(PdfAdjust, 0.00001f);
 }
 
-FMaterialEval RadianceProbe_EvalMaterial(
+void RadianceProbe_EvalMaterial(
 	float3 OutgoingDirection,
-	FMaterialClosestHitPayload Payload
+	FMaterialClosestHitPayload Payload,
+	out float3 OutThroughput,
+	out float OutPdf
 )
 {
 	float3 N_World = GetWorldNormal(Payload);
@@ -268,48 +263,42 @@ FMaterialEval RadianceProbe_EvalMaterial(
 #endif
 	float NoL = max(dot(N_World, OutgoingDirection), 0.0);
 
-	PdfAdjust = max(PdfAdjust, 0.00001f);
-
-#ifdef LIGHTMAP_PATH_TRACING_MAIN_RG
-	float OutPdf = NoL / PI * PdfAdjust;
-#else
-	float OutPdf = 1 / (2 * PI) * PdfAdjust;
-#endif
-	// As the name suggests, radiance probe has a combined throughput (Pdf * Weight) == 1
-	float OutWeight = (OutPdf > 0.0f) ? (1.0f / OutPdf) : 0;
-
-	return CreateMaterialEval(OutWeight, OutPdf);
+	OutPdf = NoL / PI * max(PdfAdjust, 0.00001f);
+	OutThroughput = 1.0f;
 }
 
 #else
 
-FMaterialSample RadianceProbe_SampleMaterial(
+void RadianceProbe_SampleMaterial(
 	FMaterialClosestHitPayload Payload,
-	float4 RandSample)
+	float4 RandSample,
+	out float3 OutDirection,
+	out float3 OutThroughput,
+	out float OutPdf)
 {
 	float3 N_World = GetWorldNormal(Payload);
 
-	float4 SampledValue = CosineSampleHemisphere(RandSample.xy);
+	float4 SampledValue = UniformSampleHemisphere(RandSample.xy);
+	OutDirection = TangentToWorld(SampledValue.xyz, N_World);
 
-	return CreateMaterialSample(TangentToWorld(SampledValue.xyz, N_World), 1.0, SampledValue.w, 1.0, 1.0);
+	OutThroughput = 1.0f;
+	OutPdf = 1.0f / (2 * PI);
 }
 
 float RadianceProbe_Pdf(float3 OutgoingDirection, FMaterialClosestHitPayload Payload)
 {
-	float3 N_World = GetWorldNormal(Payload);
-	float NoL = saturate(dot(N_World, OutgoingDirection));
-	return NoL / PI;
+	return 1.0f / (2 * PI);
 }
 
-FMaterialEval RadianceProbe_EvalMaterial(
+void RadianceProbe_EvalMaterial(
 	float3 OutgoingDirection,
-	FMaterialClosestHitPayload Payload
+	FMaterialClosestHitPayload Payload,
+	out float3 OutThroughput,
+	out float OutPdf
 )
 {
-	float3 N_World = GetWorldNormal(Payload);
-	float NoL = saturate(dot(N_World, OutgoingDirection));
-
-	return CreateMaterialEval(GetDiffuseColor(Payload), NoL / PI);
+	OutPdf = 1.0f / (2 * PI);
+	OutThroughput = 1.0f;
 }
 
 #endif

@@ -78,26 +78,17 @@ private:
 	/** Get the identifier of the currently active tab */
 	FName GetActiveTab() const;
 
-	/** Changes the active tab */
-	void SetActiveTab(FName TabName);
-
 	/** Check if a search is active */
 	bool IsSearchActive() const;
 
-	/** Update the list of shown items */
-	void UpdateShownItems();
+	/** Update the list of filtered items */
+	void UpdateFilteredItems();
 
-	/** Requests an update of the shown items */
-	void RequestUpdateShownItems();
+	/** Called when the recently placed assets changes. */
+	void UpdateRecentlyPlacedAssets( const TArray< FActorPlacementInfo >& RecentlyPlaced );
 
-	/** Requests a refresh of the list of recently placed assets */
-	void RequestRefreshRecentlyPlaced( const TArray< FActorPlacementInfo >& RecentlyPlaced );
-
-	/** Requests a refresh of placeable assets in the All Classes category */
-	void RequestRefreshAllClasses();
-
-	/** Refreshes the list of placement categories */
-	void UpdatePlacementCategories();
+	/** Called when the list of placeable assets changes. */
+	void UpdatePlaceableAssets();
 
 private:
 
@@ -131,12 +122,12 @@ private:
 	FText GetHighlightText() const;
 
 private:
-	/** Flags to refresh particular categories on tick */
-	bool bRefreshRecentlyPlaced;
-	bool bRefreshAllClasses;
+	/** Flags to invoke updates of particular caregories on tick */
+	bool bRecentlyPlacedRefreshRequested;
+	bool bPlaceablesFullRefreshRequested;
 
-	/** Flag to indicate that we need to update the list of shown items */
-	bool bUpdateShownItems;
+	/** Flag to indicate that we need to update the filtered items array */
+	bool bNeedsUpdate;
 
 	// The text filter used to filter the classes
 	typedef TTextFilter<const FPlaceableItem&> FPlacementAssetEntryTextFilter;
@@ -153,9 +144,6 @@ private:
 
 	/** Array of filtered items to show in the list view */
 	TArray<TSharedPtr<FPlaceableItem>> FilteredItems;
-
-	/** Tabs vertical box */
-	TSharedPtr<SVerticalBox> Tabs;
 
 	/** The name of the currently active tab (where no search is active) */
 	FName ActiveTabName;

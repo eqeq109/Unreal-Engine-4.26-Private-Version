@@ -25,22 +25,6 @@
 
 DECLARE_CYCLE_STAT(TEXT("3DHitTesting"), STAT_Slate3DHitTesting, STATGROUP_Slate);
 
-static int32 MaximumRenderTargetWidth = 3840;
-static FAutoConsoleVariableRef CVarMaximumRenderTargetWidth
-(
-	TEXT("WidgetComponent.MaximumRenderTargetWidth"),
-	MaximumRenderTargetWidth,
-	TEXT("Sets the maximum width of the render target used by a Widget Component.")
-);
-
-static int32 MaximumRenderTargetHeight = 2160;
-static FAutoConsoleVariableRef CVarMaximumRenderTargetHeight
-(
-	TEXT("WidgetComponent.MaximumRenderTargetHeight"),
-	MaximumRenderTargetHeight,
-	TEXT("Sets the maximum height of the render target used by a Widget Component.")
-);
-
 class FWorldWidgetScreenLayer : public IGameLayer
 {
 public:
@@ -489,7 +473,7 @@ public:
 
 	void RenderCollision(UBodySetup* InBodySetup, FMeshElementCollector& Collector, int32 ViewIndex, const FEngineShowFlags& EngineShowFlags, const FBoxSphereBounds& InBounds, bool bRenderInEditor) const
 	{
-		if ( InBodySetup )
+		if ( InBodySetup && InBodySetup->IsValidLowLevel() )
 		{
 			bool bDrawCollision = EngineShowFlags.Collision && IsCollisionEnabled();
 
@@ -669,11 +653,6 @@ void UWidgetComponent::Serialize(FArchive& Ar)
 	}
 }
 
-bool UWidgetComponent::CanBeInCluster() const
-{
-	return false;
-}
-
 void UWidgetComponent::BeginPlay()
 {
 	SetComponentTickEnabled(TickMode != ETickMode::Disabled);
@@ -723,9 +702,11 @@ void UWidgetComponent::UpdateMaterialInstance()
 
 	UMaterialInterface* BaseMaterial = GetMaterial(0);
 	MaterialInstance = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+	if (MaterialInstance)
+	{
+		MaterialInstance->AddToCluster(this);
+	}
 	UpdateMaterialInstanceParameters();
-
-	MarkRenderStateDirty();
 }
 
 FPrimitiveSceneProxy* UWidgetComponent::CreateSceneProxy()
@@ -737,7 +718,7 @@ FPrimitiveSceneProxy* UWidgetComponent::CreateSceneProxy()
 
 	if (WidgetRenderer && CurrentSlateWidget.IsValid())
 	{
-		RequestRenderUpdate();
+		RequestRedraw();
 		LastWidgetRenderTime = 0;
 
 		return new FWidget3DSceneProxy(this, *WidgetRenderer->GetSlateRenderer());
@@ -1321,11 +1302,6 @@ void UWidgetComponent::DrawWidgetToRenderTarget(float DeltaTime)
 			DeltaTime);
 
 		LastWidgetRenderTime = GetCurrentTime();
-
-		if (TickMode == ETickMode::Disabled && IsComponentTickEnabled())
-		{
-			SetComponentTickEnabled(false);
-		}
 	}
 }
 
@@ -1476,18 +1452,6 @@ void UWidgetComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 		static FName WindowVisibilityName(TEXT("WindowVisibility"));
 
 		auto PropertyName = Property->GetFName();
-
-		if (PropertyName == DrawSizeName)
-		{
-			if (DrawSize.X > MaximumRenderTargetWidth)
-			{
-				DrawSize.X = MaximumRenderTargetWidth;
-			}
-			if (DrawSize.Y > MaximumRenderTargetHeight)
-			{
-				DrawSize.Y = MaximumRenderTargetHeight;
-			}
-		}
 
 		if( PropertyName == WidgetClassName )
 		{
@@ -2024,15 +1988,6 @@ void UWidgetComponent::SetDrawSize(FVector2D Size)
 void UWidgetComponent::RequestRedraw()
 {
 	bRedrawRequested = true;
-}
-
-void UWidgetComponent::RequestRenderUpdate()
-{
-	bRedrawRequested = true;
-	if (TickMode == ETickMode::Disabled)
-	{
-		SetComponentTickEnabled(true);
-	}
 }
 
 void UWidgetComponent::SetBlendMode( const EWidgetBlendMode NewBlendMode )

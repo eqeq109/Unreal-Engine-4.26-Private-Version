@@ -211,10 +211,6 @@ public:
 		return true;
 	}
 
-	/** Minimizes buffers held internally by this handle. **/
-	virtual void ShrinkHandleBuffers()
-	{ }
-
 	// Non-copyable
 	IAsyncReadFileHandle(const IAsyncReadFileHandle&) = delete;
 	IAsyncReadFileHandle& operator=(const IAsyncReadFileHandle&) = delete;

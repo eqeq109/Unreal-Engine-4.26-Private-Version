@@ -16,7 +16,7 @@
  * 
  * Consider using FEventRef as a safer and more convenient alternative.
  */
-class CORE_API FEvent
+class FEvent
 {
 public:
 
@@ -129,7 +129,7 @@ enum class EEventMode { AutoReset, ManualReset };
  *
  * non-copyable, non-movable
  */
-class CORE_API FEventRef final
+class FEventRef final
 {
 public:
 	explicit FEventRef(EEventMode Mode = EEventMode::AutoReset);

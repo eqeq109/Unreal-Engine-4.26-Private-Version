@@ -3,7 +3,6 @@
 #include "Components/SynthComponent.h"
 #include "AudioDevice.h"
 #include "AudioMixerLog.h"
-#include "Sound/AudioSettings.h"
 
 USynthSound::USynthSound(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -129,10 +128,6 @@ USynthComponent::USynthComponent(const FObjectInitializer& ObjectInitializer)
 
 	bStopWhenOwnerDestroyed = true;
 
-	bEnableBusSends = true;
-	bEnableBaseSubmix = true;
-	bEnableSubmixSends = true;
-
 	bNeverNeedsRenderUpdate = true;
 	bUseAttachParentBound = true; // Avoid CalcBounds() when transform changes.
 
@@ -140,6 +135,10 @@ USynthComponent::USynthComponent(const FObjectInitializer& ObjectInitializer)
 	bIsInitialized = false;
 	bIsUISound = false;
 	bAlwaysPlay = true;
+	Synth = nullptr;
+
+	// Set the default sound class
+	SoundClass = USoundBase::DefaultSoundClassObject;
 	Synth = nullptr;
 
 	PreferredBufferLength = DEFAULT_PROCEDURAL_SOUNDWAVE_BUFFER_SIZE;
@@ -240,9 +239,7 @@ void USynthComponent::Initialize(int32 SampleRateOverride)
 		Synth->SoundSubmixSends = SoundSubmixSends;
 		Synth->BusSends = BusSends;
 		Synth->PreEffectBusSends = PreEffectBusSends;
-		Synth->bEnableBusSends = bEnableBusSends;
-		Synth->bEnableBaseSubmix = bEnableBaseSubmix;
-		Synth->bEnableSubmixSends = bEnableSubmixSends;
+		Synth->bOutputToBusOnly = bOutputToBusOnly;
 
 		Synth->Init(this, NumChannels, SampleRate, PreferredBufferLength);
 
@@ -347,22 +344,6 @@ void USynthComponent::OnUnregister()
 	}
 }
 
-USoundClass* USynthComponent::GetSoundClass()
-{
-	if (SoundClass)
-	{
-		return SoundClass;
-	}
-
-	const UAudioSettings* AudioSettings = GetDefault<UAudioSettings>();
-	if (ensure(AudioSettings))
-	{
-		return AudioSettings->GetDefaultSoundClass();
-	}
-
-	return nullptr;
-}
-
 bool USynthComponent::IsReadyForOwnerToAutoDestroy() const
 {
 	const bool bIsAudioComponentReadyForDestroy = !AudioComponent || (AudioComponent && !AudioComponent->IsPlaying());
@@ -385,21 +366,7 @@ void USynthComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
-#endif //WITH_EDITOR
-
-#if WITH_EDITORONLY_DATA
-void USynthComponent::PostLoad()
-{
-	Super::PostLoad();
-	if (bOutputToBusOnly_DEPRECATED)
-	{
-		bEnableBusSends = true;
-		bEnableBaseSubmix = !bOutputToBusOnly_DEPRECATED;
-		bEnableSubmixSends = !bOutputToBusOnly_DEPRECATED;
-		bOutputToBusOnly_DEPRECATED = false;
-	}
-}
-#endif //WITH_EDITORONLY_DATA
+#endif
 
 void USynthComponent::Serialize(FArchive& Ar)
 {
@@ -563,15 +530,6 @@ void USynthComponent::SetLowPassFilterFrequency(float InLowPassFilterFrequency)
 		AudioComponent->SetLowPassFilterFrequency(InLowPassFilterFrequency);
 	}
 }
-
-void USynthComponent::SetOutputToBusOnly(bool bInOutputToBusOnly)
-{
-	if (AudioComponent)
-	{
-		AudioComponent->SetOutputToBusOnly(bInOutputToBusOnly);
-	}
-}
-
 
 void USynthComponent::SynthCommand(TFunction<void()> Command)
 {

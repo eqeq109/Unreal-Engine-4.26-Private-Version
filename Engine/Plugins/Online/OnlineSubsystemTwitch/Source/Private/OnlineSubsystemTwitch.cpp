@@ -135,10 +135,8 @@ bool FOnlineSubsystemTwitch::Init()
 {
 	UE_LOG_ONLINE(VeryVerbose, TEXT("FOnlineSubsystemTwitch::Init() Name: %s"), *InstanceName.ToString());
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	TwitchIdentity = MakeShared<FOnlineIdentityTwitch, ESPMode::ThreadSafe>(this);
 	TwitchExternalUIInterface = MakeShared<FOnlineExternalUITwitch, ESPMode::ThreadSafe>(this);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	return true;
 }
@@ -253,13 +251,11 @@ bool FOnlineSubsystemTwitch::HandleAuthExecCommands(UWorld* InWorld, const TCHAR
 					}
 				}
 			}
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			Identity->ClearOnLoginCompleteDelegate_Handle(InLocalUserNum, LoginCompleteDelegateHandle);
 			LoginCompleteDelegateHandle.Reset();
 		});
 		LoginCompleteDelegateHandle = Identity->AddOnLoginCompleteDelegate_Handle(LocalUserNum, Delegate);
 		Identity->Login(LocalUserNum, FOnlineAccountCredentials(Identity->GetAuthType(), Id, Auth));
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 #endif // WITH_DEV_AUTOMATION_TESTS
 
@@ -268,9 +264,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 
 FOnlineSubsystemTwitch::FOnlineSubsystemTwitch(FName InInstanceName)
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	: FOnlineSubsystemImpl(TWITCH_SUBSYSTEM, InInstanceName)
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	, TwitchApiVersion(TEXT("application/vnd.twitchtv.v5+json"))
 {
 }

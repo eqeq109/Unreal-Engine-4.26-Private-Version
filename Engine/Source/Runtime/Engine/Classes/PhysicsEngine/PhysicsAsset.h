@@ -77,13 +77,6 @@ struct ENGINE_API FSolverIterations
 		int32 CollisionPushOutIterations;
 };
 
-UENUM()
-enum class EPhysicsAssetSolverType: uint8
-{
-	RBAN,
-	World,
-};
-
 /**
  * PhysicsAsset contains a set of rigid bodies and constraints that make up a single ragdoll.
  * The asset is not limited to human ragdolls, and can be used for any physical simulation using bodies and constraints.
@@ -147,10 +140,6 @@ public:
 	/** [Chaos Only] Recommended solver settings. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = SolverSettings)
 	FSolverIterations SolverIterations;
-
-	/** [Chaos Only] Solver type used in physics asset editor. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = SolverSettings)
-	EPhysicsAssetSolverType SolverType;
 
 	/** If true, we skip instancing bodies for this PhysicsAsset on dedicated servers */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = Physics)

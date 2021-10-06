@@ -148,19 +148,19 @@ struct ENGINE_API FUpdateLevelStreamingLevelStatus
 
 	/** Current LOD index for a streaming level */
 	UPROPERTY()
-	int32 LODIndex = 0;
+	int32 LODIndex;
 
 	/** Whether the level should be loaded */
 	UPROPERTY()
-	bool bNewShouldBeLoaded = false;
+	uint32 bNewShouldBeLoaded : 1;
 	
 	/** Whether the level should be visible if it is loaded */
 	UPROPERTY()
-	bool bNewShouldBeVisible = false;
+	uint32 bNewShouldBeVisible : 1;
 	
 	/** Whether we want to force a blocking load */
 	UPROPERTY()
-	bool bNewShouldBlockOnLoad = false;
+	uint32 bNewShouldBlockOnLoad : 1;
 };
 
 /** Data structure used to setup an input mode that allows the UI to respond to user input, and if the UI doesn't handle it player input / player controller gets a chance. */
@@ -1504,9 +1504,6 @@ protected:
 
 	/** The virtual touch interface */
 	TSharedPtr<class SVirtualJoystick> VirtualJoystick;
-
-	/** Create virtual touch interface */
-	virtual TSharedPtr<class SVirtualJoystick> CreateVirtualJoystick();
 
 	/** The currently set touch interface */
 	UPROPERTY()

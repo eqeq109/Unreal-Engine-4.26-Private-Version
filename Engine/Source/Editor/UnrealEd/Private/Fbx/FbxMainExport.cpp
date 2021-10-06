@@ -91,6 +91,8 @@
 #include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
 #include "MovieSceneSequence.h"
 #include "MovieSceneTimeHelpers.h"
+#include "EntitySystem/Interrogation/MovieSceneInterrogationLinker.h"
+#include "Systems/MovieSceneComponentTransformSystem.h"
 
 #if WITH_PHYSX
 #include "DynamicMeshBuilder.h"
@@ -946,7 +948,7 @@ void FFbxExporter::ExportStaticMesh(AActor* Actor, UStaticMeshComponent* StaticM
 			if (CurrentLodIndex + 1 < StaticMesh->GetNumLODs())
 			{
 				//Convert the screen size to a threshold, it is just to be sure that we set some threshold, there is no way to convert this precisely
-				double LodScreenSize = (double)(10.0f / StaticMesh->GetRenderData()->ScreenSize[CurrentLodIndex].Default);
+				double LodScreenSize = (double)(10.0f / StaticMesh->RenderData->ScreenSize[CurrentLodIndex].Default);
 				FbxLodGroupAttribute->AddThreshold(LodScreenSize);
 			}
 
@@ -1193,7 +1195,7 @@ void FFbxExporter::ExportStaticMesh( UStaticMesh* StaticMesh, const TArray<FStat
 			if (CurrentLodIndex + 1 < StaticMesh->GetNumLODs())
 			{
 				//Convert the screen size to a threshold, it is just to be sure that we set some threshold, there is no way to convert this precisely
-				double LodScreenSize = (double)(10.0f / StaticMesh->GetRenderData()->ScreenSize[CurrentLodIndex].Default);
+				double LodScreenSize = (double)(10.0f / StaticMesh->RenderData->ScreenSize[CurrentLodIndex].Default);
 				FbxLodGroupAttribute->AddThreshold(LodScreenSize);
 			}
 			ExportStaticMeshToFbx(StaticMesh, CurrentLodIndex, *MeshName, FbxActorLOD, -1, nullptr, MaterialOrder);
@@ -1983,25 +1985,19 @@ bool FFbxExporter::ExportLevelSequenceTracks(UMovieScene* MovieScene, IMovieScen
 		}
 	}
 
-	AActor* BoundActor = Cast<AActor>(BoundObject);
-	USceneComponent* BoundComponent = Cast<USceneComponent>(BoundObject);
-
-	const bool bIsCameraActor = BoundActor ? BoundActor->IsA(ACameraActor::StaticClass()) : BoundComponent ? BoundComponent->IsA(UCameraComponent::StaticClass()) : false;
-
-	// If there's more than one transform track for this actor (ie. on the actor and on the root component) or if there's more than one section, evaluate baked
-	if (bIsCameraActor || TransformTracks.Num() > 1 || (TransformTracks.Num() != 0 && TransformTracks[0].Get()->GetAllSections().Num() > 1))
+	// If there's more than one transform track for this actor (ie. on the actor and on the root component) or if there's more than one section, evaluate through interrogation
+	if (TransformTracks.Num() > 1 || (TransformTracks.Num() != 0 && TransformTracks[0].Get()->GetAllSections().Num() > 1))
 	{
 		if (!bSkip3DTransformTrack)
 		{
-			FLevelSequenceAnimTrackAdapter AnimTrackAdapter(MovieScenePlayer, MovieScene, RootToLocalTransform, nullptr);
-			ExportLevelSequenceBaked3DTransformTrack(AnimTrackAdapter, FbxActor, MovieScenePlayer, InSequenceID, TransformTracks, BoundObject, MovieScene->GetPlaybackRange(), RootToLocalTransform);
+			ExportLevelSequenceInterrogated3DTransformTrack(FbxActor, MovieScenePlayer, InSequenceID, TransformTracks, BoundObject, MovieScene->GetPlaybackRange(), RootToLocalTransform);
 		}
 
 		bSkip3DTransformTrack = true;
 	}
-
+	
 	// Look for the tracks that we currently support
-	UMovieSceneSkeletalAnimationTrack* SkeletalAnimationTrack = nullptr;
+	bool bExportedAnimTrack = false; // Only export the anim track once since the evaluation is already blended
 	for (UMovieSceneTrack* Track : Tracks)
 	{
 		if (Track->IsA(UMovieScene3DTransformTrack::StaticClass()))
@@ -2012,28 +2008,20 @@ bool FFbxExporter::ExportLevelSequenceTracks(UMovieScene* MovieScene, IMovieScen
 				ExportLevelSequence3DTransformTrack(FbxActor, MovieScenePlayer, InSequenceID, *TransformTrack, BoundObject, MovieScene->GetPlaybackRange(), RootToLocalTransform);
 			}
 		}
-		else if (Track->IsA(UMovieSceneSkeletalAnimationTrack::StaticClass()))
+		else if (Track->IsA(UMovieSceneSkeletalAnimationTrack::StaticClass()) && !bExportedAnimTrack)
 		{
-			SkeletalAnimationTrack = Cast<UMovieSceneSkeletalAnimationTrack>(Track);
+			if (SkeletalMeshComp)
+			{
+				bExportedAnimTrack = true;
+				FLevelSequenceAnimTrackAdapter AnimTrackAdapter(MovieScenePlayer, MovieScene, RootToLocalTransform, Cast<UMovieSceneSkeletalAnimationTrack>(Track));
+				ExportAnimTrack(AnimTrackAdapter, Actor, SkeletalMeshComp, 1.0 / DisplayRate.AsDecimal());
+			}
 		}
 		else
 		{
 			ExportLevelSequenceTrackChannels(FbxActor, *Track, MovieScene->GetPlaybackRange(), RootToLocalTransform);
 		}
 	}
-
-	// Export all of the skeletal animation components for this actor
-	if (SkeletalMeshComp && SkeletalAnimationTrack)
-	{
-		TArray<USkeletalMeshComponent*> SkeletalMeshComponents;
-		SkeletalMeshComp->GetOwner()->GetComponents(SkeletalMeshComponents);
-		for (USkeletalMeshComponent* SkeletalMeshComponent : SkeletalMeshComponents)
-		{
-			FLevelSequenceAnimTrackAdapter AnimTrackAdapter(MovieScenePlayer, MovieScene, RootToLocalTransform, SkeletalAnimationTrack);
-			ExportAnimTrack(AnimTrackAdapter, Actor, SkeletalMeshComponent, 1.0 / DisplayRate.AsDecimal());
-		}
-	}
-
 	return true;
 }
 
@@ -3121,7 +3109,7 @@ void FFbxExporter::ExportLevelSequence3DTransformTrack(FbxNode* FbxNode, IMovieS
 	}
 }
 
-void FFbxExporter::ExportLevelSequenceBaked3DTransformTrack(IAnimTrackAdapter& AnimTrackAdapter, FbxNode* FbxNode, IMovieScenePlayer* MovieScenePlayer, FMovieSceneSequenceIDRef InSequenceID, TArray<TWeakObjectPtr<UMovieScene3DTransformTrack> > TransformTracks, UObject* BoundObject, const TRange<FFrameNumber>& InPlaybackRange, const FMovieSceneSequenceTransform& RootToLocalTransform)
+void FFbxExporter::ExportLevelSequenceInterrogated3DTransformTrack(FbxNode* FbxNode, IMovieScenePlayer* MovieScenePlayer, FMovieSceneSequenceIDRef InSequenceID, TArray<TWeakObjectPtr<UMovieScene3DTransformTrack> > TransformTracks, UObject* BoundObject, const TRange<FFrameNumber>& InPlaybackRange, const FMovieSceneSequenceTransform& RootToLocalTransform)
 {
 	using namespace UE::MovieScene;
 
@@ -3201,70 +3189,28 @@ void FFbxExporter::ExportLevelSequenceBaked3DTransformTrack(IAnimTrackAdapter& A
 		FbxCurveScaleZ->KeyModifyBegin();
 	}
 
-	FMovieSceneTimeTransform LocalToRootTransform = RootToLocalTransform.InverseLinearOnly();
+	FMovieSceneTimeTransform LocatToRootTransform = RootToLocalTransform.InverseLinearOnly();
 
-	USceneComponent* InterrogatedComponent = nullptr;
-	if (BoundComponent)
-	{
-		InterrogatedComponent = BoundComponent;
-	}
-	else if (BoundActor)
-	{
-		InterrogatedComponent = BoundActor->GetRootComponent();
-	}
+	USceneComponent* InterrogatedComponent = BoundComponent ? BoundComponent : BoundActor->GetRootComponent();
 
-	if (bIsCameraActor)
-	{
-		if (InterrogatedComponent && InterrogatedComponent->IsA<UCameraComponent>())
-		{
-			// all set
-		}
-		else if (BoundActor && BoundActor->IsA(ACameraActor::StaticClass()))
-		{
-			ACameraActor* CameraActor = Cast<ACameraActor>(BoundActor);
-			InterrogatedComponent = CameraActor->GetCameraComponent();
-		}
-	}
-
-	TArray<FTransform> WorldTransforms;
+	FSystemInterrogator Interrogator;
+	Interrogator.ImportTransformHierarchy(InterrogatedComponent, MovieScenePlayer, InSequenceID);
+	
 	int32 LocalStartFrame = FFrameRate::TransformTime(FFrameTime(DiscreteInclusiveLower(InPlaybackRange)), TickResolution, DisplayRate).RoundToFrame().Value;
 	int32 AnimationLength = FFrameRate::TransformTime(FFrameTime(FFrameNumber(DiscreteSize(InPlaybackRange))), TickResolution, DisplayRate).RoundToFrame().Value + 1; // Add one so that we export a key for the end frame
-
-	const float SampleRate = 1.0f/DisplayRate.AsDecimal();
 
 	for (int32 FrameNumber = LocalStartFrame; FrameNumber < LocalStartFrame + AnimationLength; ++FrameNumber)
 	{
 		const FFrameTime FrameTime = FFrameRate::TransformTime(FrameNumber, DisplayRate, TickResolution);
-
-		// This will call UpdateSkelPose on the skeletal mesh component to move bones based on animations in the matinee group
-		AnimTrackAdapter.UpdateAnimation(FrameNumber);
-
-		USceneComponent* Child = InterrogatedComponent;
-		while (Child)
-		{
-			if (USkeletalMeshComponent* ChildSkeletalMeshComponent = Cast<USkeletalMeshComponent>(Child))
-			{
-				ChildSkeletalMeshComponent->TickAnimation(SampleRate, false);
-
-				ChildSkeletalMeshComponent->RefreshBoneTransforms();
-				ChildSkeletalMeshComponent->RefreshSlaveComponents();
-				ChildSkeletalMeshComponent->UpdateComponentToWorld();
-				ChildSkeletalMeshComponent->FinalizeBoneTransform();
-				ChildSkeletalMeshComponent->MarkRenderTransformDirty();
-				ChildSkeletalMeshComponent->MarkRenderDynamicDataDirty();
-			}
-
-			if (Child->GetOwner())
-			{
-				Child->GetOwner()->Tick(SampleRate);
-			}
-
-			Child = Child->GetAttachParent();
-		}
-		
-		FTransform WorldTransform = InterrogatedComponent->GetComponentToWorld();
-		WorldTransforms.Add(WorldTransform);
+		Interrogator.AddInterrogation(FrameTime);
 	}
+
+	Interrogator.Update();
+
+	TArray<FTransform> WorldTransforms;
+	Interrogator.QueryWorldSpaceTransforms(InterrogatedComponent, WorldTransforms);
+
+	ensure(WorldTransforms.Num() == AnimationLength);
 
 	for (int32 TransformIndex = 0; TransformIndex < WorldTransforms.Num(); ++TransformIndex)
 	{
@@ -3282,7 +3228,7 @@ void FFbxExporter::ExportLevelSequenceBaked3DTransformTrack(IAnimTrackAdapter& A
 		}
 		else
 		{
-			FbxTime.SetSecondDouble(DisplayRate.AsSeconds(CurrentFrame * LocalToRootTransform));
+			FbxTime.SetSecondDouble(DisplayRate.AsSeconds(CurrentFrame * LocatToRootTransform));
 		}
 
 		FbxCurveTransX->KeySet(FbxCurveTransX->KeyAdd(FbxTime), FbxTime, KeyTrans[0]);
@@ -3384,11 +3330,6 @@ void FFbxExporter::ExportLevelSequenceTrackChannels( FbxNode* FbxNode, UMovieSce
 			else if (PropertyName == "AttenuationRadius")
 			{
 				Property = FbxNode->FindProperty("UE_Radius", false);
-			}
-			else if (PropertyName == "FieldOfView" && FbxCamera)
-			{
-				Property = FbxCamera->FocalLength;
-				IsFoV = true;
 			}
 			else if (PropertyName == "FOVAngle" && FbxCamera)
 			{
@@ -3627,7 +3568,7 @@ public:
 	
 	void ExportCollisions()
 	{
-		const FKAggregateGeom& AggGeo = StaticMesh->GetBodySetup()->AggGeom;
+		const FKAggregateGeom& AggGeo = StaticMesh->BodySetup->AggGeom;
 
 		int32 VerticeNumber = 0;
 		for (const FKConvexElem &ConvexElem : AggGeo.ConvexElems)
@@ -4280,7 +4221,7 @@ private:
 
 FbxNode* FFbxExporter::ExportCollisionMesh(const UStaticMesh* StaticMesh, const TCHAR* MeshName, FbxNode* ParentActor)
 {
-	const FKAggregateGeom& AggGeo = StaticMesh->GetBodySetup()->AggGeom;
+	const FKAggregateGeom& AggGeo = StaticMesh->BodySetup->AggGeom;
 	if (AggGeo.GetElementCount() <= 0)
 	{
 		return nullptr;
@@ -4527,7 +4468,7 @@ FbxNode* FFbxExporter::ExportStaticMeshToFbx(const UStaticMesh* StaticMesh, int3
 
 			FString UVChannelNameBuilder = TEXT("UVmap_") + FString::FromInt(TexCoordSourceIndex);
 			const char* UVChannelName = TCHAR_TO_UTF8(*UVChannelNameBuilder); // actually UTF8 as required by Fbx, but can't use UE4's UTF8CHAR type because that's a uint8 aka *unsigned* char
-			if ((LightmapUVChannel >= 0) || ((LightmapUVChannel == -1) && (TexCoordSourceIndex == StaticMesh->GetLightMapCoordinateIndex())))
+			if ((LightmapUVChannel >= 0) || ((LightmapUVChannel == -1) && (TexCoordSourceIndex == StaticMesh->LightMapCoordinateIndex)))
 			{
 				UVChannelName = "LightMapUV";
 			}
@@ -4704,7 +4645,7 @@ FbxNode* FFbxExporter::ExportStaticMeshToFbx(const UStaticMesh* StaticMesh, int3
 			}
 			else
 			{
-				Material = StaticMesh->GetMaterial(Polygons.MaterialIndex);
+				StaticMesh->GetMaterial(Polygons.MaterialIndex);
 			}
 
 			FbxSurfaceMaterial* FbxMaterial = Material ? ExportMaterial(Material) : NULL;
@@ -4849,7 +4790,7 @@ void FFbxExporter::ExportSplineMeshToFbx(const USplineMeshComponent* SplineMeshC
 		}
 		FString UVChannelNameBuilder = TEXT("UVmap_") + FString::FromInt(TexCoordSourceIndex);
 		const char* UVChannelName = TCHAR_TO_UTF8(*UVChannelNameBuilder); // actually UTF8 as required by Fbx, but can't use UE4's UTF8CHAR type because that's a uint8 aka *unsigned* char
-		if (TexCoordSourceIndex == StaticMesh->GetLightMapCoordinateIndex())
+		if (TexCoordSourceIndex == StaticMesh->LightMapCoordinateIndex)
 		{
 			UVChannelName = "LightMapUV";
 		}

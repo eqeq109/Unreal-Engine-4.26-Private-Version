@@ -13,10 +13,8 @@ public class IntelOIDN : ModuleRules
             PublicSystemIncludePaths.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/include/");
             PublicSystemLibraryPaths.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/lib/");
             PublicAdditionalLibraries.Add(Target.UEThirdPartySourceDirectory + "Intel/OIDN/lib/OpenImageDenoise.lib");
-			RuntimeDependencies.Add("$(TargetOutputDir)/OpenImageDenoise.dll", Target.UEThirdPartySourceDirectory + "Intel/OIDN/bin/OpenImageDenoise.dll");
-			RuntimeDependencies.Add("$(TargetOutputDir)/tbb12.dll", Target.UEThirdPartySourceDirectory + "Intel/OIDN/bin/tbb12.dll");
-			PublicDelayLoadDLLs.Add("OpenImageDenoise.dll");
-			PublicDelayLoadDLLs.Add("tbb12.dll");
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/OpenImageDenoise.dll", Target.UEThirdPartySourceDirectory + "Intel/OIDN/bin/OpenImageDenoise.dll");
+
 			PublicDefinitions.Add("WITH_INTELOIDN=1");
         }
 		else

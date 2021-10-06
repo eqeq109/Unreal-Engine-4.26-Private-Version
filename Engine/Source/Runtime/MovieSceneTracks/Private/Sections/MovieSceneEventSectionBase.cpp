@@ -3,7 +3,6 @@
 #include "Sections/MovieSceneEventSectionBase.h"
 #include "Modules/ModuleManager.h"
 #include "Evaluation/MovieSceneEvaluationCustomVersion.h"
-#include "UObject/ReleaseObjectVersion.h"
 
 #if WITH_EDITOR
 
@@ -64,16 +63,6 @@ void UMovieSceneEventSectionBase::PostDuplicate(bool bDuplicateForPIE)
 	PostDuplicateSectionEvent.Execute(this);
 }
 
-void UMovieSceneEventSectionBase::PostRename(UObject* OldOuter, const FName OldName)
-{
-	if (OldOuter != GetOuter())
-	{
-		Super::PostRename(OldOuter, OldName);
-
-		PostDuplicateSectionEvent.Execute(this);
-	}
-}
-
 void UMovieSceneEventSectionBase::AttemptUpgrade()
 {
 	if (!bDataUpgradeRequired)
@@ -102,7 +91,6 @@ UMovieSceneEventSectionBase::UMovieSceneEventSectionBase(const FObjectInitialize
 void UMovieSceneEventSectionBase::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FMovieSceneEvaluationCustomVersion::GUID);
-	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 
 	Super::Serialize(Ar);
 
@@ -110,8 +98,7 @@ void UMovieSceneEventSectionBase::Serialize(FArchive& Ar)
 
 	if (Ar.IsLoading())
 	{
-		if (Ar.CustomVer(FMovieSceneEvaluationCustomVersion::GUID) < FMovieSceneEvaluationCustomVersion::DeprecateEventGUIDs
-			|| Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::FixupCopiedEventSections)
+		if (Ar.CustomVer(FMovieSceneEvaluationCustomVersion::GUID) < FMovieSceneEvaluationCustomVersion::DeprecateEventGUIDs)
 		{
 			AttemptUpgrade();
 		}

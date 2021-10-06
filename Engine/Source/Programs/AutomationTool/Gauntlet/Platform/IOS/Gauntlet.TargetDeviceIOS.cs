@@ -164,9 +164,9 @@ namespace Gauntlet
 			return Platform == UnrealTargetPlatform.IOS;
 		}
 
-		public ITargetDevice CreateDevice(string InRef, string InCachePath, string InParam)
+		public ITargetDevice CreateDevice(string InRef, string InParam)
 		{
-			return new TargetDeviceIOS(InRef, InCachePath);
+			return new TargetDeviceIOS(InRef);
 		}
 	}
 
@@ -184,7 +184,7 @@ namespace Gauntlet
 		
 		protected Dictionary<EIntendedBaseCopyDirectory, string> LocalDirectoryMappings { get; set; }
 
-		public TargetDeviceIOS(string InName, string InCachePath = null)
+		public TargetDeviceIOS(string InName)
 		{
 			KillZombies();
 
@@ -217,7 +217,13 @@ namespace Gauntlet
 			}
 
 			// setup local cache
-			LocalCachePath = InCachePath ?? Path.Combine(GauntletAppCache, "Device_" + Name);
+			LocalCachePath = Path.Combine(GauntletAppCache, "Device_" + Name);
+			if (Directory.Exists(LocalCachePath))
+			{
+				Directory.Delete(LocalCachePath, true);
+			}
+
+			Directory.CreateDirectory(LocalCachePath);
 		}
 
 		bool IsDefaultDevice = false;		
@@ -947,17 +953,6 @@ namespace Gauntlet
 			return Result;
 		}
 
-		public bool IsOSOutOfDate()
-		{
-			//TODO: not yet implemented
-			return false;
-		}
-
-		public bool UpdateOS()
-		{
-			//TODO: not yet implemented
-			return true;
-		}
 	}
 
 

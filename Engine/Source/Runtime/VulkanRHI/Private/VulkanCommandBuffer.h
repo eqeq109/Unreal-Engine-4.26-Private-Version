@@ -9,9 +9,6 @@
 #include "CoreMinimal.h"
 #include "VulkanConfiguration.h"
 
-extern int32 GVulkanProfileCmdBuffers;
-extern int32 GVulkanUseCmdBufferTimingForGPUTime;
-
 class FVulkanDevice;
 class FVulkanCommandBufferPool;
 class FVulkanCommandBufferManager;
@@ -190,9 +187,8 @@ public:
 		uint64 Count;
 		VkBuffer BufferHandle;
 		VkQueryPool PoolHandle;
-		bool bBlocking;
 	};
-	void AddPendingTimestampQuery(uint64 Index, uint64 Count, VkQueryPool PoolHandle, VkBuffer BufferHandle, bool bBlocking);
+	void AddPendingTimestampQuery(uint64 Index, uint64 Count, VkQueryPool PoolHandle, VkBuffer BufferHandle);
 
 private:
 	FVulkanDevice* Device;
@@ -358,11 +354,6 @@ public:
 
 	void FreeUnusedCmdBuffers();
 
-	FVulkanCommandListContext* GetCommandListContext()
-	{
-		return Context;
-	}
-
 private:
 	struct FQueryPoolReset
 	{
@@ -371,7 +362,6 @@ private:
 	};
 	
 	FVulkanDevice* Device;
-	FVulkanCommandListContext* Context;
 	FVulkanCommandBufferPool Pool;
 	FVulkanQueue* Queue;
 	FVulkanCmdBuffer* ActiveCmdBuffer;

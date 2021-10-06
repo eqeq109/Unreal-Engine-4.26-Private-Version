@@ -6,21 +6,17 @@
 #include "GraphEditAction.h"
 
 class INiagaraParameterPanelViewModel;
-class FNiagaraScriptToolkitParameterPanelViewModel;
 class FUICommandList;
-
 
 class NIAGARAEDITOR_API FNiagaraScratchPadScriptViewModel : public FNiagaraScriptViewModel, public FGCObject
 {
 public:
 	DECLARE_MULTICAST_DELEGATE(FOnRenamed);
 	DECLARE_MULTICAST_DELEGATE(FOnPinnedChanged);
-	DECLARE_MULTICAST_DELEGATE(FOnHasUnappliedChangesChanged);
 	DECLARE_MULTICAST_DELEGATE(FOnChangesApplied);
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnNodeIDFocusRequested, FNiagaraScriptIDAndGraphFocusInfo*  /* FocusInfo */);
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPinIDFocusRequested, FNiagaraScriptIDAndGraphFocusInfo*  /* FocusInfo */);
 
-	FNiagaraScratchPadScriptViewModel(bool bInIsForDataProcessingOnly);
+public:
+	FNiagaraScratchPadScriptViewModel();
 
 	~FNiagaraScratchPadScriptViewModel();
 
@@ -28,20 +24,11 @@ public:
 
 	void Finalize();
 
-	//~ Begin FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	//~ End FGCObject
-
-	//~ Begin NiagaraParameterDefinitionsSubscriberViewModel Interface
-protected:
-	virtual INiagaraParameterDefinitionsSubscriber* GetParameterDefinitionsSubscriber() override { return &EditScript; };
-	//~ End NiagaraParameterDefinitionsSubscriberViewModel Interface
-
-public:
 
 	UNiagaraScript* GetOriginalScript() const;
 
-	const FVersionedNiagaraScript& GetEditScript() const;
+	UNiagaraScript* GetEditScript() const;
 
 	TSharedPtr<INiagaraParameterPanelViewModel> GetParameterPanelViewModel() const;
 
@@ -73,17 +60,9 @@ public:
 
 	FOnPinnedChanged& OnPinnedChanged();
 
-	FOnHasUnappliedChangesChanged& OnHasUnappliedChangesChanged();
-
 	FOnChangesApplied& OnChangesApplied();
 
 	FSimpleDelegate& OnRequestDiscardChanges();
-
-	FOnNodeIDFocusRequested& OnNodeIDFocusRequested();
-	FOnPinIDFocusRequested& OnPinIDFocusRequested();
-
-	void RaisePinFocusRequested(FNiagaraScriptIDAndGraphFocusInfo*  InFocusInfo);
-	void RaiseNodeFocusRequested(FNiagaraScriptIDAndGraphFocusInfo* InFocusInfo);
 
 private:
 	FText GetDisplayNameInternal() const;
@@ -92,26 +71,26 @@ private:
 
 	void OnScriptPropertyChanged(FPropertyChangedEvent& PropertyChangedEvent);
 
+private:
 	bool bIsPendingRename;
+
 	bool bIsPinned;
+
 	float EditorHeight;
 
-	UNiagaraScript* OriginalScript = nullptr;
-	FVersionedNiagaraScript EditScript;
+	UNiagaraScript* OriginalScript;
+
+	UNiagaraScript* EditScript;
 
 	bool bHasPendingChanges;
 
 	TSharedPtr<FUICommandList> ParameterPanelCommands;
-	TSharedPtr<FNiagaraScriptToolkitParameterPanelViewModel> ParameterPaneViewModel;
+	TSharedPtr<INiagaraParameterPanelViewModel> ParameterPaneViewModel;
 
 	FDelegateHandle OnGraphNeedsRecompileHandle;
 
 	FOnRenamed OnRenamedDelegate;
 	FOnPinnedChanged OnPinnedChangedDelegate;
-	FOnHasUnappliedChangesChanged OnHasUnappliedChangesChangedDelegate;
 	FOnChangesApplied OnChangesAppliedDelegate;
-	FSimpleDelegate	OnRequestDiscardChangesDelegate;
-
-	FOnNodeIDFocusRequested OnNodeIDFocusRequestedDelegate;
-	FOnPinIDFocusRequested OnPinIDFocusRequestedDelegate;
+	FSimpleDelegate OnRequestDiscardChangesDelegate;
 };

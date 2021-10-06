@@ -323,11 +323,6 @@ EDeviceScreenOrientation FIOSPlatformMisc::GetDeviceOrientation()
 #endif
 }
 
-void FIOSPlatformMisc::SetDeviceOrientation(EDeviceScreenOrientation NewDeviceOrientation)
-{
-	// not implemented yet
-}
-
 #include "Modules/ModuleManager.h"
 
 bool FIOSPlatformMisc::HasPlatformFeature(const TCHAR* FeatureName)

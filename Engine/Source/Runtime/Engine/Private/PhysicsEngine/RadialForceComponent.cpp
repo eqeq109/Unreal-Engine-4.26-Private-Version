@@ -153,16 +153,13 @@ void URadialForceComponent::FireImpulse()
 		if (PrimitiveComponent->bIgnoreRadialImpulse == false)
 		{
 			TInlineComponentArray<UMovementComponent*> MovementComponents;
-			if(AActor* OwningActor = PrimitiveComponent->GetOwner())
+			PrimitiveComponent->GetOwner()->GetComponents<UMovementComponent>(MovementComponents);
+			for (const auto& MovementComponent : MovementComponents)
 			{
-				OwningActor->GetComponents<UMovementComponent>(MovementComponents);
-				for(const auto& MovementComponent : MovementComponents)
+				if (MovementComponent->UpdatedComponent == PrimitiveComponent)
 				{
-					if(MovementComponent->UpdatedComponent == PrimitiveComponent)
-					{
-						MovementComponent->AddRadialImpulse(Origin, Radius, ImpulseStrength, Falloff, bImpulseVelChange);
-						break;
-					}
+					MovementComponent->AddRadialImpulse(Origin, Radius, ImpulseStrength, Falloff, bImpulseVelChange);
+					break;
 				}
 			}
 		}

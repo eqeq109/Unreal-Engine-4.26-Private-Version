@@ -58,11 +58,17 @@ private:
 
 	bool CanPrimeForRecording() const;
 
+	void TrimSection(bool bTrimLeft);
+
+	void SplitSection();
+
 	void AutoSizeSection();
 
 	void ReduceKeys();
 
 	void SetInterpTangentMode(ERichCurveInterpMode InterpMode, ERichCurveTangentMode TangentMode);
+
+	bool IsTrimmable() const;
 
 	bool CanAutoSize() const;
 

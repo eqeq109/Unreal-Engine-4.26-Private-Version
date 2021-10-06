@@ -171,22 +171,6 @@ namespace Gauntlet
 		{
 			return Device.Run(this);
 		}
-
-		public virtual void CleanDeviceArtifacts()
-		{
-			if (!string.IsNullOrEmpty(ArtifactPath) && Directory.Exists(ArtifactPath))
-			{
-				try
-				{
-					Log.Info("Clearing actifact path {0} for {1}", ArtifactPath, Device.Name);
-					Directory.Delete(ArtifactPath, true);
-				}
-				catch (Exception Ex)
-				{
-					Log.Warning("Failed to delete {0}. {1}", ArtifactPath, Ex.Message);
-				}
-			}
-		}
 	}
 
 	public class Win64DeviceFactory : IDeviceFactory
@@ -196,9 +180,9 @@ namespace Gauntlet
 			return Platform == UnrealTargetPlatform.Win64;
 		}
 
-		public ITargetDevice CreateDevice(string InRef, string InCachePath, string InParam = null)
+		public ITargetDevice CreateDevice(string InRef, string InParam)
 		{
-			return new TargetDeviceWindows(InRef, InCachePath);
+			return new TargetDeviceWindows(InRef, InParam);
 		}
 	}
 
@@ -209,9 +193,9 @@ namespace Gauntlet
 			return Platform == UnrealTargetPlatform.Win32;
 		}
 
-		public ITargetDevice CreateDevice(string InRef, string InCachePath, string InParam = null)
+		public ITargetDevice CreateDevice(string InRef, string InParam)
 		{
-			return new TargetDeviceWindows(InRef, InCachePath, false);
+			return new TargetDeviceWindows(InRef, InParam, false);
 		}
 	}
 
@@ -231,13 +215,13 @@ namespace Gauntlet
 		/// </summary>
 		protected Dictionary<EIntendedBaseCopyDirectory, string> LocalDirectoryMappings { get; set; }
 
-		public TargetDeviceWindows(string InName, string InCacheDir, bool InIsWin64=true)
+		public TargetDeviceWindows(string InName, string InTempDir, bool InIsWin64=true)
 		{
 			Name = InName;
-			LocalCachePath = InCacheDir;
+			TempDir = InTempDir;
 			RunOptions = CommandUtils.ERunOptions.NoWaitForExit | CommandUtils.ERunOptions.NoLoggingOfRunCommand;
 
-			UserDir = Path.Combine(LocalCachePath, "UserDir");
+			UserDir = Path.Combine(TempDir, "UserDir");
             LocalDirectoryMappings = new Dictionary<EIntendedBaseCopyDirectory, string>();
 
 			IsWin64 = InIsWin64;
@@ -375,11 +359,11 @@ namespace Gauntlet
 			if (CanRunFromPath(BuildPath) == false)
 			{
 				string SubDir = string.IsNullOrEmpty(AppConfig.Sandbox) ? AppConfig.ProjectName : AppConfig.Sandbox;
-				string DestPath = Path.Combine(this.LocalCachePath, SubDir, AppConfig.ProcessType.ToString());
+				string DestPath = Path.Combine(this.TempDir, SubDir, AppConfig.ProcessType.ToString());
 
 				if (!SkipDeploy)
 				{
-					DestPath = StagedBuild.InstallBuildParallel(AppConfig, InBuild, BuildPath, DestPath, ToString());
+					StagedBuild.InstallBuildParallel(AppConfig, InBuild, BuildPath, DestPath, ToString());
 				}
 				else
 				{
@@ -412,7 +396,17 @@ namespace Gauntlet
 			}
 
 			// clear artifact path
-			WinApp.CleanDeviceArtifacts();
+			if (Directory.Exists(WinApp.ArtifactPath))
+			{
+				try
+				{
+					Directory.Delete(WinApp.ArtifactPath, true);
+				}
+				catch (Exception Ex)
+				{
+					Log.Warning("Failed to delete {0}. {1}", WinApp.ArtifactPath, Ex.Message);
+				}
+			}
 
             if (LocalDirectoryMappings.Count == 0)
             {
@@ -513,12 +507,13 @@ namespace Gauntlet
 		
 		public bool CanRunFromPath(string InPath)
 		{
-			return !Utils.SystemHelpers.IsNetworkPath(InPath);
+			// path must be under our mapped drive (e.g. w:\KitName);
+			return string.Compare(Path.GetPathRoot(InPath), Path.GetPathRoot(this.TempDir), StringComparison.OrdinalIgnoreCase) == 0;
 		}
 
 		public UnrealTargetPlatform? Platform { get { return IsWin64 ? UnrealTargetPlatform.Win64 : UnrealTargetPlatform.Win32; } }
 
-		public string LocalCachePath { get; private set; }
+		public string TempDir { get; private set; }
 		public bool IsAvailable { get { return true; } }
 		public bool IsConnected { get { return true; } }
 		public bool IsOn { get { return true; } }
@@ -540,18 +535,6 @@ namespace Gauntlet
 				Log.Warning("Platform directory mappings have not been populated for this platform! This should be done within InstallApplication()");
 			}
 			return LocalDirectoryMappings;
-		}
-
-		public bool IsOSOutOfDate()
-		{
-			//TODO: not yet implemented
-			return false;
-		}
-
-		public bool UpdateOS()
-		{
-			//TODO: not yet implemented
-			return true;
 		}
 	}
 }

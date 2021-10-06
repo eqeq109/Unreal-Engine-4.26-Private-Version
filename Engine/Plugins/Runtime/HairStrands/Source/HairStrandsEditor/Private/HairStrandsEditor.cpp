@@ -5,7 +5,6 @@
 
 #include "GroomActions.h"
 #include "GroomBindingActions.h"
-#include "GroomCacheActions.h"
 
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
@@ -14,24 +13,13 @@
 #include "SlateOptMacros.h"
 #include "FbxHairTranslator.h"
 
-#include "GroomAsset.h"
-#include "GroomBindingAsset.h"
-#include "GroomBindingDetailsCustomization.h"
-#include "GroomCacheImportOptions.h"
-#include "GroomCacheImportSettingsCustomization.h"
-#include "GroomCacheStreamingManager.h"
-#include "GroomCacheTrackEditor.h"
-#include "GroomComponentDetailsCustomization.h"
-#include "GroomCreateBindingOptions.h"
 #include "GroomEditorCommands.h"
 #include "GroomEditorMode.h"
-#include "GroomPluginSettings.h"
+#include "GroomAsset.h"
+#include "GroomComponentDetailsCustomization.h"
 
 #include "AssetRegistryModule.h"
 #include "FileHelpers.h"
-#include "ISettingsModule.h"
-#include "ISettingsSection.h"
-#include "ISequencerModule.h"
 
 IMPLEMENT_MODULE(FGroomEditor, HairStrandsEditor);
 
@@ -73,13 +61,11 @@ void SaveAsset(UObject* Object)
 void FGroomEditor::StartupModule()
 {
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	TSharedRef<IAssetTypeActions> GroomAssetActions = MakeShared<FGroomActions>();
-	TSharedRef<IAssetTypeActions> BindingAssetActions = MakeShared<FGroomBindingActions>();
-	TSharedRef<IAssetTypeActions> GroomCacheActions = MakeShared<FGroomCacheActions>();
+	TSharedRef<IAssetTypeActions> GroomAssetActions = MakeShareable(new FGroomActions());
+	TSharedRef<IAssetTypeActions> BindingAssetActions = MakeShareable(new FGroomBindingActions());
 
 	AssetTools.RegisterAssetTypeActions(GroomAssetActions);
 	AssetTools.RegisterAssetTypeActions(BindingAssetActions);
-	AssetTools.RegisterAssetTypeActions(GroomCacheActions);
 	RegisteredAssetTypeActions.Add(GroomAssetActions);
 	RegisteredAssetTypeActions.Add(BindingAssetActions);
 
@@ -94,7 +80,7 @@ void FGroomEditor::StartupModule()
 		const FVector2D Icon64x64(64.0f, 64.0f);
 		FString HairStrandsContent = IPluginManager::Get().FindPlugin("HairStrands")->GetBaseDir() + "/Content";
 
-		StyleSet = MakeShared<FSlateStyleSet>("Groom");
+		StyleSet = MakeShareable(new FSlateStyleSet("Groom"));
 		StyleSet->SetContentRoot(FPaths::EngineContentDir() / TEXT("Editor/Slate"));
 		StyleSet->SetCoreContentRoot(FPaths::EngineContentDir() / TEXT("Slate"));
 		
@@ -113,17 +99,11 @@ void FGroomEditor::StartupModule()
 		StyleSet->Set("GroomEditor.SimulationOptions", new FSlateImageBrush(HairStrandsContent + "/Icons/S_SimulationOptions_40x.png", Icon40x40));
 		StyleSet->Set("GroomEditor.SimulationOptions.Small", new FSlateImageBrush(HairStrandsContent + "/Icons/S_SimulationOptions_40x.png", Icon20x20));
 
-		StyleSet->Set("ClassIcon.GroomCache", new FSlateImageBrush(HairStrandsContent + "/Icons/S_GroomCache_64.png", Icon16x16));
-		StyleSet->Set("ClassThumbnail.GroomCache", new FSlateImageBrush(HairStrandsContent + "/Icons/S_GroomCache_64.png", Icon64x64));
-
 		FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
 
 		// Custom widget for groom component (Group desc override, ...)
 		FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
 		PropertyModule.RegisterCustomClassLayout(UGroomComponent::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FGroomComponentDetailsCustomization::MakeInstance));
-		PropertyModule.RegisterCustomClassLayout(UGroomBindingAsset::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FGroomBindingDetailsCustomization::MakeInstance));
-		PropertyModule.RegisterCustomClassLayout(UGroomCreateBindingOptions::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FGroomCreateBindingDetailsCustomization::MakeInstance));
-		PropertyModule.RegisterCustomPropertyTypeLayout(FGroomCacheImportSettings::StaticStruct()->GetFName(), FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGroomCacheImportSettingsCustomization::MakeInstance));
 	}
 
 	FGroomEditorCommands::Register();
@@ -133,59 +113,18 @@ void FGroomEditor::StartupModule()
 		FSlateIcon(),
 		false);
 
-	// Asset create/edition helper/wrapper for creating/edition asset within the HairStrandsCore 
+	// Asset create/edition helper/wrapper for creating/edition asset withn the HairStrandsCore 
 	// project without any editor dependencies
 	FHairAssetHelper Helper;
 	Helper.CreateFilename = CreateFilename;
 	Helper.RegisterAsset = RegisterAsset;
 	Helper.SaveAsset = SaveAsset;
 	FHairStrandsCore::RegisterAssetHelper(Helper);
-
-	ISequencerModule& SequencerModule = FModuleManager::Get().LoadModuleChecked<ISequencerModule>("Sequencer");
-	TrackEditorBindingHandle = SequencerModule.RegisterTrackEditor(FOnCreateTrackEditor::CreateStatic(&FGroomCacheTrackEditor::CreateTrackEditor));
-
-	ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings");
-	if (SettingsModule != nullptr)
-	{
-		ISettingsSectionPtr SettingsSection = SettingsModule->RegisterSettings("Project", "Plugins", "Groom",
-			LOCTEXT("GroomPluginSettingsName", "Groom"),
-			LOCTEXT("GroomPluginSettingsDescription", "Configure the Groom plug-in."),
-			GetMutableDefault<UGroomPluginSettings>()
-		);
-	}
-
-	IGroomCacheStreamingManager::Register();
 }
 
 void FGroomEditor::ShutdownModule()
 {
-	IGroomCacheStreamingManager::Unregister();
-
-	ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings");
-	if (SettingsModule != nullptr)
-	{
-		SettingsModule->UnregisterSettings("Project", "Plugins", "Groom");
-	}
-
-	ISequencerModule* SequencerModulePtr = FModuleManager::Get().GetModulePtr<ISequencerModule>("Sequencer");
-	if (SequencerModulePtr)
-	{
-		SequencerModulePtr->UnRegisterTrackEditor(TrackEditorBindingHandle);
-	}
-
-	if (UObjectInitialized())
-	{
-		FEditorModeRegistry::Get().UnregisterMode(FGroomEditorMode::EM_GroomEditorModeId);
-
-		FPropertyEditorModule* PropertyModule = FModuleManager::GetModulePtr<FPropertyEditorModule>("PropertyEditor");
-		if (PropertyModule)
-		{
-			PropertyModule->UnregisterCustomClassLayout(UGroomComponent::StaticClass()->GetFName());
-			PropertyModule->UnregisterCustomClassLayout(UGroomBindingAsset::StaticClass()->GetFName());
-			PropertyModule->UnregisterCustomClassLayout(UGroomCreateBindingOptions::StaticClass()->GetFName());
-			PropertyModule->UnregisterCustomPropertyTypeLayout(FGroomCacheImportSettings::StaticStruct()->GetFName());
-		}
-	}
+	FEditorModeRegistry::Get().UnregisterMode(FGroomEditorMode::EM_GroomEditorModeId);
 
 	// #ueent_todo: Unregister the translators
 	FAssetToolsModule* AssetToolsModule = FModuleManager::GetModulePtr<FAssetToolsModule>("AssetTools");

@@ -7,7 +7,6 @@
 #include "CoreMinimal.h"
 
 class UDataprepFilter;
-class UDataprepFilterNoFetcher;
 
 struct FDataprepSchemaAction;
 
@@ -26,5 +25,4 @@ public:
 
 private:
 	TSharedPtr<FDataprepSchemaAction> CreateMenuActionFromClass(UClass& Class, UDataprepFilter& Filter);
-	TSharedPtr<FDataprepSchemaAction> CreateMenuActionFromClass(UDataprepFilterNoFetcher& Filter);
 };

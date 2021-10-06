@@ -8,15 +8,8 @@ AHierarchicalLODVolume::AHierarchicalLODVolume(const FObjectInitializer& ObjectI
 	: Super(ObjectInitializer)
 	, bIncludeOverlappingActors(false)
 {
-	if (UBrushComponent* MyBrushComponent = GetBrushComponent())
-	{
-		MyBrushComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		MyBrushComponent->SetCanEverAffectNavigation(false);
-		MyBrushComponent->SetGenerateOverlapEvents(false);
-	}
-
+	GetBrushComponent()->SetGenerateOverlapEvents(false);
 	bNotForClientOrServer = true;
-	bIsEditorOnlyActor = true;
 
 	bColored = true;
 	BrushColor.R = 255;

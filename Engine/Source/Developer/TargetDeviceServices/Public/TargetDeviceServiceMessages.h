@@ -430,11 +430,11 @@ struct FTargetDeviceServicePong
 
 	/** Holds a flag indicating whether the device is currently connected. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool Connected = false;
+	bool Connected;
 
 	/** Holds a flag indicating whether the device is authorized. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool Authorized = false;
+	bool Authorized;
 
 	/** Holds the name of the host computer that the device is attached to. */
 	UPROPERTY(EditAnywhere, Category="Message")
@@ -466,27 +466,27 @@ struct FTargetDeviceServicePong
 
 	/** Holds a flag indicating whether this device is shared with other users on the network. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool Shared = false;
+	bool Shared;
 
 	/** Holds a flag indicating whether the device supports running multiple application instances in parallel. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool SupportsMultiLaunch = false;
+	bool SupportsMultiLaunch;
 
 	/** Holds a flag indicating whether the device can be powered off. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool SupportsPowerOff = false;
+	bool SupportsPowerOff;
 
 	/** Holds a flag indicating whether the device can be powered on. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool SupportsPowerOn = false;
+	bool SupportsPowerOn;
 
 	/** Holds a flag indicating whether the device can be rebooted. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool SupportsReboot = false;
+	bool SupportsReboot;
 
 	/** Holds a flag indicating whether the device's target platform supports variants. */
 	UPROPERTY(EditAnywhere, Category="Message")
-	bool SupportsVariants = false;
+	bool SupportsVariants;
 
 	/** Holds the device type. */
 	UPROPERTY(EditAnywhere, Category="Message")
@@ -502,7 +502,7 @@ struct FTargetDeviceServicePong
 
 	/** Flag for the "All devices" proxy. */
 	UPROPERTY(EditAnywhere, Category = "Message")
-	bool Aggregated = true;
+	bool Aggregated;
 
 	/** Holds the name of "All devices" proxy. */
 	UPROPERTY(EditAnywhere, Category = "Message")

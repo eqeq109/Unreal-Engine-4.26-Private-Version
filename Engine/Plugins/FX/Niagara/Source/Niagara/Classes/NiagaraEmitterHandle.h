@@ -105,7 +105,6 @@ private:
 	UPROPERTY()
 	UNiagaraEmitter* LastMergedSource_DEPRECATED;
 
-	UPROPERTY(Transient)
 	bool bIsolated;
 #endif
 

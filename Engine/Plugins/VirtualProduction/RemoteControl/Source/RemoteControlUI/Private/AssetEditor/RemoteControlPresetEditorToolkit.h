@@ -6,10 +6,6 @@
 #include "Toolkits/AssetEditorToolkit.h"
 #include "Framework/Docking/TabManager.h"
 
-class SDockTab;
-class SRemoteControlPanel;
-struct SRCPanelTreeNode;
-
 /** Viewer/editor for a Remote Control Preset */
 class FRemoteControlPresetEditorToolkit : public FAssetEditorToolkit
 {
@@ -23,7 +19,6 @@ public:
 	 * Initialize a remote control preset editor module. 
 	 */
 	void InitRemoteControlPresetEditor(const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, class URemoteControlPreset* InPreset);
-	~FRemoteControlPresetEditorToolkit();
 	
 	//~ Begin IToolkit interface
 	virtual FText GetBaseToolkitName() const override;
@@ -35,24 +30,15 @@ public:
 	virtual bool OnRequestClose() override;
 	//~ End IToolkit interface
 
-
-	/** Begin IAssetEditorInstance interface */
-	virtual void FocusWindow(UObject* ObjectToFocusOn = nullptr) override;
-	/** End IAssetEditorInstance interface */
-
 private:
-	/** Handle spawning the tab that holds the remote control panel tab. */
-	TSharedRef<SDockTab> HandleTabManagerSpawnPanelTab(const FSpawnTabArgs& Args);
-
-	/** Handle invoking the remote control tab. */
-	void InvokePanelTab();
+	/** Handle spawning the tabs that holds the remote control panel. */
+	TSharedRef<class SDockTab> HandleTabManagerSpawnTab(const FSpawnTabArgs& Args);
 private:
 	/** Holds the remote control panel tab id. */
-	static const FName PanelTabId;
+	static const FName RemoteControlPanelTabId;
+
 	/** Holds the remote control panel app identifier. */
 	static const FName RemoteControlPanelAppIdentifier;
-	/** Holds the preset being edited. */
-	URemoteControlPreset* Preset = nullptr;
-	/** Holds the panel widget */
-	TSharedPtr<SRemoteControlPanel> PanelTab;
+
+	TSharedPtr<class SRemoteControlPanel> PanelWidget;
 };

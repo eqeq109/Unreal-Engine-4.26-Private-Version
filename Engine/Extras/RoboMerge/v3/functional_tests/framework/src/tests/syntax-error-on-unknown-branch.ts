@@ -15,24 +15,15 @@ export class SyntaxErrorOnUnknownBranch extends SimpleMainAndReleaseTestBase {
 		await this.initialPopulate()
 	}
 
-	async run() {
+	run() {
 		const releaseClient = this.getClient('Release')
-		await releaseClient.sync()
-		await P4Util.editFileAndSubmit(releaseClient, TEXT_FILENAME, 'change', 'somebranch')
-
-		await P4Util.editFile(this.mainClient, TEXT_FILENAME, 'change')
-		await P4Util.submit(this.mainClient, `Edit with specific bot command\n#robomerge[${this.botName}] somebranch`)
+		return releaseClient.sync()
+		.then(() => P4Util.editFile(releaseClient, TEXT_FILENAME, 'Initial content\n\nMergeable'))
+		.then(() => P4Util.submit(releaseClient, 'Edit with command\n#robomerge somebranch'))
 	}
 
-// @todo add code to fix syntax error and retry, make sure unblocks and updates source node Slack message
-// latter is probably only broken in case where there's also an edge blockage
-
-	verify() {
-		return Promise.all([this.ensureBlocked('Main'), this.ensureBlocked('Release')])
-	}
-
-	allowSyntaxErrors() {
-		return true
+	async verify() {
+		return this.ensureBlocked('Release')
 	}
 
 	private mainClient: P4Client

@@ -299,6 +299,7 @@ UObject* FObjectInstancingGraph::InstancePropertyValue( class UObject* Component
 		if ( MaybeNewValue != INVALID_OBJECT )
 		{
 			NewValue = MaybeNewValue;
+			ReplaceMap.Add(CurrentValue, NewValue);
 		}
 	}
 	return NewValue;

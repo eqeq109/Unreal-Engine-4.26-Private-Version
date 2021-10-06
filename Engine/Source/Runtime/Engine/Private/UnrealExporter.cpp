@@ -843,7 +843,7 @@ void ExportProperties
  */
 void DumpComponents(UObject *Object)
 {
-	for ( FThreadSafeObjectIterator It; It; ++It )
+	for ( FObjectIterator It; It; ++It )
 	{
 		It->UnMark(EObjectMark(OBJECTMARK_TagImp | OBJECTMARK_TagExp));
 	}

@@ -218,6 +218,9 @@ FOutBunch* UMinimalClient::CreateChannelBunchByName(const FName& ChName, int32 C
 			ReturnVal->Time = 0.0;
 			ReturnVal->ReceivedAck = false;
 			ReturnVal->PacketId = 0;
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			ReturnVal->bDormant = false;
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			ReturnVal->Channel = nullptr;
 			ReturnVal->ChIndex = ChIndex;
 			ReturnVal->ChName = ChName;
@@ -296,6 +299,9 @@ bool UMinimalClient::SendRawBunch(FOutBunch& Bunch, bool bAllowPartial/*=false*/
 				NewBunch->bReliable = Bunch.bReliable;
 				NewBunch->bOpen = Bunch.bOpen;
 				NewBunch->bClose = Bunch.bClose;
+				PRAGMA_DISABLE_DEPRECATION_WARNINGS
+				NewBunch->bDormant = Bunch.bDormant;
+				PRAGMA_ENABLE_DEPRECATION_WARNINGS
 				NewBunch->CloseReason = Bunch.CloseReason;
 				NewBunch->bIsReplicationPaused = Bunch.bIsReplicationPaused;
 				NewBunch->ChIndex = Bunch.ChIndex;
@@ -402,19 +408,16 @@ bool UMinimalClient::SendRPCChecked(UObject* Target, const TCHAR* FunctionName, 
 
 			// Do not add back IsNetReady checks, unless omitting them breaks something - reliable stuff should still get sent.
 #if 0
-			if (UnitConn != nullptr)
+			if (UnitConn->IsNetReady(false))
 			{
-				if (UnitConn->IsNetReady(false))
-				{
-					Target->ProcessEvent(TargetFunc, Parms);
-				}
-				else
-				{
-					UNIT_LOG(ELogType::StatusFailure,
-								TEXT("Failed to send RPC '%s', network saturated (QueuedBits: %i, SendBuffer.Num: %i)."),
-								FunctionName, UnitConn->QueuedBits, UnitConn->SendBuffer.GetNumBits());
-					UNIT_LOG(ELogType::StatusFailure, TEXT("     '%s' parameters: %s"), FunctionName, *FuncParms);
-				}
+				Target->ProcessEvent(TargetFunc, Parms);
+			}
+			else
+			{
+				UNIT_LOG(ELogType::StatusFailure,
+							TEXT("Failed to send RPC '%s', network saturated (QueuedBits: %i, SendBuffer.Num: %i)."),
+							FunctionName, UnitConn->QueuedBits, UnitConn->SendBuffer.GetNumBits());
+				UNIT_LOG(ELogType::StatusFailure, TEXT("     '%s' parameters: %s"), FunctionName, *FuncParms);
 			}
 #endif
 		}
@@ -460,10 +463,7 @@ void UMinimalClient::PreSendRPC()
 	check(!!(MinClientFlags & EMinClientFlags::SendRPCs));
 
 	// Flush before and after, so no queued data is counted as a send, and so that the queued RPC is immediately sent and detected
-	if (UnitConn != nullptr)
-	{
-		UnitConn->FlushNet();
-	}
+	UnitConn->FlushNet();
 
 	bSentBunch = false;
 }
@@ -473,19 +473,14 @@ bool UMinimalClient::PostSendRPC(FString RPCName, UObject* Target/*=nullptr*/)
 	bool bSuccess = false;
 	UActorComponent* TargetComponent = Cast<UActorComponent>(Target);
 	AActor* TargetActor = (TargetComponent != nullptr ? TargetComponent->GetOwner() : Cast<AActor>(Target));
-	UChannel* TargetChan = nullptr;
+	UChannel* TargetChan = UnitConn->FindActorChannelRef(TargetActor);
 
-	if (UnitConn != nullptr)
+	UnitConn->FlushNet();
+
+	// Just hack-erase bunch overflow tracking for this actors channel
+	if (TargetChan != nullptr)
 	{
-		TargetChan = UnitConn->FindActorChannelRef(TargetActor);
-
-		UnitConn->FlushNet();
-
-		// Just hack-erase bunch overflow tracking for this actors channel
-		if (TargetChan != nullptr)
-		{
-			TargetChan->NumOutRec = 0;
-		}
+		TargetChan->NumOutRec = 0;
 	}
 
 	// If sending failed, trigger an overall unit test failure
@@ -655,15 +650,6 @@ bool UMinimalClient::ConnectMinimalClient()
 		{
 			UnitNetDriver->SendRPCDel.BindUObject(this, &UMinimalClient::NotifySendRPC);
 		}
-
-		if (!EnumHasAnyFlags(MinClientFlags, EMinClientFlags::AcceptRepNotifies))
-		{
-			UnitNetDriver->SkipRepNotifiesDel.BindLambda(
-				[]()
-				{
-					return true;
-				});
-		}
 #endif
 
 		bool bBeaconConnect = !!(MinClientFlags & EMinClientFlags::BeaconConnect);
@@ -705,7 +691,6 @@ bool UMinimalClient::ConnectMinimalClient()
 		{
 			UnitConn = UnitNetDriver->ServerConnection;
 
-			check(UnitConn != nullptr);
 			check(UnitConn->PackageMapClass == UUnitTestPackageMap::StaticClass());
 
 			UUnitTestPackageMap* PackageMap = CastChecked<UUnitTestPackageMap>(UnitConn->PackageMap);
@@ -847,10 +832,7 @@ void UMinimalClient::CreateNetDriver()
 void UMinimalClient::SendInitialJoin()
 {
 	// Make sure to flush any existing packet buffers, as Fortnite connect URL's can be very large and trigger an overflow
-	if (UnitConn != nullptr)
-	{
-		UnitConn->FlushNet();
-	}
+	UnitConn->FlushNet();
 
 	FOutBunch* ControlChanBunch = CreateChannelBunchByName(NAME_Control, 0);
 
@@ -917,10 +899,7 @@ void UMinimalClient::SendInitialJoin()
 		SendRawBunch(*ControlChanBunch, true);
 
 		// Immediately flush, so that Fortnite doesn't trigger an overflow
-		if (UnitConn != nullptr)
-		{
-			UnitConn->FlushNet();
-		}
+		UnitConn->FlushNet();
 
 
 		// At this point, fire of notification that we are connected

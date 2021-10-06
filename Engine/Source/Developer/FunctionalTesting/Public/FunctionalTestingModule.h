@@ -6,7 +6,7 @@
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 
-FUNCTIONALTESTING_API DECLARE_LOG_CATEGORY_EXTERN(LogFunctionalTest, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogFunctionalTest, Log, All);
 
 class IFunctionalTestingModule : public IModuleInterface
 {

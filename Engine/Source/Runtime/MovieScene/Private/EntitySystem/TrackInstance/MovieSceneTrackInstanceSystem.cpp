@@ -10,9 +10,7 @@
 #include "EntitySystem/BuiltInComponentTypes.h"
 #include "EntitySystem/MovieSceneInstanceRegistry.h"
 #include "EntitySystem/MovieSceneEntitySystemLinker.h"
-#include "EntitySystem/MovieSceneEntityFactoryTemplates.h"
-#include "Evaluation/PreAnimatedState/MovieScenePreAnimatedStateExtension.h"
-#include "Evaluation/PreAnimatedState/MovieScenePreAnimatedCaptureSources.h"
+#include "EntitySystem/MovieSceneEntityFactory.h"
 #include "MovieSceneSection.h"
 
 DECLARE_CYCLE_STAT(TEXT("Generic Track Instances"), MovieSceneEval_GenericTrackInstances, STATGROUP_MovieSceneECS);
@@ -36,13 +34,12 @@ struct FTrackInstanceInputComponentInitializer : TChildEntityInitializer<FMovieS
 	{
 		check(ParentAllocationOffsets.Num() == ChildRange.Num);
 
-		FEntityAllocationWriteContext FreshWriteContext = FEntityAllocationWriteContext::NewAllocation();
+		TArrayView<const FMovieSceneTrackInstanceComponent> TrackInstanceComponents = TRead<FMovieSceneTrackInstanceComponent>(GetParentComponent()).ResolveAsArray(ParentAllocation);
 
-		TComponentReader<FMovieSceneTrackInstanceComponent> TrackInstances  = ParentAllocation->ReadComponents(GetParentComponent());
-		TComponentWriter<FTrackInstanceInputComponent>      Inputs          = ChildRange.Allocation->WriteComponents(GetChildComponent(), FreshWriteContext);
-		TOptionalComponentReader<UObject*>                  BoundObjects    = ChildRange.Allocation->TryReadComponents(FBuiltInComponentTypes::Get()->BoundObject);
+		TArrayView<FTrackInstanceInputComponent> Inputs       = TWrite<FTrackInstanceInputComponent>(GetChildComponent()).ResolveAsArray(ChildRange.Allocation);
+		TArrayView<UObject* const>               BoundObjects = TReadOptional<UObject*>(FBuiltInComponentTypes::Get()->BoundObject).ResolveAsArray(ChildRange.Allocation);
 
-		if (BoundObjects)
+		if (BoundObjects.Num() != 0)
 		{
 			for (int32 Index = 0; Index < ChildRange.Num; ++Index)
 			{
@@ -50,7 +47,7 @@ struct FTrackInstanceInputComponentInitializer : TChildEntityInitializer<FMovieS
 				const int32 ChildIndex  = ChildRange.ComponentStartOffset + Index;
 
 				// Initialize the output index
-				Inputs[ChildIndex].OutputIndex = Instantiator->MakeOutput(BoundObjects[ChildIndex], TrackInstances[ParentIndex].TrackInstanceClass);
+				Inputs[ChildIndex].OutputIndex = Instantiator->MakeOutput(BoundObjects[ChildIndex], TrackInstanceComponents[ParentIndex].TrackInstanceClass);
 			}
 		}
 		else for (int32 Index = 0; Index < ChildRange.Num; ++Index)
@@ -59,7 +56,7 @@ struct FTrackInstanceInputComponentInitializer : TChildEntityInitializer<FMovieS
 			const int32 ChildIndex  = ChildRange.ComponentStartOffset + Index;
 
 			// Initialize the output index
-			Inputs[ChildIndex].OutputIndex = Instantiator->MakeOutput(nullptr, TrackInstances[ParentIndex].TrackInstanceClass);
+			Inputs[ChildIndex].OutputIndex = Instantiator->MakeOutput(nullptr, TrackInstanceComponents[ParentIndex].TrackInstanceClass);
 		}
 	}
 };
@@ -198,9 +195,6 @@ void UMovieSceneTrackInstanceInstantiator::OnRun(FSystemTaskPrerequisites& InPre
 		return;
 	}
 
-	FPreAnimatedStateExtension*              PreAnimatedStateExtension = Linker->FindExtension<FPreAnimatedStateExtension>();
-	FPreAnimatedTrackInstanceCaptureSources* TrackInstanceMetaData     = PreAnimatedStateExtension ? PreAnimatedStateExtension->GetTrackInstanceMetaData() : nullptr;
-
 	// Gather all the inputs for any invalidated output indices
 	TSortedMap<int32, TArray<FMovieSceneTrackInstanceInput> > NewInputs;
 	{
@@ -235,11 +229,6 @@ void UMovieSceneTrackInstanceInstantiator::OnRun(FSystemTaskPrerequisites& InPre
 
 		FMovieSceneTrackInstanceEntry& Entry = TrackInstances[DestroyIndex];
 		Entry.TrackInstance->Destroy();
-
-		if (TrackInstanceMetaData)
-		{
-			TrackInstanceMetaData->StopTrackingCaptureSource(Entry.TrackInstance);
-		}
 
 		// Remove the entry from our LUTs
 		BoundObjectToInstances.Remove(Entry.BoundObject, DestroyIndex);

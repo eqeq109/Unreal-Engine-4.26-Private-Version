@@ -439,7 +439,6 @@ void FOpenXRHandTracking::EnumerateSources(TArray<FMotionControllerSource>& Sour
 
 void FOpenXRHandTracking::Tick(float DeltaTime)
 {
-	UpdateLiveLink();
 }
 
 void FOpenXRHandTracking::SendControllerEvents()

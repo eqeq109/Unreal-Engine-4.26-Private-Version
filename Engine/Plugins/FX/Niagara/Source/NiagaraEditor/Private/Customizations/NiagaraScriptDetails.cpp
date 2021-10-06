@@ -1,33 +1,36 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraScriptDetails.h"
-
-#include "DetailCategoryBuilder.h"
 #include "DetailLayoutBuilder.h"
+#include "DetailCategoryBuilder.h"
+#include "IDetailPropertyRow.h"
 #include "DetailWidgetRow.h"
-#include "IDetailChildrenBuilder.h"
-#include "INiagaraEditorTypeUtilities.h"
-#include "NiagaraEditorModule.h"
-#include "NiagaraEditorStyle.h"
-#include "NiagaraMetaDataCustomNodeBuilder.h"
-#include "NiagaraParameterCollectionCustomNodeBuilder.h"
+#include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "NiagaraParameterCollectionViewModel.h"
-#include "NiagaraParameterViewModel.h"
-#include "NiagaraScript.h"
+#include "NiagaraScriptInputCollectionViewModel.h"
+#include "NiagaraScriptOutputCollectionViewModel.h"
+#include "ViewModels/NiagaraScriptViewModel.h"
 #include "NiagaraScriptGraphViewModel.h"
+#include "NiagaraParameterViewModel.h"
+#include "NiagaraEditorStyle.h"
+#include "IDetailChildrenBuilder.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Colors/SColorPicker.h"
+#include "Widgets/Colors/SColorBlock.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SOverlay.h"
+#include "NiagaraEditorModule.h"
+#include "Modules/ModuleManager.h"
+#include "INiagaraEditorTypeUtilities.h"
+#include "NiagaraScript.h"
+#include "NiagaraParameterCollectionCustomNodeBuilder.h"
+#include "NiagaraMetaDataCustomNodeBuilder.h"
+#include "Widgets/SItemSelector.h"
 #include "PropertyCustomizationHelpers.h"
 #include "ScopedTransaction.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "ViewModels/NiagaraScriptViewModel.h"
-#include "Widgets/SItemSelector.h"
-#include "Widgets/SOverlay.h"
-#include "Widgets/Colors/SColorBlock.h"
-#include "Widgets/Colors/SColorPicker.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboButton.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Text/SInlineEditableTextBlock.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraScriptDetails"
 
@@ -166,6 +169,7 @@ void FNiagaraScriptDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder
 	static const FName InputParamCategoryName = TEXT("NiagaraScript_InputParams");
 	static const FName OutputParamCategoryName = TEXT("NiagaraScript_OutputParams");
 	static const FName ScriptCategoryName = TEXT("Script");
+	static const FName MetadataCategoryName = TEXT("Metadata");
 
 	TSharedPtr<IPropertyHandle> NumericOutputPropertyHandle = DetailBuilder.GetProperty(TEXT("NumericOutputTypeSelectionMode"));
 	if (NumericOutputPropertyHandle.IsValid())
@@ -173,36 +177,18 @@ void FNiagaraScriptDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder
 		NumericOutputPropertyHandle->MarkHiddenByCustomization();
 	}
 
-	IDetailCategoryBuilder& CategoryBuilder = DetailBuilder.EditCategory(ScriptCategoryName);
+	DetailBuilder.EditCategory(ScriptCategoryName);
 
-	FVersionedNiagaraScript StandaloneScript = ScriptViewModel->GetStandaloneScript();
+	UNiagaraScript* StandaloneScript = ScriptViewModel->GetStandaloneScript();
 	bool bAddParameters = false;
 	TSharedPtr<INiagaraParameterCollectionViewModel> InputCollectionViewModel;
 	TSharedPtr<INiagaraParameterCollectionViewModel> OutputCollectionViewModel;
 
-	if (StandaloneScript.Script)
+	if (StandaloneScript)
 	{
 		InputCollectionViewModel = ScriptViewModel->GetInputCollectionViewModel();
 		OutputCollectionViewModel = ScriptViewModel->GetOutputCollectionViewModel();
 		bAddParameters = true;
-
-		if (FVersionedNiagaraScriptData* Data = StandaloneScript.Script->GetScriptData(StandaloneScript.Version))
-		{
-			for (FProperty* ChildProperty : TFieldRange<FProperty>(FVersionedNiagaraScriptData::StaticStruct()))
-			{
-				if (ChildProperty->HasAllPropertyFlags(CPF_Edit))
-				{
-					TSharedPtr<FStructOnScope> StructData = MakeShareable(new FStructOnScope(FVersionedNiagaraScriptData::StaticStruct(), (uint8*)Data));
-					IDetailPropertyRow* PropertyRow = CategoryBuilder.AddExternalStructureProperty(StructData, ChildProperty->GetFName());
-					PropertyRow->GetPropertyHandle()->SetOnPropertyValueChanged(FSimpleDelegate::CreateLambda([StandaloneScript, ChildProperty]()
-					{
-						FPropertyChangedEvent ChangeEvent(ChildProperty);
-						StandaloneScript.Script->PostEditChangeVersionedProperty(ChangeEvent, StandaloneScript.Version);
-					}));
-				}
-			}
-			
-		}		
 	}
 
 	if (InputCollectionViewModel.IsValid())
@@ -236,6 +222,36 @@ void FNiagaraScriptDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder
 		}
 		OutputParamCategory.AddCustomBuilder(MakeShared<FNiagaraParameterCollectionCustomNodeBuilder>(OutputCollectionViewModel.ToSharedRef()));
 	}
+	
+	// Disable the metadata header in Script Details panel
+	// TODO: Delete when it isn't useful anymore (when the parameters rework is done)
+	/*
+	IDetailCategoryBuilder& MetadataDetailCategory = DetailBuilder.EditCategory(MetadataCategoryName, LOCTEXT("MetadataParamCategoryName", "Variable Metadata"));
+	MetadataDetailCategory.HeaderContent(
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.Padding(5, 0, 5, 0)
+		.HAlign(EHorizontalAlignment::HAlign_Right)
+		[
+			SNew(SButton)
+			.ButtonStyle(FEditorStyle::Get(), "HoverHintOnly")
+			.HAlign(HAlign_Right)
+			.VAlign(VAlign_Center)
+			.ContentPadding(1)
+			.ToolTipText(LOCTEXT("RefreshMetadataToolTip", "Refresh the view according to the latest Editor Sort Priority values"))
+			.OnClicked(this, &FNiagaraScriptDetails::OnRefreshMetadata)
+			.Content()
+			[
+				SNew(SImage)
+				.Image(FEditorStyle::GetBrush("Icons.Refresh"))
+			]
+		]
+	);
+
+	MetaDataBuilder = MakeShared<FNiagaraMetaDataCustomNodeBuilder>();
+	MetaDataBuilder->Initialize(ScriptViewModel->GetGraphViewModel()->GetGraph());
+	MetadataDetailCategory.AddCustomBuilder(MetaDataBuilder.ToSharedRef());
+	*/
 }
 
 FReply FNiagaraScriptDetails::OnRefreshMetadata()
@@ -823,7 +839,7 @@ private:
 			{
 				UNiagaraScript* Script = CastChecked<UNiagaraScript>(MatchingScriptAsset.GetAsset());
 				Script->Modify();
-				for (FNiagaraScriptHighlight& Highlight : Script->GetLatestScriptData()->Highlights)
+				for (FNiagaraScriptHighlight& Highlight : Script->Highlights)
 				{
 					if (Highlight == CurrentHighlight)
 					{

@@ -50,18 +50,11 @@ public:
 		Controllers.SetEmitTouchAxisEvents( bDSTouchAxisButtons );
 		Controllers.SetEmitMouseEvents( bDSMouseEvents );
 		Controllers.SetEmitMotionEvents(bDSMotionEvents);
-
-		for (int32 UserIndex = 0; UserIndex < SCE_USER_SERVICE_MAX_LOGIN_USERS; UserIndex++)
-		{
-			Controllers.ConnectStateToUser(SCE_USER_SERVICE_STATIC_USER_ID_1 + UserIndex, UserIndex);
-		}
 	}
 
 	virtual ~FWinDualShock()
 	{
-#if LIBSCEPAD_STATIC
-		scePadTerminate();
-#endif
+		WindowsCleanup();
 	}
 
 	virtual void Tick( float DeltaTime ) override
@@ -97,11 +90,6 @@ public:
 	virtual bool Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar ) override
 	{
 		return false;
-	}
-
-	void SetDeviceProperty(int32 ControllerId, const FInputDeviceProperty* Property) override
-	{
-		Controllers.SetDeviceProperty(ControllerId, Property);
 	}
 
 private:

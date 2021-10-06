@@ -18,7 +18,7 @@ namespace ChaosTest
 	GTEST_TEST(DirtyParticleTests,Basic)
 	{
 #if 0
-		auto Particle = FGeometryParticle::CreateParticle();
+		auto Particle = TGeometryParticle<FReal,3>::CreateParticle();
 		Particle->SetX(FVec3(1,1,1));
 
 		TSharedPtr<FImplicitObject,ESPMode::ThreadSafe> Ptr(new TSphere<FReal,3>(FVec3(0),0));

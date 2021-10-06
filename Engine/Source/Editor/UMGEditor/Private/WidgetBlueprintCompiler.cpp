@@ -605,31 +605,7 @@ void FWidgetBlueprintCompilerContext::FinishCompilingClass(UClass* Class)
 			EObjectFlags PreviousFlags = WidgetBP->WidgetTree->GetFlags();
 			WidgetBP->WidgetTree->ClearFlags(RF_ArchetypeObject);
 
-			TMap<UObject*, UObject*> DupObjectsMap;
-			FObjectDuplicationParameters DupParams(WidgetBP->WidgetTree, BPGClass);
-			DupParams.DestName = DupParams.SourceObject->GetFName();
-			DupParams.FlagMask = RF_AllFlags & ~RF_DefaultSubObject;
-
-			// if we are recompiling the BP on load, skip post load and defer it to the loading process
-			FUObjectSerializeContext* LinkerLoadingContext = nullptr;
-			if (WidgetBP->bIsRegeneratingOnLoad)
-			{
-				FLinkerLoad* Linker = WidgetBP->GetLinker();
-				LinkerLoadingContext = Linker ? Linker->GetSerializeContext() : nullptr;
-				DupParams.bSkipPostLoad = true;
-				DupParams.CreatedObjects = &DupObjectsMap;
-			}
-
-			UWidgetTree* NewWidgetTree = Cast<UWidgetTree>(StaticDuplicateObjectEx(DupParams));
-
-			// if we have anything in here after duplicate, then hook them in the loading process so they get post loaded
-			if (LinkerLoadingContext)
-			{
-				TArray<UObject*> DupObjects;
-				DupObjectsMap.GenerateValueArray(DupObjects);
-				LinkerLoadingContext->AddUniqueLoadedObjects(DupObjects);
-			}
-
+			UWidgetTree* NewWidgetTree = Cast<UWidgetTree>(StaticDuplicateObject(WidgetBP->WidgetTree, BPGClass, NAME_None, RF_AllFlags & ~RF_DefaultSubObject));
 			BPGClass->SetWidgetTreeArchetype(NewWidgetTree);
 
 			WidgetBP->WidgetTree->SetFlags(PreviousFlags);
@@ -727,18 +703,15 @@ void FWidgetBlueprintCompilerContext::FinishCompilingClass(UClass* Class)
 		// Make sure that we don't have dueling widget hierarchies
 		if (UWidgetBlueprintGeneratedClass* SuperBPGClass = Cast<UWidgetBlueprintGeneratedClass>(BPGClass->GetSuperClass()))
 		{
-			if (SuperBPGClass->ClassGeneratedBy) // ClassGeneratedBy can be null for cooked widget blueprints
+			UWidgetBlueprint* SuperBlueprint = Cast<UWidgetBlueprint>(SuperBPGClass->ClassGeneratedBy);
+			if (SuperBlueprint->WidgetTree != nullptr)
 			{
-				UWidgetBlueprint* SuperBlueprint = Cast<UWidgetBlueprint>(SuperBPGClass->ClassGeneratedBy);
-				if (ensure(SuperBlueprint) && SuperBlueprint->WidgetTree != nullptr)
+				if ((SuperBlueprint->WidgetTree->RootWidget != nullptr) && (WidgetBlueprint()->WidgetTree->RootWidget != nullptr))
 				{
-					if ((SuperBlueprint->WidgetTree->RootWidget != nullptr) && (WidgetBlueprint()->WidgetTree->RootWidget != nullptr))
-					{
-						// We both have a widget tree, terrible things will ensue
-						// @todo: nickd - we need to switch this back to a warning in engine, but note for games
-						MessageLog.Note(*LOCTEXT("ParentAndChildBothHaveWidgetTrees", "This widget @@ and parent class widget @@ both have a widget hierarchy, which is not supported.  Only one of them should have a widget tree.").ToString(),
-							WidgetBP, SuperBPGClass->ClassGeneratedBy);
-					}
+					// We both have a widget tree, terrible things will ensue
+					// @todo: nickd - we need to switch this back to a warning in engine, but note for games
+					MessageLog.Note(*LOCTEXT("ParentAndChildBothHaveWidgetTrees", "This widget @@ and parent class widget @@ both have a widget hierarchy, which is not supported.  Only one of them should have a widget tree.").ToString(),
+						WidgetBP, SuperBPGClass->ClassGeneratedBy);
 				}
 			}
 		}

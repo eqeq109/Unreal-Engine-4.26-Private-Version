@@ -2767,8 +2767,7 @@ void FNativeClassHeaderGenerator::ExportNatives(FOutputDevice& Out, FClass* Clas
 	{
 		if (Struct->StructFlags & STRUCT_Native)
 		{
-			const FString StructName = Struct->GetName();
-			Out.Logf( TEXT("\t\tUScriptStruct::DeferCppStructOps<%s%s>(FName(TEXT(\"%s\")));\r\n"), Struct->GetPrefixCPP(), *StructName, *StructName);
+			Out.Logf( TEXT("\t\tUScriptStruct::DeferCppStructOps(FName(TEXT(\"%s\")),new UScriptStruct::TCppStructOps<%s%s>);\r\n"), *Struct->GetName(), Struct->GetPrefixCPP(), *Struct->GetName() );
 		}
 	}
 
@@ -3331,7 +3330,7 @@ void ExportVTableHelperCtorAndCaller(FOutputDevice& Out, FClassMetaData* ClassDa
 	{
 		Out.Logf(TEXT("\tDECLARE_VTABLE_PTR_HELPER_CTOR(%s_API, %s);" LINE_TERMINATOR), API, ClassCPPName);
 	}
-	Out.Logf(TEXT("\tDEFINE_VTABLE_PTR_HELPER_CTOR_CALLER(%s);" LINE_TERMINATOR), ClassCPPName);
+	Out.Logf(TEXT("DEFINE_VTABLE_PTR_HELPER_CTOR_CALLER(%s);" LINE_TERMINATOR), ClassCPPName);
 }
 
 /**
@@ -3349,15 +3348,7 @@ void ExportStandardConstructorsMacro(FOutputDevice& Out, FClass* Class, FClassMe
 		Out.Logf(TEXT("\t%s_API %s(const FObjectInitializer& ObjectInitializer%s);\r\n"), API, ClassCPPName,
 			ClassData->bDefaultConstructorDeclared ? TEXT("") : TEXT(" = FObjectInitializer::Get()"));
 	}
-	if (Class->HasAnyClassFlags(CLASS_Abstract))
-	{
-		Out.Logf(TEXT("\tDEFINE_ABSTRACT_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-	}
-	else
-	{
-		Out.Logf(TEXT("\tDEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-
-	}
+	Out.Logf(TEXT("\tDEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
 
 	ExportVTableHelperCtorAndCaller(Out, ClassData, API, ClassCPPName);
 	ExportCopyConstructorDefinition(Out, API, ClassCPPName);
@@ -3420,29 +3411,15 @@ void ExportConstructorDefinition(FOutputDevice& Out, FClass* Class, FClassMetaDa
  * @param Out Output device to generate to.
  * @param Class Class to generate constructor call definition for.
  */
-void ExportDefaultConstructorCallDefinition(FOutputDevice& Out, FClass* Class, FClassMetaData* ClassData, const TCHAR* ClassCPPName)
+void ExportDefaultConstructorCallDefinition(FOutputDevice& Out, FClassMetaData* ClassData, const TCHAR* ClassCPPName)
 {
 	if (ClassData->bObjectInitializerConstructorDeclared)
 	{
-		if (Class->HasAnyClassFlags(CLASS_Abstract))
-		{
-			Out.Logf(TEXT("\tDEFINE_ABSTRACT_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-		}
-		else
-		{
-			Out.Logf(TEXT("\tDEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-		}
+		Out.Logf(TEXT("\tDEFINE_DEFAULT_OBJECT_INITIALIZER_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
 	}
 	else if (ClassData->bDefaultConstructorDeclared)
 	{
-		if (Class->HasAnyClassFlags(CLASS_Abstract))
-		{
-			Out.Logf(TEXT("\tDEFINE_ABSTRACT_DEFAULT_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-		}
-		else
-		{
-			Out.Logf(TEXT("\tDEFINE_DEFAULT_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
-		}
+		Out.Logf(TEXT("\tDEFINE_DEFAULT_CONSTRUCTOR_CALL(%s)\r\n"), ClassCPPName);
 	}
 	else
 	{
@@ -3461,7 +3438,7 @@ void ExportEnhancedConstructorsMacro(FOutputDevice& Out, FClass* Class, FClassMe
 {
 	ExportConstructorDefinition(Out, Class, ClassData, API, ClassCPPName);
 	ExportVTableHelperCtorAndCaller(Out, ClassData, API, ClassCPPName);
-	ExportDefaultConstructorCallDefinition(Out, Class, ClassData, ClassCPPName);
+	ExportDefaultConstructorCallDefinition(Out, ClassData, ClassCPPName);
 }
 
 /**
@@ -3937,7 +3914,9 @@ void FNativeClassHeaderGenerator::ExportGeneratedStructBodyMacros(FOutputDevice&
 			Out.Logf(TEXT("{\r\n"));
 			Out.Logf(TEXT("\tFScriptStruct_%s_StaticRegisterNatives%s()\r\n"), *ShortPackageName, *StructNameCPP);
 			Out.Logf(TEXT("\t{\r\n"));
-			Out.Logf(TEXT("\t\tUScriptStruct::DeferCppStructOps<%s>(FName(TEXT(\"%s\")));\r\n"), *StructNameCPP, *ActualStructName);
+
+			Out.Logf(TEXT("\t\tUScriptStruct::DeferCppStructOps(FName(TEXT(\"%s\")),new UScriptStruct::TCppStructOps<%s>);\r\n"), *ActualStructName, *StructNameCPP);
+
 			Out.Logf(TEXT("\t}\r\n"));
 			Out.Logf(TEXT("} ScriptStruct_%s_StaticRegisterNatives%s;\r\n"), *ShortPackageName, *StructNameCPP);
 		}
@@ -4603,7 +4582,9 @@ FString FNativeClassHeaderGenerator::GetNullParameterValue( FProperty* Prop, boo
 	{
 		return TEXT("false");
 	}
-	else if ( PropClass->IsChildOf(FNumericProperty::StaticClass()) )
+	else if ( PropClass == FIntProperty::StaticClass()
+	||	PropClass == FFloatProperty::StaticClass()
+	||	PropClass == FDoubleProperty::StaticClass())
 	{
 		return TEXT("0");
 	}
@@ -5190,10 +5171,6 @@ void FNativeClassHeaderGenerator::ExportFunctionThunk(FUHTStringBuilder& RPCWrap
 		ApplyAlternatePropertyExportText(Return, ReplacementText, EExportingState::Normal);
 
 		FString ReturnType = ReplacementText;
-		if (Return->HasAnyPropertyFlags(CPF_ConstParm) && CastField<FObjectProperty>(Return))
-		{
-			ReturnType = TEXT("const ") + ReturnType;
-		}
 		RPCWrappers.Logf(TEXT("*(%s%s*)") TEXT(PREPROCESSOR_TO_STRING(RESULT_PARAM)) TEXT("="), *ReturnType, *ReturnExtendedType);
 	}
 
@@ -6489,13 +6466,9 @@ bool FNativeClassHeaderGenerator::SaveHeaderIfChanged(FReferenceGatherers& OutRe
 
 FString FNativeClassHeaderGenerator::GenerateTempHeaderName( const FString& CurrentFilename, bool bReverseOperation )
 {
-	if (bReverseOperation)
-	{
-		FString Reversed = CurrentFilename;
-		Reversed.RemoveFromEnd(TEXT(".tmp"), ESearchCase::CaseSensitive);
-		return Reversed;
-	}
-	return CurrentFilename + TEXT(".tmp");
+	return bReverseOperation
+		? CurrentFilename.Replace(TEXT(".tmp"), TEXT(""), ESearchCase::CaseSensitive)
+		: CurrentFilename + TEXT(".tmp");
 }
 
 void FNativeClassHeaderGenerator::ExportUpdatedHeaders(FString&& PackageName, TArray<FString>&& TempHeaderPaths, FGraphEventArray& InTempSaveTasks)

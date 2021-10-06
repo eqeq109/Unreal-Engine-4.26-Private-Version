@@ -24,7 +24,6 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Layout/WidgetPath.h"
 #include "EditorFontGlyphs.h"
-#include "NiagaraConstants.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraScratchPad"
 
@@ -158,7 +157,6 @@ class SNiagaraScratchPadScriptRow : public SCompoundWidget
 				.Text(this, &SNiagaraScratchPadScriptRow::GetNameText)
 				.ToolTipText(ScriptViewModel.ToSharedRef(), &FNiagaraScratchPadScriptViewModel::GetToolTip)
 				.IsSelected(this, &SNiagaraScratchPadScriptRow::GetIsSelected)
-				.OnVerifyTextChanged(this, &SNiagaraScratchPadScriptRow::VerifyNameTextChange)
 				.OnTextCommitted(this, &SNiagaraScratchPadScriptRow::OnNameTextCommitted)
 			]
 			+ SHorizontalBox::Slot()
@@ -235,22 +233,6 @@ private:
 	bool GetIsSelected() const
 	{
 		return IsSelected.Get(false);
-	}
-
-	bool VerifyNameTextChange(const FText& InNewNameText, FText& OutErrorMessage)
-	{
-		if (InNewNameText.IsEmpty())
-		{
-			OutErrorMessage = NSLOCTEXT("NiagaraScratchPadScriptName", "EmptyNameErrorMessage", "Script name can not be empty.");
-			return false;
-		}
-		if (InNewNameText.ToString().Len() > FNiagaraConstants::MaxScriptNameLength)
-		{
-			OutErrorMessage = FText::Format(NSLOCTEXT("NiagaraScratchPadScriptName", "NameTooLongErrorFormat", "The name entered is too long.\nThe maximum script name length is {0}."), FText::AsNumber(FNiagaraConstants::MaxScriptNameLength));
-			return false;
-		}
-
-		return true;
 	}
 
 	void OnNameTextCommitted(const FText& InText, ETextCommit::Type InCommitType)
@@ -381,7 +363,7 @@ private:
 	TArray<ENiagaraScriptUsage> OnGetCategoriesForItem(const TSharedRef<FNiagaraScratchPadScriptViewModel>& Item)
 	{
 		TArray<ENiagaraScriptUsage> Categories;
-		Categories.Add(Item->GetScripts()[0].Script->GetUsage());
+		Categories.Add(Item->GetScripts()[0]->GetUsage());
 		return Categories;
 	}
 
@@ -572,42 +554,10 @@ class SNiagaraScratchPadScriptEditor : public SCompoundWidget
 			]
 			+ SVerticalBox::Slot()
 			[
-				SAssignNew(Graph,SNiagaraScriptGraph, ScriptViewModel->GetGraphViewModel())
+				SNew(SNiagaraScriptGraph, ScriptViewModel->GetGraphViewModel())
 				.ZoomToFitOnLoad(true)
 			]
 		];
-
-		if (ScriptViewModel)
-		{
-			NodeIDHandle = ScriptViewModel->OnNodeIDFocusRequested().AddLambda(
-				[this](FNiagaraScriptIDAndGraphFocusInfo* FocusInfo)
-				{
-					if (Graph.IsValid() && FocusInfo != nullptr)
-					{
-						Graph->FocusGraphElement(FocusInfo->GetScriptGraphFocusInfo().Get());
-					}
-				}
-			);
-
-			PinIDHandle = ScriptViewModel->OnPinIDFocusRequested().AddLambda(
-				[this](FNiagaraScriptIDAndGraphFocusInfo* FocusInfo)
-				{
-					if (Graph.IsValid() && FocusInfo != nullptr)
-					{
-						Graph->FocusGraphElement(FocusInfo->GetScriptGraphFocusInfo().Get());
-					}
-				}
-			);
-		}
-	}
-
-	~SNiagaraScratchPadScriptEditor()
-	{
-		if (ScriptViewModel)
-		{
-			ScriptViewModel->OnNodeIDFocusRequested().Remove(NodeIDHandle);
-			ScriptViewModel->OnPinIDFocusRequested().Remove(PinIDHandle);
-		}
 	}
 
 private:
@@ -635,10 +585,6 @@ private:
 
 private:
 	TSharedPtr<FNiagaraScratchPadScriptViewModel> ScriptViewModel;
-	TSharedPtr<SNiagaraScriptGraph> Graph;
-
-	FDelegateHandle NodeIDHandle;
-	FDelegateHandle PinIDHandle;
 };
 
 class SNiagaraScratchPadScriptEditorList : public SCompoundWidget
@@ -837,8 +783,7 @@ private:
 				else
 				{
 					TSharedRef<FNiagaraObjectSelection> ScriptSelection = MakeShared<FNiagaraObjectSelection>();
-					const FVersionedNiagaraScript& EditScript = NewScriptViewModel->GetEditScript();
-					ScriptSelection->SetSelectedObject(EditScript.Script, &EditScript.Version);
+					ScriptSelection->SetSelectedObject(NewScriptViewModel->GetEditScript());
 					TArray<TSharedRef<FNiagaraObjectSelection>> ParameterSelections;
 					ParameterSelections.Add(ScriptSelection);
 					ParameterSelections.Add(NewScriptViewModel->GetVariableSelection());

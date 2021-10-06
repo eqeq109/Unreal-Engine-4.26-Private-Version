@@ -1040,19 +1040,19 @@ struct RIGVMDEVELOPER_API FRigVMParserASTSettings
 
 	// remove no op nodes - used for reroutes and other expressions.
 	UPROPERTY(EditAnywhere, Category = "AST")
-	bool bFoldReroutes = false;
+	bool bFoldReroutes;
 
 	// fold assignments / copies
 	UPROPERTY(EditAnywhere, Category = "AST")
-	bool bFoldAssignments = false;
+	bool bFoldAssignments;
 
 	// fold literals and share memory
 	UPROPERTY(EditAnywhere, Category = "AST")
-	bool bFoldLiterals = false;
+	bool bFoldLiterals;
 
 	// fold / remove unreachable / constant branches
 	UPROPERTY(EditAnywhere, Category = "AST")
-	bool bFoldConstantBranches = false;
+	bool bFoldConstantBranches;
 
 	// static method to provide fast AST parse settings
 	static FRigVMParserASTSettings Fast()

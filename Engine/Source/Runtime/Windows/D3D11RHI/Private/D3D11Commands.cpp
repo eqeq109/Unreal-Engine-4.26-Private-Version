@@ -15,7 +15,7 @@
 #include "SceneUtils.h"
 #include "EngineGlobals.h"
 
-#if !PLATFORM_HOLOLENS
+#if PLATFORM_DESKTOP
 // For Depth Bounds Test interface
 #include "Windows/AllowWindowsPlatformTypes.h"
 	#include "nvapi.h"
@@ -1514,7 +1514,8 @@ void FD3D11DynamicRHI::SetResourcesFromTables(const ShaderType* RESTRICT Shader)
 
 		if (!Buffer)
 		{
-			UE_LOG(LogD3D11RHI, Fatal, TEXT("Shader expected a uniform buffer at slot %u but got null instead.  Rendering code needs to set a valid uniform buffer for this slot."), 
+			UE_LOG(LogD3D11RHI, Fatal, TEXT("Shader expected a uniform buffer of struct type %s at slot %u but got null instead.  Rendering code needs to set a valid uniform buffer for this slot."), 
+				*Shader->UniformBuffers[BufferIndex].GetPlainNameString(),
 				BufferIndex);
 		}
 

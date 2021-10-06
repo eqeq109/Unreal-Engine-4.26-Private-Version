@@ -568,9 +568,9 @@ void FFeedbackContextEditor::ProgressReported( const float TotalProgressInterp, 
 	else if (FPlatformSplash::IsShown())
 	{
 		// Always show the top-most message
-		for (int i = ScopeStack.Num() - 1; i > -1; --i)
+		for (auto& Scope : ScopeStack)
 		{
-			const FText ThisMessage = ScopeStack[i]->GetCurrentMessage();
+			const FText ThisMessage = Scope->GetCurrentMessage();
 			if (!ThisMessage.IsEmpty())
 			{
 				DisplayMessage = ThisMessage;
@@ -604,8 +604,8 @@ void FFeedbackContextEditor::ProgressReported( const float TotalProgressInterp, 
 					NewDisplayMessage.AppendChar( TCHAR( ' ' ) );
 				}
 			}
-
-			DisplayMessage = FText::FromString(FString::Printf(TEXT("%3i%% - %s"), int(TotalProgressInterp * 100.f), *NewDisplayMessage));
+			NewDisplayMessage.Append( FString::Printf( TEXT( " %i%%" ), int(TotalProgressInterp * 100.f) ) );
+			DisplayMessage = FText::FromString( NewDisplayMessage );
 		}
 
 		FPlatformSplash::SetSplashText(SplashTextType::StartupProgress, *DisplayMessage.ToString());

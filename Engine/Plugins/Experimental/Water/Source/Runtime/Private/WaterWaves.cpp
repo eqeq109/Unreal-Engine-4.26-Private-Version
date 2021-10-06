@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "WaterWaves.h"
-#include "GerstnerWaterWaves.h"
 
 #if WITH_EDITOR
 void UWaterWavesBase::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -14,12 +13,6 @@ void UWaterWavesBase::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 
 
 // ----------------------------------------------------------------------------------
-
-UWaterWavesAsset::UWaterWavesAsset()
-{
-	// Default wave source
-	WaterWaves = CreateDefaultSubobject<UGerstnerWaterWaves>(TEXT("WaterWaves"), /* bTransient = */false);
-}
 
 void UWaterWavesAsset::SetWaterWaves(UWaterWaves* InWaterWaves)
 {

@@ -22,7 +22,6 @@ struct APPLICATIONCORE_API FAndroidApplicationMisc : public FGenericPlatformAppl
 	static void ClipboardCopy(const TCHAR* Str);
 	static void ClipboardPaste(class FString& Dest);
 	static EScreenPhysicalAccuracy ComputePhysicalScreenDensity(int32& OutScreenDensity);
-	static void EnableMotionData(bool bEnable);
 };
 
 #if !PLATFORM_LUMIN

@@ -3,48 +3,45 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/StaticMeshComponent.h"
-
+#include "DisplayClusterSceneComponent.h"
 #include "DisplayClusterScreenComponent.generated.h"
+
+class UStaticMeshComponent;
 
 
 /**
- * Simple projection policy screen component
+ * Simple projection screen component
  */
-UCLASS(ClassGroup = (DisplayCluster), meta = (BlueprintSpawnableComponent, DisplayName = "NDisplay Screen"))
+UCLASS(ClassGroup = (DisplayCluster))
 class DISPLAYCLUSTER_API UDisplayClusterScreenComponent
-	: public UStaticMeshComponent
+	: public UDisplayClusterSceneComponent
 {
+	friend class FDisplayClusterProjectionSimplePolicy;
+
 	GENERATED_BODY()
 
 public:
 	UDisplayClusterScreenComponent(const FObjectInitializer& ObjectInitializer);
 
 public:
-	/** Return the screen size adjusted by its transform scale. */
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get screen size"), Category = "NDisplay")
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get screen size"), Category = "DisplayCluster")
 	FVector2D GetScreenSize() const;
 
-	/** Set screen size (update transform scale). */
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Set screen size"), Category = "NDisplay")
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Set screen size"), Category = "DisplayCluster")
 	void SetScreenSize(const FVector2D& Size);
 
-	virtual void Serialize(FArchive& Ar) override;
-	
-#if WITH_EDITOR
 protected:
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void ApplyConfigurationData();
 
-	/** Updates Size vector when scale is changed explicitly */
-	void UpdateScreenSizeFromScale();
-#endif
-
-#if WITH_EDITORONLY_DATA
 protected:
-	friend class FDisplayClusterConfiguratorScreenDetailCustomization;
-
-	/** Adjust the size of the screen. */
-	UPROPERTY(EditDefaultsOnly, Category = "Screen Size", meta = (DisplayName = "Size", AllowPreserveRatio))
+	UPROPERTY(EditAnywhere, Category = "DisplayCluster")
 	FVector2D Size;
+
+	UPROPERTY(VisibleAnywhere, Category = "DisplayCluster")
+	UStaticMeshComponent* VisScreenComponent = nullptr;
+
+#if WITH_EDITOR 
+public:
+	virtual void SetNodeSelection(bool bSelect) override;
 #endif
 };

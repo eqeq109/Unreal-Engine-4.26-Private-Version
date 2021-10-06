@@ -117,9 +117,6 @@ public:
 	ovrpVector4f ColorScale, ColorOffset;
 	bool bApplyColorScaleAndOffsetToAllLayers;
 
-	bool bLateLatching;
-	bool bPhaseSync;
-
 public:
 	FSettings();
 	virtual ~FSettings() {}

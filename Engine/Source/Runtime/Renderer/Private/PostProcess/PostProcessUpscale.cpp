@@ -166,16 +166,10 @@ EUpscaleMethod GetUpscaleMethod()
 	return static_cast<EUpscaleMethod>(FMath::Clamp(Value, 0, static_cast<int32>(EUpscaleMethod::Gaussian)));
 }
 
-// static
-FScreenPassTexture ISpatialUpscaler::AddDefaultUpscalePass(
-	FRDGBuilder& GraphBuilder,
-	const FViewInfo& View,
-	const FInputs& Inputs,
-	EUpscaleMethod Method,
-	FPaniniProjectionConfig PaniniConfig)
+FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FUpscaleInputs& Inputs)
 {
 	check(Inputs.SceneColor.IsValid());
-	check(Method != EUpscaleMethod::MAX);
+	check(Inputs.Method != EUpscaleMethod::MAX);
 	check(Inputs.Stage != EUpscaleStage::MAX);
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
@@ -207,6 +201,7 @@ FScreenPassTexture ISpatialUpscaler::AddDefaultUpscalePass(
 	const FScreenPassTextureViewport InputViewport(Inputs.SceneColor);
 	const FScreenPassTextureViewport OutputViewport(Output);
 
+	FPaniniProjectionConfig PaniniConfig = Inputs.PaniniConfig;
 	PaniniConfig.Sanitize();
 
 	const bool bUsePaniniProjection = PaniniConfig.IsEnabled();
@@ -225,7 +220,7 @@ FScreenPassTexture ISpatialUpscaler::AddDefaultUpscalePass(
 	PassParameters->View = View.ViewUniformBuffer;
 
 	FUpscalePS::FPermutationDomain PixelPermutationVector;
-	PixelPermutationVector.Set<FUpscalePS::FMethodDimension>(Method);
+	PixelPermutationVector.Set<FUpscalePS::FMethodDimension>(Inputs.Method);
 	TShaderMapRef<FUpscalePS> PixelShader(View.ShaderMap, PixelPermutationVector);
 
 	const TCHAR* const StageNames[] = { TEXT("PrimaryToSecondary"), TEXT("PrimaryToOutput"), TEXT("SecondaryToOutput") };

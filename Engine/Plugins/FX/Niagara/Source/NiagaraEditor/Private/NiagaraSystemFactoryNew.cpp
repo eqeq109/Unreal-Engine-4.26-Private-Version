@@ -123,7 +123,7 @@ UObject* UNiagaraSystemFactoryNew::FactoryCreateNew(UClass* Class, UObject* InPa
 			SystemToCopy->WaitForCompilationComplete();
 		}
 		NewSystem = Cast<UNiagaraSystem>(StaticDuplicateObject(SystemToCopy, InParent, Name, Flags, Class));
-		NewSystem->TemplateSpecification = ENiagaraScriptTemplateSpecification::None;
+		NewSystem->bIsTemplateAsset = false;
 		NewSystem->TemplateAssetDescription = FText();
 	}
 	else if (EmittersToAddToNewSystem.Num() > 0)
@@ -159,9 +159,8 @@ void UNiagaraSystemFactoryNew::InitializeSystem(UNiagaraSystem* System, bool bCr
 		SystemScriptSource->NodeGraph = NewObject<UNiagaraGraph>(SystemScriptSource, "SystemScriptGraph", RF_Transactional);
 	}
 
-	System->TemplateSpecification = ENiagaraScriptTemplateSpecification::None;
-	SystemSpawnScript->SetLatestSource(SystemScriptSource);
-	SystemUpdateScript->SetLatestSource(SystemScriptSource);
+	SystemSpawnScript->SetSource(SystemScriptSource);
+	SystemUpdateScript->SetSource(SystemScriptSource);
 
 	if (bCreateDefaultNodes)
 	{

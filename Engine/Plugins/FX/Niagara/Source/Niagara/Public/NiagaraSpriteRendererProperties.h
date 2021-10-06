@@ -56,24 +56,11 @@ namespace ENiagaraSpriteVFLayout
 		MaterialParam3,
 		CameraOffset,
 		UVScale,
-		PivotOffset,
 		MaterialRandom,
 		CustomSorting,
 		NormalizedAge,
 
-		Num_Default,
-
-		// The remaining layout params aren't needed unless accurate motion vectors are required
-		PrevPosition = Num_Default,
-		PrevVelocity,
-		PrevRotation,
-		PrevSize,
-		PrevFacing,
-		PrevAlignment,
-		PrevCameraOffset,
-		PrevPivotOffset,
-
-		Num_Max,
+		Num,
 	};
 };
 
@@ -112,7 +99,6 @@ public:
 	virtual bool IsMaterialValidForRenderer(UMaterial* Material, FText& InvalidMessage) override;
 	virtual void FixMaterial(UMaterial* Material) override;
 	virtual const TArray<FNiagaraVariable>& GetOptionalAttributes() override;
-	virtual void GetAdditionalVariables(TArray<FNiagaraVariableBase>& OutArray) const override;
 	virtual void GetRendererWidgets(const FNiagaraEmitterInstance* InEmitter, TArray<TSharedPtr<SWidget>>& OutWidgets, TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const override;
 	virtual void GetRendererTooltipWidgets(const FNiagaraEmitterInstance* InEmitter, TArray<TSharedPtr<SWidget>>& OutWidgets, TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const override;
 	virtual void GetRendererFeedback(const UNiagaraEmitter* InEmitter, TArray<FText>& OutErrors, TArray<FText>& OutWarnings, TArray<FText>& OutInfo) const override;
@@ -123,7 +109,7 @@ public:
 	//UNiagaraMaterialRendererProperties interface END
 
 	int32 GetNumCutoutVertexPerSubimage() const;
-	uint32 GetNumIndicesPerInstance() const;
+	virtual uint32 GetNumIndicesPerInstance() const;
 
 	/** The material used to render the particle. Note that it must have the Use with Niagara Sprites flag checked.*/
 	UPROPERTY(EditAnywhere, Category = "Sprite Rendering")
@@ -145,11 +131,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Sprite Rendering")
 	ENiagaraSpriteFacingMode FacingMode;
 
-	/**
-	 * Determines the location of the pivot point of this particle. It follows Unreal's UV space, which has the upper left of the image at 0,0 and bottom right at 1,1. The middle is at 0.5, 0.5.
-	 * NOTE: This value is ignored if "Pivot Offset Binding" is bound to a valid attribute
-	 */
-	UPROPERTY(EditAnywhere, Category = "Sprite Rendering", meta = (DisplayName = "Default Pivot in UV Space"))
+	/** Determines the location of the pivot point of this particle. It follows Unreal's UV space, which has the upper left of the image at 0,0 and bottom right at 1,1. The middle is at 0.5, 0.5. */
+	UPROPERTY(EditAnywhere, Category = "Sprite Rendering")
 	FVector2D PivotInUVSpace;
 
 	/** Determines how we sort the particles prior to rendering.*/
@@ -258,10 +241,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Bindings")
 	FNiagaraVariableAttributeBinding UVScaleBinding;
 
-	/** Which attribute should we use for pivot offset? (NOTE: Values are expected to be in UV space). */
-	UPROPERTY(EditAnywhere, Category = "Bindings")
-	FNiagaraVariableAttributeBinding PivotOffsetBinding;
-
 	/** Which attribute should we use for material randoms when generating sprites?*/
 	UPROPERTY(EditAnywhere, Category = "Bindings")
 	FNiagaraVariableAttributeBinding MaterialRandomBinding;
@@ -282,24 +261,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Bindings")
 	TArray< FNiagaraMaterialAttributeBinding > MaterialParameterBindings;
 
-	// The following bindings are only needed for accurate motion vectors
-
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevPositionBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevVelocityBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevSpriteRotationBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevSpriteSizeBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevSpriteFacingBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevSpriteAlignmentBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevCameraOffsetBinding;
-	UPROPERTY(Transient)
-	FNiagaraVariableAttributeBinding PrevPivotOffsetBinding;
+	void InitBindings();
 
 	virtual bool NeedsMIDsForMaterials() const { return MaterialParameterBindings.Num() > 0; }
 
@@ -344,13 +306,7 @@ public:
 	uint32 MaterialParamValidMask = 0;
 	
 protected:
-	void InitBindings();
-	void SetPreviousBindings(const UNiagaraEmitter* SrcEmitter, ENiagaraRendererSourceDataMode InSourceMode);
-	virtual void UpdateSourceModeDerivates(ENiagaraRendererSourceDataMode InSourceMode, bool bFromPropertyEdit = false) override;
-
-#if WITH_EDITORONLY_DATA
-	virtual FNiagaraVariable GetBoundAttribute(const FNiagaraVariableAttributeBinding* Binding) const override;
-#endif
+	void UpdateSourceModeDerivates(ENiagaraRendererSourceDataMode InSourceMode, bool bFromPropertyEdit = false) override;
 
 private:
 	/** Derived data for this asset, generated off of SubUVTexture. */

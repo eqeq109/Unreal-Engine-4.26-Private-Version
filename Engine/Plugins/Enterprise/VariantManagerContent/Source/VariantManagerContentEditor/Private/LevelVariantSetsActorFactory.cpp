@@ -33,13 +33,13 @@ bool ULevelVariantSetsActorFactory::CanCreateActorFrom( const FAssetData& AssetD
 	return true;
 }
 
-AActor* ULevelVariantSetsActorFactory::SpawnActor(UObject* InAsset, ULevel* InLevel, const FTransform& InTransform, const FActorSpawnParameters& InSpawnParams)
+AActor* ULevelVariantSetsActorFactory::SpawnActor( UObject* Asset, ULevel* InLevel, const FTransform& Transform, EObjectFlags InObjectFlags, const FName Name )
 {
-	ALevelVariantSetsActor* NewActor = Cast<ALevelVariantSetsActor>(Super::SpawnActor(InAsset, InLevel, InTransform, InSpawnParams));
+	ALevelVariantSetsActor* NewActor = Cast<ALevelVariantSetsActor>(Super::SpawnActor(Asset, InLevel, Transform, InObjectFlags, Name));
 
 	if (NewActor)
 	{
-		if (ULevelVariantSets* LevelVariantSets = Cast<ULevelVariantSets>(InAsset))
+		if (ULevelVariantSets* LevelVariantSets = Cast<ULevelVariantSets>(Asset))
 		{
 			NewActor->SetLevelVariantSets(LevelVariantSets);
 		}

@@ -345,7 +345,6 @@ FSearchStats FAssetSearchManager::GetStats() const
 	Stats.Updating = PendingDatabaseUpdates;
 	Stats.TotalRecords = TotalSearchRecords;
 	Stats.AssetsMissingIndex = FailedDDCRequests.Num();
-
 	return Stats;
 }
 
@@ -431,7 +430,7 @@ void FAssetSearchManager::OnAssetScanFinished()
 	AssetRegistry.OnAssetAdded().AddRaw(this, &FAssetSearchManager::OnAssetAdded);
 	AssetRegistry.OnAssetRemoved().AddRaw(this, &FAssetSearchManager::OnAssetRemoved);
 
-	AssetRegistry.GetAllAssets(AllAssets, true);
+	AssetRegistry.GetAllAssets(AllAssets, false);
 
 	for (const FAssetData& Data : AllAssets)
 	{
@@ -495,12 +494,7 @@ bool FAssetSearchManager::RequestIndexAsset(UObject* InAsset)
 		TWeakObjectPtr<UObject> AssetWeakPtr = InAsset;
 		FAssetData AssetData(InAsset);
 
-		return AsyncGetDerivedDataKey(AssetData, [this, AssetData, AssetWeakPtr](bool bSuccess, FString InDDCKey) {
-			if (!bSuccess)
-			{
-				return;
-			}
-
+		return AsyncGetDerivedDataKey(AssetData, [this, AssetData, AssetWeakPtr](FString InDDCKey) {
 			UpdateOperations.Enqueue([this, AssetData, AssetWeakPtr, InDDCKey]() {
 				FScopeLock ScopedLock(&SearchDatabaseCS);
 				if (!SearchDatabase.IsAssetUpToDate(AssetData, InDDCKey))
@@ -540,13 +534,7 @@ bool FAssetSearchManager::IsAssetIndexable(UObject* InAsset)
 
 bool FAssetSearchManager::TryLoadIndexForAsset(const FAssetData& InAssetData)
 {
-	bool bSuccess = AsyncGetDerivedDataKey(InAssetData, [this, InAssetData](bool bSuccess, FString InDDCKey) {
-		if (!bSuccess)
-		{
-			IsAssetUpToDateCount--;
-			return;
-		}
-		
+	const bool bSuccess = AsyncGetDerivedDataKey(InAssetData, [this, InAssetData](FString InDDCKey) {
 		FeedOperations.Enqueue([this, InAssetData, InDDCKey]() {
 			FScopeLock ScopedLock(&SearchDatabaseCS);
 			if (!SearchDatabase.IsAssetUpToDate(InAssetData, InDDCKey))
@@ -576,7 +564,7 @@ void FAssetSearchManager::AsyncRequestDownlaod(const FAssetData& InAssetData, co
 	DownloadQueue.Enqueue(DDCRequest);
 }
 
-bool FAssetSearchManager::AsyncGetDerivedDataKey(const FAssetData& InAssetData, TFunction<void(bool, FString)> DDCKeyCallback)
+bool FAssetSearchManager::AsyncGetDerivedDataKey(const FAssetData& InAssetData, TFunction<void(FString)> DDCKeyCallback)
 {
 	check(IsInGameThread());
 
@@ -618,12 +606,7 @@ bool FAssetSearchManager::AsyncGetDerivedDataKey(const FAssetData& InAssetData, 
 
 			const FString DDCKeyString = DDCKey.ToString();
 
-			DDCKeyCallback(true, DDCKeyString);
-		}
-		else
-		{
-			UE_LOG(LogAssetSearch, Warning, TEXT("%s unable to hash file."), *InAssetData.PackageName.ToString());
-			DDCKeyCallback(false, TEXT(""));
+			DDCKeyCallback(DDCKeyString);
 		}
 	});
 
@@ -693,12 +676,7 @@ void FAssetSearchManager::StoreIndexForAsset(UObject* InAsset)
 
 		if (bWasIndexed && !IndexedJson.IsEmpty())
 		{
-			AsyncGetDerivedDataKey(InAssetData, [this, InAssetData, IndexedJson](bool bSuccess, FString InDDCKey) {
-				if (!bSuccess)
-				{
-					return;
-				}
-
+			AsyncGetDerivedDataKey(InAssetData, [this, InAssetData, IndexedJson](FString InDDCKey) {
 				AsyncMainThreadTask([this, InAssetData, IndexedJson, InDDCKey]() {
 					check(IsInGameThread());
 
@@ -866,11 +844,6 @@ void FAssetSearchManager::ForceIndexOnAssetsMissingIndex()
 
 	TArray<FAssetData> RedirectorsWithBrokenMetadata;
 
-	TGuardValue<bool> GuardResetTesting(GIsAutomationTesting, true);
-
-	const int32 OnePercentChunk = (int32)(FailedDDCRequests.Num() / 100.0);
-	int32 ChunkProgress = 0;
-
 	FUnloadPackageScope UnloadScope;
 	for (const FAssetDDCRequest& Request : FailedDDCRequests)
 	{
@@ -879,11 +852,7 @@ void FAssetSearchManager::ForceIndexOnAssetsMissingIndex()
 			break;
 		}
 
-		if (RemovedCount > ChunkProgress)
-		{
-			ChunkProgress += OnePercentChunk;
-			IndexingTask.EnterProgressFrame(OnePercentChunk, FText::Format(LOCTEXT("ForceIndexOnAssetsMissingIndexFormat", "Indexing Asset ({0} of {1})"), RemovedCount + 1, FailedDDCRequests.Num()));
-		}
+		IndexingTask.EnterProgressFrame(1, FText::Format(LOCTEXT("ForceIndexOnAssetsMissingIndexFormat", "Indexing Asset ({0} of {1})"), RemovedCount + 1, FailedDDCRequests.Num()));
 
 		if (IncludeMaps != EAppReturnType::Yes)
 		{
@@ -894,7 +863,7 @@ void FAssetSearchManager::ForceIndexOnAssetsMissingIndex()
 			}
 		}
 
-		//ProcessGameThreadTasks();
+		ProcessGameThreadTasks();
 
 		if (UObject* AssetToIndex = Request.AssetData.GetAsset())
 		{

@@ -15,8 +15,13 @@ struct FDatasmithTessellationOptions;
 
 namespace PlmXml
 {
+#ifdef CAD_LIBRARY
 	class FPlmXmlMeshLoaderWithDatasmithDispatcher;
 	using FPlmXmlMeshLoader = FPlmXmlMeshLoaderWithDatasmithDispatcher;
+#else // CAD_LIBRARY
+	class FPlmXmlMeshLoaderSimple;
+	using FPlmXmlMeshLoader = FPlmXmlMeshLoaderSimple;
+#endif // CAD_LIBRARY
 }
 
 class FDatasmithPlmXmlImporter : FNoncopyable

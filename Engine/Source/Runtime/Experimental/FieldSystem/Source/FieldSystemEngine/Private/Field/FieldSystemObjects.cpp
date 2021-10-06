@@ -17,19 +17,6 @@ UFieldSystemMetaDataProcessingResolution* UFieldSystemMetaDataProcessingResoluti
 	return this;
 }
 
-// UFieldSystemMetaDataFilter
-FFieldSystemMetaData*
-UFieldSystemMetaDataFilter::NewMetaData() const
-{
-	return new FFieldSystemMetaDataFilter(FilterType);
-}
-
-UFieldSystemMetaDataFilter* UFieldSystemMetaDataFilter::SetMetaDataFilterType(EFieldFilterType FilterTypeIn)
-{
-	this->FilterType = FilterTypeIn;
-	return this;
-}
-
 // UFieldSystemMetaDataIteration
 FFieldSystemMetaData*
 UFieldSystemMetaDataIteration::NewMetaData() const
@@ -48,7 +35,7 @@ UFieldSystemMetaDataIteration* UFieldSystemMetaDataIteration::SetMetaDataIterati
 FFieldNodeBase*
 UUniformInteger::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FUniformInteger(Magnitude);
@@ -66,7 +53,7 @@ UUniformInteger* UUniformInteger::SetUniformInteger(int32 InMagnitude)
 FFieldNodeBase* 
 URadialIntMask::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FRadialIntMask(Radius, Position, InteriorValue, ExteriorValue, SetMaskCondition);
@@ -89,7 +76,7 @@ URadialIntMask::SetRadialIntMask(float InRadius, FVector InPosition, int32 InInt
 FFieldNodeBase*
 UUniformScalar::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FUniformScalar(Magnitude);
@@ -103,34 +90,13 @@ UUniformScalar* UUniformScalar::SetUniformScalar(float InMagnitude)
 	return this;
 }
 
-// UWaveScalar
-FFieldNodeBase*
-UWaveScalar::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
-{
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
-	{
-		Nodes.Add(this);
-		return new FWaveScalar(Magnitude,Position,Wavelength,Period,Function,Falloff);
-	}
-	return nullptr;
-};
 
-UWaveScalar* UWaveScalar::SetWaveScalar(float InMagnitude, FVector InPosition, float InWavelength, float InPeriod, float Time, EWaveFunctionType InFunction, EFieldFalloffType InFalloff)
-{
-	this->Magnitude = InMagnitude;
-	this->Position = InPosition;
-	this->Wavelength = InWavelength;
-	this->Period = InPeriod;
-	this->Function = InFunction;
-	this->Falloff = InFalloff;
-	return this;
-}
 
 // RadialFalloff
 FFieldNodeBase* 
 URadialFalloff::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FRadialFalloff(Magnitude, MinRange, MaxRange, Default, Radius, Position, Falloff);
@@ -155,7 +121,7 @@ URadialFalloff* URadialFalloff::SetRadialFalloff(float InMagnitude, float InMinR
 FFieldNodeBase*
 UPlaneFalloff::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FPlaneFalloff(Magnitude, MinRange, MaxRange, Default, Distance, Position, Normal, Falloff);
@@ -182,7 +148,7 @@ UPlaneFalloff::SetPlaneFalloff(float InMagnitude, float InMinRange, float InMaxR
 FFieldNodeBase*
 UBoxFalloff::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FBoxFalloff(Magnitude, MinRange, MaxRange, Default, Transform, Falloff);
@@ -206,7 +172,7 @@ UBoxFalloff::SetBoxFalloff(float InMagnitude, float InMinRange, float InMaxRange
 FFieldNodeBase*
 UNoiseField::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FNoiseField(MinRange, MaxRange, Transform);
@@ -228,7 +194,7 @@ UNoiseField::SetNoiseField(float InMinRange, float InMaxRange, FTransform InTran
 FFieldNodeBase* 
 UUniformVector::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FUniformVector(Magnitude, Direction);
@@ -247,7 +213,7 @@ UUniformVector* UUniformVector::SetUniformVector(float InMagnitude, FVector InDi
 // RadialVector
 FFieldNodeBase* URadialVector::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FRadialVector(Magnitude, Position);
@@ -266,7 +232,7 @@ URadialVector* URadialVector::SetRadialVector(float InMagnitude, FVector InPosit
 // RadialVector
 FFieldNodeBase* URandomVector::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		return new FRandomVector(Magnitude);
@@ -284,7 +250,7 @@ URandomVector* URandomVector::SetRandomVector(float InMagnitude)
 // UOperatorField
 FFieldNodeBase* UOperatorField::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		bool bProcess = true;
@@ -377,12 +343,12 @@ FFieldNodeBase* UOperatorField::NewEvaluationGraph(TArray<const UFieldNodeBase*>
 	return nullptr;
 }
 
-UOperatorField* UOperatorField::SetOperatorField(float InMagnitude, const UFieldNodeBase* InLeftField, const UFieldNodeBase* InRightField, EFieldOperationType InOperation)
+UOperatorField* UOperatorField::SetOperatorField(float InMagnitude, const UFieldNodeBase* InRightField, const UFieldNodeBase* InLeftField, EFieldOperationType InOperation)
 {
 	this->Magnitude = InMagnitude;
-	this->RightField = InRightField;
-	this->LeftField = InLeftField;
-	this->Operation = InOperation;
+	this->RightField =InRightField;
+	this->LeftField =InLeftField;
+	this->Operation=InOperation;
 	return this;
 }
 
@@ -408,7 +374,7 @@ FFieldNodeBase::EFieldType UOperatorField::Type() const
 // UToIntegerField
 FFieldNodeBase* UToIntegerField::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		if (FloatField)
@@ -428,7 +394,7 @@ UToIntegerField* UToIntegerField::SetToIntegerField( const UFieldNodeFloat* InFl
 // UToFloatField
 FFieldNodeBase* UToFloatField::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		if (IntField)
@@ -448,7 +414,7 @@ UToFloatField* UToFloatField::SetToFloatField(const UFieldNodeInt* InIntField)
 // CullingField
 FFieldNodeBase* UCullingField::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 		if (Culling && Field)
@@ -492,7 +458,7 @@ FFieldNodeBase::EFieldType UCullingField::Type() const
 // UReturnResultsField
 FFieldNodeBase* UReturnResultsTerminal::NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const
 {
-	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be reused in a single chain.")))
+	if (ensureMsgf(!Nodes.Contains(this), TEXT("Cycle Dependency Error : Graph nodes may not be resued in a single chain.")))
 	{
 		Nodes.Add(this);
 

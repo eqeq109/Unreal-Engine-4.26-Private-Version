@@ -14,7 +14,8 @@ class IPDisplayClusterGameManager
 	, public IPDisplayClusterManager
 {
 public:
-	virtual ~IPDisplayClusterGameManager() = default;
+	virtual ~IPDisplayClusterGameManager()
+	{ }
 
 public:
 	virtual bool IsDisplayClusterActive() const = 0;

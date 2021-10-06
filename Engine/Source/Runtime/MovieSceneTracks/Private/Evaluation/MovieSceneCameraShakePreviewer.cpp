@@ -37,26 +37,25 @@ void FCameraShakePreviewer::Update(float DeltaTime, bool bIsPlaying)
 	}
 }
 
-void FCameraShakePreviewer::OnModifyView(FEditorViewportViewModifierParams& Params)
+void FCameraShakePreviewer::OnModifyView(FMinimalViewInfo& InOutPOV)
 {
 	const float DeltaTime = LastDeltaTime.Get(-1.f);
 	if (DeltaTime > 0.f)
 	{
-		FMinimalViewInfo OriginalPOV(Params.ViewInfo);
+		FMinimalViewInfo InPOV(InOutPOV);
+		PreviewCameraShake->ModifyCamera(DeltaTime, InOutPOV);
 
-		PreviewCameraShake->ModifyCamera(DeltaTime, Params.ViewInfo);
-
-		LastLocationModifier = Params.ViewInfo.Location - OriginalPOV.Location;
-		LastRotationModifier = Params.ViewInfo.Rotation - OriginalPOV.Rotation;
-		LastFOVModifier = Params.ViewInfo.FOV - OriginalPOV.FOV;
+		LastLocationModifier = InOutPOV.Location - InPOV.Location;
+		LastRotationModifier = InOutPOV.Rotation - InPOV.Rotation;
+		LastFOVModifier = InOutPOV.FOV - InPOV.FOV;
 
 		LastDeltaTime.Reset();
 	}
 	else
 	{
-		Params.ViewInfo.Location += LastLocationModifier;
-		Params.ViewInfo.Rotation += LastRotationModifier;
-		Params.ViewInfo.FOV += LastFOVModifier;
+		InOutPOV.Location += LastLocationModifier;
+		InOutPOV.Rotation += LastRotationModifier;
+		InOutPOV.FOV += LastFOVModifier;
 	}
 }
 

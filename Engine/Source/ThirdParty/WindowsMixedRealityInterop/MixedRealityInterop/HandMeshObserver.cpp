@@ -138,24 +138,16 @@ namespace WindowsMixedReality
 	{
 		VertexState.GetVertices(m_vertices);
 		float* DestVertices = (float*)DestMesh.Vertices;
-		float* DestNormals = (float*)DestMesh.Normals;
 
 		for (auto&& v : m_vertices)
 		{
-			XMVECTOR SourceVertex = XMLoadFloat3(&v.Position);
-			XMVECTOR SourceNormal = XMLoadFloat3(&v.Normal);
-			XMFLOAT3 DestVertex = ToUE4Translation(SourceVertex);
-			XMFLOAT3 DestNormal = ToUE4Translation(SourceNormal);
+			XMVECTOR Source = XMLoadFloat3(&v.Position);
+			XMFLOAT3 Dest = ToUE4Translation(Source);
 
-			DestVertices[0] = DestVertex.x;
-			DestVertices[1] = DestVertex.y;
-			DestVertices[2] = DestVertex.z;
+			DestVertices[0] = Dest.x;
+			DestVertices[1] = Dest.y;
+			DestVertices[2] = Dest.z;
 			DestVertices += 3;
-
-			DestNormals[0] = DestNormal.x;
-			DestNormals[1] = DestNormal.y;
-			DestNormals[2] = DestNormal.z;
-			DestNormals += 3;
 		}
 
 #if PLATFORM_HOLOLENS
@@ -166,7 +158,8 @@ namespace WindowsMixedReality
 		memcpy(DestMesh.Indices, m_indices.data(), m_indices.size() * sizeof(m_indices[0]));
 	}
 
-	void HandMeshUpdateObserver::Update(HandPose pose, SpatialCoordinateSystem coordinateSystem, bool isRightHand)
+
+	void HandMeshUpdateObserver::Update(HandPose pose, SpatialCoordinateSystem coordinateSystem)
 	{
 		if (!IsInitialized())
 		{
@@ -189,8 +182,6 @@ namespace WindowsMixedReality
 
 		CurrentMesh.NumVertices = (int)m_vertices.size();
 		CurrentMesh.NumIndices = (int)m_indices.size();
-		CurrentMesh.NumNormals = (int)m_vertices.size();
-		CurrentMesh.IsRightHandMesh = isRightHand;
 
 		// Copy the transform over so it can be copied in the allocate buffers
 		CopyTransform(CurrentMesh, VertexState, coordinateSystem);

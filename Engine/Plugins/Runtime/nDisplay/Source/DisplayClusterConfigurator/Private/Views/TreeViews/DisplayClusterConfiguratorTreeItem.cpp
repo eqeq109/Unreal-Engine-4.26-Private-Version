@@ -3,16 +3,14 @@
 #include "Views/TreeViews/DisplayClusterConfiguratorTreeItem.h"
 
 #include "DisplayClusterConfiguratorStyle.h"
-#include "DisplayClusterConfiguratorBlueprintEditor.h"
+#include "DisplayClusterConfiguratorToolkit.h"
 #include "Interfaces/Views/TreeViews/IDisplayClusterConfiguratorViewTree.h"
 #include "Views/TreeViews/SDisplayClusterConfiguratorTreeItemRow.h"
 
-#include "Misc/TextFilterExpressionEvaluator.h"
 #include "UObject/Object.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/SToolTip.h"
-#include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "Widgets/Views/STableViewBase.h"
 
 TSharedRef<ITableRow> FDisplayClusterConfiguratorTreeItem::MakeTreeRowWidget(const TSharedRef<STableViewBase>& InOwnerTable, const TAttribute<FText>& InFilterText)
@@ -22,122 +20,7 @@ TSharedRef<ITableRow> FDisplayClusterConfiguratorTreeItem::MakeTreeRowWidget(con
 		.Item(SharedThis(this));
 }
 
-TSharedRef<SWidget> FDisplayClusterConfiguratorTreeItem::GenerateWidgetForColumn(const FName& ColumnName, TSharedPtr<ITableRow> TableRow, const TAttribute<FText>& FilterText, FIsSelected InIsSelected)
-{
-	if (ColumnName == IDisplayClusterConfiguratorViewTree::Columns::Item)
-	{
-		TSharedPtr<SHorizontalBox> RowBox = SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				SNew(SExpanderArrow, TableRow)
-			];
-
-		FillItemColumn(RowBox, FilterText, InIsSelected);
-
-		return RowBox.ToSharedRef();
-	}
-
-	return SNullWidget::NullWidget;
-}
-
-void FDisplayClusterConfiguratorTreeItem::GetParentObjectsRecursive(TArray<UObject*>& OutObjects) const
-{
-	if (TSharedPtr<IDisplayClusterConfiguratorTreeItem> ParentItem = GetParent())
-	{
-		OutObjects.Add(ParentItem->GetObject());
-		ParentItem->GetParentObjectsRecursive(OutObjects);
-	}
-}
-
-void FDisplayClusterConfiguratorTreeItem::GetChildrenObjectsRecursive(TArray<UObject*>& OutObjects) const
-{
-	const TArray<TSharedPtr<IDisplayClusterConfiguratorTreeItem>>& ItemChildren = GetChildrenConst();
-	for (const TSharedPtr<IDisplayClusterConfiguratorTreeItem>& TreeItem : ItemChildren)
-	{
-		OutObjects.Add(TreeItem->GetObject());
-		TreeItem->GetChildrenObjectsRecursive(OutObjects);
-	}
-}
-
-bool FDisplayClusterConfiguratorTreeItem::CanRenameItem() const
-{
-	return !bRoot;
-}
-
-bool FDisplayClusterConfiguratorTreeItem::CanDeleteItem() const
-{
-	return !bRoot;
-}
-
-bool FDisplayClusterConfiguratorTreeItem::CanDuplicateItem() const
-{
-	return !bRoot;
-}
-
-void FDisplayClusterConfiguratorTreeItem::RequestRename()
-{
-	if (CanRenameItem())
-	{
-		DisplayNameTextBlock->EnterEditingMode();
-	}
-}
-
-bool FDisplayClusterConfiguratorTreeItem::IsChildOfRecursive(const TSharedRef<IDisplayClusterConfiguratorTreeItem>& InTreeItem) const
-{
-	if (TSharedPtr<IDisplayClusterConfiguratorTreeItem> ParentItem = GetParent())
-	{
-		if (ParentItem->GetRowItemName() == InTreeItem->GetRowItemName())
-		{
-			return true;
-		}
-		return ParentItem->IsChildOfRecursive(InTreeItem);
-	}
-
-	return false;
-}
-
-bool FDisplayClusterConfiguratorTreeItem::IsSelected()
-{
-	TArray<UObject*> SelectedObjects = ToolkitPtr.Pin()->GetSelectedObjects();
-
-	UObject* const* SelectedObject = SelectedObjects.FindByPredicate([this](const UObject* InObject)
-	{
-		return InObject == GetObject();
-	});
-
-	if (SelectedObject != nullptr)
-	{
-		UObject* Obj = *SelectedObject;
-
-		return Obj != nullptr;
-	}
-
-	return false;
-}
-
-EDisplayClusterConfiguratorTreeFilterResult FDisplayClusterConfiguratorTreeItem::ApplyFilter(const TSharedPtr<FTextFilterExpressionEvaluator>& TextFilter)
-{
-	EDisplayClusterConfiguratorTreeFilterResult Result = EDisplayClusterConfiguratorTreeFilterResult::Shown;
-
-	if (TextFilter.IsValid())
-	{
-		if (TextFilter->TestTextFilter(FBasicStringFilterExpressionContext(GetRowItemName().ToString())))
-		{
-			Result = EDisplayClusterConfiguratorTreeFilterResult::ShownHighlighted;
-		}
-		else
-		{
-			Result = EDisplayClusterConfiguratorTreeFilterResult::Hidden;
-		}
-	}
-
-	SetFilterResult(Result);
-
-	return Result;
-}
-
-void FDisplayClusterConfiguratorTreeItem::FillItemColumn(TSharedPtr<SHorizontalBox> Box, const TAttribute<FText>& FilterText, FIsSelected InIsSelected)
+void FDisplayClusterConfiguratorTreeItem::GenerateWidgetForItemColumn(TSharedPtr<SHorizontalBox> Box, const TAttribute<FText>& FilterText, FIsSelected InIsSelected)
 {
 	Box->AddSlot()
 		.AutoWidth()
@@ -155,20 +38,59 @@ void FDisplayClusterConfiguratorTreeItem::FillItemColumn(TSharedPtr<SHorizontalB
 		.Padding(2, 0, 0, 0)
 		.VAlign(VAlign_Center)
 		[
-			SAssignNew(DisplayNameTextBlock, SInlineEditableTextBlock)
-			.Text(this, &FDisplayClusterConfiguratorTreeItem::GetRowItemText)
+			SNew( STextBlock )
+			.Text( FText::FromName(GetRowItemName()) )
 			.HighlightText( FilterText )
-			.IsReadOnly(this, &FDisplayClusterConfiguratorTreeItem::IsReadOnly)
-			.OnTextCommitted(this, &FDisplayClusterConfiguratorTreeItem::OnDisplayNameCommitted)
 		];
 }
 
-bool FDisplayClusterConfiguratorTreeItem::IsReadOnly() const
+void FDisplayClusterConfiguratorTreeItem::GetChildrenObjectsRecursive(TArray<UObject*>& OutObjects) const
 {
-	return !CanRenameItem();
+	const TArray<TSharedPtr<IDisplayClusterConfiguratorTreeItem>>& ItemChildren = GetChildrenConst();
+	for (const TSharedPtr<IDisplayClusterConfiguratorTreeItem>& TreeItem : ItemChildren)
+	{
+		OutObjects.Add(TreeItem->GetObject());
+		TreeItem->GetChildrenObjectsRecursive(OutObjects);
+	}
 }
 
-FText FDisplayClusterConfiguratorTreeItem::GetRowItemText() const
+bool FDisplayClusterConfiguratorTreeItem::IsChildOfRecursive(const TSharedRef<IDisplayClusterConfiguratorTreeItem>& InTreeItem) const
 {
-	return FText::FromName(GetRowItemName());
+	if (TSharedPtr<IDisplayClusterConfiguratorTreeItem> ParentItem = GetParent())
+	{
+		if (ParentItem->GetRowItemName() == InTreeItem->GetRowItemName())
+		{
+			return true;
+		}
+		return ParentItem->IsChildOfRecursive(InTreeItem);
+	}
+
+	return false;
+}
+
+void FDisplayClusterConfiguratorTreeItem::OnSelection()
+{
+	TArray<UObject*> SelectedObjects;
+	SelectedObjects.Add(GetObject());
+
+	ToolkitPtr.Pin()->SelectObjects(SelectedObjects);
+}
+
+bool FDisplayClusterConfiguratorTreeItem::IsSelected()
+{
+	const TArray<UObject*>& SelectedObjects = ToolkitPtr.Pin()->GetSelectedObjects();
+
+	UObject* const* SelectedObject = SelectedObjects.FindByPredicate([this](const UObject* InObject)
+	{
+		return InObject == GetObject();
+	});
+
+	if (SelectedObject != nullptr)
+	{
+		UObject* Obj = *SelectedObject;
+
+		return Obj != nullptr;
+	}
+
+	return false;
 }

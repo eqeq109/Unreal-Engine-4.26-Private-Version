@@ -8,7 +8,7 @@ DEFINE_LOG_CATEGORY(WmfRingBuffer);
 
 WINDOWSPLATFORMFEATURES_START
 
-void FWmfRingBuffer::Push(AVEncoder::FMediaPacket&& Sample)
+void FWmfRingBuffer::Push(AVEncoder::FAVPacket&& Sample)
 {
 	check(MaxDuration != 0);
 
@@ -118,11 +118,11 @@ FTimespan FWmfRingBuffer::GetDuration() const
 	return Samples.Last().Timestamp + Samples.Last().Duration - Samples[0].Timestamp;
 }
 
-TArray<AVEncoder::FMediaPacket> FWmfRingBuffer::GetCopy()
+TArray<AVEncoder::FAVPacket> FWmfRingBuffer::GetCopy()
 {
 	FScopeLock Lock(&Mutex);
 
-	TArray<AVEncoder::FMediaPacket> Copy;
+	TArray<AVEncoder::FAVPacket> Copy;
 	// cloning is required because during saving a copy of ring buffer we modify samples timestamps.
 	// using samples references shared between ring buffer and its copy being saved would cause ring
 	// buffer timestamp logic corruption

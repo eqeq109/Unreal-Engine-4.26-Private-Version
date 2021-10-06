@@ -143,10 +143,10 @@ static void VulkanTextureAllocated(uint64 Size, VkImageViewType ImageType, bool 
 	UpdateVulkanTextureStats(Size, bIsCube, bIs3D, bIsRT);
 }
 
-static void VulkanTextureDestroyed(uint64 Size, VkImageViewType ImageType, bool bIsRT)
+static void VulkanTextureDestroyed(uint64 Size, VkImageViewType ImageTupe, bool bIsRT)
 {
-	bool bIsCube = ImageType == VK_IMAGE_VIEW_TYPE_CUBE || ImageType == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
-	bool bIs3D = ImageType == VK_IMAGE_VIEW_TYPE_3D;
+	bool bIsCube = ImageTupe == VK_IMAGE_VIEW_TYPE_CUBE || ImageTupe == VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
+	bool bIs3D = ImageTupe == VK_IMAGE_VIEW_TYPE_3D;
 
 	UpdateVulkanTextureStats(-(int64)Size, bIsCube, bIs3D, bIsRT);
 }
@@ -353,21 +353,6 @@ void FVulkanSurface::GenerateImageCreateInfo(
 		ImageCreateInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	}
 
-#if VULKAN_SUPPORTS_EXTERNAL_MEMORY
-	if (UEFlags & TexCreate_External)
-	{
-		VkExternalMemoryImageCreateInfoKHR& ExternalMemImageCreateInfo = OutImageCreateInfo.ExternalMemImageCreateInfo;
-		ZeroVulkanStruct(ExternalMemImageCreateInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR);
-#if PLATFORM_WINDOWS
-		ExternalMemImageCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
-#else
-	    ExternalMemImageCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR;
-#endif
-		ExternalMemImageCreateInfo.pNext = ImageCreateInfo.pNext;
-    	ImageCreateInfo.pNext = &ExternalMemImageCreateInfo;
-	}
-#endif // VULKAN_SUPPORTS_EXTERNAL_MEMORY
-
 	//#todo-rco: If using CONCURRENT, make sure to NOT do so on render targets as that kills DCC compression
 	ImageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	ImageCreateInfo.queueFamilyIndexCount = 0;
@@ -406,46 +391,64 @@ void FVulkanSurface::GenerateImageCreateInfo(
 		checkf(0, TEXT("Unsupported number of samples %d"), NumSamples);
 		break;
 	}
-		
-	const VkFormatFeatureFlags FormatFlags = ImageCreateInfo.tiling == VK_IMAGE_TILING_LINEAR ? 
-		InDevice.GetFormatProperties()[ImageCreateInfo.format].linearTilingFeatures : 
-		InDevice.GetFormatProperties()[ImageCreateInfo.format].optimalTilingFeatures;
 
-	if ((FormatFlags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+	//#todo-rco: Verify flags work on newer Android drivers
+#if !PLATFORM_ANDROID
+	if (ImageCreateInfo.tiling == VK_IMAGE_TILING_LINEAR)
 	{
-		ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0);
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
-	}
+		VkFormatFeatureFlags FormatFlags = InDevice.GetFormatProperties()[ImageCreateInfo.format].linearTilingFeatures;
+		if ((FormatFlags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
+		}
 
-	if ((FormatFlags & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
-	{
-		ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_STORAGE_BIT) == 0);
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
-	}
+		if ((FormatFlags & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_STORAGE_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+		}
 
-	if ((FormatFlags & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) == 0)
-	{
-		ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0);
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	}
+		if ((FormatFlags & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		}
 
-	if ((FormatFlags & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0)
-	{
-		ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0);
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		if ((FormatFlags & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		}
 	}
+	else if (ImageCreateInfo.tiling == VK_IMAGE_TILING_OPTIMAL)
+	{
+		VkFormatFeatureFlags FormatFlags = InDevice.GetFormatProperties()[ImageCreateInfo.format].optimalTilingFeatures;
+		if ((FormatFlags & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_SAMPLED_BIT;
+		}
 
-	if ((FormatFlags & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) == 0)
-	{
-		// this flag is used unconditionally, strip it without warnings 
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		if ((FormatFlags & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_STORAGE_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_STORAGE_BIT;
+		}
+
+		if ((FormatFlags & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		}
+
+		if ((FormatFlags & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0)
+		{
+			ensure((ImageCreateInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) == 0);
+			ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		}
 	}
-		
-	if ((FormatFlags & VK_FORMAT_FEATURE_TRANSFER_DST_BIT) == 0)
-	{
-		// this flag is used unconditionally, strip it without warnings 
-		ImageCreateInfo.usage &= ~VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	}
+#endif
 
 	if ((UEFlags & TexCreate_DepthStencilTargetable) && GVulkanDepthStencilForceStorageBit)
 	{
@@ -489,18 +492,16 @@ struct FRHICommandOnDestroyImage final : public FRHICommand<FRHICommandOnDestroy
 {
 	VkImage Image;
 	FVulkanDevice* Device;
-	bool bRenderTarget;
 
-	FRHICommandOnDestroyImage(VkImage InImage, FVulkanDevice* InDevice, bool bInRenderTarget)
+	FRHICommandOnDestroyImage(VkImage InImage, FVulkanDevice* InDevice)
 		: Image(InImage)
 		, Device(InDevice)
-		, bRenderTarget(bInRenderTarget)
 	{
 	}
 
 	void Execute(FRHICommandListBase& RHICmdList)
 	{
-		Device->NotifyDeletedImage(Image, bRenderTarget);
+		Device->NotifyDeletedImage(Image);
 	}
 };
 
@@ -600,7 +601,7 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanEvictable* Owner,
 		VulkanRHI::vkGetBufferMemoryRequirements(VulkanDevice, CpuReadbackBuffer->Buffer, &MemoryRequirements);
 		// Set minimum alignment to 16 bytes, as some buffers are used with CPU SIMD instructions
 		MemoryRequirements.alignment = FMath::Max<VkDeviceSize>(16, MemoryRequirements.alignment);
-		if (!InDevice.GetMemoryManager().AllocateBufferMemory(Allocation, Owner, MemoryRequirements, BufferMemFlags, EVulkanAllocationMetaBufferStaging, false, __FILE__, __LINE__))
+		if (!InDevice.GetMemoryManager().AllocateBufferMemory(Allocation, Owner, MemoryRequirements, BufferMemFlags, EVulkanAllocationMetaBufferStaging, __FILE__, __LINE__))
 		{
 			InDevice.GetMemoryManager().HandleOOM();
 		}
@@ -634,7 +635,6 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanEvictable* Owner,
 	const bool bUAV = (UEFlags & TexCreate_UAV) != 0;
 	const bool bCPUReadback = (UEFlags & TexCreate_CPUReadback) != 0;
 	const bool bDynamic = (UEFlags & TexCreate_Dynamic) != 0;
-	const bool bExternal = (UEFlags & TexCreate_External) != 0;
 
 	VkMemoryPropertyFlags MemoryFlags = bCPUReadback ? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
@@ -662,7 +662,7 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanEvictable* Owner,
 	VkDeviceSize SizeToBeConsideredForDedicated = 12 * 1024 * 1024;
 	if ((bRenderTarget || MemoryRequirements.size >= SizeToBeConsideredForDedicated) && !bMemoryless && InDevice.GetOptionalExtensions().HasKHRDedicatedAllocation && GVulkanEnableDedicatedImageMemory)
 	{
-		if(!InDevice.GetMemoryManager().AllocateDedicatedImageMemory(Allocation, Owner, Image, MemoryRequirements, MemoryFlags, MetaType, bExternal, __FILE__, __LINE__))
+		if(!InDevice.GetMemoryManager().AllocateDedicatedImageMemory(Allocation, Owner, Image, MemoryRequirements, MemoryFlags, MetaType, __FILE__, __LINE__))
 		{
 			checkNoEntry();
 		}
@@ -670,7 +670,7 @@ FVulkanSurface::FVulkanSurface(FVulkanDevice& InDevice, FVulkanEvictable* Owner,
 	else
 #endif
 	{
-		if(!InDevice.GetMemoryManager().AllocateImageMemory(Allocation, Owner, MemoryRequirements, MemoryFlags, MetaType, bExternal, __FILE__, __LINE__))
+		if(!InDevice.GetMemoryManager().AllocateImageMemory(Allocation, Owner, MemoryRequirements, MemoryFlags, MetaType, __FILE__, __LINE__))
 		{
 			checkNoEntry();
 		}
@@ -790,7 +790,7 @@ void FVulkanSurface::MoveSurface(FVulkanDevice& InDevice, FVulkanCommandListCont
 		{
 			check(Image != VK_NULL_HANDLE);
 			uint64 Size = GetMemorySize();
-			Device->NotifyDeletedImage(Image, bRenderTarget);
+			Device->NotifyDeletedImage(Image);
 			Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::Image, Image);
 			Image = MovedImage;
 			VulkanTextureDestroyed(Size, ViewType, bRenderTarget);
@@ -892,7 +892,7 @@ void FVulkanSurface::OnFullDefrag(FVulkanDevice& InDevice, FVulkanCommandListCon
 		{
 			check(Image != VK_NULL_HANDLE);
 			uint64 Size = GetMemorySize();
-			Device->NotifyDeletedImage(Image, bRenderTarget);
+			Device->NotifyDeletedRenderTarget(Image);
 			Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::Image, Image);
 			FGenericPlatformMisc::LowLevelOutputDebugStringf(TEXT("** MOVE IMAGE %p -> %p\n"), Image, MovedImage);
 			Image = MovedImage;
@@ -949,7 +949,7 @@ void FVulkanSurface::EvictSurface(FVulkanDevice& InDevice)
 	const uint64 TotalGPUMemory = Device->GetDeviceMemoryManager().GetTotalMemory(true);
 
 	EVulkanAllocationMetaType MetaType = EVulkanAllocationMetaImageOther;
-	if (!InDevice.GetMemoryManager().AllocateImageMemory(HostAllocation, this, MemoryRequirements, MemProps, MetaType, false, __FILE__, __LINE__))
+	if (!InDevice.GetMemoryManager().AllocateImageMemory(HostAllocation, this, MemoryRequirements, MemProps, MetaType, __FILE__, __LINE__))
 	{
 		InDevice.GetMemoryManager().HandleOOM();
 		checkNoEntry();
@@ -1018,7 +1018,7 @@ void FVulkanSurface::EvictSurface(FVulkanDevice& InDevice)
 	{
 		check(Image != VK_NULL_HANDLE);
 		uint64 Size = GetMemorySize();
-		Device->NotifyDeletedImage(Image, bRenderTarget);
+		Device->NotifyDeletedImage(Image);
 		Device->GetDeferredDeletionQueue().EnqueueResource(VulkanRHI::FDeferredDeletionQueue2::EType::Image, Image);
 		Device->GetMemoryManager().FreeVulkanAllocation(Allocation);
 		check(!Allocation.HasAllocation());
@@ -1146,16 +1146,15 @@ void FVulkanSurface::Destroy()
 	}
 	else if (bIsImageOwner)
 	{
-		const bool bRenderTarget = (UEFlags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable | TexCreate_ResolveTargetable)) != 0;
 		FRHICommandList& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 		if (!IsInRenderingThread() || (RHICmdList.Bypass() || !IsRunningRHIInSeparateThread()))
 		{
-			Device->NotifyDeletedImage(Image, bRenderTarget);
+			Device->NotifyDeletedImage(Image);
 		}
 		else
 		{
 			check(IsInRenderingThread());
-			new (RHICmdList.AllocCommand<FRHICommandOnDestroyImage>()) FRHICommandOnDestroyImage(Image, Device, bRenderTarget);
+			new (RHICmdList.AllocCommand<FRHICommandOnDestroyImage>()) FRHICommandOnDestroyImage(Image, Device);
 		}
 
 		bIsImageOwner = false;
@@ -1170,6 +1169,7 @@ void FVulkanSurface::Destroy()
 			Image = VK_NULL_HANDLE;
 		}
 
+		const bool bRenderTarget = (UEFlags & (TexCreate_RenderTargetable | TexCreate_DepthStencilTargetable | TexCreate_ResolveTargetable)) != 0;
 		VulkanTextureDestroyed(Size, ViewType, bRenderTarget);
 	}
 }
@@ -1395,7 +1395,8 @@ void FVulkanSurface::SetInitialImageState(FVulkanCommandListContext& Context, Vk
 	FVulkanCmdBuffer* CmdBuffer = Context.GetCommandBufferManager()->GetUploadCmdBuffer();
 	ensure(CmdBuffer->IsOutsideRenderPass());
 
-	VkImageSubresourceRange SubresourceRange = FVulkanPipelineBarrier::MakeSubresourceRange(FullAspectMask);
+	uint32 NumLayers = ViewType == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
+	VkImageSubresourceRange SubresourceRange = FVulkanPipelineBarrier::MakeSubresourceRange(FullAspectMask, 0, NumMips, 0, NumLayers);
 
 	VkImageLayout CurrentLayout;
 	if (bClear)
@@ -2028,13 +2029,12 @@ VkImageView FVulkanTextureView::StaticCreate(FVulkanDevice& Device, VkImage InIm
 	ViewInfo.format = Format;
 
 #if VULKAN_SUPPORTS_ASTC_DECODE_MODE
-	VkImageViewASTCDecodeModeEXT DecodeMode;
-	if (Device.GetOptionalExtensions().HasEXTASTCDecodeMode && IsAstcLdrFormat(Format) && !IsAstcSrgbFormat(Format))
+	VkImageViewASTCDecodeModeEXT decodeMode;
+	if (Device.GetOptionalExtensions().HasEXTASTCDecodeMode && Format == VK_FORMAT_R8G8B8A8_UNORM)
 	{
-		ZeroVulkanStruct(DecodeMode, VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT);
-		DecodeMode.decodeMode = VK_FORMAT_R8G8B8A8_UNORM;
-		DecodeMode.pNext = ViewInfo.pNext;
-		ViewInfo.pNext = &DecodeMode;
+		ZeroVulkanStruct(decodeMode, VK_STRUCTURE_TYPE_IMAGE_VIEW_ASTC_DECODE_MODE_EXT);
+		decodeMode.decodeMode = VK_FORMAT_R8G8B8A8_UNORM;
+		ViewInfo.pNext = &decodeMode;
 	}
 #endif
 
@@ -2073,7 +2073,6 @@ VkImageView FVulkanTextureView::StaticCreate(FVulkanDevice& Device, VkImage InIm
 		FMemory::Memzero(&ConversionInfo, sizeof(VkSamplerYcbcrConversionInfo));
 		ConversionInfo.conversion = Device.CreateSamplerColorConversion(ConversionCreateInfo);
 		ConversionInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
-		ConversionInfo.pNext = ViewInfo.pNext;
 		ViewInfo.pNext = &ConversionInfo;
 	}
 #endif
@@ -2538,6 +2537,10 @@ FVulkanTexture2D::FVulkanTexture2D(FTextureRHIRef& SrcTextureRHI, const FVulkanT
 
 FVulkanTexture2D::~FVulkanTexture2D()
 {
+	if (Surface.IsImageOwner() && (Surface.UEFlags & (TexCreate_DepthStencilTargetable | TexCreate_RenderTargetable | TexCreate_ResolveTargetable)) != 0)
+	{
+		Surface.Device->NotifyDeletedRenderTarget(Surface.Image);
+	}
 }
 
 FVulkanTexture2DArray::FVulkanTexture2DArray(FVulkanDevice& Device, EPixelFormat Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ERHIAccess InResourceState, FResourceBulkDataInterface* BulkData, const FClearValueBinding& InClearValue)
@@ -2586,6 +2589,10 @@ FVulkanTextureCube::FVulkanTextureCube(FTextureRHIRef& SrcTextureRHI, const FVul
 
 FVulkanTextureCube::~FVulkanTextureCube()
 {
+	if (Surface.IsImageOwner() && (GetFlags() & (TexCreate_DepthStencilTargetable | TexCreate_RenderTargetable | TexCreate_ResolveTargetable)) != 0)
+	{
+		Surface.Device->NotifyDeletedRenderTarget(Surface.Image);
+	}
 }
 
 
@@ -2597,6 +2604,10 @@ FVulkanTexture3D::FVulkanTexture3D(FVulkanDevice& Device, EPixelFormat Format, u
 
 FVulkanTexture3D::~FVulkanTexture3D()
 {
+	if (Surface.IsImageOwner() && (GetFlags() & (TexCreate_DepthStencilTargetable | TexCreate_RenderTargetable | TexCreate_ResolveTargetable)) != 0)
+	{
+		Surface.Device->NotifyDeletedRenderTarget(Surface.Image);
+	}
 }
 
 /*-----------------------------------------------------------------------------

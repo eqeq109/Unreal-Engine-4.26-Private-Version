@@ -5,7 +5,6 @@
 #include "Editor.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
-#include "HAL/IConsoleManager.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Misc/CoreMisc.h"
 #include "Misc/FeedbackContext.h"

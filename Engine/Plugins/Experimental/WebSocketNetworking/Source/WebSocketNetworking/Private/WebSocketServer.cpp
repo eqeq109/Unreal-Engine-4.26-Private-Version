@@ -12,21 +12,10 @@ THIRD_PARTY_INCLUDES_END
 #undef UI
 #endif
 
-// The current state of the message being read.
-enum class EFragmentationState : uint8 {
-	BeginFrame,
-	MessageFrame,
-};
-
-// An object of this type is associated by libwebsocket to every connected session.
+// a object of this type is associated by libwebsocket to every connected session.
 struct PerSessionDataServer
 {
-	// Each session is actually a socket to a client
-	FWebSocket *Socket;
-	// Holds the concatenated message fragments.
-	TArray<uint8> FrameBuffer;
-	// The current state of the message being read.
-	EFragmentationState FragementationState = EFragmentationState::BeginFrame;
+	FWebSocket *Socket; // each session is actually a socket to a client
 };
 
 
@@ -141,13 +130,11 @@ static int unreal_networking_server
 	struct lws_context *Context = lws_get_context(Wsi);
 	PerSessionDataServer* BufferInfo = (PerSessionDataServer*)User;
 	FWebSocketServer* Server = (FWebSocketServer*)lws_context_user(Context);
-
 	switch (Reason)
 	{
 		case LWS_CALLBACK_ESTABLISHED:
 			{
 				BufferInfo->Socket = new FWebSocket(Context, Wsi);
-				BufferInfo->FragementationState = EFragmentationState::BeginFrame;
 				Server->ConnectedCallBack.ExecuteIfBound(BufferInfo->Socket);
 				lws_set_timeout(Wsi, NO_PENDING_TIMEOUT, 0);
 			}
@@ -156,37 +143,13 @@ static int unreal_networking_server
 		case LWS_CALLBACK_RECEIVE:
 			if (BufferInfo->Socket->Context == Context) // UE-74107 -- bandaid until this file is removed in favor of using LwsWebSocketsManager.cpp & LwsWebSocket.cpp
 			{
-				switch (BufferInfo->FragementationState)
+				if (!lws_frame_is_binary(Wsi))
 				{
-					case EFragmentationState::BeginFrame:
-					{
-						BufferInfo->FragementationState = EFragmentationState::MessageFrame;
-						BufferInfo->FrameBuffer.Reset();
-
-						// Fallthrough to read the message
-					}
-					case EFragmentationState::MessageFrame:
-					{
-						BufferInfo->FrameBuffer.Append((uint8*)In, Len);
-
-						if (lws_is_final_fragment(Wsi))
-						{
-							BufferInfo->FragementationState = EFragmentationState::BeginFrame;
-							if (!lws_frame_is_binary(Wsi))
-							{
-								BufferInfo->Socket->OnReceive(BufferInfo->FrameBuffer.GetData(), BufferInfo->FrameBuffer.Num());
-							}
-							else
-							{
-								BufferInfo->Socket->OnRawRecieve(BufferInfo->FrameBuffer.GetData(), BufferInfo->FrameBuffer.Num());
-							}
-						}
-
-						break;
-					}
-					default:
-						checkNoEntry();
-						break;
+					BufferInfo->Socket->OnReceive(In, Len);
+				}
+				else
+				{
+					BufferInfo->Socket->OnRawRecieve(In, Len);
 				}
 			}
 			lws_set_timeout(Wsi, NO_PENDING_TIMEOUT, 0);

@@ -33,9 +33,10 @@ namespace GeometryCollectionTest
 {
 using namespace ChaosTest;
 	
-	GTEST_TEST(AllTraits, GeometryCollection_Solver_AdvanceNoObjects)
+	TYPED_TEST(AllTraits, GeometryCollection_Solver_AdvanceNoObjects)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 		UnitTest.Initialize();
 		UnitTest.Advance();
 
@@ -46,12 +47,13 @@ using namespace ChaosTest;
 
 
 	
-	GTEST_TEST(AllTraits, GeometryCollection_Solver_AdvanceDisabledObjects)
+	TYPED_TEST(AllTraits, GeometryCollection_Solver_AdvanceDisabledObjects)
 	{
+		using Traits = TypeParam;
 		CreationParameters Params; Params.Simulating = false;
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 		UnitTest.AddSimulationObject(Collection);
 		UnitTest.Initialize();
 		UnitTest.Advance();
@@ -69,11 +71,12 @@ using namespace ChaosTest;
 	}
 
 	
-	GTEST_TEST(AllTraits, GeometryCollection_Solver_AdvanceDisabledClusteredObjects)
+	TYPED_TEST(AllTraits, GeometryCollection_Solver_AdvanceDisabledClusteredObjects)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 
-		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init()->template As<RigidBodyWrapper>();
+		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init<Traits>()->template As<RigidBodyWrapper>();
 		UnitTest.AddSimulationObject(Floor);
 
 		TSharedPtr<FGeometryCollection> RestCollection = GeometryCollection::MakeCubeElement(FTransform(FQuat::MakeFromEuler(FVector(0, 0, 0.)), FVector(0, -10, 10)), FVector(1.0));
@@ -93,21 +96,21 @@ using namespace ChaosTest;
 		Params.Simulating = true;
 		Params.EnableClustering = true;
 		Params.DamageThreshold = { 1000.f };
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 
 		UnitTest.AddSimulationObject(Collection);
 		UnitTest.Initialize();
 
 		FVector StartingClusterPosition;
 		TManagedArray<FTransform>* Transform;
-		FReal StartingRigidDistance;
+		float StartingRigidDistance;
 
 		UnitTest.Solver->RegisterSimOneShotCallback([&]()
 		{
 			TManagedArray<int32>& SimulationType = Collection->DynamicCollection->SimulationType;
-			EXPECT_EQ(SimulationType[0],FGeometryCollection::ESimulationTypes::FST_Rigid);
-			EXPECT_EQ(SimulationType[1],FGeometryCollection::ESimulationTypes::FST_Rigid);
-			EXPECT_EQ(SimulationType[2],FGeometryCollection::ESimulationTypes::FST_Clustered);
+			EXPECT_EQ(SimulationType[0],FGeometryCollection::ESimulationTypes::FST_Clustered);
+			EXPECT_EQ(SimulationType[1],FGeometryCollection::ESimulationTypes::FST_Clustered);
+			EXPECT_EQ(SimulationType[2],FGeometryCollection::ESimulationTypes::FST_Rigid);
 
 			TManagedArray<int32>& Parent = Collection->DynamicCollection->Parent;
 			EXPECT_EQ(Parent[0],2);
@@ -123,7 +126,7 @@ using namespace ChaosTest;
 			StartingClusterPosition = (*Transform)[2].GetTranslation();
 		});
 
-		FReal CurrentRigidDistance = 0.0;
+		float CurrentRigidDistance = 0.f;
 
 		for (int Frame = 0; Frame < 10; Frame++)
 		{
@@ -141,8 +144,9 @@ using namespace ChaosTest;
 
 
 	
-	GTEST_TEST(AllTraits, DISABLED_GeometryCollection_Solver_ValidateReverseMapping)
+	TYPED_TEST(AllTraits, DISABLED_GeometryCollection_Solver_ValidateReverseMapping)
 	{
+		using Traits = TypeParam;
 		// Todo: this test is missing code for InitCollections that seems to be no longer in the code base.  
 		// This makes it unclear how this test is setup
 
@@ -241,13 +245,14 @@ using namespace ChaosTest;
 		return RestCollectionOut;
 	}
 
-	class FEventHarvester
+	template <typename Traits>
+	class TEventHarvester
 	{
 	public:
-		FEventHarvester(Chaos::FPBDRigidsSolver* Solver)
+		TEventHarvester(Chaos::TPBDRigidsSolver<Traits>* Solver)
 		{
-			Solver->GetEventManager()->template RegisterHandler<Chaos::FCollisionEventData>(Chaos::EEventType::Collision, this, &FEventHarvester::HandleCollisionEvents);
-			Solver->GetEventManager()->template RegisterHandler<Chaos::FBreakingEventData>(Chaos::EEventType::Breaking, this, &FEventHarvester::HandleBreakingEvents);
+			Solver->GetEventManager()->template RegisterHandler<Chaos::FCollisionEventData>(Chaos::EEventType::Collision, this, &TEventHarvester<Traits>::HandleCollisionEvents);
+			Solver->GetEventManager()->template RegisterHandler<Chaos::FBreakingEventData>(Chaos::EEventType::Breaking, this, &TEventHarvester<Traits>::HandleBreakingEvents);
 		}
 
 		void HandleCollisionEvents(const Chaos::FCollisionEventData& Events)
@@ -265,11 +270,12 @@ using namespace ChaosTest;
 	};
 
 	
-	GTEST_TEST(AllTraits, GeometryCollection_Solver_CollisionEventFilter)
+	TYPED_TEST(AllTraits, GeometryCollection_Solver_CollisionEventFilter)
 	{
-		FReal TestMassThreshold = 7.0;
+		using Traits = TypeParam;
+		float TestMassThreshold = 7.0f;
 
-		FGeometryCollectionWrapper* Collection[10];
+		TGeometryCollectionWrapper<Traits>* Collection[10];
 		for (int i=0; i<10; i++)
 		{
 			TSharedPtr<FGeometryCollection> RestCollection = GeometryCollection::MakeCubeElement(FTransform(FQuat::MakeFromEuler(FVector(0, 0, 0)), FVector(0,0,0)), FVector(1.0));
@@ -282,14 +288,14 @@ using namespace ChaosTest;
 			Params.RootTransform.SetLocation(FVector(i * 10.0f, 0.f, 10.f));
 			Params.Simulating = true;
 			
-			Collection[i] = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init(Params)->template As<FGeometryCollectionWrapper>();
+			Collection[i] = TNewSimulationObject<GeometryType::GeometryCollectionWithSingleRigid>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		}
-		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init()->template As<RigidBodyWrapper>();
+		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init<Traits>()->template As<RigidBodyWrapper>();
 
-		FFramework UnitTest;
+		TFramework<Traits> UnitTest;
 		for (int i=0; i<10; i++)
 		{
-			TManagedArray<FReal>& Mass = Collection[i]->RestCollection->template GetAttribute<FReal>("Mass", FTransformCollection::TransformGroup);
+			TManagedArray<float>& Mass = Collection[i]->RestCollection->template GetAttribute<float>("Mass", FTransformCollection::TransformGroup);
 			Mass[0] = i + 1;
 			UnitTest.AddSimulationObject(Collection[i]);
 		}
@@ -305,7 +311,7 @@ using namespace ChaosTest;
 
 		UnitTest.Solver->SetGenerateCollisionData(true);
 		UnitTest.Solver->SetCollisionFilterSettings(CollisionFilterSettings);
-		FEventHarvester Events(UnitTest.Solver);
+		TEventHarvester<Traits> Events(UnitTest.Solver);
 
 		bool Impact = false;
 		for(int LoopCount=0; LoopCount<10; LoopCount++)
@@ -335,9 +341,10 @@ using namespace ChaosTest;
 	}
 
 	
-	GTEST_TEST(AllTraits, GeometryCollection_Solver_BreakingEventFilter)
+	TYPED_TEST(AllTraits, GeometryCollection_Solver_BreakingEventFilter)
 	{
-		FFramework UnitTest;
+		using Traits = TypeParam;
+		TFramework<Traits> UnitTest;
 		
 		TSharedPtr<FGeometryCollection> RestCollection = CreateClusteredBody_OnePartent_FourBodies(FVector(0));
 
@@ -351,19 +358,19 @@ using namespace ChaosTest;
 		Params.EnableClustering = true;
 		Params.DamageThreshold = { 1.0 };
 		Params.MaxClusterLevel = 1000;
-		Params.ClusterConnectionMethod = Chaos::FClusterCreationParameters::EConnectionMethod::DelaunayTriangulation;
+		Params.ClusterConnectionMethod = Chaos::FClusterCreationParameters<FReal>::EConnectionMethod::DelaunayTriangulation;
 		Params.ClusterGroupIndex = 0;
 
-		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init()->template As<RigidBodyWrapper>();
+		RigidBodyWrapper* Floor = TNewSimulationObject<GeometryType::RigidFloor>::Init<Traits>()->template As<RigidBodyWrapper>();
 		UnitTest.AddSimulationObject(Floor);
 
-		FGeometryCollectionWrapper* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init(Params)->template As<FGeometryCollectionWrapper>();
+		TGeometryCollectionWrapper<Traits>* Collection = TNewSimulationObject<GeometryType::GeometryCollectionWithSuppliedRestCollection>::Init<Traits>(Params)->template As<TGeometryCollectionWrapper<Traits>>();
 		UnitTest.AddSimulationObject(Collection);
 		Collection->PhysObject->SetCollisionParticlesPerObjectFraction(1.0);		
 
 		UnitTest.Initialize();
-		TArray<Chaos::TPBDRigidClusteredParticleHandle<FReal,3>*> ParticleHandles;
-		FReal TestMass = 7.0;
+		TArray<Chaos::TPBDRigidClusteredParticleHandle<float,3>*> ParticleHandles;
+		float TestMass = 7.0f;
 
 		UnitTest.Solver->RegisterSimOneShotCallback([&]()
 		{
@@ -388,7 +395,7 @@ using namespace ChaosTest;
 		});
 
 
-		FEventHarvester Events(UnitTest.Solver);
+		TEventHarvester<Traits> Events(UnitTest.Solver);
 
 		bool Impact = false;
 		for(int Loop=0; Loop<50; Loop++)

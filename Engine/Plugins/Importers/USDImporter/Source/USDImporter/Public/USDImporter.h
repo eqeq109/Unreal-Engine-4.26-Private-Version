@@ -37,7 +37,7 @@ struct USDIMPORTER_API FUsdImportContext
 
 	/** Parent package to import a single mesh to */
 	UPROPERTY()
-	UObject* Parent = nullptr;
+	UObject* Parent;
 
 	/** Name to use when importing a single mesh */
 	UPROPERTY()
@@ -47,10 +47,10 @@ struct USDIMPORTER_API FUsdImportContext
 	FString ImportPathName;
 
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use the new USDStageImporter module instead"))
-	UDEPRECATED_UUSDImportOptions* ImportOptions_DEPRECATED= nullptr;
+	UDEPRECATED_UUSDImportOptions* ImportOptions_DEPRECATED;
 
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use the new USDStageImporter module instead"))
-	UDEPRECATED_UUSDPrimResolver* PrimResolver_DEPRECATED= nullptr;
+	UDEPRECATED_UUSDPrimResolver* PrimResolver_DEPRECATED;
 
 	UE::FUsdStage Stage;
 
@@ -88,7 +88,7 @@ struct USDIMPORTER_API FUSDSceneImportContext : public FUsdImportContext
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	UWorld* World = nullptr;
+	UWorld* World;
 
 	UPROPERTY()
 	TMap<FName, AActor*> ExistingActors;
@@ -97,7 +97,7 @@ struct USDIMPORTER_API FUSDSceneImportContext : public FUsdImportContext
 	TArray<FName> ActorsToDestroy;
 
 	UPROPERTY()
-	class UActorFactory* EmptyActorFactory = nullptr;
+	class UActorFactory* EmptyActorFactory;
 
 	UPROPERTY()
 	TMap<UClass*, UActorFactory*> UsedFactories;

@@ -13,7 +13,7 @@
 class U4MLAgent;
 struct F4MLDescription;
 
-UCLASS(abstract)
+UCLASS()
 class UE4ML_API U4MLAgentElement : public UObject
 {
 	GENERATED_BODY()

@@ -70,23 +70,23 @@ public:
 
 	/** The center of the mesh block bounding box. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	FVector BlockPosition = FVector(0.0f);
+	FVector BlockPosition;
 
 	/** The orientation of the mesh block bounding box.*/
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	FRotator BlockOrientation = FRotator(0.0f);
+	FRotator BlockOrientation;
 
 	/** The size of the mesh block bounding box (in Unreal Units). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	FVector BlockDimensions = FVector(0.0f);
+	FVector BlockDimensions;
 
 	/** The timestamp when block was updated. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	FTimespan Timestamp = FTimespan::Zero();
+	FTimespan Timestamp;
 
 	/** The state of the mesh block. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	EMagicLeapMeshState BlockState = EMagicLeapMeshState::New;
+	EMagicLeapMeshState BlockState;
 };
 
 /** Response structure for the mesh block info. */
@@ -98,7 +98,7 @@ struct MAGICLEAP_API FMagicLeapTrackingMeshInfo
 public:
 	/** The response timestamp to a earlier request. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
-	FTimespan Timestamp = FTimespan::Zero();
+	FTimespan Timestamp;
 
 	/** The meshinfo returned by the system. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshing|MagicLeap")
@@ -118,5 +118,5 @@ public:
 
 	/** The LOD level to request. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Meshing|MagicLeap")
-	EMagicLeapMeshLOD LevelOfDetail = EMagicLeapMeshLOD::Minimum;
+	EMagicLeapMeshLOD LevelOfDetail;
 };

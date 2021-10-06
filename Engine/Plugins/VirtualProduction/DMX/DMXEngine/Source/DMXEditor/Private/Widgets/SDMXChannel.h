@@ -6,10 +6,8 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-class FActiveTimerHandle;
 class SImage;
-class STextBlock;
-
+class FActiveTimerHandle;
 
 /** 
  *Shows a channel in a box with the channel value top, the channel ID bottom
@@ -25,16 +23,16 @@ class SDMXChannel
 {
 public:
 	SLATE_BEGIN_ARGS(SDMXChannel)
-		: _ChannelID(0)
+		: _ID(0)
 		, _Value(0)
 		, _bShowChannelIDBottom(false)
 		{}
 
 		/** The channel ID this widget represents */
-		SLATE_ARGUMENT(uint32, ChannelID)
+		SLATE_ATTRIBUTE(uint32, ID)
 
 		/** The current value from the channel */
-		SLATE_ARGUMENT(uint8, Value)
+		SLATE_ATTRIBUTE(uint8, Value)
 
 
 		/** If true, draws the channel number below the value */
@@ -47,21 +45,19 @@ public:
 
 public:
 	/** Sets the channel ID this widget represents */
-	void SetChannelID(uint32 NewChannelID);
-
+	void SetID(const TAttribute<uint32>& NewID);
 	/** Gets the channel ID this widget represents */
-	uint32 GetChannelID() const
+	uint32 GetID() const
 	{
-		return ChannelID;
+		return BoundID.Get();
 	}
 
 	/** Sets the current value from the channel */
-	void SetValue(uint8 NewValue);
-
+	void SetValue(const TAttribute<uint8>& NewValue);
 	/** Gets the current value from the channel */
 	uint8 GetValue() const
 	{
-		return Value;
+		return BoundValue.Get();
 	}
 
 	/**
@@ -72,10 +68,9 @@ public:
 
 private:
 	/** The channel ID this widget represents */
-	uint32 ChannelID;
-
+	TAttribute<uint32> BoundID;
 	/** The current value from the channel */
-	uint8 Value;
+	TAttribute<uint8> BoundValue;
 
 	/** The ProgressBar widget to display the channel value graphically */
 	TSharedPtr<SImage> BarColorBorder;
@@ -85,10 +80,8 @@ private:
 	 * 0..1 range: 1 = value has just changed, 0 = standard color
 	 */
 	float NewValueFreshness;
-
 	/** How long it takes to become standard color again after a new value is set */
 	static const float NewValueChangedAnimDuration;
-
 	/** Used to stop the animation timer once the animation is completed */
 	TWeakPtr<FActiveTimerHandle> AnimationTimerHandle;
 
@@ -102,17 +95,10 @@ private:
 
 private:
 	/** Returns the channel ID in Text form to display it in the UI */
-	FText GetChannelIDText() const;
-
+	FText GetIDLabel() const;
 	/** Returns the channel value in Text form to display it in the UI */
-	FText GetValueText() const;
+	FText GetValueLabel() const;
 
 	/** Returns the fill color for the ValueBar */
 	FSlateColor GetBackgroundColor() const;
-
-	/** Textblock that shows the Channel ID */
-	TSharedPtr<STextBlock> ChannelIDTextBlock;
-
-	/** Textblock that shows the Value */
-	TSharedPtr<STextBlock> ChannelValueTextBlock;
 };

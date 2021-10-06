@@ -330,8 +330,7 @@ UObject* UPackFactory::FactoryCreateBinary
 )
 { 
 	FBufferReader PakReader((void*)Buffer, BufferEnd-Buffer, false);
-	TRefCountPtr<FPakFile> PakFilePtr = new FPakFile(&PakReader);
-	FPakFile& PakFile = *PakFilePtr;
+	FPakFile PakFile(&PakReader);
 
 	UObject* ReturnAsset = nullptr;
 

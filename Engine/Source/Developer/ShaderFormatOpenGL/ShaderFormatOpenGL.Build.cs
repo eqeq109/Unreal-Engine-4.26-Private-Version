@@ -31,9 +31,18 @@ public class ShaderFormatOpenGL : ModuleRules
         {
             AddEngineThirdPartyPrivateStaticDependencies(Target, "SDL2");
         }
-		if (Target.Platform == UnrealTargetPlatform.Mac || Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Linux)
+		if (Target.Platform == UnrealTargetPlatform.Mac || Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			AddEngineThirdPartyPrivateStaticDependencies(Target, "SPIRVReflect");
+			AddEngineThirdPartyPrivateStaticDependencies(Target,
+				"ShaderConductor",
+				"SPIRVReflect"
+			);
+		}
+
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PublicDelayLoadDLLs.Add("dxcompiler.dll");
+			PublicDelayLoadDLLs.Add("ShaderConductor.dll");
 		}
 	}
 }

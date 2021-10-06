@@ -19,8 +19,6 @@
 #include "Engine/LocalPlayer.h"
 #include "Tracks/MovieSceneCinematicShotTrack.h"
 #include "Sections/MovieSceneCinematicShotSection.h"
-#include "Systems/MovieSceneMotionVectorSimulationSystem.h"
-#include "EntitySystem/MovieSceneEntitySystemLinker.h"
 #include "LevelSequenceActor.h"
 #include "Modules/ModuleManager.h"
 #include "LevelUtils.h"
@@ -272,11 +270,6 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 			{
 				CameraComponent->NotifyCameraCut();
 			}
-
-			if (UMovieSceneMotionVectorSimulationSystem* MotionVectorSim = RootTemplateInstance.GetEntitySystemLinker()->FindSystem<UMovieSceneMotionVectorSimulationSystem>())
-			{
-				MotionVectorSim->SimulateAllTransforms();
-			}
 		}
 		return;
 	}
@@ -388,11 +381,6 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 
 	if (bIsStraightCut)
 	{
-		if (UMovieSceneMotionVectorSimulationSystem* MotionVectorSim = RootTemplateInstance.GetEntitySystemLinker()->FindSystem<UMovieSceneMotionVectorSimulationSystem>())
-		{
-			MotionVectorSim->SimulateAllTransforms();
-		}
-
 		if (OnCameraCut.IsBound())
 		{
 			OnCameraCut.Broadcast(CameraComponent);

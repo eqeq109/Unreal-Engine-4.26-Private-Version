@@ -19,6 +19,7 @@
 #include "RenderGraphUtils.h"
 
 enum class ERayTracingPrimaryRaysFlag : uint32;
+enum class EVelocityPass : uint32;
 
 class FSceneTextureParameters;
 class FDistanceFieldAOParameters;
@@ -30,42 +31,6 @@ struct FHeightFogRenderingParameters;
 struct FRayTracingReflectionOptions;
 struct FHairStrandsTransmittanceMaskData;
 struct FHairStrandsRenderingData;
-
-struct FVolumetricFogLocalLightFunctionInfo;
-
-/**
- * Encapsulates the resources and render targets used by global illumination plugins (experimental).
- */
-class RENDERER_API FGlobalIlluminationExperimentalPluginResources : public FRenderResource
-{
-public:
-	TRefCountPtr<IPooledRenderTarget> GBufferA;
-	TRefCountPtr<IPooledRenderTarget> GBufferB;
-	TRefCountPtr<IPooledRenderTarget> GBufferC;
-	TRefCountPtr<IPooledRenderTarget> SceneDepthZ;
-	TRefCountPtr<IPooledRenderTarget> SceneColor;
-	FRDGTextureRef LightingChannelsTexture;
-};
-
-/**
- * Delegate callback used by global illumination plugins (experimental).
- */
-class RENDERER_API FGlobalIlluminationExperimentalPluginDelegates
-{
-public:
-	DECLARE_MULTICAST_DELEGATE_OneParam(FAnyRayTracingPassEnabled, bool& /*bAnyRayTracingPassEnabled*/);
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FPrepareRayTracing, const FViewInfo& /*View*/, TArray<FRHIRayTracingShader*>& /*OutRayGenShaders*/);
-	DECLARE_MULTICAST_DELEGATE_FourParams(FRenderDiffuseIndirectLight, const FScene& /*Scene*/, const FViewInfo& /*View*/, FRDGBuilder& /*GraphBuilder*/, FGlobalIlluminationExperimentalPluginResources& /*Resources*/);
-
-	static FAnyRayTracingPassEnabled& AnyRayTracingPassEnabled();
-	static FPrepareRayTracing& PrepareRayTracing();
-	static FRenderDiffuseIndirectLight& RenderDiffuseIndirectLight();
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	DECLARE_MULTICAST_DELEGATE_FourParams(FRenderDiffuseIndirectVisualizations, const FScene& /*Scene*/, const FViewInfo& /*View*/, FRDGBuilder& /*GraphBuilder*/, FGlobalIlluminationExperimentalPluginResources& /*Resources*/);
-	static FRenderDiffuseIndirectVisualizations& RenderDiffuseIndirectVisualizations();
-#endif //!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-};
 
 /**
  * Scene renderer that implements a deferred shading pipeline and associated features.
@@ -170,8 +135,6 @@ public:
 	/** Render the view family's hit proxies. */
 	virtual void RenderHitProxies(FRHICommandListImmediate& RHICmdList) override;
 
-	virtual bool ShouldRenderVelocities() const override;
-
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	void RenderVisualizeTexturePool(FRHICommandListImmediate& RHICmdList);
 #endif
@@ -258,7 +221,6 @@ private:
 		FRDGBuilder& GraphBuilder,
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef SceneColorTexture,
-		FRDGTextureRef LightingChannelsTexture,
 		FHairStrandsRenderingData* HairDatas);
 
 	/** Renders sky lighting and reflections that can be done in a deferred pass. */
@@ -271,11 +233,6 @@ private:
 		struct FHairStrandsRenderingData* HairDatas);
 
 	void RenderDeferredReflectionsAndSkyLightingHair(FRDGBuilder& GraphBuilder, struct FHairStrandsRenderingData* HairDatas);
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	/** Renders debug visualizations for global illumination plugins (experimental). */
-	void RenderGlobalIlluminationExperimentalPluginVisualizations(FRDGBuilder& GraphBuilder, FRDGTextureRef LightingChannelsTexture);
-#endif
 
 	/** Computes DFAO, modulates it to scene color (which is assumed to contain diffuse indirect lighting), and stores the output bent normal for use occluding specular. */
 	void RenderDFAOAsIndirectShadowing(
@@ -379,7 +336,6 @@ private:
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureMSAA SceneColorTexture,
 		FRDGTextureMSAA SceneDepthTexture,
-		const FHairStrandsRenderingData* HairDatas,
 		FSeparateTranslucencyTextures* OutSeparateTranslucencyTextures,
 		ETranslucencyView ViewsToRender);
 
@@ -405,6 +361,16 @@ private:
 		FIntPoint SceneTextureExtent,
 		FRDGTextureRef SceneColorTexture,
 		FSeparateTranslucencyTextures& OutSeparateTranslucencyTextures);
+
+	bool ShouldRenderVelocities() const;
+
+	void RenderVelocities(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SceneDepthTexture,
+		FRDGTextureRef& VelocityTexture,
+		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
+		EVelocityPass VelocityPass,
+		bool bForceVelocity);
 
 	bool ShouldRenderDistortion() const;
 	void RenderDistortion(FRDGBuilder& GraphBuilder, FRDGTextureRef SceneColorTexture, FRDGTextureRef SceneDepthTexture);
@@ -606,7 +572,6 @@ private:
 	void RenderLightFunctionForVolumetricFog(
 		FRDGBuilder& GraphBuilder,
 		FViewInfo& View,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures,
 		FIntVector VolumetricFogGridSize,
 		float VolumetricFogMaxDistance,
 		FMatrix& OutLightFunctionWorldToShadow,
@@ -621,8 +586,7 @@ private:
 		FVector GridZParams,
 		float VolumetricFogDistance);
 
-	void ComputeVolumetricFog(FRDGBuilder& GraphBuilder,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures);
+	void ComputeVolumetricFog(FRDGBuilder& GraphBuilder);
 
 	void VisualizeVolumetricLightmap(
 		FRDGBuilder& GraphBuilder,
@@ -638,6 +602,20 @@ private:
 	bool ShouldDoReflectionEnvironment() const;
 	
 	bool ShouldRenderDistanceFieldAO() const;
+
+	/** Whether distance field global data structures should be prepared for features that use it. */
+	bool ShouldPrepareForDistanceFieldShadows() const;
+	bool ShouldPrepareForDistanceFieldAO() const;
+	bool ShouldPrepareForDFInsetIndirectShadow() const;
+
+	bool ShouldPrepareDistanceFieldScene() const;
+	bool ShouldPrepareGlobalDistanceField() const;
+	bool ShouldPrepareHeightFieldScene() const;
+
+	void UpdateGlobalDistanceFieldObjectBuffers(FRHICommandListImmediate& RHICmdList);
+	void UpdateGlobalHeightFieldObjectBuffers(FRHICommandListImmediate& RHICmdList);
+	void AddOrRemoveSceneHeightFieldPrimitives(bool bSkipAdd = false);
+	void PrepareDistanceFieldScene(FRHICommandListImmediate& RHICmdList, bool bSplitDispatch);
 
 	void CopySceneCaptureComponentToTarget(
 		FRDGBuilder& GraphBuilder,
@@ -738,6 +716,7 @@ private:
 
 	void VisualizeRectLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const FRWBuffer& RectLightMipTree, const FIntVector& RectLightMipTreeDimensions);
 
+	void GenerateSkyLightVisibilityRays(FRDGBuilder& GraphBuilder, FRDGBufferRef& SkyLightVisibilityRays, FIntVector& Dimensions);
 	void VisualizeSkyLightMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRWBuffer& SkyLightMipTreePosX, FRWBuffer& SkyLightMipTreePosY, FRWBuffer& SkyLightMipTreePosZ, FRWBuffer& SkyLightMipTreeNegX, FRWBuffer& SkyLightMipTreeNegY, FRWBuffer& SkyLightMipTreeNegZ, const FIntVector& SkyLightMipDimensions);
 
 	void RenderRayTracingSkyLight(
@@ -778,6 +757,16 @@ private:
 		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
 		FRDGTextureRef SceneColorOutputTexture);
 
+	void BuildVarianceMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FTextureRHIRef MeanAndDeviationTexture,
+		FRWBuffer& VarianceMipTree, FIntVector& VarianceMipTreeDimensions);
+
+	void VisualizeVarianceMipTree(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, const FRWBuffer& VarianceMipTree, FIntVector VarianceMipTreeDimensions);
+
+	void ComputePathCompaction(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRHITexture* RadianceTexture, FRHITexture* SampleCountTexture, FRHITexture* PixelPositionTexture,
+		FRHIUnorderedAccessView* RadianceSortedRedUAV, FRHIUnorderedAccessView* RadianceSortedGreenUAV, FRHIUnorderedAccessView* RadianceSortedBlueUAV, FRHIUnorderedAccessView* RadianceSortedAlphaUAV, FRHIUnorderedAccessView* SampleCountSortedUAV);
+
+	void ComputeRayCount(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FRHITexture* RayCountPerPixelTexture);
+
 	void WaitForRayTracingScene(FRDGBuilder& GraphBuilder);
 
 	/** Debug ray tracing functions. */
@@ -797,7 +786,6 @@ private:
 	static void PrepareRayTracingAmbientOcclusion(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingSkyLight(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingGlobalIllumination(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
-	static void PrepareRayTracingGlobalIlluminationPlugin(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingTranslucency(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PrepareRayTracingDebug(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	static void PreparePathTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);

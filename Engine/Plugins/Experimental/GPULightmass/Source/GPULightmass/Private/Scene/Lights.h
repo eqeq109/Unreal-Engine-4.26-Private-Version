@@ -203,7 +203,6 @@ struct FDirectionalLightRenderState : public FLocalLightRenderState
 	FVector Direction;
 	FLinearColor Color;
 	float LightSourceAngle;
-	float LightSourceSoftAngle;
 
 	virtual FLightShaderParameters GetLightShaderParameters() const override;
 };
@@ -215,16 +214,9 @@ struct FPointLightRenderState : public FLocalLightRenderState
 	FPointLightRenderState(UPointLightComponent* PointLightComponent);
 
 	FVector Position;
-	FVector Direction;
-	FVector Tangent;
 	FLinearColor Color;
 	float AttenuationRadius;
 	float SourceRadius;
-	float SourceSoftRadius;
-	float SourceLength;
-	float FalloffExponent;
-	bool IsInverseSquared;
-	FTexture* IESTexture;
 
 	virtual FLightShaderParameters GetLightShaderParameters() const override;
 };
@@ -242,12 +234,6 @@ struct FSpotLightRenderState : public FLocalLightRenderState
 	FLinearColor Color;
 	float AttenuationRadius;
 	float SourceRadius;
-	float SourceSoftRadius;
-	float SourceLength;
-	float FalloffExponent;
-	bool IsInverseSquared;
-	FTexture* IESTexture;
-
 
 	virtual FLightShaderParameters GetLightShaderParameters() const override;
 };
@@ -267,7 +253,6 @@ struct FRectLightRenderState : public FLocalLightRenderState
 	float SourceHeight;
 	float BarnDoorAngle;
 	float BarnDoorLength;
-	FTexture* IESTexture;
 
 	virtual FLightShaderParameters GetLightShaderParameters() const override;
 };
@@ -283,13 +268,7 @@ struct FSkyLightRenderState
 	FIntPoint TextureDimensions;
 	FSHVectorRGB3 IrradianceEnvironmentMap;
 	FRWBufferStructured SkyIrradianceEnvironmentMap;
-
-	// New sky dome
-	void PrepareSkyTexture(FRHICommandListImmediate& RHICmdList);
-	float SkylightInvResolution;
-	int32 SkylightMipCount;
-	TRefCountPtr<IPooledRenderTarget> PathTracingSkylightTexture;
-	TRefCountPtr<IPooledRenderTarget> PathTracingSkylightPdf;
+	const FSkyLightImportanceSamplingData* ImportanceSamplingData;
 };
 
 struct FSkyLightBuildInfo

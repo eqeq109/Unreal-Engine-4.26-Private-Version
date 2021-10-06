@@ -10,10 +10,9 @@
 void UNiagaraStackPropertyRow::Initialize(FRequiredEntryData InRequiredEntryData, TSharedRef<IDetailTreeNode> InDetailTreeNode, FString InOwnerStackItemEditorDataKey, FString InOwnerStackEditorDataKey, UNiagaraNode* InOwningNiagaraNode)
 {
 	TSharedPtr<IPropertyHandle> PropertyHandle = InDetailTreeNode->CreatePropertyHandle();
-	FString RowStackEditorDataKey = FString::Printf(TEXT("%s-%s"), *InOwnerStackEditorDataKey, *InDetailTreeNode->GetNodeName().ToString());
-	Super::Initialize(InRequiredEntryData, InOwnerStackItemEditorDataKey, RowStackEditorDataKey);
 	bool bRowIsAdvanced = PropertyHandle.IsValid() && PropertyHandle->GetProperty() && PropertyHandle->GetProperty()->HasAnyPropertyFlags(CPF_AdvancedDisplay);
-	SetIsAdvanced(bRowIsAdvanced);
+	FString RowStackEditorDataKey = FString::Printf(TEXT("%s-%s"), *InOwnerStackEditorDataKey, *InDetailTreeNode->GetNodeName().ToString());
+	Super::Initialize(InRequiredEntryData, bRowIsAdvanced, InOwnerStackItemEditorDataKey, RowStackEditorDataKey);
 	DetailTreeNode = InDetailTreeNode;
 	OwningNiagaraNode = InOwningNiagaraNode;
 	RowStyle = DetailTreeNode->GetNodeType() == EDetailNodeType::Category
@@ -41,16 +40,6 @@ bool UNiagaraStackPropertyRow::GetIsEnabled() const
 	if (bCannotEditInThisContext) 
 		return false;
 	return OwningNiagaraNode == nullptr || OwningNiagaraNode->GetDesiredEnabledState() == ENodeEnabledState::Enabled;
-}
-
-bool UNiagaraStackPropertyRow::HasOverridenContent() const
-{
-	TSharedPtr<IPropertyHandle> PropertyHandle = DetailTreeNode->CreatePropertyHandle();
-	if (PropertyHandle.IsValid() && PropertyHandle.Get())
-	{
-		return PropertyHandle->DiffersFromDefault();
-	}
-	return false;
 }
 
 void UNiagaraStackPropertyRow::FinalizeInternal()

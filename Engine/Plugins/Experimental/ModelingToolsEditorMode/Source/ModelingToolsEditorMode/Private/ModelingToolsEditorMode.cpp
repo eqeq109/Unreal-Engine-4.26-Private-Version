@@ -99,9 +99,6 @@
 
 const FEditorModeID FModelingToolsEditorMode::EM_ModelingToolsEditorModeId = TEXT("EM_ModelingToolsEditorMode");
 
-FDateTime FModelingToolsEditorMode::LastModeStartTimestamp;
-FDateTime FModelingToolsEditorMode::LastToolStartTimestamp;
-
 FModelingToolsEditorMode::FModelingToolsEditorMode()
 {
 	ToolsContext = nullptr;
@@ -794,32 +791,24 @@ void FModelingToolsEditorMode::Enter()
 	// Log Analytic of mode starting
 	if( FEngineAnalytics::IsAvailable() )
 	{
-		FModelingToolsEditorMode::LastModeStartTimestamp = FDateTime::UtcNow();
-		TArray<FAnalyticsEventAttribute> Attributes;
-		Attributes.Add(FAnalyticsEventAttribute(TEXT("Timestamp"), LastModeStartTimestamp.ToString()));
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.MeshModelingMode.Enter"), Attributes);
+		FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.Enter" ) );
 	}
 	ToolsContext->ToolManager->OnToolStarted.AddLambda([this](UInteractiveToolManager* Manager, UInteractiveTool* Tool)
 	{
 		if( FEngineAnalytics::IsAvailable() )
 		{
-			FModelingToolsEditorMode::LastToolStartTimestamp = FDateTime::UtcNow();
-			TArray<FAnalyticsEventAttribute> Attributes;
-			Attributes.Add(FAnalyticsEventAttribute(TEXT("DisplayName"), Tool->GetToolInfo().ToolDisplayName.ToString()));
-			Attributes.Add(FAnalyticsEventAttribute(TEXT("Timestamp"), LastToolStartTimestamp.ToString()));
-			FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.MeshModelingMode.ToolStarted"), Attributes);
+			FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.ToolStarted" ),
+														 TEXT( "DisplayName" ),
+														 Tool->GetToolInfo().ToolDisplayName.ToString() );
 		}
 	});
 	ToolsContext->ToolManager->OnToolEnded.AddLambda([this](UInteractiveToolManager* Manager, UInteractiveTool* Tool)
 	{
 		if( FEngineAnalytics::IsAvailable() )
 		{
-			TArray<FAnalyticsEventAttribute> Attributes;
-			Attributes.Add(FAnalyticsEventAttribute(TEXT("DisplayName"), Tool->GetToolInfo().ToolDisplayName.ToString()));
-			Attributes.Add(FAnalyticsEventAttribute(TEXT("Timestamp"), FDateTime::UtcNow().ToString()));
-			FTimespan ToolUsageDuration = FDateTime::UtcNow() - FModelingToolsEditorMode::LastToolStartTimestamp;
-			Attributes.Add(FAnalyticsEventAttribute(TEXT("Duration.Seconds"), (float)ToolUsageDuration.GetTotalSeconds()));
-			FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.MeshModelingMode.ToolEnded"), Attributes);
+			FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.ToolEnded" ),
+														 TEXT( "DisplayName" ),
+														 Tool->GetToolInfo().ToolDisplayName.ToString() );
 		}
 	});
 }
@@ -834,11 +823,7 @@ void FModelingToolsEditorMode::Exit()
 	// Log Analytic of mode ending
 	if( FEngineAnalytics::IsAvailable() )
 	{
-		TArray<FAnalyticsEventAttribute> Attributes;
-		Attributes.Add(FAnalyticsEventAttribute(TEXT("Timestamp"), FDateTime::UtcNow().ToString()));
-		FTimespan ModeUsageDuration = FDateTime::UtcNow() - FModelingToolsEditorMode::LastModeStartTimestamp;
-		Attributes.Add(FAnalyticsEventAttribute(TEXT("Duration.Seconds"), (float)ModeUsageDuration.GetTotalSeconds()));
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.MeshModelingMode.Exit"), Attributes);
+		FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.Exit" ) );
 	}
 
 	OnToolNotificationMessage.Clear();

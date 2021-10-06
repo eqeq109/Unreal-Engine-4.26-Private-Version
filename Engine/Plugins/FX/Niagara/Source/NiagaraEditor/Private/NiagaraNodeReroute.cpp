@@ -7,6 +7,8 @@
 
 #define LOCTEXT_NAMESPACE "NiagaraNodeReroute"
 
+const char* PC_Wildcard_Niagara = "wildcard";
+
 UNiagaraNodeReroute::UNiagaraNodeReroute(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -29,11 +31,6 @@ ENiagaraNumericOutputTypeSelectionMode UNiagaraNodeReroute::GetNumericOutputType
 	return ENiagaraNumericOutputTypeSelectionMode::Largest;
 }
 
-bool UNiagaraNodeReroute::AllowExternalPinTypeChanges(const UEdGraphPin* InGraphPin) const
-{
-	return true;
-}
-
 void UNiagaraNodeReroute::PostLoad()
 {
 	Super::PostLoad();
@@ -41,13 +38,10 @@ void UNiagaraNodeReroute::PostLoad()
 
 void UNiagaraNodeReroute::AllocateDefaultPins()
 {
-	const UEdGraphSchema_Niagara* Schema = CastChecked<UEdGraphSchema_Niagara>(GetSchema());
-	
-	FEdGraphPinType Type = Schema->TypeDefinitionToPinType(FNiagaraTypeDefinition::GetWildcardDef());
-	UEdGraphPin* MyInputPin = CreatePin(EGPD_Input, Type, FNiagaraConstants::InputPinName);
+	UEdGraphPin* MyInputPin = CreatePin(EGPD_Input, PC_Wildcard_Niagara, FNiagaraConstants::InputPinName);
 	MyInputPin->bDefaultValueIsIgnored = true;
 
-	CreatePin(EGPD_Output, Type, FNiagaraConstants::OutputPinName);
+	CreatePin(EGPD_Output, PC_Wildcard_Niagara, FNiagaraConstants::OutputPinName);
 }
 
 FText UNiagaraNodeReroute::GetTooltipText() const
@@ -148,8 +142,8 @@ void UNiagaraNodeReroute::PropagatePinType()
 	UEdGraphPin* MyOutputPin = GetOutputPin(0);
 
 	for (UEdGraphPin* Inputs : MyInputPin->LinkedTo)
-	{	
-		if (!UEdGraphSchema_Niagara::IsPinWildcard(Inputs))
+	{
+		if (Inputs->PinType.PinCategory != PC_Wildcard_Niagara)
 		{
 			PropagatePinTypeFromDirection(true);
 			return;
@@ -158,7 +152,7 @@ void UNiagaraNodeReroute::PropagatePinType()
 
 	for (UEdGraphPin* Outputs : MyOutputPin->LinkedTo)
 	{
-		if(!UEdGraphSchema_Niagara::IsPinWildcard(Outputs))
+		if (Outputs->PinType.PinCategory != PC_Wildcard_Niagara)
 		{
 			PropagatePinTypeFromDirection(false);
 			return;
@@ -178,17 +172,14 @@ void UNiagaraNodeReroute::PropagatePinType()
 	}
 	else
 	{
-		const UEdGraphSchema_Niagara* Schema = CastChecked<UEdGraphSchema_Niagara>(GetSchema());
-
-		FEdGraphPinType WildcardPinType = Schema->TypeDefinitionToPinType(FNiagaraTypeDefinition::GetWildcardDef());
 		// Revert to wildcard
 		MyInputPin->BreakAllPinLinks();
 		MyInputPin->PinType.ResetToDefaults();
-		MyInputPin->PinType = WildcardPinType;
+		MyInputPin->PinType.PinCategory = PC_Wildcard_Niagara;
 
 		MyOutputPin->BreakAllPinLinks();
 		MyOutputPin->PinType.ResetToDefaults();
-		MyOutputPin->PinType = WildcardPinType;
+		MyOutputPin->PinType.PinCategory = PC_Wildcard_Niagara;
 	}
 }
 

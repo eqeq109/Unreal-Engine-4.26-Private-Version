@@ -4,7 +4,6 @@
 
 #include "DatasmithActorImporter.h"
 #include "DatasmithAdditionalData.h"
-#include "DatasmithAnimationElements.h"
 #include "DatasmithAssetImportData.h"
 #include "DatasmithAssetUserData.h"
 #include "DatasmithCameraImporter.h"
@@ -12,7 +11,6 @@
 #include "DatasmithLevelSequenceImporter.h"
 #include "DatasmithLevelVariantSetsImporter.h"
 #include "DatasmithLightImporter.h"
-#include "DatasmithMaterialExpressions.h"
 #include "DatasmithMaterialImporter.h"
 #include "DatasmithPayload.h"
 #include "DatasmithPostProcessImporter.h"
@@ -20,10 +18,10 @@
 #include "DatasmithSceneActor.h"
 #include "DatasmithSceneFactory.h"
 #include "DatasmithStaticMeshImporter.h"
-#include "DatasmithTextureImporter.h"
 #include "DatasmithTranslator.h"
-#include "DatasmithUtils.h"
+#include "DatasmithTextureImporter.h"
 #include "IDatasmithSceneElements.h"
+#include "DatasmithAnimationElements.h"
 #include "LevelVariantSets.h"
 #include "ObjectTemplates/DatasmithObjectTemplate.h"
 #include "Utility/DatasmithImporterImpl.h"
@@ -77,160 +75,6 @@
 extern UNREALED_API UEditorEngine* GEditor;
 
 #define LOCTEXT_NAMESPACE "DatasmithImporter"
-
-namespace UE
-{
-	namespace DatasmithImporter
-	{
-		namespace Private
-		{
-			namespace DatasmithImporter
-			{
-				/**
-				 * Make the necessary adjustment to the materials so that the functions have unique parameter names in the material where they are use.
-				 */
-				void MakeChangeToExpressionsNameForMaterialFunctions(const TArray<FDatasmithImporterUtils::FFunctionAndMaterialsThatUseIt>& FunctionMaterialAndTheirReferencer)
-				{
-					// Contains the name of the parameters for a material that isn't use as a function and the set of names used the by material functions it call
-					TMap<TSharedPtr<IDatasmithUEPbrMaterialElement>,TArray<TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>>> TopMaterialAndNamesUsedByType;
-					TMap<EDatasmithMaterialExpressionType, FDatasmithUniqueNameProvider> ExpressionTypeToUniqueNameProvider;
-					using FFunctionAndMaterialsThatUseIt = FDatasmithImporterUtils::FFunctionAndMaterialsThatUseIt;
-
-					TMap<TSharedPtr<IDatasmithUEPbrMaterialElement>, int32> MaterialToIndexInArray;
-					MaterialToIndexInArray.Reserve( FunctionMaterialAndTheirReferencer.Num() );
-
-					// Check if the name was already used in this function or in one of its referencers
-					TFunction<bool (uint32, const TSharedPtr<IDatasmithUEPbrMaterialElement>&, uint32, FName, EDatasmithMaterialExpressionType)> CheckIfNameIsUsed;
-					CheckIfNameIsUsed = [&TopMaterialAndNamesUsedByType, &MaterialToIndexInArray, &FunctionMaterialAndTheirReferencer, &CheckIfNameIsUsed] (uint32 MaterialHash, const TSharedPtr<IDatasmithUEPbrMaterialElement>& Material, uint32 ExpressionHash, FName Expression, EDatasmithMaterialExpressionType ExpressionType)
-						{
-							if ( int32* Index = MaterialToIndexInArray.FindByHash( MaterialHash, Material ) )
-							{
-								for ( const TSharedPtr<IDatasmithUEPbrMaterialElement>& Referencer : FunctionMaterialAndTheirReferencer[*Index].Value )
-								{
-									if ( CheckIfNameIsUsed( GetTypeHash( Referencer ), Referencer, ExpressionHash, Expression, ExpressionType ) )
-									{
-										return true;
-									}
-								}
-							}
-							else if ( const TArray<TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>>* NameUsedArray = TopMaterialAndNamesUsedByType.FindByHash( MaterialHash, Material ) )
-							// Only check if we are in a material that aren't referenced elsewhere
-							{
-								for ( const TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>& NamesUsed : *NameUsedArray )
-								{
-									if ( NamesUsed->Contains( TPair<FName, EDatasmithMaterialExpressionType>( Expression, ExpressionType ) ) )
-									{
-										return true;
-									}
-								}
-							}
-
-							return false;
-						};
-
-					// Make sure that the parameter have a unique name in the materials were they are use
-					auto HandleExpressionNameForMaterialFunction =
-						[&ExpressionTypeToUniqueNameProvider, &CheckIfNameIsUsed] (uint32 MaterialHash, const TSharedPtr<IDatasmithUEPbrMaterialElement>& Material, FName Expression, EDatasmithMaterialExpressionType ExpressionType, int32 ExpressionIndex, TSet<TPair<FName, EDatasmithMaterialExpressionType>>& NameUsed)
-						{
-							FDatasmithUniqueNameProvider& UniqueNameProvider = ExpressionTypeToUniqueNameProvider.FindOrAdd( ExpressionType );
-							FString ChosenName;
-
-							if ( CheckIfNameIsUsed( MaterialHash, Material, GetTypeHash( Expression ), Expression, ExpressionType ) )
-							{
-								// Make the name unique
-								ChosenName = UniqueNameProvider.GenerateUniqueName( Expression.ToString() );
-								Material->GetExpression( ExpressionIndex )->SetName( *ChosenName );
-							}
-							else
-							{
-								// Keep track of the used names
-								ChosenName = Expression.ToString();
-								UniqueNameProvider.AddExistingName( ChosenName );
-							}
-
-							NameUsed.Add( TPair<FName, EDatasmithMaterialExpressionType>( *ChosenName, ExpressionType ) );
-
-							if ( ExpressionType != EDatasmithMaterialExpressionType::Generic )
-							{
-								// Always add to the generic, we don't know what type of parameter a generic expression would be
-								ExpressionTypeToUniqueNameProvider.FindOrAdd( EDatasmithMaterialExpressionType::Generic ).AddExistingName( ChosenName );
-								NameUsed.Add( TPair<FName, EDatasmithMaterialExpressionType>( *ChosenName, EDatasmithMaterialExpressionType::Generic ) );
-							}
-						};
-
-					TFunction<void (const TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>&, uint32, const TSharedPtr<IDatasmithUEPbrMaterialElement>&)> PushUsedNamesIntoTopLevelMaterial;
-					PushUsedNamesIntoTopLevelMaterial = [&MaterialToIndexInArray, &TopMaterialAndNamesUsedByType, &FunctionMaterialAndTheirReferencer, &PushUsedNamesIntoTopLevelMaterial] (const TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>& UsedNames, uint32 MaterialHash, const TSharedPtr<IDatasmithUEPbrMaterialElement>& Material)
-						{
-							if ( int32* Index = MaterialToIndexInArray.FindByHash( MaterialHash, Material ) )
-							{
-								for ( const TSharedPtr<IDatasmithUEPbrMaterialElement>& Referencer : FunctionMaterialAndTheirReferencer[*Index].Value )
-								{
-									PushUsedNamesIntoTopLevelMaterial( UsedNames, GetTypeHash( Referencer ), Referencer );
-								}
-							}
-							else
-							{
-								TopMaterialAndNamesUsedByType.FindOrAddByHash( MaterialHash, Material ).Add( UsedNames );
-							}
-						};
-
-
-					TSet<TSharedPtr<IDatasmithUEPbrMaterialElement>> VisitedMaterials;
-					// Plus one because there is at least one top material that isn't used as a function
-					VisitedMaterials.Reserve( FunctionMaterialAndTheirReferencer.Num() + 1 );
-
-					/**
-					 * We expect the independents function to be at the start of the array
-					 * We want the top level function to conserve their name in case of conflicted naming of the parameters.
-					 */
-					for ( int32 Index = FunctionMaterialAndTheirReferencer.Num()-1; Index >= 0; Index-- )
-					{
-						const FFunctionAndMaterialsThatUseIt& FunctionAndReferencer = FunctionMaterialAndTheirReferencer[Index];
-						const TSharedPtr<IDatasmithUEPbrMaterialElement>& CurrentElement = FunctionAndReferencer.Key;
-						uint32 CurrentElementHash = GetTypeHash( CurrentElement );
-						MaterialToIndexInArray.AddByHash( CurrentElementHash, CurrentElement, Index );
-
-						// Populate the name used by the Referencers
-						for ( const TSharedPtr<IDatasmithUEPbrMaterialElement>& Referencer : FunctionAndReferencer.Value )
-						{
-							uint32  ReferencerHash = GetTypeHash( Referencer );
-
-							if ( !VisitedMaterials.ContainsByHash( ReferencerHash, Referencer ) )
-							{
-								TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>> UsedNames = MakeShared<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>();
-
-								FDatasmithMaterialExpressions::ForEachParamsNameInMaterial( Referencer,
-									[ReferencerHash, &Referencer, &HandleExpressionNameForMaterialFunction, &UsedNames] (FName Expression, const EDatasmithMaterialExpressionType& ExpressionType, int32 Index)
-									{
-										HandleExpressionNameForMaterialFunction( ReferencerHash, Referencer, Expression, ExpressionType, Index, UsedNames.Get() );
-									});
-								VisitedMaterials.AddByHash( ReferencerHash, Referencer );
-								PushUsedNamesIntoTopLevelMaterial( UsedNames, ReferencerHash, Referencer );
-							}
-						}
-
-						// For the current element
-						TSharedRef<TSet<TPair<FName, EDatasmithMaterialExpressionType>>> UsedNames = MakeShared<TSet<TPair<FName, EDatasmithMaterialExpressionType>>>();
-
-						TFunction<void(FName Expression, const EDatasmithMaterialExpressionType& ExpressionType, int32 Index)> ForEachParameter =
-							[CurrentElementHash, &CurrentElement, &UsedNames, &HandleExpressionNameForMaterialFunction](FName Expression, const EDatasmithMaterialExpressionType& ExpressionType, int32 Index)
-							{
-								HandleExpressionNameForMaterialFunction( CurrentElementHash, CurrentElement, Expression, ExpressionType, Index, UsedNames.Get() );
-							};
-
-						FDatasmithMaterialExpressions::ForEachParamsNameInMaterial( CurrentElement,
-							[CurrentElementHash, &CurrentElement, &UsedNames, &HandleExpressionNameForMaterialFunction] (FName Expression, const EDatasmithMaterialExpressionType& ExpressionType, int32 Index)
-							{
-								HandleExpressionNameForMaterialFunction( CurrentElementHash, CurrentElement, Expression, ExpressionType, Index, UsedNames.Get() );
-							});
-						VisitedMaterials.AddByHash( CurrentElementHash, CurrentElement );
-						PushUsedNamesIntoTopLevelMaterial( UsedNames, CurrentElementHash, CurrentElement );
-					}
-				}
-			}
-		}
-	}
-}
 
 void FDatasmithImporter::ImportStaticMeshes( FDatasmithImportContext& ImportContext )
 {
@@ -596,17 +440,9 @@ void FDatasmithImporter::ImportMaterials( FDatasmithImportContext& ImportContext
 		IDatasmithShaderElement::bDisableReflectionFresnel = ( ImportContext.Options->MaterialQuality == EDatasmithImportMaterialQuality::UseNoFresnelCurves );
 
 		//Import referenced materials as MaterialFunctions first
+		for ( TSharedPtr< IDatasmithBaseMaterialElement > MaterialElement : FDatasmithImporterUtils::GetOrderedListOfMaterialsReferencedByMaterials( ImportContext.FilteredScene ) )
 		{
-			using FFunctionAndMaterialsThatUseIt = FDatasmithImporterUtils::FFunctionAndMaterialsThatUseIt;
-			TArray<FFunctionAndMaterialsThatUseIt> Functions = FDatasmithImporterUtils::GetOrderedListOfMaterialsReferencedByMaterials( ImportContext.FilteredScene );
-
-			using namespace UE::DatasmithImporter::Private::DatasmithImporter;
-			MakeChangeToExpressionsNameForMaterialFunctions(Functions);
-
-			for (const FFunctionAndMaterialsThatUseIt& FunctionAndMaterials : Functions)
-			{
-				ImportMaterialFunction(ImportContext, FunctionAndMaterials.Key.ToSharedRef());
-			}
+			ImportMaterialFunction(ImportContext, MaterialElement.ToSharedRef() );
 		}
 
 		ImportContext.AssetsContext.MaterialsRequirements.Empty( ImportContext.FilteredScene->GetMaterialsCount() );
@@ -833,6 +669,15 @@ void FDatasmithImporter::ImportActors( FDatasmithImportContext& ImportContext )
 			}
 		}
 
+		// Add all components under root actor to the root blueprint if Blueprint is required
+		if (ImportContext.Options->HierarchyHandling == EDatasmithImportHierarchy::UseOneBlueprint && ImportContext.RootBlueprint != nullptr)
+		{
+			// Reparent all scene components attached to root actor toward blueprint root
+			FKismetEditorUtilities::FAddComponentsToBlueprintParams Params;
+			Params.bKeepMobility = true;
+			FKismetEditorUtilities::AddComponentsToBlueprint(ImportContext.RootBlueprint, ImportSceneActor->GetInstanceComponents(), Params);
+		}
+
 		// After all actors were imported, perform a post import step so that any dependencies can be resolved
 		for (int32 i = 0; i < ActorsCount && !ImportContext.bUserCancelled; ++i)
 		{
@@ -932,7 +777,7 @@ AActor* FDatasmithImporter::ImportActor( FDatasmithImportContext& ImportContext,
 
 		if ( ChildActorElement.IsValid() )
 		{
-			if (!ChildActorElement->IsAComponent() )
+			if ( ImportContext.Options->HierarchyHandling == EDatasmithImportHierarchy::UseMultipleActors && !ChildActorElement->IsAComponent() )
 			{
 				ImportActor( ImportContext, ChildActorElement.ToSharedRef() );
 			}
@@ -1084,7 +929,6 @@ void FDatasmithImporter::FinalizeActors( FDatasmithImportContext& ImportContext,
 		TSet< FName > LayersUsedByActors;
 		const bool bShouldSpawnNonExistingActors = !ImportContext.bIsAReimport || ImportContext.Options->ReimportOptions.bRespawnDeletedActors;
 
-		TArray<uint8> ReusableBuffer;
 		for ( ADatasmithSceneActor* DestinationSceneActor : FinalSceneActors )
 		{
 			if ( !DestinationSceneActor )
@@ -1139,7 +983,7 @@ void FDatasmithImporter::FinalizeActors( FDatasmithImportContext& ImportContext,
 				{
 					// Remember the original source path as FinalizeActor may set SourceActor's label, which apparently can also change its Name and package path
 					FSoftObjectPath OriginalSourcePath = FSoftObjectPath(SourceActor);
-					AActor* DestinationActor = FinalizeActor( ImportContext, *SourceActor, ExistingActorPtr.Get(), PerSceneActorReferencesToRemap, ReusableBuffer );
+					AActor* DestinationActor = FinalizeActor( ImportContext, *SourceActor, ExistingActorPtr.Get(), PerSceneActorReferencesToRemap );
 					RenamedActorsMap.Add(OriginalSourcePath, FSoftObjectPath(DestinationActor));
 					LayersUsedByActors.Append(DestinationActor->Layers);
 					ExistingActorPtr = DestinationActor;
@@ -1193,7 +1037,7 @@ void FDatasmithImporter::FinalizeActors( FDatasmithImportContext& ImportContext,
 	GEngine->BroadcastLevelActorListChanged();
 }
 
-AActor* FDatasmithImporter::FinalizeActor( FDatasmithImportContext& ImportContext, AActor& SourceActor, AActor* ExistingActor, TMap< UObject*, UObject* >& ReferencesToRemap, TArray<uint8>& ReusableBuffer )
+AActor* FDatasmithImporter::FinalizeActor( FDatasmithImportContext& ImportContext, AActor& SourceActor, AActor* ExistingActor, TMap< UObject*, UObject* >& ReferencesToRemap )
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithImporter::FinalizeActor);
 
@@ -1216,13 +1060,16 @@ AActor* FDatasmithImporter::FinalizeActor( FDatasmithImportContext& ImportContex
 		ExistingActor->GetAttachedActors( Children );
 	}
 
+	// Update label to match the source actor's
+	DestinationActor->SetActorLabel( ImportContext.ActorsContext.UniqueNameProvider.GenerateUniqueName( SourceActor.GetActorLabel() ) );
+
 	check( DestinationActor );
 
 	{
 		// Setup the actor to allow modifications.
 		FDatasmithImporterImpl::FScopedFinalizeActorChanges ScopedFinalizedActorChanges(DestinationActor, ImportContext);
 
-		ReferencesToRemap.Add(&SourceActor, DestinationActor);
+		ReferencesToRemap.Add( &SourceActor ) = DestinationActor;
 
 		TArray< FDatasmithImporterImpl::FMigratedTemplatePairType > MigratedTemplates = FDatasmithImporterImpl::MigrateTemplates(
 			&SourceActor,
@@ -1231,40 +1078,41 @@ AActor* FDatasmithImporter::FinalizeActor( FDatasmithImportContext& ImportContex
 			true
 		);
 
-		TArray<TPair<USceneComponent&, TArray<FDatasmithImporterImpl::FMigratedTemplatePairType>>> ComponentsToApplyMigratedTemplate;
-
-		FDatasmithImporterImpl::FinalizeComponents( ImportContext, SourceActor, *DestinationActor, ReferencesToRemap, ReusableBuffer, ComponentsToApplyMigratedTemplate );
-
-		FDatasmithImporterImpl::CopyObject( SourceActor, *DestinationActor, ReusableBuffer );
-
-		FDatasmithImporterImpl::PublicizeSubObjects( SourceActor, *DestinationActor, ReferencesToRemap , ReusableBuffer );
-
+		// Copy actor data
+		{
+			TArray< uint8 > Bytes;
+			FDatasmithImporterImpl::FActorWriter ObjectWriter( &SourceActor, Bytes );
+			FObjectReader ObjectReader( DestinationActor, Bytes );
+		}
 
 		FDatasmithImporterImpl::FixReferencesForObject( DestinationActor, ReferencesToRemap );
 
-		ForEachObjectWithOuter( DestinationActor, [&ReferencesToRemap](UObject* InObject)
-			{
-				FDatasmithImporterImpl::FixReferencesForObject( InObject, ReferencesToRemap );
-
-				InObject->PostEditImport();
-				InObject->PostEditChange();
-			});
-
-
-		for ( TPair<USceneComponent&, TArray<FDatasmithImporterImpl::FMigratedTemplatePairType>>& Pair : ComponentsToApplyMigratedTemplate )
-		{
-			// Put back the components in a proper state (Unfortunately without this the set relative transform might not work)
-			Pair.Key.UpdateComponentToWorld();
-			FDatasmithImporterImpl::ApplyMigratedTemplates( Pair.Value, &Pair.Key );
-			Pair.Key.PostEditChange();
-		}
+		FDatasmithImporterImpl::FinalizeComponents( ImportContext, SourceActor, *DestinationActor, ReferencesToRemap );
 
 		// The templates for the actor need to be applied after the components were created.
 		FDatasmithImporterImpl::ApplyMigratedTemplates( MigratedTemplates, DestinationActor );
+
+		// Restore hierarchy
+		for ( AActor* Child : Children )
+		{
+			Child->AttachToActor( DestinationActor, FAttachmentTransformRules::KeepWorldTransform );
+		}
+
+		// Hotfix for UE-69555
+		TInlineComponentArray<UHierarchicalInstancedStaticMeshComponent*> HierarchicalInstancedStaticMeshComponents;
+		DestinationActor->GetComponents(HierarchicalInstancedStaticMeshComponents);
+		for (UHierarchicalInstancedStaticMeshComponent* HierarchicalInstancedStaticMeshComponent : HierarchicalInstancedStaticMeshComponents )
+		{
+			HierarchicalInstancedStaticMeshComponent->BuildTreeIfOutdated( true, true );
+		}
 	}
 
-	// Update label to match the source actor's
-	DestinationActor->SetActorLabel( ImportContext.ActorsContext.UniqueNameProvider.GenerateUniqueName( SourceActor.GetActorLabel() ) );
+	// Need to explicitly call PostEditChange on the LandscapeMaterial property or the landscape proxy won't update its material
+	if ( ALandscape* Landscape = Cast< ALandscape >( DestinationActor ) )
+	{
+		FPropertyChangedEvent MaterialPropertyChangedEvent( FindFieldChecked< FProperty >( Landscape->GetClass(), FName("LandscapeMaterial") ) );
+		Landscape->PostEditChangeProperty( MaterialPropertyChangedEvent );
+	}
 
 	return DestinationActor;
 }
@@ -1746,18 +1594,12 @@ void FDatasmithImporter::FinalizeImport(FDatasmithImportContext& ImportContext, 
 				}
 			}
 
-			TArray<UMaterialFunctionInterface*> FinalizableFunctions;
 			for (const FMaterialFunctionInfo& MaterialFunctionInfo : SourceMaterial->GetCachedExpressionData().FunctionInfos)
 			{
 				if (MaterialFunctionInfo.Function && MaterialFunctionInfo.Function->GetOutermost() == SourceMaterial->GetOutermost())
 				{
-					FinalizableFunctions.Add(MaterialFunctionInfo.Function);
+					FinalizeMaterial(MaterialFunctionInfo.Function, *DestinationPackagePath, *TransientFolderPath, *RootFolderPath, nullptr, &ReferencesToRemap);
 				}
-			}
-
-			for (UMaterialFunctionInterface* Function : FinalizableFunctions)
-			{
-				FinalizeMaterial(Function, *DestinationPackagePath, *TransientFolderPath, *RootFolderPath, nullptr, &ReferencesToRemap);
 			}
 		}
 

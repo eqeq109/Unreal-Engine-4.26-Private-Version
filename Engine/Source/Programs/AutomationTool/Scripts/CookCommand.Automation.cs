@@ -56,7 +56,7 @@ public partial class Project : CommandUtils
 				String COTFCommandLine = Params.RunCommandline;
 				if (Params.IterativeCooking)
 				{
-					COTFCommandLine += " -iterate";
+					COTFCommandLine += " -iterate -iteratehash";
 				}
 
 				if (Params.HasDDCGraph)
@@ -165,7 +165,7 @@ public partial class Project : CommandUtils
                 }
                 if (Params.IterativeCooking)
                 {
-                    CommandletParams += " -iterate";
+                    CommandletParams += " -iterate -iterateshash";
                 }
 				if ( Params.HasIterateSharedCookedBuild)
 				{
@@ -232,7 +232,7 @@ public partial class Project : CommandUtils
 
                 // if we are not going to pak but we specified compressed then compress in the cooker ;)
                 // otherwise compress the pak files
-                if (!Params.Pak && !Params.SkipPak && Params.Compressed && ! Params.ForceUncompressed)
+                if (!Params.Pak && !Params.SkipPak && Params.Compressed)
                 {
                     CommandletParams += " -compressed";
                 }

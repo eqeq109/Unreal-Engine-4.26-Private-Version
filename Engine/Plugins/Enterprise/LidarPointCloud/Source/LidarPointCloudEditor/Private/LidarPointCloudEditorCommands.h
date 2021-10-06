@@ -38,11 +38,6 @@ public:
 
 	TSharedPtr< FUICommandInfo > EditMode;
 
-	TSharedPtr< FUICommandInfo > BoxSelection;
-	TSharedPtr< FUICommandInfo > PolygonalSelection;
-	TSharedPtr< FUICommandInfo > LassoSelection;
-	TSharedPtr< FUICommandInfo > PaintSelection;
-
 	TSharedPtr< FUICommandInfo > InvertSelection;
 
 	TSharedPtr< FUICommandInfo > HideSelected;

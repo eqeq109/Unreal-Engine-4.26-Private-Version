@@ -21,7 +21,7 @@ public:
 	FRichCurve ColorCurves[4];
 
 	UPROPERTY(EditAnywhere, Category = RuntimeFloatCurve)
-	class UCurveLinearColor* ExternalCurve = nullptr;
+	class UCurveLinearColor* ExternalCurve;
 
 	FLinearColor GetLinearColorValue(float InTime) const;
 };
@@ -46,7 +46,6 @@ class ENGINE_API UCurveLinearColor : public UCurveBase
 	UFUNCTION(BlueprintCallable, Category = "Math|Curves")
 	virtual FLinearColor GetClampedLinearColorValue(float InTime) const override;
 
-	UFUNCTION(BlueprintCallable, Category = "Math|Curves")
 	FLinearColor GetUnadjustedLinearColorValue(float InTime) const;
 
 	bool HasAnyAlphaKeys() const override { return FloatCurves[3].GetNumKeys() > 0; }
@@ -65,8 +64,6 @@ public:
 	void DrawThumbnail(class FCanvas* Canvas, FVector2D StartXY, FVector2D SizeXY);
 
 	void PushToSourceData(TArray<FFloat16Color> &SrcData, int32 StartXY, FVector2D SizeXY);
-
-	void PushUnadjustedToSourceData(TArray<FFloat16Color>& SrcData, int32 StartXY, FVector2D SizeXY);
 
 	virtual void OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos) override;
 #endif

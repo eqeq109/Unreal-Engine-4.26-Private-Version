@@ -5,13 +5,14 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
+#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneMarginTrack.generated.h"
 
 /**
  * Handles manipulation of FMargins in a movie scene
  */
 UCLASS( MinimalAPI )
-class UMovieSceneMarginTrack : public UMovieScenePropertyTrack
+class UMovieSceneMarginTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
 {
 	GENERATED_BODY()
 
@@ -23,4 +24,5 @@ public:
 
 	virtual bool SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const override;
 	virtual UMovieSceneSection* CreateNewSection() override;
+	virtual FMovieSceneEvalTemplatePtr CreateTemplateForSection(const UMovieSceneSection& InSection) const override;
 };

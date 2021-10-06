@@ -125,11 +125,6 @@ namespace UnrealBuildTool
 			return true;
 		}
 
-		public override bool CanUseFASTBuild()
-		{
-			return true;
-		}
-
 		public override void ResetTarget(TargetRules Target)
 		{			
 		}

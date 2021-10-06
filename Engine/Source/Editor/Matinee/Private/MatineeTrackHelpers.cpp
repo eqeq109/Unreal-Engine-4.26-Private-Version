@@ -256,7 +256,7 @@ bool UMatineeTrackAnimControlHelper::PreCreateKeyframe( UInterpTrack *Track, flo
 		if (USkeletalMeshComponent* CurSkelMeshComp = Cast<USkeletalMeshComponent>(Component))
 		{
 			// if qualified to play animation, break
-			if (CurSkelMeshComp->SkeletalMesh && CurSkelMeshComp->SkeletalMesh->GetSkeleton())
+			if (CurSkelMeshComp->SkeletalMesh && CurSkelMeshComp->SkeletalMesh->Skeleton)
 			{
 				SkelMeshComp = CurSkelMeshComp;
 				break;
@@ -270,7 +270,7 @@ bool UMatineeTrackAnimControlHelper::PreCreateKeyframe( UInterpTrack *Track, flo
 		return false;
 	}
 
-	USkeleton* Skeleton = SkelMeshComp->SkeletalMesh->GetSkeleton();
+	USkeleton* Skeleton = SkelMeshComp->SkeletalMesh->Skeleton;
 	if ( Skeleton )
 	{
 		// Show the dialog.

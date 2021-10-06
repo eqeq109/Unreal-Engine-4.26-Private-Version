@@ -124,7 +124,6 @@ void FLandscapeMeshMobileStreamIn::DoFinishUpdate(const FContext& Context)
 		}
 
 		RenderData->CurrentFirstLODIdx = PendingFirstLODIdx;
-		MarkAsSuccessfullyFinished();
 	}
 	
 	IntermediateVertexBuffer.SafeRelease();
@@ -171,7 +170,6 @@ void FLandscapeMeshMobileStreamOut::ShrinkResources(const FContext& Context)
 			TRHIResourceUpdateBatcher<1> Batcher;
 			Batcher.QueueUpdateRequest(LandsacpeVBRHI, IntermediateVertexBuffer);
 		}
-		MarkAsSuccessfullyFinished();
 	}
 }
 

@@ -41,7 +41,7 @@ UMovieSceneSection* UMovieSceneMediaTrack::AddNewMediaSourceOnRow(UMediaSource& 
 	FFrameTime DurationToUse  = DefaultMediaSectionDuration * TickResolution;
 
 	// add the section
-	UMovieSceneMediaSection* NewSection = NewObject<UMovieSceneMediaSection>(this, NAME_None, RF_Transactional);
+	UMovieSceneMediaSection* NewSection = NewObject<UMovieSceneMediaSection>(this);
 
 	NewSection->InitialPlacementOnRow(MediaSections, Time, DurationToUse.FrameNumber.Value, RowIndex);
 	NewSection->SetMediaSource(&MediaSource);
@@ -106,5 +106,6 @@ FMovieSceneEvalTemplatePtr UMovieSceneMediaTrack::CreateTemplateForSection(const
 {
 	return FMovieSceneMediaSectionTemplate(*CastChecked<const UMovieSceneMediaSection>(&InSection), *this);
 }
+
 
 #undef LOCTEXT_NAMESPACE

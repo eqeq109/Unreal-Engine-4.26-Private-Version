@@ -23,8 +23,6 @@
 #include "Engine/TextureLODSettings.h"
 #include "RenderUtils.h"
 #include "Rendering/StreamableTextureResource.h"
-#include "Interfaces/ITextureFormat.h"
-#include "Interfaces/ITextureFormatModule.h"
 
 #if WITH_EDITORONLY_DATA
 	#include "EditorFramework/AssetImportData.h"
@@ -44,12 +42,6 @@ static TAutoConsoleVariable<int32> CVarMobileVirtualTextures(
 	TEXT("Whether virtual texture streaming is enabled on mobile platforms. Requires r.VirtualTextures enabled as well. \n"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly
 );
-
-static TAutoConsoleVariable<int32> CVarVirtualTexturesAutoImport(
-	TEXT("r.VT.EnableAutoImport"),
-	1,
-	TEXT("Enable virtual texture on texture import"),
-	ECVF_Default);
 
 DEFINE_LOG_CATEGORY(LogTexture);
 
@@ -79,11 +71,6 @@ UTexture::FOnTextureSaved UTexture::PreSaveEvent;
 
 UTexture::UTexture(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, PrivateResource(nullptr)
-	, PrivateResourceRenderThread(nullptr)
-	, Resource(
-		[this]()-> FTextureResource* { return GetResource(); },
-		[this](FTextureResource* InTextureResource) { SetResource(InTextureResource); })
 {
 	SRGB = true;
 	Filter = TF_Default;
@@ -118,42 +105,9 @@ UTexture::UTexture(const FObjectInitializer& ObjectInitializer)
 	}
 }
 
-const FTextureResource* UTexture::GetResource() const
-{
-	if (IsInActualRenderingThread() || IsInRHIThread())
-	{
-		return PrivateResourceRenderThread;
-	}
-	return PrivateResource;
-}
-
-FTextureResource* UTexture::GetResource()
-{
-	if (IsInActualRenderingThread() || IsInRHIThread())
-	{
-		return PrivateResourceRenderThread;
-	}
-	return PrivateResource;
-}
-
-void UTexture::SetResource(FTextureResource* InResource)
-{
-	check (!IsInActualRenderingThread() && !IsInRHIThread());
-
-	// Each PrivateResource value must be updated in it's own thread because any
-	// rendering code trying to access the Resource from this UTexture will
-	// crash if it suddenly sees nullptr or a new resource that has not had it's InitRHI called.
-
-	PrivateResource = InResource;
-	ENQUEUE_RENDER_COMMAND(SetResourceRenderThread)([this, InResource](FRHICommandListImmediate& RHICmdList)
-	{
-		PrivateResourceRenderThread = InResource;
-	});
-}
-
 void UTexture::ReleaseResource()
 {
-	if (PrivateResource)
+	if (Resource)
 	{
 		UnlinkStreaming();
 
@@ -166,14 +120,13 @@ void UTexture::ReleaseResource()
 
 		CachedSRRState.Clear();
 
-		FTextureResource* ToDelete = PrivateResource;
 		// Free the resource.
-		SetResource(nullptr);
-		ENQUEUE_RENDER_COMMAND(DeleteResource)([ToDelete](FRHICommandListImmediate& RHICmdList)
+		ENQUEUE_RENDER_COMMAND(DeleteResource)([ToDelete = Resource](FRHICommandListImmediate& RHICmdList)
 		{
 			ToDelete->ReleaseResource();
 			delete ToDelete;
 		});
+		Resource = nullptr;
 	}
 }
 
@@ -186,14 +139,13 @@ void UTexture::UpdateResource()
 	if( FApp::CanEverRender() && !HasAnyFlags(RF_ClassDefaultObject) )
 	{
 		// Create a new texture resource.
-		FTextureResource* NewResource = CreateResource();
-		SetResource(NewResource);
+		Resource = CreateResource();
 
-		if (NewResource)
+		if (Resource)
 		{
 			LLM_SCOPE(ELLMTag::Textures);
 
-			if (FStreamableTextureResource* StreamableResource = NewResource->GetStreamableTextureResource())
+			if (FStreamableTextureResource* StreamableResource = Resource->GetStreamableTextureResource())
 			{
 				// State the gamethread coherent resource state.
 				CachedSRRState = StreamableResource->GetPostInitState();
@@ -205,11 +157,12 @@ void UTexture::UpdateResource()
 			}
 
 			// Init the texture reference, which needs to be set from a render command, since TextureReference.TextureReferenceRHI is gamethread coherent.
-			ENQUEUE_RENDER_COMMAND(SetTextureReference)([this, NewResource](FRHICommandListImmediate& RHICmdList)
+			FTextureResource* ResourceToInit = Resource;
+			ENQUEUE_RENDER_COMMAND(SetTextureReference)([this, ResourceToInit](FRHICommandListImmediate& RHICmdList)
 			{
-				NewResource->SetTextureReference(TextureReference.TextureReferenceRHI);
+				ResourceToInit->SetTextureReference(TextureReference.TextureReferenceRHI);
 			});
-			BeginInitResource(NewResource);
+			BeginInitResource(Resource);
 			// Now that the resource is ready for streaming, bind it to the streamer.
 			LinkStreaming();
 		}
@@ -531,11 +484,11 @@ void UTexture::FinishDestroy()
 	check(!bAsyncResourceReleaseHasBeenStarted || ReleaseFence.IsFenceComplete());
 	check(TextureReference.IsInitialized_GameThread() == false);
 
-	if(PrivateResource)
+	if(Resource)
 	{
 		// Free the resource.
-		delete PrivateResource;
-		PrivateResource = NULL;
+		delete Resource;
+		Resource = NULL;
 	}
 
 	CleanupCachedRunningPlatformData();
@@ -854,7 +807,7 @@ FStreamableRenderResourceState UTexture::GetResourcePostInitState(FTexturePlatfo
 		// Ensure NumMipsInTail is within valid range to safeguard on the above expressions. 
 		const int32 NumMipsInTail = FMath::Clamp<int32>(PlatformData->GetNumMipsInTail(), 1, NumMips);
 
-		// Bias is not allowed to shrink the mip count below NumMipsInTail.
+		// Bias is not allowed to shrink the mip count bellow NumMipsInTail.
 		NumRequestedMips = FMath::Max<int32>(NumMips - ResourceLODBias, NumMipsInTail);
 
 		// If trying to load optional mips, check if the first resource mip is available.
@@ -1577,7 +1530,7 @@ FName GetDefaultTextureFormatName( const ITargetPlatform* TargetPlatform, const 
 		|| (Texture->LODGroup == TEXTUREGROUP_Bokeh)
 		|| (Texture->LODGroup == TEXTUREGROUP_IESLightProfile)
 		|| (Texture->GetMaterialType() == MCT_VolumeTexture && !bSupportCompressedVolumeTexture)
-		|| FormatSettings.CompressionSettings == TC_EncodedReflectionCapture;
+		|| FormatSettings.CompressionSettings == TC_ReflectionCapture;
 
 	if (!bNoCompression && Texture->PowerOfTwoMode == ETexturePowerOfTwoSetting::None)
 	{
@@ -1638,14 +1591,7 @@ FName GetDefaultTextureFormatName( const ITargetPlatform* TargetPlatform, const 
 	}
 	else if (FormatSettings.CompressionSettings == TC_Displacementmap)
 	{
-		if (SourceFormat == TSF_G16)
-		{
-			TextureFormatName = NameG16;
-		}
-		else
-		{
-			TextureFormatName = NameG8;
-		}
+		TextureFormatName = NameG8;
 	}
 	else if (FormatSettings.CompressionSettings == TC_VectorDisplacementmap)
 	{
@@ -1653,14 +1599,7 @@ FName GetDefaultTextureFormatName( const ITargetPlatform* TargetPlatform, const 
 	}
 	else if (FormatSettings.CompressionSettings == TC_Grayscale)
 	{
-		if (SourceFormat == TSF_G16)
-		{
-			TextureFormatName = NameG16;
-		}
-		else
-		{
-			TextureFormatName = NameG8;
-		}
+		TextureFormatName = NameG8;
 	}
 	else if ( FormatSettings.CompressionSettings == TC_Alpha)
 	{
@@ -1712,51 +1651,6 @@ FName GetDefaultTextureFormatName( const ITargetPlatform* TargetPlatform, const 
 		else if (TextureFormatName == NameBC7)
 		{
 			TextureFormatName = NameBGRA8;
-		}
-	}
-
-	// Prepend a texture format to allow a module to override the compression (Ex: this allows you to replace TextureFormatDXT with a different compressor)
-	FString FormatPrefix;
-	bool bHasPrefix = EngineSettings.GetString(TEXT("AlternateTextureCompression"), TEXT("TextureFormatPrefix"), FormatPrefix);
-	bHasPrefix = bHasPrefix && ! FormatPrefix.IsEmpty();
-	
-	if ( bHasPrefix )
-	{
-		FString TextureCompressionFormat;
-		bool bHasFormat = EngineSettings.GetString(TEXT("AlternateTextureCompression"), TEXT("TextureCompressionFormat"), TextureCompressionFormat);
-		bHasFormat = bHasFormat && ! TextureCompressionFormat.IsEmpty();
-
-		if ( bHasFormat )
-		{
-			// Disable in the Editor by default ?
-			// I guess this is done for speed but it's not a great idea because it means people aren't seeing the real content
-			//	would be preferrable to properly make a "fast preview" vs "cook encode" mode
-			//bool bEnableInEditor = false;
-			bool bEnableInEditor = true;
-			EngineSettings.GetBool(TEXT("AlternateTextureCompression"), TEXT("bEnableInEditor"), bEnableInEditor);
-
-			// do prefixing if bEnableInEditor or if making cooked content
-			bool bEnablePrefix = !TargetPlatform->HasEditorOnlyData() || bEnableInEditor;
-
-			if ( bEnablePrefix )
-			{
-				ITextureFormatModule * TextureFormatModule = FModuleManager::LoadModulePtr<ITextureFormatModule>(*TextureCompressionFormat);
-
-				if ( TextureFormatModule )
-				{
-					ITextureFormat* TextureFormat = TextureFormatModule->GetTextureFormat();
-
-					TArray<FName> SupportedFormats;
-					TextureFormat->GetSupportedFormats(SupportedFormats);
-
-					FName NewFormatName(FormatPrefix + TextureFormatName.ToString());
-
-					if (SupportedFormats.Contains(NewFormatName))
-					{
-						TextureFormatName = NewFormatName;
-					}
-				}
-			}
 		}
 	}
 

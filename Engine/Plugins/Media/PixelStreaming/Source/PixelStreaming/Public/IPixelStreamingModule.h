@@ -7,13 +7,10 @@
 #include "Modules/ModuleManager.h"
 #include "IInputDeviceModule.h"
 #include "Templates/SharedPointer.h"
-#include "PlayerId.h"
 
 class UTexture2D;
 class IMediaPlayer;
 class IMediaEventSink;
-class FPixelStreamingAudioSink;
-class UPixelStreamerInputComponent;
 
 /**
 * The public interface to this module
@@ -30,7 +27,7 @@ public:
 	*/
 	static inline IPixelStreamingModule& Get()
 	{
-		return FModuleManager::LoadModuleChecked<IPixelStreamingModule>("PixelStreaming");
+		return FModuleManager::LoadModuleChecked<IPixelStreamingModule>("PixelStreamer");
 	}
 
 	/**
@@ -40,7 +37,7 @@ public:
 	*/
 	static inline bool IsAvailable()
 	{
-		return FModuleManager::Get().IsModuleLoaded("PixelStreaming");
+		return FModuleManager::Get().IsModuleLoaded("PixelStreamer");
 	}
 
 	/**
@@ -82,34 +79,11 @@ public:
 	 * Unfreeze Pixel Streaming.
 	 */
 	virtual void UnfreezeFrame() = 0;
-	
-	/**
-	 * Get the audio sink associated with a specific peer/player.
-	 */
-	virtual FPixelStreamingAudioSink* GetPeerAudioSink(FPlayerId PlayerId) = 0;
 
-	/**
-	 * Get an audio sink that has no peers/players listening to it.
-	 */
-	virtual FPixelStreamingAudioSink* GetUnlistenedAudioSink() = 0;
+	// Player
 
-	/**
-	 * Tell the input device about a new pixel streaming input component.
-	 * @param InInputComponent - The new pixel streaming input component.
-	 */
-	virtual void AddInputComponent(UPixelStreamerInputComponent* InInputComponent) = 0;
+	virtual bool IsPlayerInitialized() const = 0;
 
-	/*
-	 * Tell the input device that a pixel streaming input component is no longer
-	 * relevant.
-	 * @param InInputComponent - The pixel streaming input component which is no longer relevant.
-	 */
-	virtual void RemoveInputComponent(UPixelStreamerInputComponent* InInputComponent) = 0;
-
-	/*
-	 * Get the input components currently attached to Pixel Streaming.
-	 */
-	virtual const TArray<UPixelStreamerInputComponent*> GetInputComponents() = 0;
-
+	virtual TSharedPtr<IMediaPlayer, ESPMode::ThreadSafe> CreatePlayer(IMediaEventSink& EventSink) = 0;
 };
 

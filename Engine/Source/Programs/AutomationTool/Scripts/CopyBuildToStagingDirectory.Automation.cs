@@ -8,13 +8,11 @@ using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Linq;
 using UnrealBuildTool;
 using System.Text;
 using Tools.DotNETCommon;
 using System.Diagnostics;
-using System.Collections.Concurrent;
 
 /// <summary>
 /// Helper command used for cooking.
@@ -27,67 +25,6 @@ public partial class Project : CommandUtils
 {
 
 	private static readonly object SyncLock = new object();
-
-	public struct OrderFile : IComparable<OrderFile>
-	{
-		public enum OrderFileType
-		{
-			Custom,
-			Game,
-			Cooker,
-			Editor
-		}
-
-		public OrderFile(FileReference FileRef, OrderFileType InType, int SpecIndex)
-		{
-			File = FileRef;
-			OrderSpecIndex = SpecIndex;
-
-			string FileName = FileRef.GetFileNameWithoutExtension();
-			OrderType = InType;
-
-			//Check if we have an order number
-			AppendOrder = -1;
-			int index = FileName.LastIndexOf("_");
-			if (index != -1)
-			{
-				index++;
-				string Number = FileName.Substring(index, FileName.Length - index);
-				AppendOrder = Convert.ToInt32(Number);
-			}
-
-			if(OrderType == OrderFileType.Cooker && AppendOrder == -1)
-            {
-				// make sure to sort CookerOpenOrder.log at the end since its produce by the cooking stage
-				AppendOrder = Int32.MaxValue;
-			}
-		}
-
-		public int CompareTo(OrderFile Other)
-		{
-			int compare = (OrderSpecIndex.CompareTo(Other.OrderSpecIndex));
-			if (compare == 0)
-			{
-				return (AppendOrder.CompareTo(Other.AppendOrder));
-			}
-			return compare;
-		}
-
-		// Order files should be sorted by OrderSpecIndex and then by AppendOrder
-		// OrderType can be used for filtering
-		public int AppendOrder;
-		public int OrderSpecIndex;
-
-		public OrderFileType OrderType;
-
-		public FileReference File;
-	};
-
-	struct OrderFileSpec
-	{
-		public string FileNamePattern;
-		public OrderFile.OrderFileType OrderType;
-	};
 
 	/// <returns>The path for the BuildPatchTool executable depending on host platform.</returns>
 	private static string GetBuildPatchToolExecutable()
@@ -142,8 +79,6 @@ public partial class Project : CommandUtils
 			foreach (var Entry in ResponseFile)
 			{
 				string Line = String.Format("\"{0}\" \"{1}\"", Entry.Key, Entry.Value);
-
-				// explicitly exclude some file types from compression
 				if (Compressed && !Path.GetExtension(Entry.Key).Contains(".mp4") && !Path.GetExtension(Entry.Key).Contains("ushaderbytecode") && !Path.GetExtension(Entry.Key).Contains("upipelinecache"))
 				{
 					Line += " -compress";
@@ -178,7 +113,7 @@ public partial class Project : CommandUtils
 		return Result;
 	}
 
-	static public string GetUnrealPakArguments(FileReference ProjectPath, Dictionary<string, string> UnrealPakResponseFile, FileReference OutputLocation, List<OrderFile> PakOrderFileLocations, string PlatformOptions, bool Compressed, EncryptionAndSigning.CryptoSettings CryptoSettings, FileReference CryptoKeysCacheFilename, String PatchSourceContentPath, string EncryptionKeyGuid, List<OrderFile> SecondaryPakOrderFileLocations)
+	static public string GetUnrealPakArguments(FileReference ProjectPath, Dictionary<string, string> UnrealPakResponseFile, FileReference OutputLocation, FileReference PakOrderFileLocation, string PlatformOptions, bool Compressed, EncryptionAndSigning.CryptoSettings CryptoSettings, FileReference CryptoKeysCacheFilename, String PatchSourceContentPath, string EncryptionKeyGuid, FileReference SecondaryPakOrderFileLocation=null)
 	{
 		StringBuilder CmdLine = new StringBuilder(MakePathSafeToUseWithCommandLine(ProjectPath.FullName));
 		CmdLine.AppendFormat(" {0}", MakePathSafeToUseWithCommandLine(OutputLocation.FullName));
@@ -195,13 +130,13 @@ public partial class Project : CommandUtils
 		{
 			CmdLine.AppendFormat(" -cryptokeys={0}", CommandUtils.MakePathSafeToUseWithCommandLine(CryptoKeysCacheFilename.FullName));
 		}
-		if (PakOrderFileLocations != null && PakOrderFileLocations.Count() > 0)
+		if (PakOrderFileLocation != null)
 		{
-			CmdLine.AppendFormat(" -order={0}", CommandUtils.MakePathSafeToUseWithCommandLine(string.Join(",", PakOrderFileLocations.Select(u => u.File.FullName).ToArray())));
+			CmdLine.AppendFormat(" -order={0}", CommandUtils.MakePathSafeToUseWithCommandLine(PakOrderFileLocation.FullName));
 		}
-		if (SecondaryPakOrderFileLocations != null && SecondaryPakOrderFileLocations.Count() > 0)
+		if (SecondaryPakOrderFileLocation != null)
 		{
-			CmdLine.AppendFormat(" -secondaryOrder={0}", CommandUtils.MakePathSafeToUseWithCommandLine(string.Join(",", SecondaryPakOrderFileLocations.Select(u => u.File.FullName).ToArray())));
+			CmdLine.AppendFormat(" -secondaryOrder={0}", CommandUtils.MakePathSafeToUseWithCommandLine(SecondaryPakOrderFileLocation.FullName));
 		}
 		if (!String.IsNullOrEmpty(PatchSourceContentPath)) 
 		{
@@ -289,14 +224,14 @@ public partial class Project : CommandUtils
 		}
 	}
 
-	static public void RunUnrealPak(ProjectParams Params, Dictionary<string, string> UnrealPakResponseFile, FileReference OutputLocation, List<OrderFile> PakOrderFileLocations, string PlatformOptions, bool Compressed, EncryptionAndSigning.CryptoSettings CryptoSettings, FileReference CryptoKeysCacheFilename, String PatchSourceContentPath, string EncryptionKeyGuid, List<OrderFile> SecondaryPakOrderFileLocations = null)
+	static public void RunUnrealPak(ProjectParams Params, Dictionary<string, string> UnrealPakResponseFile, FileReference OutputLocation, FileReference PakOrderFileLocation, string PlatformOptions, bool Compressed, EncryptionAndSigning.CryptoSettings CryptoSettings, FileReference CryptoKeysCacheFilename, String PatchSourceContentPath, string EncryptionKeyGuid, FileReference SecondaryPakOrderFileLocation = null)
 	{
 		if (UnrealPakResponseFile.Count < 1)
 		{
 			return;
 		}
 
-		string Arguments = GetUnrealPakArguments(Params.RawProjectPath, UnrealPakResponseFile, OutputLocation, PakOrderFileLocations, PlatformOptions, Compressed, CryptoSettings, CryptoKeysCacheFilename, PatchSourceContentPath, EncryptionKeyGuid, SecondaryPakOrderFileLocations);
+		string Arguments = GetUnrealPakArguments(Params.RawProjectPath, UnrealPakResponseFile, OutputLocation, PakOrderFileLocation, PlatformOptions, Compressed, CryptoSettings, CryptoKeysCacheFilename, PatchSourceContentPath, EncryptionKeyGuid, SecondaryPakOrderFileLocation);
 		RunAndLog(CmdEnv, GetUnrealPakLocation().FullName, Arguments, Options: ERunOptions.Default | ERunOptions.UTF8Output);
 	}
 
@@ -515,11 +450,6 @@ public partial class Project : CommandUtils
 				if (RelativePath != null)
 				{
 					DirectoryReference InputDir = DirectoryReference.Combine(ProjectContentRoot, RelativePath);
-					if (Directory.Exists(InputDir.FullName)==false)
-					{
-						CommandUtils.LogWarning("Unable to find directory \"{0}\" for staging, retrieved from \"/Script/UnrealEd.ProjectPackagingSettings\" \"{1}\"", InputDir.FullName, ConfigKeyName);
-						continue;
-					}
 					StagedDirectoryReference OutputDir = StagedDirectoryReference.Combine(StageContentRoot, RelativePath);
 					if (bUFS)
 					{
@@ -814,19 +744,6 @@ public partial class Project : CommandUtils
 				// Initialize cultures to stage.
 				List<string> CulturesToStage = GetCulturesToStage(Params, PlatformGameConfig);
 
-				// Initialize platform extensions to stage.
-				var PlatformExtensionsToStage = new List<string>();
-				{
-					string PlatformExtensionName = SC.StageTargetPlatform.PlatformType.ToString();
-					PlatformExtensionsToStage.Add(PlatformExtensionName);
-
-					DataDrivenPlatformInfo.ConfigDataDrivenPlatformInfo Info = DataDrivenPlatformInfo.GetDataDrivenInfoForPlatform(SC.StageTargetPlatform.PlatformType);
-					if (Info != null && Info.IniParentChain != null)
-					{
-						PlatformExtensionsToStage.AddRange(Info.IniParentChain);
-					}
-				}
-
 				// Stage ICU internationalization data from Engine.
 				SC.StageFiles(StagedFileType.UFS, DirectoryReference.Combine(SC.LocalRoot, "Engine", "Content", "Internationalization", InternationalizationPreset, ICUDataVersion), StageFilesSearch.AllDirectories, new StagedDirectoryReference(String.Format("Engine/Content/Internationalization/{0}", ICUDataVersion)));
 
@@ -843,31 +760,22 @@ public partial class Project : CommandUtils
 				SC.StageFile(StagedFileType.UFS, SC.RawProjectPath);
 
 				StageConfigFiles(SC, DirectoryReference.Combine(SC.ProjectRoot, "Config"), null);
-
-				if (SC.DedicatedServer)
-				{
-					var ToRestoreRestrictedFolder = SC.RestrictedFolderNames;
-
-					// For every platform we depend on also stage their platform config files
-					foreach (var PlatformDepends in Params.ServerDependentPlatformMap)
-					{
-						// StageConfigFiles will fail to find these config files due to filtering out restricted folder names
-						// Just for this loop we remove the filter for these platorms and stage the config files
-						// After the loop we restore the restricted folder to prevent staging anything unwanted
-						SC.RestrictedFolderNames.ExceptWith(PlatformExports.GetIncludedFolderNames(PlatformDepends.Key.Type));
-
-						StageConfigFiles(SC, DirectoryReference.Combine(SC.EngineRoot, "Config"), PlatformDepends.Key.ToString());
-						StageConfigFiles(SC, DirectoryReference.Combine(SC.ProjectRoot, "Config"), PlatformDepends.Key.ToString());
-						StagePlatformExtensionConfigFiles(SC, PlatformDepends.Key.ToString());
-					}
-
-					SC.RestrictedFolderNames = ToRestoreRestrictedFolder;
-				}
 				
 				// Stage platform extension config files
-				foreach (string PlatformExtensionToStage in PlatformExtensionsToStage)
 				{
-					StagePlatformExtensionConfigFiles(SC, PlatformExtensionToStage);
+					string PlatformExtensionName = SC.StageTargetPlatform.PlatformType.ToString();
+					StagePlatformExtensionConfigFiles(SC, PlatformExtensionName);
+
+					// and any ini parents it has
+					DataDrivenPlatformInfo.ConfigDataDrivenPlatformInfo Info = DataDrivenPlatformInfo.GetDataDrivenInfoForPlatform(PlatformExtensionName);
+					if (Info != null && Info.IniParentChain != null)
+					{
+						// the IniParentChain
+						foreach (string ParentPlatform in Info.IniParentChain)
+						{
+							StagePlatformExtensionConfigFiles(SC, ParentPlatform);
+						}
+					}
 				}
 
 				// Stage plugin config files
@@ -892,10 +800,10 @@ public partial class Project : CommandUtils
 				}
 
 				// Stage any platform extension localization targets
-				foreach (string PlatformExtensionToStage in PlatformExtensionsToStage)
 				{
-					StageLocalizationDataForTargetsInDirectory(SC, null, CulturesToStage, DirectoryReference.Combine(SC.LocalRoot, "Engine", "Platforms", PlatformExtensionToStage, "Content", "Localization"));
-					StageLocalizationDataForTargetsInDirectory(SC, PlatformGameConfig, CulturesToStage, DirectoryReference.Combine(SC.ProjectRoot, "Platforms", PlatformExtensionToStage, "Content", "Localization"));
+					string PlatformExtensionName = SC.StageTargetPlatform.PlatformType.ToString();
+					StageLocalizationDataForTargetsInDirectory(SC, null, CulturesToStage, DirectoryReference.Combine(SC.LocalRoot, "Engine", "Platforms", PlatformExtensionName, "Content", "Localization"));
+					StageLocalizationDataForTargetsInDirectory(SC, PlatformGameConfig, CulturesToStage, DirectoryReference.Combine(SC.ProjectRoot, "Platforms", PlatformExtensionName, "Content", "Localization"));
 				}
 
 				// Stage any additional UFS and NonUFS paths specified in the project ini files; these dirs are relative to the game content directory
@@ -1100,31 +1008,6 @@ public partial class Project : CommandUtils
 					}
 				}
 
-				// now make the fast-load ini/plugin file if requested
-				// if -skippak is on, this indicates that the data is already ready to go, we are staging non-data files to re-use
-				// data from a previous run, but still want to stage executables, etc. SkipPak indicates we _would_ have made a 
-				// pak file, but we aren't this time, so we can assume the binary config is already inside the .pak file (and
-				// the UE4Editor.exe may not even exist if we are making a target-code-only build on top of existing build)
-				if (Params.GenerateOptimizationData && !Params.SkipPak)
-				{
-					// get the list of plugins that need to be processed
-					List<string> PluginFilesForTarget = new List<string>();
-					foreach (KeyValuePair<StagedFileReference, FileReference> StagedPlugin in StagedPlugins)
-					{
-						PluginFilesForTarget.Add(StagedPlugin.Value.FullName);
-					}
-					FileReference PluginListFile = FileReference.Combine(SC.ProjectRoot, "Intermediate", "Config", "PluginList.txt");
-					DirectoryReference.CreateDirectory(PluginListFile.Directory);
-					File.WriteAllLines(PluginListFile.FullName, PluginFilesForTarget.ToArray());
-
-					// run the commandlet to generate a binary file
-					String TargetPlatformName = ThisPlatform.GetCookPlatform(Params.DedicatedServer, Params.Client);
-					FileReference OutputFile = FileReference.Combine(SC.ProjectRoot, "Intermediate", "Config", TargetPlatformName, "BinaryConfig.ini");
-					String CommandletParams = String.Format("-TargetPlatform={0} -OutputFile={1} -StagedPluginsFile={2}", TargetPlatformName, OutputFile.FullName, PluginListFile.FullName);
-					RunCommandlet(SC.RawProjectPath, Params.UE4Exe, "MakeBinaryConfig", CommandletParams);
-					SC.StageFile(StagedFileType.UFS, OutputFile, StagedFileReference.Combine(SC.RelativeProjectRootForStage, "Config", OutputFile.GetFileName()));
-				}
-
 				bCreatePluginManifest = true;
 			}
 			else
@@ -1306,6 +1189,14 @@ public partial class Project : CommandUtils
 				CommandUtils.LogInformation("Excluding config file {0}", ConfigFile);
 			}
 		}
+
+		// Stage JSON manifests that were generated by the SteamVR Input action system
+		List<FileReference> ManifestFiles = SC.FindFilesToStage(ConfigDir, "*.json", StageFilesSearch.AllDirectories);
+		foreach (FileReference ManifestFile in ManifestFiles)
+		{
+			CommandUtils.LogInformation("Adding manifest file {0}", ManifestFile);
+			SC.StageFile(StagedFileType.NonUFS, ManifestFile);
+		}
 	}
 
 	/// <summary>
@@ -1466,17 +1357,36 @@ public partial class Project : CommandUtils
 	/// <returns>True if the suffix should be staged, false if not, null if unknown</returns>
 	static Nullable<bool> ShouldStageConfigSuffix(DeploymentContext SC, FileReference ConfigFile, string InvariantSuffix)
 	{
-		if (SC.IniSuffixWhitelist != null && SC.IniSuffixWhitelist.Contains(InvariantSuffix))
+		switch (InvariantSuffix)
 		{
-			return true;
+			case ".ini":
+			case "compat.ini":
+			case "deviceprofiles.ini":
+			case "engine.ini":
+			case "enginechunkoverrides.ini":
+			case "game.ini":
+			case "gameplaytags.ini":
+			case "gameusersettings.ini":
+			case "hardware.ini":
+			case "input.ini":
+			case "scalability.ini":
+			case "runtimeoptions.ini":
+			case "installbundle.ini":
+				return true;
+			case "crypto.ini":
+			case "editor.ini":
+			case "editorgameagnostic.ini":
+			case "editorkeybindings.ini":
+			case "editorlayout.ini":
+			case "editorperprojectusersettings.ini":
+			case "editorsettings.ini":
+			case "editorusersettings.ini":
+			case "lightmass.ini":
+			case "pakfilerules.ini":
+				return false;
+			default:
+				return null;
 		}
-
-		if (SC.IniSuffixBlacklist != null && SC.IniSuffixBlacklist.Contains(InvariantSuffix))
-		{
-			return false;
-		}
-
-		return null;
 	}
 
 	public static StagedFileReference ApplyDirectoryRemap(DeploymentContext SC, StagedFileReference InputFile)
@@ -1585,39 +1495,34 @@ public partial class Project : CommandUtils
 		}
 	}
 
-	private static void CopyManifestFilesToStageDir(DeploymentContext SC, Dictionary<StagedFileReference, FileReference> Mapping, string ManifestName)
+	public static void CopyManifestFilesToStageDir(Dictionary<StagedFileReference, FileReference> Mapping, DirectoryReference StageDir, DirectoryReference ManifestDir, string ManifestName, HashSet<StagedFileReference> CRCFiles, string PlatformName, List<string> IniKeyBlacklist, List<string> IniSectionBlacklist)
 	{
-		LogInformation("Copying {0} to staging directory: {1}", ManifestName, SC.StageDirectory);
+		LogInformation("Copying {0} to staging directory: {1}", ManifestName, StageDir);
+		FileReference ManifestPath = null;
+		string ManifestFile = "";
+		if (!String.IsNullOrEmpty(ManifestName))
+		{
+			ManifestFile = "Manifest_" + ManifestName + "_" + PlatformName + ".txt";
+			ManifestPath = FileReference.Combine(ManifestDir, ManifestFile);
+			DeleteFile(ManifestPath.FullName);
+		}
 		foreach (KeyValuePair<StagedFileReference, FileReference> Pair in Mapping)
 		{
 			FileReference Src = Pair.Value;
-			FileReference Dest = FileReference.Combine(SC.StageDirectory, Pair.Key.Name);
+			FileReference Dest = FileReference.Combine(StageDir, Pair.Key.Name);
 			if (Src != Dest)  // special case for things created in the staging directory, like the pak file
 			{
-				CopyFileIncremental(Src, Dest, IniKeyBlacklist: SC.IniKeyBlacklist, IniSectionBlacklist: SC.IniSectionBlacklist);
+				CopyFileIncremental(Src, Dest, IniKeyBlacklist:IniKeyBlacklist, IniSectionBlacklist:IniSectionBlacklist);
 			}
 		}
-
-		if (Mapping.Count > 0)
+		if (ManifestPath != null && Mapping.Count > 0)
 		{
-			var ManifestPathStaged = FileReference.Combine(SC.DebugStageDirectory, $"Manifest_{ManifestName}_{SC.StageTargetPlatform.PlatformType}.txt");
-			var ManifestPathLog = FileReference.Combine(new DirectoryReference(CmdEnv.LogFolder), ManifestPathStaged.GetFileName());
-
-			DeleteFile(ManifestPathStaged.FullName);
-			DeleteFile(ManifestPathLog.FullName);
-
-			DumpTargetManifest(Mapping, ManifestPathLog, SC.StageDirectory, SC.StageTargetPlatform.GetFilesForCRCCheck());
-
-			if (!FileReference.Exists(ManifestPathLog))
+			DumpTargetManifest(Mapping, ManifestPath, StageDir, CRCFiles);
+			if (!FileReference.Exists(ManifestPath))
 			{
-				throw new AutomationException("Failed to write manifest {0}", ManifestPathLog);
+				throw new AutomationException("Failed to write manifest {0}", ManifestPath);
 			}
-
-			if (SC.StageTargetPlatform.RequiresManifestFiles)
-			{
-				// Also copy the manifest file to the staged directory
-				CopyFile(ManifestPathLog.FullName, ManifestPathStaged.FullName);
-			}
+			CopyFile(ManifestPath.FullName, CombinePaths(CmdEnv.LogFolder, ManifestFile));
 		}
 	}
 
@@ -1646,7 +1551,7 @@ public partial class Project : CommandUtils
 
 	public static void CopyUsingStagingManifest(ProjectParams Params, DeploymentContext SC)
 	{
-		CopyManifestFilesToStageDir(SC, SC.FilesToStage.NonUFSFiles, "NonUFSFiles");
+		CopyManifestFilesToStageDir(SC.FilesToStage.NonUFSFiles, SC.StageDirectory, SC.DebugStageDirectory, "NonUFSFiles", SC.StageTargetPlatform.GetFilesForCRCCheck(), SC.StageTargetPlatform.PlatformType.ToString(), SC.IniKeyBlacklist, SC.IniSectionBlacklist);
 
 		bool bStageUnrealFileSystemFiles = !Params.CookOnTheFly && !Params.UsePak(SC.StageTargetPlatform) && !Params.FileServer;
 		if (bStageUnrealFileSystemFiles)
@@ -1664,14 +1569,14 @@ public partial class Project : CommandUtils
 					throw new AutomationException("File '{0}' is set to be staged from '{1}' for project and '{2}' for crash reporter", Pair.Key, ExistingLocation, Pair.Value);
 				}
 			}
-			CopyManifestFilesToStageDir(SC, UFSFiles, "UFSFiles");
+			CopyManifestFilesToStageDir(UFSFiles, SC.StageDirectory, SC.DebugStageDirectory, "UFSFiles", SC.StageTargetPlatform.GetFilesForCRCCheck(), SC.StageTargetPlatform.PlatformType.ToString(), SC.IniKeyBlacklist, SC.IniSectionBlacklist);
 		}
 
 		// Copy debug files last
 		// they do not respect the DeployLowerCaseFilenames() setting, but if copied to a case-insensitive staging directory first they determine the casing for outer directories (like Engine/Content) 
 		if (!Params.NoDebugInfo)
 		{
-			CopyManifestFilesToStageDir(SC, SC.FilesToStage.NonUFSDebugFiles, "DebugFiles");
+			CopyManifestFilesToStageDir(SC.FilesToStage.NonUFSDebugFiles, SC.DebugStageDirectory, SC.DebugStageDirectory, "DebugFiles", SC.StageTargetPlatform.GetFilesForCRCCheck(), SC.StageTargetPlatform.PlatformType.ToString(), SC.IniKeyBlacklist, SC.IniSectionBlacklist);
 		}
 	}
 
@@ -1683,12 +1588,6 @@ public partial class Project : CommandUtils
 
 		// Combined filter from all +Files= entries
 		public FileFilter Filter;
-
-		// An alternative and efficient way to match files
-		public HashSet<string> ExactFileMatches;
-
-		// To use exact file match or file filter
-		public bool bUseExactFilePathMatch;
 
 		// Rather to exclude entirely from paks
 		public bool bExcludeFromPaks;
@@ -1711,11 +1610,9 @@ public partial class Project : CommandUtils
 	private static List<PakFileRules> GetPakFileRules(ProjectParams Params, DeploymentContext SC)
 	{
 		bool bWarnedAboutMultipleTargets = false;
+		bool bFoundConfig = false;
 
-
-
-
-		/*List<ConfigFile> ConfigFiles = new List<ConfigFile>();
+		List<ConfigFile> ConfigFiles = new List<ConfigFile>();
 		FileReference BaseConfigFileReference = FileReference.Combine(SC.EngineRoot, "Config", "BasePakFileRules.ini");
 		if (FileReference.Exists(BaseConfigFileReference))
 		{
@@ -1729,18 +1626,15 @@ public partial class Project : CommandUtils
 			ConfigFiles.Add(new ConfigFile(ProjectConfigFileReference));
 			bFoundConfig = true;
 		}
-	
+
 		if (!bFoundConfig)
 		{
 			return null;
 		}
-		ConfigHierarchy PakRulesConfig = new ConfigHierarchy(ConfigFiles);*/
-
-
-		
-		ConfigHierarchy PakRulesConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.PakFileRules, DirectoryReference.FromFile(Params.RawProjectPath), SC.StageTargetPlatform.IniPlatformType);
 
 		bool bChunkedBuild = SC.PlatformUsesChunkManifests && DoesChunkPakManifestExist(Params, SC);
+
+		ConfigHierarchy PakRulesConfig = new ConfigHierarchy(ConfigFiles);
 
 		List<PakFileRules> RulesList = new List<PakFileRules>();
 		foreach (string SectionName in PakRulesConfig.SectionNames)
@@ -1829,7 +1723,6 @@ public partial class Project : CommandUtils
 
 			PakFileRules PakRules = new PakFileRules();
 			PakRules.Name = SectionName;
-			PakRulesConfig.TryGetValue(SectionName, "bUseExactFilePathMatch", out PakRules.bUseExactFilePathMatch);
 			PakRulesConfig.TryGetValue(SectionName, "bExcludeFromPaks", out PakRules.bExcludeFromPaks);
 			PakRulesConfig.TryGetValue(SectionName, "bOverrideChunkManifest", out PakRules.bOverrideChunkManifest);
 			PakRulesConfig.TryGetValue(SectionName, "bDisabled", out PakRules.bDisabled);
@@ -1861,24 +1754,16 @@ public partial class Project : CommandUtils
 			{
 				// Only add if we have actual files, we can end up with none due to config overriding
 				PakRules.Filter = new FileFilter();
-				PakRules.ExactFileMatches = new HashSet<string>();
-
-				if (PakRules.bUseExactFilePathMatch)
+				foreach (string FileFilter in FilesEnumberable)
 				{
-					PakRules.ExactFileMatches.UnionWith(FilesEnumberable);
-				}
-				else
-				{
-					PakRules.Filter.AddRules(FilesEnumberable);
+					//LogInformation("Adding to PakFileRules for Section {0} : {1}", SectionName, FileFilter);
+					PakRules.Filter.AddRule(FileFilter);
 				}
 
 				RulesList.Add(PakRules);
 			}
 		}
-		if (RulesList.Count == 0)
-		{
-			return null;
-		}
+
 		return RulesList;
 	}
 
@@ -1887,7 +1772,7 @@ public partial class Project : CommandUtils
 	/// </summary>
 	/// <param name="Params"></param>
 	/// <param name="SC"></param>
-	private static void ApplyPakFileRules(List<PakFileRules> RulesList, KeyValuePair<string, string> StagingFile, HashSet<ChunkDefinition> ModifyPakList, ConcurrentDictionary<string, ChunkDefinition> ChunkNameToDefinition, out bool bExcludeFromPaks)
+	private static void ApplyPakFileRules(List<PakFileRules> RulesList, KeyValuePair<string, string> StagingFile, HashSet<ChunkDefinition> ModifyPakList, Dictionary<string, ChunkDefinition> ChunkNameToDefinition, out bool bExcludeFromPaks)
 	{
 		bExcludeFromPaks = false;
 
@@ -1899,13 +1784,8 @@ public partial class Project : CommandUtils
 		// Search in order, return on first match
 		foreach (var PakRules in RulesList)
 		{
-			bool bMatched = !PakRules.bDisabled && 
-				((!PakRules.bUseExactFilePathMatch && PakRules.Filter != null && PakRules.Filter.Matches(StagingFile.Key)) ||
-				(PakRules.bUseExactFilePathMatch && PakRules.ExactFileMatches != null && PakRules.ExactFileMatches.Contains(StagingFile.Value)));
-
-			if (bMatched)
+			if (!PakRules.bDisabled && PakRules.Filter.Matches(StagingFile.Key))
 			{
-				bool bOverrideChunkAssignment = false;
 				if (ModifyPakList != null && ModifyPakList.Count > 0)
 				{
 					// Only override the existing list if bOverrideChunkManifest is set
@@ -1914,7 +1794,6 @@ public partial class Project : CommandUtils
 						return;
 					}
 
-					bOverrideChunkAssignment = true;
 					if (PakRules.OverridePaks != null)
 					{
 						LogInformation("Overridding chunk assignment {0} to {1}, this can cause broken references", StagingFile.Key, string.Join(", ", PakRules.OverridePaks));
@@ -1928,28 +1807,28 @@ public partial class Project : CommandUtils
 				bExcludeFromPaks = PakRules.bExcludeFromPaks;
 				if (PakRules.OverridePaks != null && ModifyPakList != null && ChunkNameToDefinition != null)
 				{
-					if (!bOverrideChunkAssignment)
-					{
-						LogInformation("Setting pak assignment for file {0} to {1}", StagingFile.Key, string.Join(", ", PakRules.OverridePaks));
-					}
-
 					ModifyPakList.Clear();
-					ModifyPakList.UnionWith(PakRules.OverridePaks.Select(OverrideChunkName =>
+					ModifyPakList.UnionWith(PakRules.OverridePaks.Select(x =>
 					{
-						if (!ChunkNameToDefinition.ContainsKey(OverrideChunkName))
+						if (!ChunkNameToDefinition.ContainsKey(x))
 						{
-							ChunkNameToDefinition.TryAdd(OverrideChunkName, new ChunkDefinition(OverrideChunkName));
+							LogInformation("With pak rules, {0} is moved to {1}", StagingFile.Key, x);
+							ChunkDefinition TargetChunk = new ChunkDefinition(x);
+							// TODO: Need to set encryptionGuid?
+							//TargetChunk.RequestedEncryptionKeyGuid = Chunk.RequestedEncryptionKeyGuid;
+							//TargetChunk.EncryptionKeyGuid = Chunk.EncryptionKeyGuid;
+							ChunkNameToDefinition.Add(x, TargetChunk);
+
+							return TargetChunk;
 						}
 
-						return ChunkNameToDefinition[OverrideChunkName];
+						return ChunkNameToDefinition[x];
 					}));
+					//LogInformation("Setting pak assignment for file {0} to {1}", StagingFile.Key, string.Join(", ", PakRules.OverridePaks));
 				}
 				else if (bExcludeFromPaks)
 				{
-					if (!bOverrideChunkAssignment)
-					{
-						LogInformation("Excluding {0} from pak files", StagingFile.Key);
-					}
+					//LogInformation("Excluding {0} from pak file", StagingFile.Key);
 				}
 
 				return;
@@ -2013,7 +1892,7 @@ public partial class Project : CommandUtils
 		Dictionary<string, string> PakResponseFile = CreatePakResponseFileFromStagingManifest(SC, SC.CrashReporterUFSFiles);
 		FileReference OutputLocation = FileReference.Combine(SC.RuntimeRootDir, "Engine", "Programs", "CrashReportClient", "Content", "Paks", "CrashReportClient.pak");
 
-		RunUnrealPak(Params, PakResponseFile, OutputLocation, null, null, Params.Compressed, null, null, null, null, null);
+		RunUnrealPak(Params, PakResponseFile, OutputLocation, null, null, Params.Compressed, null, null, null, null);
 	}
 
 	/// <summary>
@@ -2203,127 +2082,23 @@ public partial class Project : CommandUtils
 		const string OutputFilenameExtension = ".pak";
 
 		// read some compression settings from the project (once, shared across all pak commands)
-
 		ConfigHierarchy PlatformGameConfig = ConfigCache.ReadHierarchy(ConfigHierarchyType.Game, DirectoryReference.FromFile(Params.RawProjectPath), SC.StageTargetPlatform.IniPlatformType);
-
-		// in standard runs, ProjectPackagingSettings/bCompressed is read by the program invoking this script
-		//	and used to pass "-compressed" on the command line
-		// so typically "-compressed" == ProjectPackagingSettings/bCompressed
-		// if ProjectPackagingSettings/bCompressed is true, but "-compressed" was not passed, we now turn it on
-		// if ProjectPackagingSettings/bCompressed is true but you really don't want compression, use "-forceuncompressed"
-		bool bCompressed_ProjectPackagingSettings = false;
-		PlatformGameConfig.GetBool("/Script/UnrealEd.ProjectPackagingSettings", "bCompressed", out bCompressed_ProjectPackagingSettings);
-
-		bool bForceUseProjectCompressionFormatIgnoreHardwareOverride = false;// do we want to override HW compression with project? if so, read it below
-		PlatformGameConfig.GetBool("/Script/UnrealEd.ProjectPackagingSettings", "bForceUseProjectCompressionFormatIgnoreHardwareOverride", out bForceUseProjectCompressionFormatIgnoreHardwareOverride);
-
-		string HardwareCompressionFormat = null;
-		if ( ! bForceUseProjectCompressionFormatIgnoreHardwareOverride )
+		string CompressionFormats = "";
+		if (PlatformGameConfig.GetString("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionFormats", out CompressionFormats))
 		{
-			DataDrivenPlatformInfo.ConfigDataDrivenPlatformInfo DDPI = DataDrivenPlatformInfo.GetDataDrivenInfoForPlatform(SC.StageTargetPlatform.IniPlatformType);
-			if (DDPI != null)
+			if (!string.IsNullOrWhiteSpace(CompressionFormats))
 			{
-				HardwareCompressionFormat = DDPI.HardwareCompressionFormat;
-			}
-		}
-
-		// get the compression format from platform or the project
-		string CompressionFormats;
-		if (!string.IsNullOrEmpty(HardwareCompressionFormat))
-		{
-			LogInformation("Overriding to HardwareCompressionFormat = {0}",HardwareCompressionFormat);
-			CompressionFormats = HardwareCompressionFormat;
-		}
-		else
-		{
-			PlatformGameConfig.GetString("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionFormats", out CompressionFormats);
-			// empty CompressionFormats string means "use default" eg. zlib
-		}
-
-		if (Params.ForceUncompressed)
-		{
-			//-ForceUncompressed on the command line means really don't do it even if the ini or DDPI say to do it
-			Params.Compressed = false;
-			bCompressed_ProjectPackagingSettings = false;
-		}
-
-		if (CompressionFormats == "None" || CompressionFormats == "none")
-		{
-			// rather than pass "-compressed" + format=None through to UnrealPak/iostore
-			//	just turn off compression
-			if (Params.Compressed)
-			{
-				//LogInformation(" -compressed was on command line but override to None, turning OFF!");
-				Params.Compressed = false;
-			}
-		}
-		else if (!Params.Compressed && bCompressed_ProjectPackagingSettings)
-		{
-			//LogInformation(" -compressed was not on command line but was in ini, turning on!");
-			Params.Compressed = true;
-		}
-
-		// Params.Compressed is done being changed; push it to the PakParams list :
-		// note this is a change of behavior; PakParams.bCompressed could have been true from a Chunk Manifest
-		//	even though compression was otherwise turned off
-		// we now overwrite that with the overall compression setting
-		//	this should always be an improvement in behavior
-		foreach (CreatePakParams PakParams in PakParamsList)
-		{
-			PakParams.bCompressed = Params.Compressed;
-		}
-
-		if (Params.Compressed && !string.IsNullOrWhiteSpace(CompressionFormats))
-		{
-			CompressionFormats = " -compressionformats=" + CompressionFormats;
-		}
-		else
-		{
-			CompressionFormats = "";
-		}
-
-		string AdditionalCompressionOptionsOnCommandLine = "";
-		if (Params.Compressed)
-		{
-			// the game may want to control compression settings, but since it may be in a plugin that checks the commandline for the settings, we need to pass
-			// the settings directly on the UnrealPak commandline, and not put it into the batch file lines (plugins can't get the unrealpak command list, and
-			// there's not a great way to communicate random strings down into the plugins during plugin init time)
-			PlatformGameConfig.GetString("/Script/UnrealEd.ProjectPackagingSettings", "PakFileAdditionalCompressionOptions", out AdditionalCompressionOptionsOnCommandLine);
-
-			//LogInformation("PakFileAdditionalCompressionOptions = {0}", AdditionalCompressionOptionsOnCommandLine);
-
-			string CompressionMethod;
-			PlatformGameConfig.GetString("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionMethod", out CompressionMethod);
-			if (!string.IsNullOrWhiteSpace(CompressionMethod))
-			{
-				//LogInformation("CompressionMethod = {0}", CompressionMethod);
-				CompressionFormats += " -compressmethod=" + CompressionMethod;
-			}
-
-			// get the encoder compression effort level based on the cook type
-			int CompressionLevel = 0;
-			// GetInt32 fills out with = 0 if not found
-			if (Params.Distribution)
-			{
-				PlatformGameConfig.GetInt32("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionLevel_Distribution", out CompressionLevel);
-			}
-			else if (SC.StageTargetConfigurations.Any(Config => Config == UnrealTargetConfiguration.Test || Config == UnrealTargetConfiguration.Shipping))
-			{
-				PlatformGameConfig.GetInt32("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionLevel_TestShipping", out CompressionLevel);
-			}
-			else
-			{
-				PlatformGameConfig.GetInt32("/Script/UnrealEd.ProjectPackagingSettings", "PakFileCompressionLevel_DebugDevelopment", out CompressionLevel);
-			}
-
-			if (CompressionLevel != 0)
-			{
-				//LogInformation(" CompressionLevel = {0}", CompressionLevel);
-				CompressionFormats += " -compresslevel=" + CompressionLevel;
+				CompressionFormats = " -compressionformats=" + CompressionFormats;
 			}
 		}
 
 		Func<string, string> GetPostFix = PakFilename => GetPakFilePostFix(bShouldGeneratePatch, Params.HasIterateSharedCookedBuild, PlatformGameConfig, PakFilename);
+
+		// the game may want to control compression settings, but since it may be in a plugin that checks the commandline for the settings, we need to pass
+		// the settings directly on the UnrealPak commandline, and not put it into the batch file lines (plugins can't get the unrealpak command list, and
+		// there's not a great way to communicate random strings down into the plugins during plugin init time)
+		string AdditionalCompressionOptionsOnCommandLine = "";
+		PlatformGameConfig.GetString("/Script/UnrealEd.ProjectPackagingSettings", "PakFileAdditionalCompressionOptions", out AdditionalCompressionOptionsOnCommandLine);
 
 		List<string> Commands = new List<string>();
 		List<string> LogNames = new List<string>();
@@ -2420,90 +2195,6 @@ public partial class Project : CommandUtils
 			}
 		}
 
-		// Find primary and secondary order files if they exist
-		List<FileReference> PakOrderFileLocations = new List<FileReference>();
-
-		List<OrderFileSpec> OrderFileSpecs = new List<OrderFileSpec>();
-		if (PlatformGameConfig.TryGetValues("/Script/UnrealEd.ProjectPackagingSettings", "PakOrderFileSpecs", out IReadOnlyList<string> OrderFileConfigValues))
-		{
-			foreach (string FilePattern in OrderFileConfigValues)
-			{
-				OrderFileSpecs.Add(new OrderFileSpec { FileNamePattern = FilePattern, OrderType = OrderFile.OrderFileType.Custom });
-			}
-		}
-
-		if(OrderFileSpecs.Count == 0)
-		{
-			// Default filespecs
-			OrderFileSpecs.AddRange(new OrderFileSpec[] {
-				new OrderFileSpec{ FileNamePattern = "GameOpenOrder*.log", OrderType = OrderFile.OrderFileType.Game },
-				new OrderFileSpec{ FileNamePattern = "CookerOpenOrder*.log", OrderType = OrderFile.OrderFileType.Cooker },
-				new OrderFileSpec{ FileNamePattern = "EditorOpenOrder.log", OrderType = OrderFile.OrderFileType.Editor }
-			});
-		}
-
-		// search CookPlaform (e.g. IOSClient and then regular platform (e.g. IOS).
-		string[] OrderPlatformNames = new string[] { SC.FinalCookPlatform, SC.StageTargetPlatform.GetTargetPlatformDescriptor().Type.ToString() };
-
-		List<DirectoryReference> OrderPathsToSearch = new List<DirectoryReference>();
-		OrderPathsToSearch.Add(DirectoryReference.Combine(SC.ProjectRoot, "Build", "FileOpenOrder")); // Search common directory first
-		foreach (string OrderLocation in OrderPlatformNames)
-		{
-			DirectoryReference PakOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Platforms", OrderLocation, "Build", "FileOpenOrder");
-			if (!DirectoryReference.Exists(PakOrderFileLocationBase))
-			{
-				PakOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Build", OrderLocation, "FileOpenOrder");
-			}
-
-			OrderPathsToSearch.Add(PakOrderFileLocationBase);
-		}
-
-		List<OrderFile> OrderFiles = new List<OrderFile>();
-
-		for (int OrderFileIndex = 0; OrderFileIndex < OrderFileSpecs.Count; OrderFileIndex++)
-		{
-			OrderFileSpec Spec = OrderFileSpecs[OrderFileIndex];
-			foreach (DirectoryReference BaseDir in OrderPathsToSearch)
-			{
-				// Add input file to control order of file within the pak
-				FileReference[] FileLocations = CommandUtils.FindFiles(Spec.FileNamePattern, false, BaseDir);
-
-				if (FileLocations != null)
-				{
-					foreach (var File in FileLocations)
-					{
-						OrderFile FileOrder = new OrderFile(File, Spec.OrderType, OrderFileIndex);
-
-						//check if the file is alreay in the list
-						if (!OrderFiles.Any(o => o.File.FullName.Equals(File.FullName)))
-						{
-							OrderFiles.Add(FileOrder);
-						}
-					}
-				}
-			}
-		}
-
-		OrderFiles.Sort();
-
-		//Only allow Editor open order as a primary input
-		if (OrderFiles.Count() > 1 && OrderFiles[0].OrderType != OrderFile.OrderFileType.Editor)
-		{
-			OrderFiles.RemoveAll(x => x.OrderType == OrderFile.OrderFileType.Editor);
-		}
-
-        // Check second order 
-        bool bUseSecondaryOrder = false;
-        PlatformGameConfig.GetBool("/Script/UnrealEd.ProjectPackagingSettings", "bPakUsesSecondaryOrder", out bUseSecondaryOrder);
-
-		if(!bUseSecondaryOrder)
-        {
-			OrderFiles.RemoveAll(x => (x.OrderType == OrderFile.OrderFileType.Cooker && x.AppendOrder == Int32.MaxValue));
-
-			// chekc if theres a merging cookopenorder file
-			bUseSecondaryOrder = OrderFiles.Any(x => x.OrderType == OrderFile.OrderFileType.Cooker);
-		}	
-
 		List<Tuple<FileReference, StagedFileReference, string>> Outputs = new List<Tuple<FileReference, StagedFileReference, string>>();
 		foreach (CreatePakParams PakParams in PakParamsList)
 		{
@@ -2531,6 +2222,48 @@ public partial class Project : CommandUtils
 			OutputRelativeLocation = SC.StageTargetPlatform.Remap(OutputRelativeLocation);
 
 			FileReference OutputLocation = FileReference.Combine(SC.RuntimeRootDir, OutputRelativeLocation.Name);
+
+			// Find primary and secondary order files if they exist
+			List<FileReference> PakOrderFileLocations = new List<FileReference>();
+
+			// preferred files
+			string[] OrderFileNames = new string[] { "GameOpenOrder.log", "CookerOpenOrder.log", "EditorOpenOrder.log" };
+
+			// search CookPlaform (e.g. IOSClient and then regular platform (e.g. IOS).
+			string[] OrderLocations = new string[] { SC.FinalCookPlatform, SC.StageTargetPlatform.GetTargetPlatformDescriptor().Type.ToString() };
+
+			for (int OrderFileIndex=0;OrderFileIndex<OrderFileNames.Length; OrderFileIndex++)
+			{	
+				string OrderFileName = OrderFileNames[OrderFileIndex];
+				foreach (string OrderLocation in OrderLocations)
+				{
+					// Add input file to control order of file within the pak
+					DirectoryReference PakOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Platforms", OrderLocation, "Build", "FileOpenOrder");
+					if (!DirectoryReference.Exists(PakOrderFileLocationBase))
+					{
+						PakOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Build", OrderLocation, "FileOpenOrder");
+					}
+
+					FileReference FileLocation = FileReference.Combine(PakOrderFileLocationBase, OrderFileName);
+
+					if (FileExists_NoExceptions(FileLocation.FullName))
+					{
+						// Special case: Don't use editor open order as a secondary order file for UnrealPak
+						// It's better to just use cooker order in that case
+						if ( OrderFileIndex >= 2 && PakOrderFileLocations.Count >= 1 )
+						{
+							FileLocation = null;
+						}
+						PakOrderFileLocations.Add(FileLocation);
+						break;
+					}
+				}
+
+				if (PakOrderFileLocations.Count == 2)
+				{
+					break;
+				}
+			}
 
 			bool bCopiedExistingPak = false;
 
@@ -2597,13 +2330,15 @@ public partial class Project : CommandUtils
 				}
 				if (!bCopiedExistingPak)
 				{
-					List<OrderFile> PrimaryOrderFiles = OrderFiles.FindAll(x => (x.OrderType != OrderFile.OrderFileType.Cooker));
-					List<OrderFile> SecondaryOrderFiles = null;
+					FileReference PrimaryOrderFile   = (PakOrderFileLocations.Count >= 1) ? PakOrderFileLocations[0] : null;
+					FileReference SecondaryOrderFile = null;
 
 					// Add a secondary order if there is one specified
-					if (bUseSecondaryOrder && OrderFiles.Count >= 1)
+					bool bUseSecondaryOrder = false;
+					PlatformGameConfig.GetBool("/Script/UnrealEd.ProjectPackagingSettings", "bPakUsesSecondaryOrder", out bUseSecondaryOrder);
+					if (bUseSecondaryOrder && PakOrderFileLocations.Count >= 2)
 					{
-						SecondaryOrderFiles = OrderFiles.FindAll(x => x.OrderType == OrderFile.OrderFileType.Cooker);
+						SecondaryOrderFile = PakOrderFileLocations[1];
 					}
 
 					string AdditionalArgs = PatchOptions;
@@ -2617,6 +2352,13 @@ public partial class Project : CommandUtils
 					if (bPakFallbackOrderForNonUassetFiles)
 					{
 						AdditionalArgs += " -fallbackOrderForNonUassetFiles";
+					}
+
+					bool bPakMoveBulkAndUptnlOrderLast = false;
+					PlatformGameConfig.GetBool("/Script/UnrealEd.ProjectPackagingSettings", "bPakMoveBulkAndUptnlOrderLast", out bPakMoveBulkAndUptnlOrderLast);
+					if (bPakMoveBulkAndUptnlOrderLast)
+					{
+						AdditionalArgs += " -moveBulkAndUptnlOrderLast";
 					}
 
 					ConfigHierarchy PlatformEngineConfig;
@@ -2649,13 +2391,6 @@ public partial class Project : CommandUtils
 						Dictionary<string, string> IoStoreResponseFile = new Dictionary<string, string>();
 						foreach (var Entry in PakParams.UnrealPakResponseFile)
 						{
-							// Temporary solution to filter non cooked packages from I/O store container file(s)
-							if (SC.OnlyAllowPackagesFromStdCookPathInIoStore && !Entry.Key.ToLower().Contains("\\saved\\cooked\\"))
-							{
-								UnrealPakResponseFile.Add(Entry.Key, Entry.Value);
-								continue;
-							}
-
 							if (Path.GetExtension(Entry.Key).Contains(".uasset") ||
 								Path.GetExtension(Entry.Key).Contains(".umap"))
 							{
@@ -2675,8 +2410,6 @@ public partial class Project : CommandUtils
 							}
 							else if (!Path.GetExtension(Entry.Key).Contains(".uexp"))
 							{
-								// all other extensions go in Pak not iostore
-								//	for example the compression-excluded extensions (ini,res) go in here
 								UnrealPakResponseFile.Add(Entry.Key, Entry.Value);
 							}
 
@@ -2689,7 +2422,7 @@ public partial class Project : CommandUtils
 							ContainerPatchSourcePath = CombinePaths(Params.GetBasedOnReleaseVersionPath(SC, Params.Client), ContainerWildcard);
 						}
 						bool bGenerateDiffPatch = bShouldGeneratePatch && !ShouldSkipGeneratingPatch(PlatformGameConfig, PakParams.PakName);
-						bool bCompressContainers = PakParams.bCompressed;
+						bool bCompressContainers = PakParams.bCompressed || Params.AdditionalIoStoreOptions.Contains("-compressed");
 
 						IoStoreCommands.Add(GetIoStoreCommandArguments(
 							IoStoreResponseFile,
@@ -2703,19 +2436,18 @@ public partial class Project : CommandUtils
 							Params.HasDLCName));
 					}
 
-					string PakEncryptionKeyGuid = Params.SkipEncryption ? "" : PakParams.EncryptionKeyGuid;
 					Commands.Add(GetUnrealPakArguments(
 						Params.RawProjectPath,
 						UnrealPakResponseFile,
 						OutputLocation,
-						PrimaryOrderFiles,
+						PrimaryOrderFile,
 						SC.StageTargetPlatform.GetPlatformPakCommandLine(Params, SC) + AdditionalArgs + BulkOption + CompressionFormats + " " + Params.AdditionalPakOptions,
 						PakParams.bCompressed,
-						Params.SkipEncryption ? null : CryptoSettings,
-						Params.SkipEncryption ? null : CryptoKeysCacheFilename,
+						CryptoSettings,
+						CryptoKeysCacheFilename,
 						PatchSourceContentPath,
-						Params.SkipEncryption ? "" : PakParams.EncryptionKeyGuid,
-						SecondaryOrderFiles));
+						PakParams.EncryptionKeyGuid,
+						SecondaryOrderFile));
 
 					LogNames.Add(OutputLocation.GetFileNameWithoutExtension());
 				}
@@ -2741,12 +2473,28 @@ public partial class Project : CommandUtils
 				}
 			}
 
-			List<OrderFile> PrimaryOrderFiles = OrderFiles.FindAll(x => (x.OrderType != OrderFile.OrderFileType.Cooker));
-			List<OrderFile> SecondaryOrderFiles = null;
+			FileReference GameOpenOrderFileLocation = null;
+			FileReference CookerOpenOrderFileLocation = null;
+			// search CookPlaform (e.g. IOSClient and then regular platform (e.g. IOS).
+			string[] OrderLocations = new string[] { SC.FinalCookPlatform, SC.StageTargetPlatform.GetTargetPlatformDescriptor().Type.ToString() };
 
-			if (bUseSecondaryOrder && OrderFiles.Count >= 1)
+			foreach (string OrderLocation in OrderLocations.Reverse())
 			{
-				SecondaryOrderFiles = OrderFiles.FindAll(x => x.OrderType == OrderFile.OrderFileType.Cooker);
+				DirectoryReference IoStoreOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Platforms", OrderLocation, "Build", "FileOpenOrder");
+				if (!DirectoryReference.Exists(IoStoreOrderFileLocationBase))
+				{
+					IoStoreOrderFileLocationBase = DirectoryReference.Combine(SC.ProjectRoot, "Build", OrderLocation, "FileOpenOrder");
+				}
+				FileReference FileLocation = FileReference.Combine(IoStoreOrderFileLocationBase, "GameOpenOrder.log");
+				if (FileExists_NoExceptions(FileLocation.FullName))
+				{
+					GameOpenOrderFileLocation = FileLocation;
+				}
+				FileLocation = FileReference.Combine(IoStoreOrderFileLocationBase, "CookerOpenOrder.log");
+				if (FileExists_NoExceptions(FileLocation.FullName))
+				{
+					CookerOpenOrderFileLocation = FileLocation;
+				}
 			}
 
 			string AdditionalArgs =
@@ -2770,18 +2518,9 @@ public partial class Project : CommandUtils
 				}
 			}
 
-			int MaxIoStorePartitionSizeMB = 0;
-			if (PlatformGameConfig.GetInt32("/Script/UnrealEd.ProjectPackagingSettings", "MaxIoStorePartitionSizeMB", out MaxIoStorePartitionSizeMB))
-			{
-				if (MaxIoStorePartitionSizeMB > 0)
-				{
-					AdditionalArgs += String.Format(" -maxPartitionSize={0}MB", MaxIoStorePartitionSizeMB);
-				}
-			}
-
 			AdditionalArgs += " " + Params.AdditionalIoStoreOptions;
 
-			RunIoStore(Params, SC, IoStoreCommandsFileName, PrimaryOrderFiles, SecondaryOrderFiles, AdditionalArgs);
+			RunIoStore(Params, SC, IoStoreCommandsFileName, GameOpenOrderFileLocation, CookerOpenOrderFileLocation, AdditionalArgs);
 		}
 
 		// Do any additional processing on the command output
@@ -2941,7 +2680,7 @@ public partial class Project : CommandUtils
 		}
 	}
 
-	private static void RunIoStore(ProjectParams Params, DeploymentContext SC, string CommandsFileName, List<OrderFile> GameOpenOrderFileLocations, List<OrderFile> CookerOpenOrderFileLocations, string AdditionalArgs)
+	private static void RunIoStore(ProjectParams Params, DeploymentContext SC, string CommandsFileName, FileReference GameOpenOrderFileLocation, FileReference CookerOpenOrderFileLocation, string AdditionalArgs)
 	{
 		StagedFileReference GlobalContainerOutputRelativeLocation;
 		GlobalContainerOutputRelativeLocation = StagedFileReference.Combine(SC.RelativeProjectRootForStage, "Content", "Paks", "global.utoc");
@@ -2992,13 +2731,13 @@ public partial class Project : CommandUtils
 		}
 
 		CommandletParams += String.Format(" -CookedDirectory={0} -Commands={1}", MakePathSafeToUseWithCommandLine(SC.PlatformCookDir.ToString()), MakePathSafeToUseWithCommandLine(CommandsFileName));
-		if (GameOpenOrderFileLocations != null && GameOpenOrderFileLocations.Count() > 0)
+		if (GameOpenOrderFileLocation != null)
 		{
-			CommandletParams += String.Format(" -GameOrder={0}", MakePathSafeToUseWithCommandLine(string.Join(",", GameOpenOrderFileLocations.Select(u => u.File.FullName).ToArray())));
+			CommandletParams += String.Format(" -GameOrder={0}", MakePathSafeToUseWithCommandLine(GameOpenOrderFileLocation.FullName));
 		}
-		if (CookerOpenOrderFileLocations != null && CookerOpenOrderFileLocations.Count() > 0)
+		if (CookerOpenOrderFileLocation != null)
 		{
-			CommandletParams += String.Format(" -CookerOrder={0}", MakePathSafeToUseWithCommandLine(string.Join(",", CookerOpenOrderFileLocations.Select(u => u.File.FullName).ToArray())));
+			CommandletParams += String.Format(" -CookerOrder={0}", MakePathSafeToUseWithCommandLine(CookerOpenOrderFileLocation.FullName));
 		}
 		if (!string.IsNullOrWhiteSpace(AdditionalArgs))
 		{
@@ -3178,7 +2917,7 @@ public partial class Project : CommandUtils
 		public ChunkDefinition(string InChunkName)
 		{
 			ChunkName = InChunkName;
-			ResponseFile = new ConcurrentDictionary<string, string>();
+			ResponseFile = new Dictionary<string, string>();
 			Manifest = null;
 			bCompressed = false;
 		}
@@ -3187,7 +2926,7 @@ public partial class Project : CommandUtils
 		public string ChunkName;
 
 		// List of files to include in this chunk
-		public ConcurrentDictionary<string, string> ResponseFile;
+		public Dictionary<string, string> ResponseFile;
 
 		// Parsed copy of pakchunk*.txt
 		public HashSet<string> Manifest;
@@ -3277,7 +3016,7 @@ public partial class Project : CommandUtils
 			}
 
 			const string OptionalBulkDataFileExtension = ".uptnl";
-			ConcurrentDictionary<string, ChunkDefinition> OptionalChunks = new ConcurrentDictionary<string, ChunkDefinition>(StringComparer.InvariantCultureIgnoreCase);
+			Dictionary<string, ChunkDefinition> OptionalChunks = new Dictionary<string, ChunkDefinition>(StringComparer.InvariantCultureIgnoreCase);
 			ChunkDefinition DefaultChunk = ChunkDefinitions[DefaultChunkIndex];
 
 			Dictionary<string, List<ChunkDefinition>> FileNameToChunks = new Dictionary<string, List<ChunkDefinition>>(StringComparer.InvariantCultureIgnoreCase);
@@ -3295,13 +3034,13 @@ public partial class Project : CommandUtils
 				}
 			}
 
-			ConcurrentDictionary<string, ChunkDefinition> ChunkNameToDefinition = new ConcurrentDictionary<string, ChunkDefinition>(StringComparer.InvariantCultureIgnoreCase);
+			Dictionary<string, ChunkDefinition> ChunkNameToDefinition = new Dictionary<string, ChunkDefinition>(StringComparer.InvariantCultureIgnoreCase);
 			foreach (ChunkDefinition Chunk in ChunkDefinitions)
 			{
-				ChunkNameToDefinition.TryAdd(Chunk.ChunkName, Chunk);
+				ChunkNameToDefinition.Add(Chunk.ChunkName, Chunk);
 			}
 
-			Parallel.ForEach(StagingManifestResponseFile, StagingFile =>
+			foreach (var StagingFile in StagingManifestResponseFile)
 			{
 				bool bAddedToChunk = false;
 				bool bExcludeFromPaks = false;
@@ -3341,7 +3080,7 @@ public partial class Project : CommandUtils
 
 				if (bExcludeFromPaks)
 				{
-					return;
+					continue;
 				}
 
 				// Actually add to chunk
@@ -3354,17 +3093,16 @@ public partial class Project : CommandUtils
 					{
 						// any optional files encountered we want to put in a separate pak file
 						string OptionalChunkName = Chunk.ChunkName + "optional";
-						if (!OptionalChunks.ContainsKey(OptionalChunkName))
+						if (!OptionalChunks.TryGetValue(OptionalChunkName, out TargetChunk))
 						{
-							ChunkDefinition OptionalChunk = new ChunkDefinition(OptionalChunkName);
-							OptionalChunk.RequestedEncryptionKeyGuid = Chunk.RequestedEncryptionKeyGuid;
-							OptionalChunk.EncryptionKeyGuid = Chunk.EncryptionKeyGuid;
-							OptionalChunks.TryAdd(OptionalChunkName, OptionalChunk);
+							TargetChunk = new ChunkDefinition(OptionalChunkName);
+							TargetChunk.RequestedEncryptionKeyGuid = Chunk.RequestedEncryptionKeyGuid;
+							TargetChunk.EncryptionKeyGuid = Chunk.EncryptionKeyGuid;
+							OptionalChunks.Add(OptionalChunkName, TargetChunk);
 						}
-						TargetChunk = OptionalChunks[OptionalChunkName];
 					}
 
-					TargetChunk.ResponseFile.TryAdd(StagingFile.Key, StagingFile.Value);
+					TargetChunk.ResponseFile.Add(StagingFile.Key, StagingFile.Value);
 					bAddedToChunk = true;
 
 					if (bForceOneChunkPerFile)
@@ -3373,13 +3111,12 @@ public partial class Project : CommandUtils
 						break;
 					}
 				}
-
 				if (!bAddedToChunk)
 				{
 					//LogInformation("No chunk assigned found for {0}. Using default chunk.", StagingFile.Key);
-					DefaultChunk.ResponseFile.TryAdd(StagingFile.Key, StagingFile.Value);
+					DefaultChunk.ResponseFile.Add(StagingFile.Key, StagingFile.Value);
 				}
-			});
+			}
 
 			foreach (var OptionalChunkIt in OptionalChunks)
 			{
@@ -3396,7 +3133,7 @@ public partial class Project : CommandUtils
 
 			EarlyChunk.bCompressed = true;
 
-			ConcurrentDictionary<string,string> EarlyPakFile = EarlyChunk.ResponseFile;
+			Dictionary<string,string> EarlyPakFile = EarlyChunk.ResponseFile;
 
 			// find the list of files to put in the early downloader pak file
 			List<string> FilesInEarlyPakFile = new List<string>();
@@ -3416,7 +3153,7 @@ public partial class Project : CommandUtils
 
 			foreach ( string FilteredFile in EarlyPakFileFilter.ApplyTo(FilesToFilter) )
 			{
-				EarlyPakFile.TryAdd(FilteredFile, StagingManifestResponseFile[FilteredFile]);
+				EarlyPakFile.Add(FilteredFile, StagingManifestResponseFile[FilteredFile]);
 			}
 
 			ChunkDefinitions.Add(EarlyChunk);
@@ -3459,10 +3196,8 @@ public partial class Project : CommandUtils
 		{
 			if (Chunk.ResponseFile.Count > 0)
 			{
-				string EncryptionKeyToUse = Params.SkipEncryption ? "" : Chunk.EncryptionKeyGuid;
-				PakInputs.Add(new CreatePakParams(Chunk.ChunkName, 
-					Chunk.ResponseFile.ToDictionary(entry => entry.Key, entry => entry.Value),
-					Params.Compressed || Chunk.bCompressed, EncryptionKeyToUse));
+				PakInputs.Add(new CreatePakParams(Chunk.ChunkName, Chunk.ResponseFile, Params.Compressed || Chunk.bCompressed, Chunk.EncryptionKeyGuid));
+				//CreatePak(Params, SC, Chunk.ResponseFile, ChunkName, PakCryptoSettings, CryptoKeysCacheFilename, bCompression);
 			}
 		}
 
@@ -3528,7 +3263,7 @@ public partial class Project : CommandUtils
 
 	private static string GetTmpPackagingPath(ProjectParams Params, DeploymentContext SC)
 	{
-		string TmpPackagingPath = CombinePaths(Path.GetDirectoryName(Params.RawProjectPath.FullName), "Saved", "TmpPackaging", SC.CookPlatform);
+		string TmpPackagingPath = CombinePaths(Path.GetDirectoryName(Params.RawProjectPath.FullName), "Saved", "TmpPackaging", SC.FinalCookPlatform);
 		if (Params.bUseExtraFlavor)
 		{
 			TmpPackagingPath = CombinePaths(TmpPackagingPath, "ExtraFlavor");
@@ -3734,37 +3469,7 @@ public partial class Project : CommandUtils
 			if (Params.CookOnTheFly || Params.FileServer)
 			{
 				FileHostParams += "-filehostip=";
-				// add localhost first for platforms using redirection
-				const string LocalHost = "127.0.0.1";
-				if (!IsNullOrEmpty(Params.Port))
-				{
-					bool FirstParam = true;
-					foreach (var Port in Params.Port)
-					{
-						if (!FirstParam)
-						{
-							FileHostParams += "+";
-						}
-						FirstParam = false;
-						string[] PortProtocol = Port.Split(new char[] { ':' });
-						if (PortProtocol.Length > 1)
-						{
-							FileHostParams += String.Format("{0}://{1}:{2}", PortProtocol[0], LocalHost, PortProtocol[1]);
-						}
-						else
-						{
-							FileHostParams += LocalHost;
-							FileHostParams += ":";
-							FileHostParams += Params.Port;
-						}
-
-					}
-				}
-				else
-				{
-					// use default port
-					FileHostParams += LocalHost;
-				}
+				bool FirstParam = true;
 				if (UnrealBuildTool.BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Mac)
 				{
 					NetworkInterface[] Interfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -3781,7 +3486,11 @@ public partial class Project : CommandUtils
 									{
 										foreach (var Port in Params.Port)
 										{
-											FileHostParams += "+";
+											if (!FirstParam)
+											{
+												FileHostParams += "+";
+											}
+											FirstParam = false;
 											string[] PortProtocol = Port.Split(new char[] { ':' });
 											if (PortProtocol.Length > 1)
 											{
@@ -3798,7 +3507,12 @@ public partial class Project : CommandUtils
 									}
 									else
 									{
-										FileHostParams += "+";
+										if (!FirstParam)
+										{
+											FileHostParams += "+";
+										}
+										FirstParam = false;
+
 										// use default port
 										FileHostParams += IP.UnicastAddresses[Index].Address.ToString();
 									}
@@ -3824,7 +3538,11 @@ public partial class Project : CommandUtils
 									{
 										foreach (var Port in Params.Port)
 										{
-											FileHostParams += "+";
+											if (!FirstParam)
+											{
+												FileHostParams += "+";
+											}
+											FirstParam = false;
 											string[] PortProtocol = Port.Split(new char[] { ':' });
 											if (PortProtocol.Length > 1)
 											{
@@ -3840,14 +3558,55 @@ public partial class Project : CommandUtils
 									}
 									else
 									{
-										FileHostParams += "+";
+										if (!FirstParam)
+										{
+											FileHostParams += "+";
+										}
+										FirstParam = false;
+
 										// use default port
 										FileHostParams += IP.UnicastAddresses[Index].Address.ToString();
 									}
+
 								}
 							}
 						}
 					}
+				}
+				const string LocalHost = "127.0.0.1";
+				if (!IsNullOrEmpty(Params.Port))
+				{
+					foreach (var Port in Params.Port)
+					{
+						if (!FirstParam)
+						{
+							FileHostParams += "+";
+						}
+						FirstParam = false;
+						string[] PortProtocol = Port.Split(new char[] { ':' });
+						if (PortProtocol.Length > 1)
+						{
+							FileHostParams += String.Format("{0}://{1}:{2}", PortProtocol[0], LocalHost, PortProtocol[1]);
+						}
+						else
+						{
+							FileHostParams += LocalHost;
+							FileHostParams += ":";
+							FileHostParams += Params.Port;
+						}
+
+					}
+				}
+				else
+				{
+					if (!FirstParam)
+					{
+						FileHostParams += "+";
+					}
+					FirstParam = false;
+
+					// use default port
+					FileHostParams += LocalHost;
 				}
 				FileHostParams += " ";
 			}
@@ -4175,11 +3934,6 @@ public partial class Project : CommandUtils
 				);
 			LogDeploymentContext(SC);
 
-			if (Params.PreModifyDeploymentContextCallback != null)
-			{
-				Params.PreModifyDeploymentContextCallback(Params, SC);
-			}
-
 			// If we're a derived platform make sure we're at the end, otherwise make sure we're at the front
 
 			if (!CookedDataPlatform.Equals(StagePlatform))
@@ -4221,7 +3975,7 @@ public partial class Project : CommandUtils
 				{
 					ApplyStagingManifest(Params, SC);
 
-					if (Params.Deploy && SC.StageTargetPlatform.RequiresManifestFiles)
+					if (Params.Deploy)
 					{
 						List<string> UFSManifests;
 						List<string> NonUFSManifests;

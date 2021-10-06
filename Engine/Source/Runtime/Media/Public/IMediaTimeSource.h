@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Misc/Timespan.h"
-#include "Math/NumericLimits.h"
 
 /*
 	Timestamp value for media playback
@@ -45,12 +44,7 @@ public:
 	FMediaTimeStamp operator + (const FTimespan & Other) const { return FMediaTimeStamp(Time + Other, SequenceIndex); }
 	FMediaTimeStamp operator - (const FTimespan & Other) const { return FMediaTimeStamp(Time - Other, SequenceIndex); }
 
-	FMediaTimeStamp operator - (const FMediaTimeStamp& Other) const { return (Other.SequenceIndex < SequenceIndex) ? FMediaTimeStamp(FTimespan::MaxValue(), MAX_int64) : ((Other.SequenceIndex > SequenceIndex) ? FMediaTimeStamp(FTimespan::MinValue(), MAX_int64) : FMediaTimeStamp(Time - Other.Time, MAX_int64)); }
-
-	FMediaTimeStamp& operator += (const FTimespan & Other) { Time += Other; return *this; }
-	FMediaTimeStamp& operator -= (const FTimespan & Other) { Time -= Other; return *this; }
-
-	FMediaTimeStamp& operator -= (const FMediaTimeStamp & Other) { Time -= Other.Time; SequenceIndex = MAX_int64; return *this; }
+	FMediaTimeStamp operator - (const FMediaTimeStamp & Other) const { return FMediaTimeStamp(Time - Other.Time, -1); }
 
 	FTimespan Time;
 	int64 SequenceIndex;

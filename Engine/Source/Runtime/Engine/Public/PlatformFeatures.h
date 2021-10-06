@@ -42,6 +42,8 @@ public:
 
 	virtual class IDVRStreamingSystem* GetStreamingSystem();
 
+	virtual TSharedPtr<const class FJsonObject> GetTitleSettings();
+
 	virtual FString GetUniqueAppId();
 
 	virtual IVideoRecordingSystem* GetVideoRecordingSystem();

@@ -22,8 +22,8 @@
 UTakeRecorderDMXLibrarySource::UTakeRecorderDMXLibrarySource(const FObjectInitializer& ObjInit)
 	: Super(ObjInit)
 	, DMXLibrary(nullptr)
-	, bRecordNormalizedValues(true)
 	, bReduceKeys(false)
+	, bUseSourceTimecode(true)
 	, bDiscardSamplesBeforeStart(true)
 {
 	// DMX Tracks are blue
@@ -41,11 +41,11 @@ void UTakeRecorderDMXLibrarySource::AddAllPatches()
 	
 	// Sort the patches by universe and starting channel
 	FixturePatches.Sort([](UDMXEntityFixturePatch& FirstPatch, UDMXEntityFixturePatch& SecondPatch) {
-		if (FirstPatch.GetUniverseID() < SecondPatch.GetUniverseID())
+		if (FirstPatch.UniverseID < SecondPatch.UniverseID)
 		{
 			return true;
 		}
-		else if (FirstPatch.GetUniverseID() > SecondPatch.GetUniverseID())
+		else if (FirstPatch.UniverseID > SecondPatch.UniverseID)
 		{
 			return false;
 		}
@@ -61,13 +61,33 @@ void UTakeRecorderDMXLibrarySource::AddAllPatches()
 	}
 }
 
-TArray<UTakeRecorderSource*> UTakeRecorderDMXLibrarySource::PreRecording(ULevelSequence* InSequence, FMovieSceneSequenceID InSequenceID, ULevelSequence* InMasterSequence, FManifestSerializer* InManifestSerializer)
+void UTakeRecorderDMXLibrarySource::OnEntitiesUpdated(UDMXLibrary* UpdatedLibrary)
+{
+	check(DMXLibrary);
+	check(UpdatedLibrary == DMXLibrary);
+
+	if (TrackRecorder)
+	{
+		DMXLibrary->ForEachEntityOfType<UDMXEntityFixturePatch>([this](UDMXEntityFixturePatch* Patch)
+			{
+				if (!FixturePatchRefs.Contains(Patch))
+				{
+					UE_LOG(LogDMXEditor, Error, TEXT("DMXLibrary %s edited while recording. Recording stopped."), *DMXLibrary->GetName());
+					TrackRecorder->StopRecording();
+					TrackRecorder->RefreshTracks();
+					return;
+				};
+			});
+	}
+}
+
+TArray<UTakeRecorderSource*> UTakeRecorderDMXLibrarySource::PreRecording(ULevelSequence* InSequence, ULevelSequence* InMasterSequence, FManifestSerializer* InManifestSerializer)
 {
 	if (DMXLibrary)
 	{
 		UMovieScene* MovieScene = InMasterSequence->GetMovieScene();
 		TrackRecorder = NewObject<UMovieSceneDMXLibraryTrackRecorder>();
-		CachedDMXLibraryTrack = TrackRecorder->CreateTrack(MovieScene, DMXLibrary, FixturePatchRefs, bDiscardSamplesBeforeStart, bRecordNormalizedValues);
+		CachedDMXLibraryTrack = TrackRecorder->CreateTrack(MovieScene, DMXLibrary, FixturePatchRefs, bUseSourceTimecode, bDiscardSamplesBeforeStart, nullptr);
 	}
 	else
 	{
@@ -141,7 +161,7 @@ void UTakeRecorderDMXLibrarySource::PostEditChangeProperty(FPropertyChangedEvent
 	{
 		// Prevent from selecting the same patch twice
 		int32 ChangedIndex = PropertyChangedEvent.GetArrayIndex(PropertyName.ToString());
-		if (FixturePatchRefs.IsValidIndex(ChangedIndex))
+		if (ensure(FixturePatchRefs.IsValidIndex(ChangedIndex)))
 		{
 			UDMXEntityFixturePatch* SelectedPatch = FixturePatchRefs[ChangedIndex].GetFixturePatch();
 

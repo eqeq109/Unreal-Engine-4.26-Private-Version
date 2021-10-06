@@ -388,7 +388,7 @@ UObject* CopyObjectToPackage(UPackage* Package, UObject* Object)
  */
 void FixupObjectReferences(UPackage* Package, TMap<UObject*, UObject*>& ObjectReplacementMap)
 {
-	for (FThreadSafeObjectIterator It; It; ++It)
+	for (FObjectIterator It; It; ++It)
 	{
 		if (It->IsIn(Package))
 		{
@@ -728,7 +728,7 @@ int32 UDEPRECATED_DiffPackagesCommandlet::Main(const FString& Params)
 #endif
 
 	// loop through all objects in A
-	for (FThreadSafeObjectIterator It; It; ++It)
+	for (FObjectIterator It; It; ++It)
 	{
 		UObject* Obj = *It;
 

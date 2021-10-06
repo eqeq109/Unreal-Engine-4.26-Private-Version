@@ -18,13 +18,13 @@ struct FGameplayDebuggerPlayerData
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	UGameplayDebuggerLocalController* Controller = nullptr;
+	UGameplayDebuggerLocalController* Controller;
 
 	UPROPERTY()
-	UInputComponent* InputComponent = nullptr;
+	UInputComponent* InputComponent;
 
 	UPROPERTY()
-	AGameplayDebuggerCategoryReplicator* Replicator = nullptr;
+	AGameplayDebuggerCategoryReplicator* Replicator;
 };
 
 UCLASS(NotBlueprintable, NotBlueprintType, notplaceable, noteditinlinenew, hidedropdown, Transient)

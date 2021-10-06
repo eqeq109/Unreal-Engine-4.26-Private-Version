@@ -442,7 +442,7 @@ void SGraphNode::OnToolTipClosing()
 {
 	if (bProvidedComplexTooltip)
 	{
-		SetToolTip(nullptr);
+		SetToolTip(NULL);
 		bProvidedComplexTooltip = false;
 	}
 }
@@ -508,14 +508,14 @@ void SGraphNode::SetOwner( const TSharedRef<SGraphPanel>& OwnerPanel )
 }
 
 /** @param NewPosition  The Node should be relocated to this position in the graph panel */
-void SGraphNode::MoveTo( const FVector2D& NewPosition, FNodeSet& NodeFilter, bool bMarkDirty )
+void SGraphNode::MoveTo( const FVector2D& NewPosition, FNodeSet& NodeFilter )
 {
 	if ( !NodeFilter.Find( SharedThis( this )))
 	{
 		if (GraphNode && !RequiresSecondPassLayout())
 		{
 			NodeFilter.Add( SharedThis( this ) );
-			GraphNode->Modify(bMarkDirty);
+			GraphNode->Modify();
 			GraphNode->NodePosX = NewPosition.X;
 			GraphNode->NodePosY = NewPosition.Y;
 		}

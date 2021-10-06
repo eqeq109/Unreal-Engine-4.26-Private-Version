@@ -21,7 +21,7 @@ public:
 	bool bKeepBothHalves;
 	float CutPlaneLocalThickness = 0; // plane thickness in the local space of the mesh
 	float UVScaleFactor;
-	static const FName ObjectIndexAttribute;
+	int SubObjectsAttribIndex;
 	TSharedPtr<const FDynamicMesh3> OriginalMesh;
 
 	void SetTransform(const FTransform& Transform);

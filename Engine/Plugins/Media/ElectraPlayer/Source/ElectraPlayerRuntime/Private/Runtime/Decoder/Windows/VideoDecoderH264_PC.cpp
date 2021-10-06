@@ -165,9 +165,7 @@ void FElectraPlayerVideoDecoderOutputPC::PreInitForDecode(FIntPoint OutputDim, c
 
 		SampleDim = Dim;
 
-		// Windows 8+ and a valid DX11 rendering device?
-		// (Rendering device will be null if the rendering device is not DX11 (DX12, Vulkan...))
-		if (Electra::IsWindows8Plus() && Electra::FDXDeviceInfo::s_DXDeviceInfo->RenderingDx11Device)
+		if (Electra::IsWindows8Plus() && (Electra::FDXDeviceInfo::s_DXDeviceInfo->DxVersion != Electra::FDXDeviceInfo::ED3DVersion::Version12Win10))
 		{
 			// Software decode into DX11 texture
 

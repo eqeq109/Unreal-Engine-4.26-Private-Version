@@ -30,14 +30,14 @@ struct FTransformGizmoMeasurement
 
 	/** The text that displays the actual measurement and units */
 	UPROPERTY()
-	class UTextRenderComponent* MeasurementText = nullptr;
+	class UTextRenderComponent* MeasurementText;
 };
 
 
 /**
  * Base class for transform gizmo
  */
-UCLASS( Abstract, NotPlaceable )
+UCLASS( Abstract )
 class VIEWPORTINTERACTION_API ABaseTransformGizmo : public AActor
 {
 	GENERATED_BODY()

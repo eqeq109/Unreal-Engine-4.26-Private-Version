@@ -327,19 +327,7 @@ namespace Cook
 		FName FileName;
 		TWeakObjectPtr<UPackage> Package;
 		FPackageDatas& PackageDatas; // The one-per-CookOnTheFlyServer owner of this PackageData
-		/**
-		* The number of active PreloadableFiles is tracked globally; wrap the PreloadableFile in a struct that
-		* guarantees we always update the counter when changing it
-		*/
-		struct FTrackedPreloadableFilePtr
-		{
-			const TSharedPtr<FPreloadableFile>& Get() { return Ptr; }
-			void Set(TSharedPtr<FPreloadableFile>&& InPtr, FPackageData& PackageData);
-			void Reset(FPackageData& PackageData);
-		private:
-			TSharedPtr<FPreloadableFile> Ptr;
-		};
-		FTrackedPreloadableFilePtr PreloadableFile;
+		TSharedPtr<FPreloadableFile> PreloadableFile;
 		int32 NumPendingCookedPlatformData = 0;
 		int32 CookedPlatformDataNextIndex = 0;
 

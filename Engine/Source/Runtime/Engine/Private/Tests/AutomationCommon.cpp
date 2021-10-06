@@ -21,7 +21,6 @@
 #include "Matinee/MatineeActor.h"
 #include "StereoRendering.h"
 #include "Misc/PackageName.h"
-#include "IRenderCaptureProvider.h"
 
 #if WITH_AUTOMATION_TESTS
 
@@ -157,7 +156,7 @@ namespace AutomationCommon
 		TArray<uint8> FrameTrace;
 
 		bool bDisableFrameTraceCapture = FParse::Param(FCommandLine::Get(), TEXT("DisableFrameTraceCapture"));
-		if (!bDisableFrameTraceCapture && CVarAutomationAllowFrameTraceCapture.GetValueOnGameThread() != 0 && IRenderCaptureProvider::IsAvailable())
+		if (!bDisableFrameTraceCapture && CVarAutomationAllowFrameTraceCapture.GetValueOnGameThread() != 0 && FAutomationTestFramework::Get().OnCaptureFrameTrace.IsBound())
 		{
 			const FString MapAndTest = MapOrContext / FPaths::MakeValidFileName(TestName, TEXT('_'));
 			FString ScreenshotName = GetScreenshotName(MapAndTest);
@@ -165,7 +164,7 @@ namespace AutomationCommon
 
 			UE_LOG(LogEngineAutomationTests, Log, TEXT("Taking Frame Trace: %s"), *TempCaptureFilePath);
 
-			IRenderCaptureProvider::Get().CaptureFrame(GEngine->GameViewport->Viewport, 0, TempCaptureFilePath);
+			FAutomationTestFramework::Get().OnCaptureFrameTrace.Execute(TempCaptureFilePath, GEngine->GameViewport->Viewport);
 			FlushRenderingCommands();
 
 			IPlatformFile& PlatformFileSystem = IPlatformFile::GetPlatformPhysical();

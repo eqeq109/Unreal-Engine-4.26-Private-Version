@@ -14,5 +14,6 @@ class IPDisplayClusterConfigManager
 	, public IPDisplayClusterManager
 {
 public:
-	virtual ~IPDisplayClusterConfigManager() = default;
+	virtual ~IPDisplayClusterConfigManager()
+	{ }
 };

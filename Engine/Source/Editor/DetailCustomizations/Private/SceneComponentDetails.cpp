@@ -304,24 +304,15 @@ void FSceneComponentDetails::MakeTransformDetails( IDetailLayoutBuilder& DetailB
 
 			if (bShouldShowTransform && SceneComponent->HasAnyFlags(RF_InheritableComponentTemplate))
 			{
-				UClass* OwnerClass = Cast<UClass>(SceneComponent->GetOuter());
-				if (UBlueprint* Blueprint = UBlueprint::GetBlueprintFromClass(OwnerClass))
+				auto OwnerClass = Cast<UClass>(SceneComponent->GetOuter());
+				auto Bluepirnt = UBlueprint::GetBlueprintFromClass(OwnerClass);
+				auto InheritableComponentHandler = Bluepirnt ? Bluepirnt->GetInheritableComponentHandler(false) : nullptr;
+				auto ComponentKey = InheritableComponentHandler ? InheritableComponentHandler->FindKey(SceneComponent) : FComponentKey();
+				auto SCSNode = ComponentKey.FindSCSNode();
+				const bool bProperRootNodeFound = ComponentKey.IsValid() && SCSNode && SCSNode->IsRootNode() && (SCSNode->ParentComponentOrVariableName == NAME_None);
+				if (bProperRootNodeFound)
 				{
-					if (UInheritableComponentHandler* InheritableComponentHandler = Blueprint->GetInheritableComponentHandler(false))
-					{
-						FComponentKey ComponentKey = InheritableComponentHandler->FindKey(SceneComponent);
-						if (ComponentKey.IsValid())
-						{
-							if (USCS_Node* SCSNode = ComponentKey.FindSCSNode())
-							{
-								const bool bProperRootNodeFound = SCSNode->IsRootNode() && (SCSNode->ParentComponentOrVariableName == NAME_None);
-								if (bProperRootNodeFound)
-								{
-									bShouldShowTransform = false;
-								}
-							}
-						}
-					}
+					bShouldShowTransform = false;
 				}
 			}
 		}

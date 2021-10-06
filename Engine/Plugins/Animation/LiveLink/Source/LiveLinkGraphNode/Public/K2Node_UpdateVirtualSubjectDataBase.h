@@ -55,28 +55,14 @@ protected:
 	 */
 	void SetPinToolTip(UEdGraphPin& InOutMutatablePin, const FText& InPinDescription) const;
 
-	/** Returns Struct type associated to the subject's role (static or frame) */
 	virtual UScriptStruct* GetStructTypeFromRole(ULiveLinkRole* Role) const PURE_VIRTUAL(UK2Node_UpdateVirtualSubjectDataBase::GetStructTypeFromRole, return nullptr; );
-
-	/** Returns the custom thunk function name */
 	virtual FName GetUpdateFunctionName() const PURE_VIRTUAL(UK2Node_UpdateVirtualSubjectDataBase::GetUpdateFunctionName, return NAME_None; );
-
-	/** Returns the struct display name */
 	virtual FText GetStructPinName() const PURE_VIRTUAL(UK2Node_UpdateVirtualSubjectDataBase::GetStructPinName, return FText::GetEmpty(); );
-
-	/** Add additionnal pins that the update subject function could need */
-	virtual void AddPins(FKismetCompilerContext& CompilerContext, UK2Node_CallFunction* UpdateVirtualSubjectDataFunction) const PURE_VIRTUAL(UK2Node_UpdateVirtualSubjectDataBase::AddPins, );
-
 private:
-
-	/** Returns the Struct type associated to the role */
-	UScriptStruct* GetStructTypeFromBlueprint() const;
-
-private:
-	
-	/** Name of the struct pin */
+	// Pin Names
 	static const FName LiveLinkStructPinName;
 
-	/** Struct pin description */
 	static const FText LiveLinkStructPinDescription;
+
+	UScriptStruct* GetStructTypeFromBlueprint();
 };

@@ -2,7 +2,7 @@ package com.google.vr.sdk.samples.permission;
 
 import android.app.Activity;
 import android.util.Log;
-import androidx.core.content.ContextCompat;
+import android.support.v4.content.ContextCompat;
 import android.content.pm.PackageManager;
 import java.lang.reflect.Method;
 

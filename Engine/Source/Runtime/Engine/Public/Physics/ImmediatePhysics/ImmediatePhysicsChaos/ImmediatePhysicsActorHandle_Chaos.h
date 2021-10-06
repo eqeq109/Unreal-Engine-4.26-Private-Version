@@ -64,42 +64,40 @@ namespace ImmediatePhysics_Chaos
 
 		void AddForce(const FVector& Force);
 
-		void AddTorque(const FVector& Torque);
-
-		void AddRadialForce(const FVector& Origin, FReal Strength, FReal Radius, ERadialImpulseFalloff Falloff, EForceType ForceType);
+		void AddRadialForce(const FVector& Origin, float Strength, float Radius, ERadialImpulseFalloff Falloff, EForceType ForceType);
 
 		void AddImpulseAtLocation(FVector Impulse, FVector Location);
 
 		/** Set the linear damping*/
-		void SetLinearDamping(FReal NewLinearDamping);
+		void SetLinearDamping(float NewLinearDamping);
 
 		/** Get the linear damping*/
-		FReal GetLinearDamping() const;
+		float GetLinearDamping() const;
 
 		/** Set the angular damping*/
-		void SetAngularDamping(FReal NewAngularDamping);
+		void SetAngularDamping(float NewAngularDamping);
 
 		/** Get the angular damping*/
-		FReal GetAngularDamping() const;
+		float GetAngularDamping() const;
 
 		/** Set the max linear velocity squared*/
-		void SetMaxLinearVelocitySquared(FReal NewMaxLinearVelocitySquared);
+		void SetMaxLinearVelocitySquared(float NewMaxLinearVelocitySquared);
 
 		/** Get the max linear velocity squared*/
-		FReal GetMaxLinearVelocitySquared() const;
+		float GetMaxLinearVelocitySquared() const;
 
 		/** Set the max angular velocity squared*/
-		void SetMaxAngularVelocitySquared(FReal NewMaxAngularVelocitySquared);
+		void SetMaxAngularVelocitySquared(float NewMaxAngularVelocitySquared);
 
 		/** Get the max angular velocity squared*/
-		FReal GetMaxAngularVelocitySquared() const;
+		float GetMaxAngularVelocitySquared() const;
 
 		/** Set the inverse mass. 0 indicates kinematic object */
-		void SetInverseMass(FReal NewInverseMass);
+		void SetInverseMass(float NewInverseMass);
 
 		/** Get the inverse mass. */
-		FReal GetInverseMass() const;
-		FReal GetMass() const;
+		float GetInverseMass() const;
+		float GetMass() const;
 
 		/** Set the inverse inertia. Mass-space inverse inertia diagonal vector */
 		void SetInverseInertia(const FVector& NewInverseInertia);
@@ -109,22 +107,22 @@ namespace ImmediatePhysics_Chaos
 		FVector GetInertia() const;
 
 		/** Set the max depenetration velocity*/
-		void SetMaxDepenetrationVelocity(FReal NewMaxDepenetrationVelocity);
+		void SetMaxDepenetrationVelocity(float NewMaxDepenetrationVelocity);
 
 		/** Get the max depenetration velocity*/
-		FReal GetMaxDepenetrationVelocity() const;
+		float GetMaxDepenetrationVelocity(float NewMaxDepenetrationVelocity) const;
 
 		/** Set the max contact impulse*/
-		void SetMaxContactImpulse(FReal NewMaxContactImpulse);
+		void SetMaxContactImpulse(float NewMaxContactImpulse);
 
 		/** Get the max contact impulse*/
-		FReal GetMaxContactImpulse() const;
+		float GetMaxContactImpulse() const;
 
 		/** Get the actor-space centre of mass offset */
 		FTransform GetLocalCoMTransform() const;
 
-		Chaos::FGeometryParticleHandle* GetParticle();
-		const Chaos::FGeometryParticleHandle* GetParticle() const;
+		Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle();
+		const Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle() const;
 
 		int32 GetLevel() const;
 		void SetLevel(int32 InLevel);
@@ -136,7 +134,7 @@ namespace ImmediatePhysics_Chaos
 		friend struct FJointHandle;
 
 		FActorHandle(
-			Chaos::FPBDRigidsSOAs& InParticles,
+			Chaos::TPBDRigidsSOAs<FReal, 3>& InParticles,
 			Chaos::TArrayCollectionArray<Chaos::FVec3>& InParticlePrevXs,
 			Chaos::TArrayCollectionArray<Chaos::FRotation3>& InParticlePrevRs,
 			EActorType ActorType,
@@ -144,11 +142,11 @@ namespace ImmediatePhysics_Chaos
 			const FTransform& Transform);
 
 
-		Chaos::FGenericParticleHandle Handle() const;
+		Chaos::TGenericParticleHandle<FReal, Dimensions> Handle() const;
 
 		FName Name;
-		Chaos::FPBDRigidsSOAs& Particles;
-		Chaos::FGeometryParticleHandle* ParticleHandle;
+		Chaos::TPBDRigidsSOAs<FReal, 3>& Particles;
+		Chaos::TGeometryParticleHandle<FReal, Dimensions>* ParticleHandle;
 		Chaos::TArrayCollectionArray<Chaos::FVec3>& ParticlePrevXs;
 		Chaos::TArrayCollectionArray<Chaos::FRotation3>& ParticlePrevRs;
 		TUniquePtr<Chaos::FImplicitObject> Geometry;

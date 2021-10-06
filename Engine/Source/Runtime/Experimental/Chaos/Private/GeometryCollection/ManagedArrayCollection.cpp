@@ -12,7 +12,6 @@ int8 FManagedArrayCollection::Invalid = INDEX_NONE;
 
 FManagedArrayCollection::FManagedArrayCollection()
 {
-	Version = 5;
 }
 
 static const FName GuidName("GUID");
@@ -247,19 +246,12 @@ void FManagedArrayCollection::ReorderElements(FName Group, const TArray<int32>& 
 	const int32 GroupSize = GroupInfo[Group].Size;
 	check(GroupSize == NewOrder.Num());
 
-	TArray<int32> InverseNewOrder;
-	InverseNewOrder.Init(-1, GroupSize);
-	for (int32 Idx = 0; Idx < GroupSize; ++Idx)
-	{
-		InverseNewOrder[NewOrder[Idx]] = Idx;
-	}
-
 	for (TTuple<FKeyType, FValueType>& Entry : Map)
 	{
 		// Reindex attributes dependent on the group being reordered
 		if (Entry.Value.GroupIndexDependency == Group)
 		{
-			Entry.Value.Value->ReindexFromLookup(InverseNewOrder);
+			Entry.Value.Value->ReindexFromLookup(NewOrder);
 		}
 
 		if (Entry.Key.Get<1>() == Group)
@@ -410,7 +402,7 @@ FString FManagedArrayCollection::ToString() const
 
 void FManagedArrayCollection::Serialize(Chaos::FChaosArchive& Ar)
 {
-	if (Ar.IsSaving()) Version = 5;
+	int Version = 4;
 	Ar << Version;
 
 	if (Ar.IsLoading())

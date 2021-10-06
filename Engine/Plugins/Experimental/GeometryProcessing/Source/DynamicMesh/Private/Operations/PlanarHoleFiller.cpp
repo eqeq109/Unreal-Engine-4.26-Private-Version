@@ -7,11 +7,6 @@
 
 bool FPlanarHoleFiller::Fill(int GroupID)
 {
-	if (GroupID < 0 && Mesh->HasTriangleGroups())
-	{
-		GroupID = Mesh->AllocateTriangleGroup();
-	}
-
 	FVector3d PlaneX, PlaneY;
 	VectorUtil::MakePerpVectors(PlaneNormal, PlaneX, PlaneY);
 

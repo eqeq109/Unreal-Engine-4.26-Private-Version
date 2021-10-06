@@ -267,27 +267,8 @@ private:
 	float OrthoZoom;
 };
 
-/** Parameter struct for editor viewport view modifiers */
-struct FEditorViewportViewModifierParams
-{
-	FMinimalViewInfo ViewInfo;
-
-	void AddPostProcessBlend(const FPostProcessSettings& Settings, float Weight)
-	{
-		check(PostProcessSettings.Num() == PostProcessBlendWeights.Num());
-		PostProcessSettings.Add(Settings);
-		PostProcessBlendWeights.Add(Weight);
-	}
-
-private:
-	TArray<FPostProcessSettings> PostProcessSettings;
-	TArray<float> PostProcessBlendWeights;
-
-	friend class FEditorViewportClient;
-};
-
 /** Delegate for modifying view parameters of an editor viewport. */
-DECLARE_MULTICAST_DELEGATE_OneParam(FEditorViewportViewModifierDelegate, FEditorViewportViewModifierParams&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FEditorViewportViewModifierDelegate, FMinimalViewInfo&);
 
 /** Viewport client for editor viewports. Contains common functionality for camera movement, rendering debug information, etc. */
 class UNREALED_API FEditorViewportClient : public FCommonViewportClient, public FViewElementDrawer, public FGCObject
@@ -1655,7 +1636,6 @@ protected:
 
 	bool bUseControllingActorViewInfo;
 	FMinimalViewInfo ControllingActorViewInfo;
-	TOptional<EAspectRatioAxisConstraint> ControllingActorAspectRatioAxisConstraint;
 	TArray<FPostProcessSettings> ControllingActorExtraPostProcessBlends;
 	TArray<float> ControllingActorExtraPostProcessBlendWeights;
 

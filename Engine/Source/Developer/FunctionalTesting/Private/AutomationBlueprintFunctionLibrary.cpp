@@ -144,11 +144,12 @@ void FConsoleVariableSwapperTempl<T>::Restore()
 	}
 }
 
-class FAutomationViewExtension : public FWorldSceneViewExtension
+class FAutomationViewExtension : public FSceneViewExtensionBase
 {
 public:
 	FAutomationViewExtension(const FAutoRegister& AutoRegister, UWorld* InWorld, FAutomationScreenshotOptions& InOptions, float InCurrentTimeToSimulate)
-		: FWorldSceneViewExtension(AutoRegister, InWorld)
+		: FSceneViewExtensionBase(AutoRegister)
+		, WorldPtr(InWorld)
 		, Options(InOptions)
 		, CurrentTime(InCurrentTimeToSimulate)
 	{
@@ -225,10 +226,25 @@ public:
 	virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) {}
 	virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) {}
 
+	virtual bool IsActiveThisFrame(class FViewport* InViewport) const
+	{
+		if (InViewport)
+		{
+			FViewportClient* Client = InViewport->GetClient();
+			if (Client)
+			{
+				return WorldPtr->GetWorld() == Client->GetWorld();
+	}
+}
+
+		return false;
+	}
+
 	/** We always want to go last. */
 	virtual int32 GetPriority() const override { return MIN_int32; }
 
 private:
+	TWeakObjectPtr<UWorld> WorldPtr;
 	FAutomationScreenshotOptions Options;
 	float CurrentTime;
 };
@@ -733,12 +749,9 @@ FAutomationScreenshotData UAutomationBlueprintFunctionLibrary::BuildScreenshotDa
 		TestName = FFunctionalTestBase::GetRunningTestName();
 	}
 
-#if WITH_AUTOMATION_TESTS
-	FAutomationScreenshotData Data = AutomationCommon::BuildScreenshotData(MapOrContext, TestName, ScreenShotName, Width, Height);
+	FAutomationScreenshotData Data = AutomationCommon::BuildScreenshotData(MapOrContext, TestName, ScreenShotName, Width, Height);	
+
 	return Data;
-#else
-	return FAutomationScreenshotData();
-#endif
 }
 
 bool UAutomationBlueprintFunctionLibrary::TakeAutomationScreenshotInternal(UObject* WorldContextObject, const FString& ScreenShotName, const FString& Notes, FAutomationScreenshotOptions Options)
@@ -1159,8 +1172,13 @@ UAutomationEditorTask* UAutomationBlueprintFunctionLibrary::TakeHighResScreensho
 #if WITH_EDITOR
 	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
 	{
-		if (uint32(ResX) <= GetMax2DTextureDimension() && uint32(ResY) <= GetMax2DTextureDimension())
+		FHighResScreenshotConfig& HighResScreenshotConfig = GetHighResScreenshotConfig();
+		if (HighResScreenshotConfig.SetResolution(ResX, ResY))
 		{
+			HighResScreenshotConfig.SetFilename(Filename);
+			HighResScreenshotConfig.SetMaskEnabled(bMaskEnabled);
+			HighResScreenshotConfig.SetHDRCapture(bCaptureHDR);
+
 			FLevelEditorModule& LevelEditor = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
 			SLevelViewport* LevelViewport = LevelEditor.GetFirstActiveLevelViewport().Get();
 			if (!LevelViewport->IsInGameView() && LevelViewport->CanToggleGameView())
@@ -1185,13 +1203,7 @@ UAutomationEditorTask* UAutomationBlueprintFunctionLibrary::TakeHighResScreensho
 			Task->BindTask(MakeUnique<FScreenshotTakenState>());
 
 			// Delay taking the screenshot by a few frames			
-			FTicker::GetCoreTicker().AddTicker(TEXT("ScreenshotDelay"), Delay, [LevelViewport, ComparisonTolerance, ComparisonNotes, Filename, ResX, ResY, bMaskEnabled, bCaptureHDR](float) {
-					FHighResScreenshotConfig& HighResScreenshotConfig = GetHighResScreenshotConfig();
-					HighResScreenshotConfig.SetResolution(ResX, ResY);
-					HighResScreenshotConfig.SetFilename(Filename);
-					HighResScreenshotConfig.SetMaskEnabled(bMaskEnabled);
-					HighResScreenshotConfig.SetHDRCapture(bCaptureHDR);
-
+			FTicker::GetCoreTicker().AddTicker(TEXT("ScreenshotDelay"), Delay, [LevelViewport, ComparisonTolerance, ComparisonNotes, Filename](float) {
 					LevelViewport->GetActiveViewport()->TakeHighResScreenShot();
 #if WITH_AUTOMATION_TESTS
 					if (GIsAutomationTesting)

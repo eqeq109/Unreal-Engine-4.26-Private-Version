@@ -110,7 +110,7 @@ bool FMediaSamples::FetchVideo(TRange<FMediaTimeStamp> TimeRange, TSharedPtr<IMe
 void FMediaSamples::FlushSamples()
 {
 	// Flushing may have various side effects that better all happen on the gamethread
-	check(IsInGameThread() || IsInSlateThread());
+	check(IsInGameThread());
 
 	AudioSampleQueue.RequestFlush();
 	MetadataSampleQueue.RequestFlush();

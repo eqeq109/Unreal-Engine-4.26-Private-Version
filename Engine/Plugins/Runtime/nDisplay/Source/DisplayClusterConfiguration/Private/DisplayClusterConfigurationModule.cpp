@@ -33,26 +33,14 @@ void FDisplayClusterConfigurationModule::StartupModule()
 	}
 }
 
+void FDisplayClusterConfigurationModule::ShutdownModule()
+{
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterConfiguration
 //////////////////////////////////////////////////////////////////////////////////////////////
-
-void FDisplayClusterConfigurationModule::SetIsSnapshotTransacting(bool bIsSnapshotState)
-{
-	bIsSnapshot = bIsSnapshotState;
-}
-
-bool FDisplayClusterConfigurationModule::IsTransactingSnapshot() const
-{
-	return bIsSnapshot;
-}
-
-EDisplayClusterConfigurationVersion FDisplayClusterConfigurationModule::GetConfigVersion(const FString& FilePath)
-{
-	return FDisplayClusterConfigurationMgr::Get().GetConfigVersion(FilePath);
-}
-
 UDisplayClusterConfigurationData* FDisplayClusterConfigurationModule::LoadConfig(const FString& FilePath, UObject* Owner)
 {
 	return FDisplayClusterConfigurationMgr::Get().LoadConfig(FilePath, Owner);
@@ -61,11 +49,6 @@ UDisplayClusterConfigurationData* FDisplayClusterConfigurationModule::LoadConfig
 bool FDisplayClusterConfigurationModule::SaveConfig(const UDisplayClusterConfigurationData* Config, const FString& FilePath)
 {
 	return FDisplayClusterConfigurationMgr::Get().SaveConfig(Config, FilePath);
-}
-
-bool FDisplayClusterConfigurationModule::ConfigAsString(const UDisplayClusterConfigurationData* Config, FString& OutString) const
-{
-	return FDisplayClusterConfigurationMgr::Get().ConfigAsString(Config, OutString);
 }
 
 IMPLEMENT_MODULE(FDisplayClusterConfigurationModule, DisplayClusterConfiguration);

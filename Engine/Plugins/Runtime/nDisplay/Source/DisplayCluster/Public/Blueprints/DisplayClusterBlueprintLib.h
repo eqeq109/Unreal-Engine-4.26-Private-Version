@@ -19,6 +19,6 @@ class UDisplayClusterBlueprintLib
 
 public:
 	/** Return Display Cluster API interface. */
-	UFUNCTION(BlueprintPure, meta = (DisplayName = "DisplayCluster Module API"), Category = "NDisplay")
+	UFUNCTION(BlueprintPure, meta = (DisplayName = "DisplayCluster Module API"), Category = "nDisplay")
 	static void GetAPI(TScriptInterface<IDisplayClusterBlueprintAPI>& OutAPI);
 };

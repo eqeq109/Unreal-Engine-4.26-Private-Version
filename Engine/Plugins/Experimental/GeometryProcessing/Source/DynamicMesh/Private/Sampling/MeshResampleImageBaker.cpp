@@ -28,7 +28,6 @@ void FMeshResampleImageBaker::Bake()
 
 	ResultBuilder = MakeUnique<TImageBuilder<FVector4f>>();
 	ResultBuilder->SetDimensions(BakeCache->GetDimensions());
-	ResultBuilder->Clear(DefaultColor);
 
 	BakeCache->EvaluateSamples([&](const FVector2i& Coords, const FMeshImageBakingCache::FCorrespondenceSample& Sample)
 	{

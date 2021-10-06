@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreTypes.h"
-#include "Delegates/IDelegateInstance.h"
 #include "IMessageTransport.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
 #include "IMessageAttachment.h"
@@ -65,6 +64,24 @@ public:
 	 */
 	void RemoveStaticEndpoint(const FIPv4Endpoint& InEndpoint);
 
+	/**
+	 * Returns a delegate that is executed when a socket error happened.
+	 *
+	 * @return The delegate.
+	 * @note this delegate is executed from the main thread by the task graph.
+	 */
+	DECLARE_DELEGATE(FOnError)
+	FOnError& OnTransportError()
+	{
+		return TransportErrorDelegate;
+	}
+
+	/**
+	 * Restart the transport using the same Transport handler
+	 * @return true if the restart was successful
+	 */
+	bool RestartTransport();
+
 	//~ IMessageTransport interface
 	virtual FName GetDebugName() const override;
 	virtual bool StartTransport(IMessageTransportHandler& Handler) override;
@@ -85,18 +102,6 @@ private:
 	/** */
 	void HandleProcessorError();
 
-	/** Launches a routine that attempts to restart the transport. */
-	void StartAutoRepairRoutine(uint32 MaxRetryAttempt);
-
-	/** Halts any currently running transport restart routine. */
-	void StopAutoRepairRoutine();
-
-	/**
-	 * Restart the transport using the same Transport handler.
-	 * @return true if the restart was successful
-	 */
-	bool RestartTransport();
-
 	/** Handles received socket data. */
 	void HandleSocketDataReceived(const TSharedPtr<FArrayReader, ESPMode::ThreadSafe>& Data, const FIPv4Endpoint& Sender);
 
@@ -104,8 +109,8 @@ private:
 	/** Holds any pending restart request. */
 	TFuture<void> ErrorFuture;
 
-	/** Holds the delegate handle for the auto repair routine. */
-	FDelegateHandle AutoRepairHandle;
+	/** Holds the transport error delegate. */
+	FOnError TransportErrorDelegate;
 
 	/** Holds the message processor. */
 	FUdpMessageProcessor* MessageProcessor;

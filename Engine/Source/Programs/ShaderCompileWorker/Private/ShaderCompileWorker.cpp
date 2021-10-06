@@ -251,10 +251,8 @@ public:
 #endif
 			WriteToOutputArchive(OutputFilePtr, SingleJobResults, PipelineJobResults);
 
-#if !UE_BUILD_DEBUG
 			// Close the output file.
 			delete OutputFilePtr;
-#endif
 
 			// Change the output file name to requested one
 			IFileManager::Get().Move(*OutputFilePath, *TempFilePath);
@@ -367,7 +365,7 @@ private:
 		// Initialize shader hash cache before reading any includes.
 		InitializeShaderHashCache();
 
-		TMap<FString, FThreadSafeSharedStringPtr> ExternalIncludes;
+		TMap<FString, TSharedPtr<FString>> ExternalIncludes;
 		TArray<FShaderCompilerEnvironment> SharedEnvironments;
 
 		// Shared inputs
@@ -1091,6 +1089,7 @@ IMPLEMENT_APPLICATION(ShaderCompileWorker, "ShaderCompileWorker")
 
 INT32_MAIN_INT32_ARGC_TCHAR_ARGV()
 {
+#if PLATFORM_WINDOWS
 	// Redirect for special XGE utilities...
 	extern bool XGEMain(int ArgC, TCHAR* ArgV[], int32& ReturnCode);
 	{
@@ -1100,6 +1099,7 @@ INT32_MAIN_INT32_ARGC_TCHAR_ARGV()
 			return ReturnCode;
 		}
 	}
+#endif
 
 	FString OutputFilePath;
 

@@ -9,58 +9,6 @@
 namespace Electra
 {
 
-	FTimeValue& FTimeValue::SetFromTimeFraction(const FTimeFraction& TimeFraction)
-	{
-		if (TimeFraction.IsValid())
-		{
-			if (TimeFraction.IsPositiveInfinity())
-			{
-				SetToPositiveInfinity();
-			}
-			else
-			{
-				HNS = TimeFraction.GetAsTimebase(10000000);
-				bIsInfinity = false;
-				bIsValid = true;
-			}
-		}
-		else
-		{
-			SetToInvalid();
-		}
-		return *this;
-	}
-
-	FTimeValue& FTimeValue::SetFromND(int64 Numerator, uint32 Denominator)
-	{
-		if (Denominator != 0)
-		{
-			if (Denominator == 10000000)
-			{
-				HNS 		= Numerator;
-				bIsValid	= true;
-				bIsInfinity = false;
-			}
-			else if (Numerator >= -922337203685LL && Numerator <= 922337203685LL)
-			{
-				HNS 		= Numerator * 10000000 / Denominator;
-				bIsValid	= true;
-				bIsInfinity = false;
-			}
-			else
-			{
-				SetFromTimeFraction(FTimeFraction(Numerator, Denominator));
-			}
-		}
-		else
-		{
-			HNS 		= Numerator>=0 ? 0x7fffffffffffffffLL : -0x7fffffffffffffffLL;
-			bIsValid	= true;
-			bIsInfinity = true;
-		}
-		return *this;
-	}
-
 	//-----------------------------------------------------------------------------
 	/**
 	 * Returns this time value in a custom timebase. Requires internal bigint conversion and is therefor SLOW!
@@ -122,8 +70,7 @@ namespace Electra
 				if (last0 != INDEX_NONE)
 				{
 					frc.MidInline(0, last0 + 1);
-					// Convert at most 7 fractional digits (giving us hundreds of nanoseconds (HNS))
-					for(int32 i = 0; i < frc.Len() && i<7; ++i)
+					for (int32 i = 0; i < frc.Len(); ++i)
 					{
 						Numerator = Numerator * 10 + (frc[i] - TCHAR('0'));
 						Denominator *= 10;
@@ -134,25 +81,7 @@ namespace Electra
 		}
 		else
 		{
-			static const FString kInf0(TEXT("INF"));
-			static const FString kInf1(TEXT("+INF"));
-			static const FString kInf2(TEXT("-INF"));
-			if (InString.Equals(kInf0) || InString.Equals(kInf1))
-			{
-				Numerator = 1;
-				Denominator = 0;
-				bIsValid = true;
-			}
-			else if (InString.Equals(kInf2))
-			{
-				Numerator = -1;
-				Denominator = 0;
-				bIsValid = true;
-			}
-			else
-			{
-				bIsValid = false;
-			}
+			bIsValid = false;
 		}
 		return *this;
 	}
@@ -164,10 +93,6 @@ namespace Electra
 		if (!bIsValid)
 		{
 			return 0;
-		}
-		else if (CustomTimebase == Denominator)
-		{
-			return Numerator;
 		}
 		else if (Numerator == 0)
 		{

@@ -131,14 +131,7 @@ void STimerTableRow::InvalidateContent()
 
 FSlateColor STimerTableRow::GetBackgroundColorAndOpacity() const
 {
-	if (TimerNodePtr->GetType() == ETimerNodeType::Group)
-	{
-		return FLinearColor(0.0f, 0.0f, 0.5f, 1.0f);
-	}
-	else
-	{
-		return GetBackgroundColorAndOpacity(TimerNodePtr->GetAggregatedStats().TotalInclusiveTime);
-	}
+	return GetBackgroundColorAndOpacity(TimerNodePtr->GetAggregatedStats().TotalInclusiveTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

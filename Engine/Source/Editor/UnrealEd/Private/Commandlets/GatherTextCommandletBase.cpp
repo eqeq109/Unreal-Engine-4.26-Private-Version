@@ -17,8 +17,6 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogGatherTextCommandletBase, Log, All);
 
-FGatherTextDelegates::FGetAdditionalGatherPaths FGatherTextDelegates::GetAdditionalGatherPaths;
-
 //////////////////////////////////////////////////////////////////////////
 //UGatherTextCommandletBase
 
@@ -163,12 +161,12 @@ FFuzzyPathMatcher::FFuzzyPathMatcher(const TArray<FString>& InIncludePathFilters
 
 	for (const FString& IncludePath : InIncludePathFilters)
 	{
-		FuzzyPaths.Add(FFuzzyPath(FPaths::ConvertRelativePathToFull(IncludePath), EPathType::Include));
+		FuzzyPaths.Add(FFuzzyPath(IncludePath, EPathType::Include));
 	}
 
 	for (const FString& ExcludePath : InExcludePathFilters)
 	{
-		FuzzyPaths.Add(FFuzzyPath(FPaths::ConvertRelativePathToFull(ExcludePath), EPathType::Exclude));
+		FuzzyPaths.Add(FFuzzyPath(ExcludePath, EPathType::Exclude));
 	}
 
 	// Sort the paths so that deeper paths with fewer wildcards appear first in the list

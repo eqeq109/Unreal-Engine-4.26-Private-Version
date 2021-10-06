@@ -92,9 +92,9 @@ FSequencer* FSequencerDisplayNodeDragDropOp::GetSequencer() const
 	return nullptr;
 }
 
-TArray<UE::MovieScene::FFixedObjectBindingID> FSequencerDisplayNodeDragDropOp::GetDraggedBindings() const
+TArray<FMovieSceneObjectBindingID> FSequencerDisplayNodeDragDropOp::GetDraggedBindings() const
 {
-	TArray<UE::MovieScene::FFixedObjectBindingID> Bindings;
+	TArray<FMovieSceneObjectBindingID> Bindings;
 
 	FSequencer* Sequencer = GetSequencer();
 	if (!Sequencer)
@@ -112,10 +112,10 @@ TArray<UE::MovieScene::FFixedObjectBindingID> FSequencerDisplayNodeDragDropOp::G
 		if (!ObjectBindingID.IsValid())
 		{
 			// To avoid confusion over what is overridable, if anything is invalid, the entire drag is invalid
-			return TArray<UE::MovieScene::FFixedObjectBindingID>();
+			return TArray<FMovieSceneObjectBindingID>();
 		}
 
-		Bindings.Emplace(UE::MovieScene::FFixedObjectBindingID(ObjectBindingID, SequenceID));
+		Bindings.Emplace(ObjectBindingID, SequenceID);
 	}
 
 	return Bindings;
@@ -161,7 +161,7 @@ FReply FSequencerDisplayNodeDragDropOp::DroppedOnPanel( const TSharedRef< class 
 			FGuid ObjectBindingID = GetBindingID(Node, Sequence);
 			if (ObjectBindingID.IsValid())
 			{
-				Template->Binding = UE::MovieScene::FFixedObjectBindingID(ObjectBindingID, SequenceID);
+				Template->Binding = FMovieSceneObjectBindingID(ObjectBindingID, SequenceID);
 				UEdGraphNode* NewNode = Action.PerformAction(&Graph, GetHoveredPin(), GraphPosition, false);
 
 				int32 Offset = FMath::Max(NewNode->NodeHeight, 100);

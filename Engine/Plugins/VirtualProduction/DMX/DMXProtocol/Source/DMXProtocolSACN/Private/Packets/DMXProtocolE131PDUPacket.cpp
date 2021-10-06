@@ -6,62 +6,50 @@
 
 #include "DMXProtocolMacros.h"
 
-TSharedPtr<FBufferArchive> FDMXProtocolE131RootLayerPacket::Pack(uint16 PropertiesNum)
+REGISTER_DMX_ARCHIVE(FDMXProtocolE131RootLayerPacket);
+REGISTER_DMX_ARCHIVE(FDMXProtocolE131FramingLayerPacket);
+REGISTER_DMX_ARCHIVE(FDMXProtocolE131DMPLayerPacket);
+REGISTER_DMX_ARCHIVE(FDMXProtocolUDPE131FramingLayerPacket);
+REGISTER_DMX_ARCHIVE(FDMXProtocolUDPE131DiscoveryLayerPacket);
+
+TSharedPtr<FBufferArchive> FDMXProtocolE131RootLayerPacket::Pack()
 {
 	TSharedPtr<FBufferArchive> Writer = MakeShared<FBufferArchive>();
-	uint16 PayloadLength = ACN_DMX_MIN_PACKAGE_SIZE - ACN_RLP_PREAMBLE_SIZE + PropertiesNum;
-	Serialize(*Writer, PayloadLength);
+	*Writer << *this;
+
 	return Writer;
 }
 
-void FDMXProtocolE131RootLayerPacket::Serialize(FArchive& Ar, uint16& PayloadLength)
+void FDMXProtocolE131RootLayerPacket::Serialize(FArchive & Ar)
 {
 	Ar.SetByteSwapping(true);
 	Ar << PreambleSize;
 	Ar << PostambleSize;
 	Ar.SetByteSwapping(false);
-	Ar.Serialize(reinterpret_cast<void*>(ACNPacketIdentifier.GetData()), ACN_IDENTIFIER_SIZE);
+	Ar.Serialize((void*)ACNPacketIdentifier, ACN_IDENTIFIER_SIZE);
 	Ar.SetByteSwapping(true);
-	if (Ar.IsLoading())
-	{
-		Ar << FlagsAndLength;
-		PayloadLength = FlagsAndLength & 0x0fff;
-	}
-	else
-	{
-		FlagsAndLength = 0x7000 | (PayloadLength & 0x0fff);
-		Ar << FlagsAndLength;
-	}
+	Ar << FlagsAndLength;
 	Ar << Vector;
 	Ar.SetByteSwapping(false);
-	Ar.Serialize(reinterpret_cast<void*>(CID.GetData()), ACN_CIDBYTES);
+	Ar.Serialize((void*)CID, ACN_CIDBYTES);
 }
 
 
-TSharedPtr<FBufferArchive> FDMXProtocolE131FramingLayerPacket::Pack(uint16 PropertiesNum)
+TSharedPtr<FBufferArchive> FDMXProtocolE131FramingLayerPacket::Pack()
 {
 	TSharedPtr<FBufferArchive> Writer = MakeShared<FBufferArchive>();
-	uint16 PayloadLength = ACN_DMX_MIN_PACKAGE_SIZE - ACN_DMX_ROOT_PACKAGE_SIZE + PropertiesNum;
-	Serialize(*Writer, PayloadLength);
+	*Writer << *this;
+
 	return Writer;
 }
 
-void FDMXProtocolE131FramingLayerPacket::Serialize(FArchive& Ar, uint16& PayloadLength)
+void FDMXProtocolE131FramingLayerPacket::Serialize(FArchive & Ar)
 {
 	Ar.SetByteSwapping(true);
-	if (Ar.IsLoading())
-	{
-		Ar << FlagsAndLength;
-		PayloadLength = FlagsAndLength & 0x0fff;
-	}
-	else
-	{
-		FlagsAndLength = 0x7000 | (PayloadLength & 0x0fff);
-		Ar << FlagsAndLength;
-	}
+	Ar << FlagsAndLength;
 	Ar << Vector;
 	Ar.SetByteSwapping(false);
-	Ar.Serialize(reinterpret_cast<void*>(SourceName.GetData()), ACN_SOURCE_NAME_SIZE);
+	Ar.Serialize((void*)SourceName, ACN_SOURCE_NAME_SIZE);
 	Ar.SetByteSwapping(true);
 	Ar << Priority;
 	Ar << SynchronizationAddress;
@@ -71,27 +59,18 @@ void FDMXProtocolE131FramingLayerPacket::Serialize(FArchive& Ar, uint16& Payload
 }
 
 
-TSharedPtr<FBufferArchive> FDMXProtocolE131DMPLayerPacket::Pack(uint16 PropertiesNum)
+TSharedPtr<FBufferArchive> FDMXProtocolE131DMPLayerPacket::Pack()
 {
 	TSharedPtr<FBufferArchive> Writer = MakeShared<FBufferArchive>();
-	uint16 PayloadLength = ACN_DMX_MIN_PACKAGE_SIZE - ACN_DMX_ROOT_PACKAGE_SIZE - ACN_DMX_PDU_FRAMING_PACKAGE_SIZE + PropertiesNum;
-	Serialize(*Writer, PayloadLength);
+	*Writer << *this;
+
 	return Writer;
 }
 
-void FDMXProtocolE131DMPLayerPacket::Serialize(FArchive& Ar, uint16& PayloadLength)
+void FDMXProtocolE131DMPLayerPacket::Serialize(FArchive & Ar)
 {
 	Ar.SetByteSwapping(true);
-	if (Ar.IsLoading())
-	{
-		Ar << FlagsAndLength;
-		PayloadLength = FlagsAndLength & 0x0fff;
-	}
-	else
-	{
-		FlagsAndLength = 0x7000 | (PayloadLength & 0x0fff);
-		Ar << FlagsAndLength;
-	}
+	Ar << FlagsAndLength;
 	Ar << Vector;
 	Ar << AddressTypeAndDataType;
 	Ar << FirstPropertyAddress;
@@ -99,7 +78,43 @@ void FDMXProtocolE131DMPLayerPacket::Serialize(FArchive& Ar, uint16& PayloadLeng
 	Ar << PropertyValueCount;
 	Ar << STARTCode;
 	Ar.SetByteSwapping(false);
+	Ar.Serialize((void*)DMX, ACN_DMX_SIZE);
+}
 
-	// we are allowed to send/receive less properties
-	Ar.Serialize(reinterpret_cast<void*>(DMX.GetData()), PropertyValueCount - 1);
+
+TSharedPtr<FBufferArchive> FDMXProtocolUDPE131FramingLayerPacket::Pack()
+{
+	TSharedPtr<FBufferArchive> Writer = MakeShared<FBufferArchive>();
+	*Writer << *this;
+
+	return Writer;
+}
+
+void FDMXProtocolUDPE131FramingLayerPacket::Serialize(FArchive & Ar)
+{
+	Ar.SetByteSwapping(true);
+	Ar << FlagsAndLength;
+	Ar << Vector;
+	Ar.SetByteSwapping(false);
+	Ar.Serialize((void*)SourceName, ACN_SOURCE_NAME_SIZE);
+	Ar.Serialize((void*)Reserved, sizeof(Reserved));
+}
+
+TSharedPtr<FBufferArchive> FDMXProtocolUDPE131DiscoveryLayerPacket::Pack()
+{
+	TSharedPtr<FBufferArchive> Writer = MakeShared<FBufferArchive>();
+	*Writer << *this;
+
+	return Writer;
+}
+
+void FDMXProtocolUDPE131DiscoveryLayerPacket::Serialize(FArchive & Ar)
+{
+	Ar.SetByteSwapping(true);
+	Ar << FlagsAndLength;
+	Ar << Vector;
+	Ar << Page;
+	Ar << Last;
+	Ar.SetByteSwapping(false);
+	Ar.Serialize((void*)Universes, sizeof(Universes));
 }

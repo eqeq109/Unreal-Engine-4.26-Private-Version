@@ -158,9 +158,6 @@ public:
 		/** The current sub sequence range */
 		SLATE_ATTRIBUTE( TOptional<TRange<FFrameNumber>>, SubSequenceRange)
 
-		/** Called to populate the playback speeds menu. */
-		SLATE_EVENT(ISequencer::FOnGetPlaybackSpeeds, OnGetPlaybackSpeeds)
-
 		/** The playback status */
 		SLATE_ATTRIBUTE( EMovieScenePlayerStatus::Type, PlaybackStatus )
 
@@ -268,7 +265,6 @@ public:
 
 		/** Extender to use for the toolbar. */
 		SLATE_ARGUMENT(TSharedPtr<FExtender>, ToolbarExtender)
-
 	SLATE_END_ARGS()
 
 
@@ -340,11 +336,8 @@ public:
 	/** Sets the play time for the sequence. Will extend the working range if out of bounds. */
 	void SetPlayTime(double Frame);
 
-	/** Sets the specified filter to be on or off*/
+	/** Set's the specified filter to be on or off*/
 	void SetFilterOn(const FText& InName, bool bOn);
-
-	/** Sets the text to search by */
-	void SetSearchText(const FText& InSearchText);
 
 public:
 
@@ -408,9 +401,6 @@ private:
 
 	/** Makes the plabacky menu for the toolbar. */
 	TSharedRef<SWidget> MakePlaybackMenu();
-
-	/** Makes the render movie menu for the toolbar. */
-	TSharedRef<SWidget> MakeRenderMovieMenu();
 
 	/** Makes the snapping menu for the toolbar. */
 	TSharedRef<SWidget> MakeSnapMenu();
@@ -537,9 +527,6 @@ private:
 
 	/** Gets whether or not the breadcrumb trail should be visible. */
 	EVisibility GetBreadcrumbTrailVisibility() const;
-
-	/** Return whether there are breadcrumbs to navigate. */
-	bool CanNavigateBreadcrumbs() const;
 
 	/** Gets whether or not the bottom time slider should be visible. */
 	EVisibility GetBottomTimeSliderVisibility() const;
@@ -680,9 +667,6 @@ private:
 	/** Whether the user is selecting. Ignore selection changes from the level when the user is selecting. */
 	bool bUserIsSelecting;
 
-	/** Default initialized in the view params to a lambda that gives us the standard speeds */
-	ISequencer::FOnGetPlaybackSpeeds OnGetPlaybackSpeeds;
-	
 	/** Extender to use for the 'add' menu */
 	TArray<TSharedPtr<FExtender>> AddMenuExtenders;
 
@@ -705,7 +689,7 @@ private:
 
 	/** Called when the user has finished dragging the selection selection range */
 	FSimpleDelegate OnSelectionRangeEndDrag;
-	
+
 	/** Called when the user has begun dragging the playback range */
 	FSimpleDelegate OnPlaybackRangeBeginDrag;
 

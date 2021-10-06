@@ -71,6 +71,24 @@ public:
 extern TGlobalResource< FEmptyIndirectLightingCacheUniformBuffer > GEmptyIndirectLightingCacheUniformBuffer;
 
 
+FORCEINLINE_DEBUGGABLE int32 GetMobileMaxShadowCascades()
+{
+	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Shadow.CSM.MaxMobileCascades"));
+	return CVar ? FMath::Clamp(CVar->GetValueOnAnyThread(), 0, MAX_MOBILE_SHADOWCASCADES) : MAX_MOBILE_SHADOWCASCADES;
+}
+
+/** Mobile Specific	CSM set up.
+*/
+class FMobileDirectionalLightCSMPolicy
+{
+public:
+	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
+		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), Parameters.MaterialParameters.ShadingModels.IsLit());
+	}
+};
+
 /**
  * A policy for shaders without a light-map.
  */
@@ -83,6 +101,10 @@ struct FNoLightMapPolicy
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
+		if (IsMobilePlatform(Parameters.Platform))
+		{
+			FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		}
 	}
 
 	static bool RequiresSkylight()
@@ -115,6 +137,10 @@ struct TLightMapPolicy
 		static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTexturedLightmaps"));
 		const bool VirtualTextureLightmaps = (CVar->GetValueOnAnyThread() != 0) && UseVirtualTexturing(GMaxRHIFeatureLevel, OutEnvironment.TargetPlatform);
 		OutEnvironment.SetDefine(TEXT("LIGHTMAP_VT_ENABLED"), VirtualTextureLightmaps);
+		if (IsMobilePlatform(Parameters.Platform))
+		{
+			FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		}
 	}
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
@@ -457,47 +483,11 @@ struct FSimpleStationaryLightVolumetricLightmapShadowsLightingPolicy : public FP
 	}
 };
 
-FORCEINLINE_DEBUGGABLE int32 GetMobileMaxShadowCascades()
+FORCEINLINE_DEBUGGABLE bool UsePermutationWithMobileDeferred(const FMeshMaterialShaderPermutationParameters& Parameters)
 {
-	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Shadow.CSM.MaxMobileCascades"));
-	return CVar ? FMath::Clamp(CVar->GetValueOnAnyThread(), 0, MAX_MOBILE_SHADOWCASCADES) : MAX_MOBILE_SHADOWCASCADES;
+	// transluceny and water uses forward shading and require this permutation
+	return (IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode) || Parameters.MaterialParameters.ShadingModels.HasShadingModel(MSM_SingleLayerWater));
 }
-
-FORCEINLINE_DEBUGGABLE bool MobileUseCSMShaderBranch()
-{
-	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.UseCSMShaderBranch"));
-	return (CVar && CVar->GetValueOnAnyThread() != 0);
-}
-
-/** Mobile Specific: Combines a directional light and CSM. Not used with pre-computed lighting */
-struct FMobileDirectionalLightAndCSMPolicy
-{
-	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
-		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
-		OutEnvironment.SetDefine(TEXT("MOBILE_USE_CSM_BRANCH"), MobileUseCSMShaderBranch());
-	}
-	
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		if (IsMobileDeferredShadingEnabled(Parameters.Platform))
-		{
-			return false;
-		}
-		
-		static auto* CVarAllowStaticLighting = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
-		const bool bAllowStaticLighting = CVarAllowStaticLighting->GetValueOnAnyThread() != 0;
-		return !bAllowStaticLighting && 
-			Parameters.MaterialParameters.ShadingModels.IsLit() && 
-			!IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode);
-	}
-
-	static bool RequiresSkylight()
-	{
-		return false;
-	}
-};
 
 /** Mobile Specific: Combines a distance field shadow with LQ lightmaps. */
 class FMobileDistanceFieldShadowsAndLQLightMapPolicy : public TDistanceFieldShadowsAndLightMapPolicy<LQ_LIGHTMAP>
@@ -514,6 +504,7 @@ public:
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
 	static bool RequiresSkylight()
@@ -522,85 +513,27 @@ public:
 	}
 };
 
-/** Mobile Specific: Combines an distance field shadow with LQ lightmaps and CSM. */
-class FMobileDistanceFieldShadowsLightMapAndCSMLightingPolicy : public FMobileDistanceFieldShadowsAndLQLightMapPolicy
-{
-	typedef FMobileDistanceFieldShadowsAndLQLightMapPolicy Super;
-
-public:
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		if (IsMobileDeferredShadingEnabled(Parameters.Platform))
-		{
-			return false;
-		}
-		
-		static auto* CVarMobileEnableStaticAndCSMShadowReceivers = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableStaticAndCSMShadowReceivers"));
-		const bool bMobileEnableStaticAndCSMShadowReceivers = CVarMobileEnableStaticAndCSMShadowReceivers->GetValueOnAnyThread() == 1;
-		return bMobileEnableStaticAndCSMShadowReceivers && 
-			Parameters.MaterialParameters.ShadingModels.IsLit() && 
-			!IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode) &&
-			Super::ShouldCompilePermutation(Parameters);
-	}
-
-	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
-		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
-
-		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-	}
-
-	static bool RequiresSkylight()
-	{
-		return false;
-	}
-};
-
-/** Mobile Specific: Combines a directional light with LQ lightmaps and CSM  */
-struct FMobileDirectionalLightCSMAndLightMapPolicy : public TLightMapPolicy< LQ_LIGHTMAP >
-{
-	typedef TLightMapPolicy<LQ_LIGHTMAP> Super;
-public:
-
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		if (IsMobileDeferredShadingEnabled(Parameters.Platform))
-		{
-			return false;
-		}
-		
-		return !IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode) && Super::ShouldCompilePermutation(Parameters);
-	}
-	
-	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
-		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
-
-		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-	}
-
-	static bool RequiresSkylight()
-	{
-		return false;
-	}
-};
-
-/** Mobile Specific: Combines an unshadowed directional light with indirect lighting from a single SH sample. */
+/** Mobile Specific: Combines a directional light with indirect lighting from a single SH sample. */
 struct FMobileDirectionalLightAndSHIndirectPolicy
 {
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
+		if (IsMobileDeferredShadingEnabled(Parameters.Platform) && !UsePermutationWithMobileDeferred(Parameters))
+		{
+			return false;
+		}
 		static auto* CVarAllowStaticLighting = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
 		const bool bAllowStaticLighting = CVarAllowStaticLighting->GetValueOnAnyThread() != 0;
 
-		return bAllowStaticLighting && Parameters.MaterialParameters.ShadingModels.IsLit() && FCachedPointIndirectLightingPolicy::ShouldCompilePermutation(Parameters);
+		return bAllowStaticLighting
+			&& Parameters.MaterialParameters.ShadingModels.IsLit()
+			&& FCachedPointIndirectLightingPolicy::ShouldCompilePermutation(Parameters);
 	}
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FCachedPointIndirectLightingPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
 	static bool RequiresSkylight()
@@ -609,32 +542,26 @@ struct FMobileDirectionalLightAndSHIndirectPolicy
 	}
 };
 
-/** Mobile Specific: Combines a directional light with CSM with indirect lighting from a single SH sample. */
-class FMobileDirectionalLightCSMAndSHIndirectPolicy : public FMobileDirectionalLightAndSHIndirectPolicy
+/** Mobile Specific: Combines a movable directional light with indirect lighting from a single SH sample. */
+struct FMobileMovableDirectionalLightAndSHIndirectPolicy : public FMobileDirectionalLightAndSHIndirectPolicy
 {
-	typedef FMobileDirectionalLightAndSHIndirectPolicy Super;
-
-public:
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		if (IsMobileDeferredShadingEnabled(Parameters.Platform))
+		if (IsMobileDeferredShadingEnabled(Parameters.Platform) && !UsePermutationWithMobileDeferred(Parameters))
 		{
 			return false;
 		}
-		
-		static auto* CVarMobileEnableStaticAndCSMShadowReceivers = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.EnableStaticAndCSMShadowReceivers"));
-		const bool bMobileEnableStaticAndCSMShadowReceivers = CVarMobileEnableStaticAndCSMShadowReceivers->GetValueOnAnyThread() == 1;
-		return bMobileEnableStaticAndCSMShadowReceivers &&
-			!IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode) &&
-			Super::ShouldCompilePermutation(Parameters);
-	}
+		static auto* CVarMobileAllowMovableDirectionalLights = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AllowMovableDirectionalLights"));
+		const bool bMobileAllowMovableDirectionalLights = CVarMobileAllowMovableDirectionalLights->GetValueOnAnyThread() != 0;
 
+		return bMobileAllowMovableDirectionalLights
+			&& FMobileDirectionalLightAndSHIndirectPolicy::ShouldCompilePermutation(Parameters);
+	}
+	
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
-		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
-
-		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("MOVABLE_DIRECTIONAL_LIGHT"), TEXT("1"));
+		FMobileDirectionalLightAndSHIndirectPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
 	static bool RequiresSkylight()
@@ -643,23 +570,62 @@ public:
 	}
 };
 
-/** Mobile Specific: Combines a movable directional light with LQ lightmaps  */
+/** Mobile Specific */
+struct FMobileMovableDirectionalLightLightingPolicy
+{
+	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
+	{
+		if (IsMobileDeferredShadingEnabled(Parameters.Platform) && !UsePermutationWithMobileDeferred(Parameters))
+		{
+			return false;
+		}
+		static auto* CVarMobileAllowMovableDirectionalLights = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AllowMovableDirectionalLights"));
+		const bool bMobileAllowMovableDirectionalLights = CVarMobileAllowMovableDirectionalLights->GetValueOnAnyThread() != 0;
+		return bMobileAllowMovableDirectionalLights
+			&& Parameters.MaterialParameters.ShadingModels.IsLit();
+	}	
+
+	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("MOVABLE_DIRECTIONAL_LIGHT"), TEXT("1"));
+		FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FNoLightMapPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	}
+
+	static bool RequiresSkylight()
+	{
+		return false;
+	}
+};
+
+/** Mobile Specific */
 struct FMobileMovableDirectionalLightWithLightmapPolicy : public TLightMapPolicy<LQ_LIGHTMAP>
 {
 	typedef TLightMapPolicy<LQ_LIGHTMAP> Super;
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-	
+		if (IsMobileDeferredShadingEnabled(Parameters.Platform) && !UsePermutationWithMobileDeferred(Parameters))
+		{
+			return false;
+		}
 		static auto* CVarMobileAllowMovableDirectionalLights = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AllowMovableDirectionalLights"));
 		const bool bMobileAllowMovableDirectionalLights = CVarMobileAllowMovableDirectionalLights->GetValueOnAnyThread() != 0;
-			
-		return bMobileAllowMovableDirectionalLights && Super::ShouldCompilePermutation(Parameters);
+
+		static auto* CVarAllowStaticLighting = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.AllowStaticLighting"));
+		const bool bAllowStaticLighting = (!CVarAllowStaticLighting || CVarAllowStaticLighting->GetValueOnAnyThread() != 0);
+
+		return bAllowStaticLighting
+			&& bMobileAllowMovableDirectionalLights
+			&& (Parameters.MaterialParameters.ShadingModels.IsLit())
+			&& Super::ShouldCompilePermutation(Parameters);
 	}
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		OutEnvironment.SetDefine(TEXT("MOVABLE_DIRECTIONAL_LIGHT"), TEXT("1"));
+
+		FMobileDirectionalLightCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
 
@@ -668,36 +634,6 @@ struct FMobileMovableDirectionalLightWithLightmapPolicy : public TLightMapPolicy
 		return false;
 	}
 };
-
-/** Mobile Specific: Combines a movable directional light with LQ lightmaps and CSM */
-struct FMobileMovableDirectionalLightCSMWithLightmapPolicy : public FMobileMovableDirectionalLightWithLightmapPolicy
-{
-	typedef FMobileMovableDirectionalLightWithLightmapPolicy Super;
-	
-	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
-	{
-		if (IsMobileDeferredShadingEnabled(Parameters.Platform))
-		{
-			return false;
-		}
-
-		return Super::ShouldCompilePermutation(Parameters);
-	}
-	
-	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("DIRECTIONAL_LIGHT_CSM"), TEXT("1"));
-		OutEnvironment.SetDefine(TEXT(PREPROCESSOR_TO_STRING(MAX_MOBILE_SHADOWCASCADES)), GetMobileMaxShadowCascades());
-
-		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-	}
-
-	static bool RequiresSkylight()
-	{
-		return false;
-	}
-};
-
 
 enum ELightMapPolicyType
 {
@@ -716,14 +652,9 @@ enum ELightMapPolicyType
 	LMP_DISTANCE_FIELD_SHADOWS_AND_HQ_LIGHTMAP,
 	// Mobile specific
 	LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP,
-	LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM,
-	LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP,
 	LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT,
-	LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT,
+	LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT,
 	LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP,
-	LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP,
-	LMP_MOBILE_DIRECTIONAL_LIGHT_CSM,
-
 	// LightMapDensity
 	LMP_DUMMY
 };
@@ -848,20 +779,12 @@ public:
 		// Mobile specific
 		case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP:
 			return FMobileDistanceFieldShadowsAndLQLightMapPolicy::ShouldCompilePermutation(Parameters);
-		case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM:
-			return FMobileDistanceFieldShadowsLightMapAndCSMLightingPolicy::ShouldCompilePermutation(Parameters);
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP:
-			return FMobileDirectionalLightCSMAndLightMapPolicy::ShouldCompilePermutation(Parameters);
 		case LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
 			return FMobileDirectionalLightAndSHIndirectPolicy::ShouldCompilePermutation(Parameters);
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT:
-			return FMobileDirectionalLightCSMAndSHIndirectPolicy::ShouldCompilePermutation(Parameters);
+		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
+			return FMobileMovableDirectionalLightAndSHIndirectPolicy::ShouldCompilePermutation(Parameters);
 		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
 			return FMobileMovableDirectionalLightWithLightmapPolicy::ShouldCompilePermutation(Parameters);
-		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP:
-			return FMobileMovableDirectionalLightCSMWithLightmapPolicy::ShouldCompilePermutation(Parameters);
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM:
-			return FMobileDirectionalLightAndCSMPolicy::ShouldCompilePermutation(Parameters);
 
 		// LightMapDensity
 	
@@ -925,26 +848,14 @@ public:
 		case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_AND_LQ_LIGHTMAP:
 			FMobileDistanceFieldShadowsAndLQLightMapPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 			break;
-		case LMP_MOBILE_DISTANCE_FIELD_SHADOWS_LIGHTMAP_AND_CSM:
-			FMobileDistanceFieldShadowsLightMapAndCSMLightingPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-			break;
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_LIGHTMAP:
-			FMobileDirectionalLightCSMAndLightMapPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-			break;
 		case LMP_MOBILE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
 			FMobileDirectionalLightAndSHIndirectPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 			break;
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM_AND_SH_INDIRECT:
-			FMobileDirectionalLightCSMAndSHIndirectPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_AND_SH_INDIRECT:
+			FMobileMovableDirectionalLightAndSHIndirectPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 			break;
 		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_WITH_LIGHTMAP:
 			FMobileMovableDirectionalLightWithLightmapPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-			break;
-		case LMP_MOBILE_MOVABLE_DIRECTIONAL_LIGHT_CSM_WITH_LIGHTMAP:
-			FMobileMovableDirectionalLightCSMWithLightmapPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-			break;
-		case LMP_MOBILE_DIRECTIONAL_LIGHT_CSM:
-			FMobileDirectionalLightAndCSMPolicy::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 			break;
 
 		// LightMapDensity

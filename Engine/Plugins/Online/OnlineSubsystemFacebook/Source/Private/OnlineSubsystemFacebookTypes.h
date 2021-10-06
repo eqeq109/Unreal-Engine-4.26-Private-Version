@@ -10,9 +10,6 @@
 #define PICTURE_DATA_SILHOUETTE "is_silhouette"
 #define PICTURE_DATA_URL "url"
 
-using FUniqueNetIdFacebookPtr = TSharedPtr<const class FUniqueNetIdFacebook, UNIQUENETID_ESPMODE>;
-using FUniqueNetIdFacebookRef = TSharedRef<const class FUniqueNetIdFacebook, UNIQUENETID_ESPMODE>;
-
 /**
  * Facebook specific implementation of the unique net id
  */
@@ -23,22 +20,44 @@ PACKAGE_SCOPE:
 	/** Holds the net id for a player */
 	uint64 UniqueNetId;
 
-public:
-	template<typename... TArgs>
-	static FUniqueNetIdFacebookRef Create(TArgs&&... Args)
+	/** Hidden on purpose */
+	FUniqueNetIdFacebook() :
+		UniqueNetId(0)
 	{
-		return MakeShared<FUniqueNetIdFacebook, UNIQUENETID_ESPMODE>(Forward<TArgs>(Args)...);
 	}
 
-	/** Allow MakeShared to see private constructors */
-	friend class SharedPointerInternals::TIntrusiveReferenceController<FUniqueNetIdFacebook>;
+	/**
+	 * Copy Constructor
+	 *
+	 * @param Src the id to copy
+	 */
+	explicit FUniqueNetIdFacebook(const FUniqueNetIdFacebook& Src) :
+		UniqueNetId(Src.UniqueNetId)
+	{
+	}
 
-	//~ Begin FUniqueNetId Interface
+public:
+	/**
+	 * Constructs this object with the specified net id
+	 *
+	 * @param InUniqueNetId the id to set ours to
+	 */
+	explicit FUniqueNetIdFacebook(uint64 InUniqueNetId) :
+		UniqueNetId(InUniqueNetId)
+	{
+	}
+
+	explicit FUniqueNetIdFacebook(const FString& Str) :
+		UniqueNetId(FCString::Strtoui64(*Str, nullptr, 10))
+	{
+	}
+
 	virtual FName GetType() const override
 	{
 		return FACEBOOK_SUBSYSTEM;
 	}
 
+	//~ Begin FUniqueNetId Interface
 	virtual const uint8* GetBytes() const override
 	{
 		return (uint8*)&UniqueNetId;
@@ -48,6 +67,13 @@ public:
 	virtual int32 GetSize() const override
 	{
 		return sizeof(uint64);
+	}
+
+	/** global static instance of invalid (zero) id */
+	static const TSharedRef<const FUniqueNetId>& EmptyId()
+	{
+		static const TSharedRef<const FUniqueNetId> EmptyId(MakeShared<FUniqueNetIdFacebook>());
+		return EmptyId;
 	}
 
 	virtual bool IsValid() const override
@@ -67,51 +93,15 @@ public:
 		const FString UniqueNetIdStr = FString::Printf(TEXT("0%I64X"), UniqueNetId);
 		return OSS_UNIQUEID_REDACT(*this, UniqueNetIdStr);
 	}
+
 	//~ End FUniqueNetId Interface
 
-	/** global static instance of invalid (zero) id */
-	static const FUniqueNetIdRef& EmptyId()
-	{
-		static const FUniqueNetIdRef EmptyId(Create());
-		return EmptyId;
-	}
 
+public:
 	/** Needed for TMap::GetTypeHash() */
 	friend uint32 GetTypeHash(const FUniqueNetIdFacebook& A)
 	{
 		return GetTypeHash(A.UniqueNetId);
-	}
-
-private:
-	/** Hidden on purpose */
-	FUniqueNetIdFacebook() :
-		UniqueNetId(0)
-	{
-	}
-
-	/**
-	 * Copy Constructor
-	 *
-	 * @param Src the id to copy
-	 */
-	explicit FUniqueNetIdFacebook(const FUniqueNetIdFacebook& Src) :
-		UniqueNetId(Src.UniqueNetId)
-	{
-	}
-
-	/**
-	 * Constructs this object with the specified net id
-	 *
-	 * @param InUniqueNetId the id to set ours to
-	 */
-	explicit FUniqueNetIdFacebook(uint64 InUniqueNetId) :
-		UniqueNetId(InUniqueNetId)
-	{
-	}
-
-	explicit FUniqueNetIdFacebook(const FString& Str) :
-		UniqueNetId(FCString::Strtoui64(*Str, nullptr, 10))
-	{
 	}
 };
 

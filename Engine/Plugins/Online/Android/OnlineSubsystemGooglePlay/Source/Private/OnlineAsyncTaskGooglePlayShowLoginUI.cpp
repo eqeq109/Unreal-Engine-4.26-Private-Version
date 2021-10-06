@@ -60,7 +60,7 @@ void FOnlineAsyncTaskGooglePlayShowLoginUI::TriggerDelegates()
 
 	if (bWasSuccessful && !UserId.IsValid())
 	{
-		UserId = FUniqueNetIdGooglePlay::Create();
+		UserId = MakeShareable(new FUniqueNetIdGooglePlay());
 		Subsystem->GetIdentityGooglePlay()->SetCurrentUserId(UserId);
 	}
 	else if (!bWasSuccessful)

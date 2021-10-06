@@ -103,7 +103,6 @@ export class RoboServer {
 
 		//this.server.addFileMapping('/', 'index.html')
 		this.server.addFileMapping('/login', 'login.html', {secureOnly: true})
-		this.server.addFileMapping('/allbots', 'allbots.html')
 		this.server.addFileMapping('/js/*.wasm', 'bin/$1.wasm.gz', {
 			filetype: "application/wasm", 
 			headers: [
@@ -167,26 +166,14 @@ class RoboWebApp implements AppInterface {
 		return readUtf8File('public/index.html')
 	}
 
-	@Handler('GET', '/preview/*', {filetype: 'text/html'}) 
-	previewNoBot(clStr: string) {
-		return this.preview(clStr)
-	}
-
 	@Handler('GET', '/preview/*/*', {filetype: 'text/html'}) 
-	async preview(clStr: string, singleBot?: string) {
-
+	async preview(clStr: string, bot: string) {
 		const cl = parseInt(clStr)
 		if (isNaN(cl)) {
 			throw new Error(`Failed to parse alleged CL '${clStr}'`)
 		}
-
-		let query = `/preview?cl=${cl}`
-		if (singleBot) {
-			query += '&bot=' + singleBot
-		}
-
 		const template = await readUtf8File('public/preview.html')
-		return Mustache.render(template, {cl, query})
+		return Mustache.render(template, {cl, bot})
 	}
 
 	@Handler('GET', '/preview') 
@@ -196,7 +183,7 @@ class RoboWebApp implements AppInterface {
 			queryObj[key] = val
 		}
 
-		return this.sendMessage('preview', [queryObj.cl, queryObj.bot || ''])
+		return this.sendMessage('preview', [queryObj.cl, queryObj.bot])
 	}
 
 	private static getMarkdownRenderer(): marked.Renderer {

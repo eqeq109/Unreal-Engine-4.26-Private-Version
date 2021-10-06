@@ -1,49 +1,67 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RenderCaptureInterface.h"
-#include "IRenderCaptureProvider.h"
 #include "RenderingThread.h"
-#include "RHI.h"
 
 namespace RenderCaptureInterface
 {
-	FScopedCapture::FScopedCapture(bool bEnable, TCHAR const* InEventName, TCHAR const* InFileName)
-		: bCapture(bEnable && IRenderCaptureProvider::IsAvailable())
-		, bEvent(false)
-		, RHICommandList(nullptr)
+	static FOnBeginCaptureDelegate GBeginDelegates;
+	static FOnEndCaptureDelegate GEndDelegates;
+	
+	void RegisterCallbacks(FOnBeginCaptureDelegate InBeginDelegate, FOnEndCaptureDelegate InEndDelegate)
 	{
-		check(!GUseThreadedRendering || !IsInRenderingThread());
+		check(!GBeginDelegates.IsBound());
+		GBeginDelegates = InBeginDelegate;
+		check(!GEndDelegates.IsBound());
+		GEndDelegates = InEndDelegate;
+	}
+
+	void UnregisterCallbacks()
+	{
+		GBeginDelegates.Unbind();
+		GEndDelegates.Unbind();
+	}
+
+	void BeginCapture(FRHICommandListImmediate* RHICommandList, TCHAR const* Name)
+	{
+		if (GBeginDelegates.IsBound())
+		{
+			GBeginDelegates.Execute(RHICommandList, Name);
+		}
+	}
+
+	void EndCapture(FRHICommandListImmediate* RHICommandList)
+	{
+		if (GEndDelegates.IsBound())
+		{
+			GEndDelegates.Execute(RHICommandList);
+		}
+	}
+
+	FScopedCapture::FScopedCapture(bool bEnable, TCHAR const* Name)
+		: bCapture(bEnable)
+		, RHICmdList(nullptr)
+	{
+		check(!IsInRenderingThread());
 
 		if (bCapture)
 		{
-			ENQUEUE_RENDER_COMMAND(BeginCaptureCommand)([this, EventName = FString(InEventName), FileName = FString(InFileName)](FRHICommandListImmediate& RHICommandListLocal)
+			ENQUEUE_RENDER_COMMAND(CaptureCommand)([Name](FRHICommandListImmediate& RHICommandListLocal)
 			{
-				IRenderCaptureProvider::Get().BeginCapture(&RHICommandListLocal, IRenderCaptureProvider::ECaptureFlags_Launch, FileName);
-
-				if (!EventName.IsEmpty())
-				{
-					RHICommandListLocal.PushEvent(*EventName, FColor::White);
-					bEvent = true;
-				}
+				BeginCapture(&RHICommandListLocal, Name);
 			});
 		}
 	}
 
-	FScopedCapture::FScopedCapture(bool bEnable, FRHICommandListImmediate* InRHICommandList, TCHAR const* InEventName, TCHAR const* InFileName)
-		: bCapture(bEnable && IRenderCaptureProvider::IsAvailable())
-		, RHICommandList(InRHICommandList)
+	FScopedCapture::FScopedCapture(bool bEnable, FRHICommandListImmediate* RHICommandList, TCHAR const* Name)
+		: bCapture(bEnable)
+		, RHICmdList(RHICommandList)
 	{
-		check(!GUseThreadedRendering || IsInRenderingThread());
+		check(IsInRenderingThread());
 
 		if (bCapture)
 		{
-			IRenderCaptureProvider::Get().BeginCapture(RHICommandList, IRenderCaptureProvider::ECaptureFlags_Launch, FString(InFileName));
-		
-			if (InEventName != nullptr)
-			{
-				RHICommandList->PushEvent(InEventName, FColor::White);
-				bEvent = true;
-			}
+			BeginCapture(RHICmdList, Name);
 		}
 	}
 
@@ -51,31 +69,21 @@ namespace RenderCaptureInterface
 	{
 		if (bCapture)
 		{
-			if (RHICommandList != nullptr)
+			if (RHICmdList != nullptr)
 			{
-				check(!GUseThreadedRendering || IsInRenderingThread());
+				check(IsInRenderingThread());
 				
-				if (bEvent)
-				{
-					RHICommandList->PopEvent();
-				}
-
-				IRenderCaptureProvider::Get().EndCapture(RHICommandList);
+				EndCapture(RHICmdList);
 			}
 			else
 			{
-				check(!GUseThreadedRendering || !IsInRenderingThread());
+				check(!IsInRenderingThread());
 
-				ENQUEUE_RENDER_COMMAND(EndCaptureCommand)([bPopEvent = bEvent](FRHICommandListImmediate& RHICommandListLocal)
+				ENQUEUE_RENDER_COMMAND(CaptureCommand)([](FRHICommandListImmediate& RHICommandListLocal)
 				{
-					if (bPopEvent)
-					{
-						RHICommandListLocal.PopEvent();
-					}
-
-					IRenderCaptureProvider::Get().EndCapture(&RHICommandListLocal);
+					EndCapture(&RHICommandListLocal);
 				});
 			}
 		}
- 	}
+	}
 }

@@ -51,16 +51,12 @@
 				<if condition="bEnabled">
 					<true>
 						<if condition="bPackageDataInsideApk">
-							<true>
-								<log text="Disabled because Package Data Inside Apk enabled; disable to use GooglePAD for delivery"/>
-								<setBool result="bEnabled" value="false"/>
-							</true>
+							<log text="Disabled because Package Data Inside Apk enabled; disable to use GooglePAD for delivery"/>
+							<setBool result="bEnabled" value="false"/>
 						</if>
 						<if condition="bAllowPatchOBBFile">
-							<true>
-								<log text="Disabled because Allow patch OBB file enabled; disable to use GooglePAD for delivery"/>
-								<setBool result="bEnabled" value="false"/>
-							</true>
+							<log text="Disabled because Allow patch OBB file enabled; disable to use GooglePAD for delivery"/>
+							<setBool result="bEnabled" value="false"/>
 						</if>
 					</true>
 				</if>
@@ -250,15 +246,6 @@ import com.google.android.play.core.tasks.Task;
 	}
 </insert>
 			</true>
-			<false>
-				<insert>
-	// for GooglePAD
-	public boolean AndroidThunkJava_GooglePAD_Available()
-	{
-		return false;
-	}
-</insert>
-			</false>
 		</if>
 	</gameActivityClassAdditions>
 

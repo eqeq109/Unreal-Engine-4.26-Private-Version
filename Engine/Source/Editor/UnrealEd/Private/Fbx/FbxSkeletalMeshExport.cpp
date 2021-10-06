@@ -25,7 +25,7 @@ namespace UnFbx
  */
 FbxNode* FFbxExporter::CreateSkeleton(const USkeletalMesh* SkelMesh, TArray<FbxNode*>& BoneNodes)
 {
-	const FReferenceSkeleton& RefSkeleton= SkelMesh->GetRefSkeleton();
+	const FReferenceSkeleton& RefSkeleton= SkelMesh->RefSkeleton;
 
 	if(RefSkeleton.GetRawBoneNum() == 0)
 	{
@@ -253,19 +253,19 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 	}
 
 
-	if (GetExportOptions()->bExportMorphTargets && SkelMesh->GetSkeleton()) //The skeleton can be null if this is a destructible mesh.
+	if (GetExportOptions()->bExportMorphTargets && SkelMesh->Skeleton) //The skeleton can be null if this is a destructible mesh.
 	{
-		const FSmartNameMapping* SmartNameMapping = SkelMesh->GetSkeleton()->GetSmartNameContainer(USkeleton::AnimCurveMappingName);
+		const FSmartNameMapping* SmartNameMapping = SkelMesh->Skeleton->GetSmartNameContainer(USkeleton::AnimCurveMappingName);
 		TMap<FName, FbxAnimCurve*> BlendShapeCurvesMap;
 
-		if (SkelMesh->GetMorphTargets().Num())
+		if (SkelMesh->MorphTargets.Num())
 		{
 			// The original BlendShape Name was not saved during import, so we need to come up with a new one.
 			const FString BlendShapeName(SkelMesh->GetName() + TEXT("_blendShapes"));
 			FbxBlendShape* BlendShape = FbxBlendShape::Create(Mesh, TCHAR_TO_UTF8(*BlendShapeName));
 			bool bHasBadMorphTarget = false;
 
-			for (UMorphTarget* MorphTarget : SkelMesh->GetMorphTargets())
+			for (UMorphTarget* MorphTarget : SkelMesh->MorphTargets)
 			{
 				int32 DeformerIndex = Mesh->AddDeformer(BlendShape);
 				FbxBlendShapeChannel* BlendShapeChannel = FbxBlendShapeChannel::Create(BlendShape, TCHAR_TO_UTF8(*MorphTarget->GetName()));
@@ -342,8 +342,7 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 
 
 	// Add the materials for the mesh
-	const TArray<FSkeletalMaterial>& SkelMeshMaterials = SkelMesh->GetMaterials();
-	int32 MaterialCount = SkelMeshMaterials.Num();
+	int32 MaterialCount = SkelMesh->Materials.Num();
 
 	for(int32 MaterialIndex = 0; MaterialIndex < MaterialCount; ++MaterialIndex)
 	{
@@ -355,7 +354,7 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 		}
 		else
 		{
-			MatInterface = SkelMesh->GetMaterials()[MaterialIndex].MaterialInterface;
+			MatInterface = SkelMesh->Materials[MaterialIndex].MaterialInterface;
 		}
 
 		FbxSurfaceMaterial* FbxMaterial = NULL;
@@ -752,7 +751,7 @@ FbxNode* FFbxExporter::ExportSkeletalMeshToFbx(const USkeletalMesh* SkeletalMesh
 			ActorRootNode->AddChild(SkeletonRootNode);
 		}
 
-		ExportObjectMetadataToBones(SkeletalMesh->GetSkeleton(), BoneNodes);
+		ExportObjectMetadataToBones(SkeletalMesh->Skeleton, BoneNodes);
 
 		if (MeshRootNode)
 		{

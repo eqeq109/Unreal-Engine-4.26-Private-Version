@@ -12,7 +12,7 @@
 class UDMXLibrary;
 
 
-// Holds an array Attribute Names with their normalized Values (expand the property to see the map)
+// FDMXAttributeValueMap is required to pass the map by ref in delegates
 USTRUCT(BlueprintType, Category = "DMX")
 struct DMXRUNTIME_API FDMXNormalizedAttributeValueMap
 {
@@ -26,6 +26,7 @@ USTRUCT(BlueprintType)
 struct FDMXRequestBase
 {
 	GENERATED_BODY()
+
 
 public:
 

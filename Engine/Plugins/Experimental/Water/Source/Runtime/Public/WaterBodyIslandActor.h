@@ -40,9 +40,6 @@ public:
 	UWaterSplineComponent* GetWaterSpline() const { return SplineComp; }
 
 	void UpdateHeight();
-
-	virtual void Serialize(FArchive& Ar) override;
-	virtual void PostLoad() override;
 	
 #if WITH_EDITOR
 	void UpdateOverlappingWaterBodies();

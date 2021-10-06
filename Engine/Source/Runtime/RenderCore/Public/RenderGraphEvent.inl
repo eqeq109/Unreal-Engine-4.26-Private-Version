@@ -51,7 +51,7 @@ void TRDGScopeStack<TScopeType>::BeginExecutePass(const TScopeType* ParentScope)
 	int32 TraversedScopeCount = 0;
 
 	// Find common ancestor between current stack and requested scope.
-	while (ParentScope && TraversedScopeCount < kScopeStackDepthMax)
+	while (ParentScope)
 	{
 		TraversedScopes[TraversedScopeCount] = ParentScope;
 
@@ -86,7 +86,7 @@ void TRDGScopeStack<TScopeType>::BeginExecutePass(const TScopeType* ParentScope)
 	}
 
 	// Push new scopes.
-	for (int32 i = TraversedScopeCount - 1; i >= 0 && CommonScopeId < static_cast<int32>(kScopeStackDepthMax); i--)
+	for (int32 i = TraversedScopeCount - 1; i >= 0; i--)
 	{
 		PushFunction(RHICmdList, TraversedScopes[i]);
 		CommonScopeId++;
@@ -243,7 +243,7 @@ inline void FRDGGPUScopeStacksByPipeline::EndEventScope()
 	AsyncCompute.Event.EndScope();
 }
 
-inline void FRDGGPUScopeStacksByPipeline::BeginStatScope(const FName& Name, const FName& StatName, int32 (*DrawCallCounter)[MAX_NUM_GPUS])
+inline void FRDGGPUScopeStacksByPipeline::BeginStatScope(const FName& Name, const FName& StatName, int32* DrawCallCounter)
 {
 	Graphics.Stat.BeginScope(Name, StatName, DrawCallCounter);
 	AsyncCompute.Stat.BeginScope(Name, StatName, DrawCallCounter);

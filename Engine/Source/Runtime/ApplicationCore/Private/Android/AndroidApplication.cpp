@@ -128,7 +128,7 @@ void FAndroidApplication::HandleDeviceOrientation()
             }
         }
         
-        FAndroidMisc::SaveDeviceOrientation(DeviceOrientation);
+        FAndroidMisc::SetDeviceOrientation(DeviceOrientation);
         
         if (PreviousDeviceOrientation != DeviceOrientation)
         {

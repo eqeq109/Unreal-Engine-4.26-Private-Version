@@ -4,7 +4,6 @@
 
 #include "NiagaraCommon.h"
 #include "ViewModels/TNiagaraViewModelManager.h"
-#include "ViewModels/NiagaraParameterDefinitionsSubscriberViewModel.h"
 #include "UObject/ObjectKey.h"
 #include "IAssetTypeActions.h"
 
@@ -21,27 +20,21 @@ struct FEdGraphEditAction;
 class SWindow;
 class FNiagaraEmitterHandleViewModel;
 struct FNiagaraEventScriptProperties;
-class UNiagaraScriptVariable;
-class UNiagaraParameterDefinitions;
-
 
 /** The view model for the UNiagaraEmitter objects */
-class FNiagaraEmitterViewModel 
-	: public TSharedFromThis<FNiagaraEmitterViewModel>
-	, public TNiagaraViewModelManager<UNiagaraEmitter, FNiagaraEmitterViewModel>
-	, public INiagaraParameterDefinitionsSubscriberViewModel
+class FNiagaraEmitterViewModel : public TSharedFromThis<FNiagaraEmitterViewModel>,  public TNiagaraViewModelManager<UNiagaraEmitter, FNiagaraEmitterViewModel>
 {
 public:
 	DECLARE_MULTICAST_DELEGATE(FOnEmitterChanged);
 	DECLARE_MULTICAST_DELEGATE(FOnPropertyChanged);
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnScriptCompiled, UNiagaraScript*, const FGuid&);
+	DECLARE_MULTICAST_DELEGATE(FOnScriptCompiled);
 	DECLARE_MULTICAST_DELEGATE(FOnParentRemoved);
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnScriptGraphChanged, const FEdGraphEditAction&, const UNiagaraScript&);
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnScriptParameterStoreChanged, const FNiagaraParameterStore&, const UNiagaraScript&);
 
 public:
 	/** Creates a new emitter editor view model.  It must be initialized before use. */
-	FNiagaraEmitterViewModel(bool bInIsForDataProcessingOnly);
+	FNiagaraEmitterViewModel();
 	virtual ~FNiagaraEmitterViewModel();
 
 	/** Initialize this view model with an emitter and simulation. */
@@ -50,12 +43,6 @@ public:
 	/** Resets this view model to initial conditions. */
 	void Reset();
 
-	//~ Begin NiagaraParameterDefinitionsSubscriberViewModel Interface
-protected:
-	virtual INiagaraParameterDefinitionsSubscriber* GetParameterDefinitionsSubscriber() override;
-	//~ End NiagaraParameterDefinitionsSubscriberViewModel Interface
-
-public:
 	/** Gets the currently assigned simulation if there is one. */
 	NIAGARAEDITOR_API TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> GetSimulation() const;
 

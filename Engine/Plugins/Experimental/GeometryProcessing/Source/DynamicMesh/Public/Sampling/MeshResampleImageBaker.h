@@ -20,8 +20,6 @@ public:
 	TFunction<FVector4f(FVector2d)> SampleFunction = [](FVector2d Position) { return FVector4f::Zero(); };
 	const FDynamicMeshUVOverlay* DetailUVOverlay = nullptr;
 
-	FVector4f DefaultColor = FVector4f(0, 0, 0, 1);
-
 	//
 	// Compute functions
 	//

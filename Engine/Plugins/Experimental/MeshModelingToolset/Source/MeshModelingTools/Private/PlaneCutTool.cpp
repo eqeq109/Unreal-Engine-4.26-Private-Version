@@ -140,10 +140,12 @@ void UPlaneCutTool::Setup()
 		OriginalDynamicMesh->EnableAttributes();
 		TDynamicMeshScalarTriangleAttribute<int>* SubObjectIDs = new TDynamicMeshScalarTriangleAttribute<int>(OriginalDynamicMesh);
 		SubObjectIDs->Initialize(0);
-		OriginalDynamicMesh->Attributes()->AttachAttribute(FPlaneCutOp::ObjectIndexAttribute, SubObjectIDs);
+		int AttribIndex = OriginalDynamicMesh->Attributes()->AttachAttribute(SubObjectIDs);
 
 		/// fill in the MeshesToCut array
 		UDynamicMeshReplacementChangeTarget* Target = MeshesToCut.Add_GetRef(NewObject<UDynamicMeshReplacementChangeTarget>());
+		MeshSubObjectAttribIndices.Add(AttribIndex);
+		check(MeshSubObjectAttribIndices.Num() == MeshesToCut.Num());
 		// store a UV scale based on the original mesh bounds (we don't want to recompute this between cuts b/c we want consistent UV scale)
 		MeshUVScaleFactor.Add(1.0 / OriginalDynamicMesh->GetBounds().MaxDim());
 
@@ -367,6 +369,7 @@ TUniquePtr<FDynamicMeshOperator> UPlaneCutOperatorFactory::MakeNewOperator()
 	CutOp->bKeepBothHalves = CutTool->BasicProperties->bKeepBothHalves;
 	CutOp->CutPlaneLocalThickness = CutTool->BasicProperties->SpacingBetweenHalves * NormalScaleFactor;
 	CutOp->UVScaleFactor = CutTool->MeshUVScaleFactor[ComponentIndex];
+	CutOp->SubObjectsAttribIndex = CutTool->MeshSubObjectAttribIndices[ComponentIndex];
 	
 
 	return CutOp;
@@ -546,7 +549,7 @@ void UPlaneCutTool::GenerateAsset(const TArray<FDynamicMeshOpResult>& Results)
 		{
 			TDynamicMeshScalarTriangleAttribute<int>* SubMeshIDs =
 				static_cast<TDynamicMeshScalarTriangleAttribute<int>*>(UseMesh->Attributes()->GetAttachedAttribute(
-					FPlaneCutOp::ObjectIndexAttribute));
+					MeshSubObjectAttribIndices[OrigMeshIdx]));
 			TArray<FDynamicMesh3>& SplitMeshes = AllSplitMeshes[OrigMeshIdx];
 			bool bWasSplit = FDynamicMeshEditor::SplitMesh(UseMesh, SplitMeshes, [SubMeshIDs](int TID)
 			{

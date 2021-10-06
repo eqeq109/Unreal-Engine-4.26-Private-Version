@@ -8,6 +8,19 @@ public class LiveLinkXR : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
+		PublicIncludePaths.AddRange(
+			new string[] {
+			}
+			);
+				
+		
+		PrivateIncludePaths.AddRange(
+			new string[] {
+				"LiveLinkXR",
+			}
+			);
+			
+		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
@@ -15,6 +28,7 @@ public class LiveLinkXR : ModuleRules
 				"Networking",
 				"Sockets",
 				"LiveLinkInterface",
+				"LiveLinkMessageBusFramework",
 				"Messaging",
 				"UdpMessaging",
 			}

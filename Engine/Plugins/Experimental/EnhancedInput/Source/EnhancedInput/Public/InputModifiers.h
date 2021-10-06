@@ -8,14 +8,13 @@
 
 class UEnhancedPlayerInput;
 
-// NOTE: Deprecated. Do not use.
+// Ordered by phase execution timing
 UENUM(BlueprintType)
 enum class EModifierExecutionPhase : uint8
 {
-	// Deprecated. Do not use.
-	PerInput,
-	// Deprecated. Do not use.
-	FinalValue,
+	// TODO: Check these on application and block FinalValue on mappings.
+	PerInput,		// Applied when processing any input
+	FinalValue,		// Applied post tick to the final action value. These will fire per input for mapping context modifiers and should not be applied!
 
 	NumPhases			UMETA(Hidden)
 };
@@ -40,8 +39,10 @@ protected:
 		return CurrentValue;
 	}
 
-	UE_DEPRECATED(4.26, "Execution phase is deprecated.")
-	virtual EModifierExecutionPhase GetExecutionPhase_Implementation() const { return EModifierExecutionPhase::PerInput; }
+	virtual EModifierExecutionPhase GetExecutionPhase_Implementation() const
+	{
+		return EModifierExecutionPhase::PerInput;
+	}
 
 	virtual FLinearColor GetVisualizationColor_Implementation(FInputActionValue SampleValue, FInputActionValue FinalValue) const
 	{
@@ -60,10 +61,9 @@ public:
 	FInputActionValue ModifyRaw(const UEnhancedPlayerInput* PlayerInput, FInputActionValue CurrentValue, float DeltaTime) const;
 
 	/**
-	 * GetExecutionPhase - Note: Deprecated
+	 * GetExecutionPhase
 	 */
-	UE_DEPRECATED(4.26, "Execution phase is deprecated. This call can be safely removed.")
-	UFUNCTION(BlueprintNativeEvent, Category = "Modifier", meta=(DeprecatedFunction, DeprecationMessage="Execution phase is deprecated."))
+	UFUNCTION(BlueprintNativeEvent, Category = "Modifier")
 	EModifierExecutionPhase GetExecutionPhase() const;
 
 	/**
@@ -263,6 +263,7 @@ class UInputModifierToWorldSpace : public	UInputModifier
 protected:
 	virtual FInputActionValue ModifyRaw_Implementation(const UEnhancedPlayerInput* PlayerInput, FInputActionValue CurrentValue, float DeltaTime) override;
 	virtual FLinearColor GetVisualizationColor_Implementation(FInputActionValue SampleValue, FInputActionValue FinalValue) const override;
+	virtual EModifierExecutionPhase GetExecutionPhase_Implementation() const override { return EModifierExecutionPhase::FinalValue; }
 };
 
 

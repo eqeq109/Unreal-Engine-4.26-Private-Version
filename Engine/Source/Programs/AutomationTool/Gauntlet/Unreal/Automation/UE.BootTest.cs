@@ -15,7 +15,7 @@ namespace UE
 	/// <summary>
 	/// Test that waits for the client and server to get to the front-end then quits
 	/// </summary>
-	public class BootTest : UnrealTestNode<UnrealTestConfiguration>
+	public class BootTest : UnrealTestNode<UE4TestConfig>
 	{
 		/// <summary>
 		/// Used to track progress via logging
@@ -45,9 +45,9 @@ namespace UE
 		/// Returns the configuration description for this test
 		/// </summary>
 		/// <returns></returns>
-		public override UnrealTestConfiguration GetConfiguration()
+		public override UE4TestConfig GetConfiguration()
 		{
-			UnrealTestConfiguration Config = base.GetConfiguration();
+			UE4TestConfig Config = base.GetConfiguration();
 
 			UnrealTestRole Client = Config.RequireRole(UnrealTargetRole.Client);
 
@@ -77,40 +77,28 @@ namespace UE
 		}
 
 		/// <summary>
-		/// String that we search for to be considered "Booted"
-		/// </summary>
-		/// <returns></returns>
-		protected virtual string GetCompletionString()
-		{
-			return "Bringing up level for play took";
-		}
-
-		/// <summary>
 		/// Called periodically while the test is running to allow code to monitor health.
 		/// </summary>
 		public override void TickTest()
 		{
-			const int kTimeOutDuration = 10;
+			const int kTimeOutDuration = 2;
+			const string kStartupCompleteString = "Bringing up level for play took";
 
 			// run the base class tick;
 			base.TickTest();
 
 			// Get the log of the first client app
-			IAppInstance RunningInstance = this.TestInstance.RunningRoles.First().AppInstance;
+			IAppInstance RunningInstance = this.TestInstance.ClientApps.First();
 
 			UnrealLogParser LogParser = new UnrealLogParser(RunningInstance.StdOut);
 
-			IEnumerable<string> BusyLogLines = LogParser.GetEditorBusyChannels();
-			int BusyLineCount = BusyLogLines.Count();
+			// count how many lines there are in the log to check progress
+			int LogLines = LogParser.Content.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
 
-			if (BusyLineCount > LogLinesLastTick)
+			if (LogLines > LogLinesLastTick)
 			{
 				LastLogTime = DateTime.Now;
-				// log new entries so people have something to look at
-				BusyLogLines.Skip(LogLinesLastTick).ToList().ForEach(S => Log.Info("{0}", S));
-				LogLinesLastTick = BusyLineCount;
 			}
-
 			// Gauntlet will timeout tests based on the -timeout argument, but we have greater insight here so can bail earlier to save
 			// tests from idling on the farm needlessly.
 			if ((DateTime.Now - LastLogTime).TotalMinutes > kTimeOutDuration)
@@ -123,17 +111,12 @@ namespace UE
 			// now see if the game has brought the first world up for play
 			IEnumerable<string> LogWorldLines = LogParser.GetLogChannel("World");
 
-			string CompletionString = GetCompletionString();
-
-			if (!string.IsNullOrEmpty(CompletionString))
+			if (LogWorldLines.Any(L => L.IndexOf(kStartupCompleteString) >= 0))
 			{
-				if (LogParser.Content.IndexOf(CompletionString, StringComparison.OrdinalIgnoreCase) > 0)
-				{
-					Log.Info("Found '{0}'. Ending Test", GetCompletionString());
-					MarkTestComplete();
-					DidDetectLaunch = true;
-					SetUnrealTestResult(TestResult.Passed);
-				}
+				Log.Info("Found world is ready for play. Ending Test");
+				MarkTestComplete();
+				DidDetectLaunch = true;
+				SetUnrealTestResult(TestResult.Passed);
 			}
 		}
 
@@ -194,58 +177,6 @@ namespace UE
 			}
 
 			Log.Info("Found valid artifacts for test");
-		}
-	}
-
-	/// <summary>
-	/// Test that verifies the editor boots
-	/// </summary>
-	public class EditorBootTest : BootTest
-	{
-		public EditorBootTest(Gauntlet.UnrealTestContext InContext)
-			: base(InContext)
-		{
-		}
-
-		/// <summary>
-		/// Returns the configuration description for this test
-		/// </summary>
-		/// <returns></returns>
-		public override UnrealTestConfiguration GetConfiguration()
-		{
-			UnrealTestConfiguration Config = base.GetConfiguration();
-			// currently needed as BootTest isn't an abstract class. Can be changed for 4.27
-			Config.ClearRoles();
-			UnrealTestRole EditorRole = Config.RequireRole(UnrealTargetRole.Editor);
-			EditorRole.CommandLineParams.Add("execcmds", "QUIT_EDITOR");
-			return Config;
-		}
-
-		protected override string GetCompletionString()
-		{
-			return null;
-		}
-	}
-
-	/// <summary>
-	/// Test that verifies a target boots
-	/// </summary>
-	public class TargetBootTest : BootTest
-	{
-		public TargetBootTest(Gauntlet.UnrealTestContext InContext)
-			: base(InContext)
-		{
-		}
-
-		/// <summary>
-		/// Returns the configuration description for this test
-		/// </summary>
-		/// <returns></returns>
-		public override UnrealTestConfiguration GetConfiguration()
-		{
-			UnrealTestConfiguration Config = base.GetConfiguration();
-			Config.RequireRole(UnrealTargetRole.Client);
-			return Config;
 		}
 	}
 }

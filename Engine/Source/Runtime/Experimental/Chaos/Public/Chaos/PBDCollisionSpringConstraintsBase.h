@@ -2,7 +2,6 @@
 #pragma once
 
 #if !COMPILE_WITHOUT_UNREAL_SUPPORT
-#include "Chaos/Core.h"
 #include "Chaos/Array.h"
 #include "Chaos/PBDParticles.h"
 #include "Containers/Set.h"
@@ -10,42 +9,41 @@
 namespace Chaos
 {
 // This is an invertible spring class, typical springs are not invertible aware
-class CHAOS_API FPBDCollisionSpringConstraintsBase
+template<class T, int d>
+class TPBDCollisionSpringConstraintsBase
 {
 public:
-	FPBDCollisionSpringConstraintsBase(
+	TPBDCollisionSpringConstraintsBase(
 		const int32 InOffset,
 		const int32 InNumParticles,
-		const TArray<TVec3<int32>>& InElements,
-		TSet<TVec2<int32>>&& InDisabledCollisionElements,
-		const FReal InThickness = (FReal)1.,
-		const FReal InStiffness = (FReal)1.);
+		const TArray<TVector<int32, 3>>& InElements,
+		TSet<TVector<int32, 2>>&& InDisabledCollisionElements,
+		const T InThickness = (T)1.,
+		const T InStiffness = (T)1.);
 
-	virtual ~FPBDCollisionSpringConstraintsBase() {}
+	virtual ~TPBDCollisionSpringConstraintsBase() {}
 
-	void Init(const FPBDParticles& Particles);
+	void Init(const TPBDParticles<T, d>& Particles);
 
-	FVec3 GetDelta(const FPBDParticles& InParticles, const int32 i) const;
+	TVector<T, d> GetDelta(const TPBDParticles<T, d>& InParticles, const int32 i) const;
 
-	const TArray<TVec4<int32>>& GetConstraints() const { return Constraints;  }
-	const TArray<FVec3>& GetBarys() const { return Barys; }
-	const TArray<FVec3>& GetNormals() const { return Normals; }
-	FReal GetThickness() const { return Thickness; }
-
-	void SetThickness(FReal InThickness) { Thickness = FMath::Max(InThickness, (FReal)0.);  }
+	const TArray<TVector<int32, 4>>& GetConstraints() const { return MConstraints;  }
+	const TArray<TVector<T, d>>& GetBarys() const { return MBarys; }
+	const TArray<TVector<T, d>>& GetNormals() const { return MNormals; }
+	float GetThickness() const { return MThickness; }
 
 protected:
-	TArray<TVec4<int32>> Constraints;
-	TArray<FVec3> Barys;
-	TArray<FVec3> Normals;
+	TArray<TVector<int32, 4>> MConstraints;
+	TArray<TVector<T, d>> MBarys;
+	TArray<TVector<T, d>> MNormals;
 
 private:
-	const TArray<TVec3<int32>>& Elements;
-	const TSet<TVec2<int32>> DisabledCollisionElements;  // TODO: Make this a bitarray
-	int32 Offset;
-	int32 NumParticles;
-	FReal Thickness;
-	FReal Stiffness;
+	const TArray<TVector<int32, 3>>& MElements;
+	const TSet<TVector<int32, 2>> MDisabledCollisionElements;  // TODO: Make this a bitarray
+	int32 MOffset;
+	int32 MNumParticles;
+	T MThickness;
+	T MStiffness;
 };
 }
 #endif

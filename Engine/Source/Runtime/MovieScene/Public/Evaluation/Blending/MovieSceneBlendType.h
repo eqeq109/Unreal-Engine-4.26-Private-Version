@@ -73,12 +73,14 @@ struct FOptionalMovieSceneBlendType
 		return A.IsValid() && A.BlendType == B;
 	}
 
+private:
+
 	/** The actual blend type */
-	UPROPERTY(BlueprintReadOnly, Category="Blend Type")
+	UPROPERTY()
 	EMovieSceneBlendType BlendType;
 
 	/** Boolean indicating whether BlendType is valid */
-	UPROPERTY(BlueprintReadOnly, Category="Blend Type")
+	UPROPERTY()
 	bool bIsValid;
 };
 

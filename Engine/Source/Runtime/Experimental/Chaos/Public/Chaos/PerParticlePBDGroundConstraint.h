@@ -5,14 +5,15 @@
 
 namespace Chaos
 {
-class FPerParticlePBDGroundConstraint : public FPerParticleRule
+template<class T, int d>
+class PerParticlePBDGroundConstraint : public TPerParticleRule<T, d>
 {
   public:
-	  FPerParticlePBDGroundConstraint(const FReal Height = 0)
+	PerParticlePBDGroundConstraint(const T Height = 0)
 	    : MHeight(Height) {}
-	virtual ~FPerParticlePBDGroundConstraint() {}
+	virtual ~PerParticlePBDGroundConstraint() {}
 
-	inline void Apply(FPBDParticles& InParticles, const FReal Dt, const int32 Index) const override //-V762
+	inline void Apply(TPBDParticles<T, d>& InParticles, const T Dt, const int32 Index) const override //-V762
 	{
 		if (InParticles.P(Index)[1] >= MHeight || InParticles.InvM(Index) == 0)
 			return;
@@ -20,10 +21,6 @@ class FPerParticlePBDGroundConstraint : public FPerParticleRule
 	}
 
   private:
-	FReal MHeight;
+	T MHeight;
 };
-
-template<class T, int d>
-using PerParticlePBDGroundConstraint UE_DEPRECATED(4.27, "Deprecated. this class is to be deleted, use FPerParticlePBDGroundConstraint instead") = FPerParticlePBDGroundConstraint;
-
 }

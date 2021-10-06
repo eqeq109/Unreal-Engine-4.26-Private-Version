@@ -371,15 +371,15 @@ void UNiagaraNodeEmitter::BuildParameterMapHistory(FNiagaraParameterMapHistoryBu
 			}
 			ChildBuilder.ExitEmitter(LocalEmitterName, this);
 			 
-			FNiagaraAliasContext ResolveAliasesContext(OutputNodeUsage);
-			ResolveAliasesContext.ChangeEmitterToEmitterName(EmitterUniqueName);
+			TMap<FString, FString> RenameMap;
+			RenameMap.Add(LocalEmitterName, EmitterUniqueName);
 			for (FNiagaraParameterMapHistory& History : ChildBuilder.Histories)
 			{
 				OutHistory.Histories[ParamMapIdx].MapPinHistory.Append(History.MapPinHistory);
 				for (int32 SrcVarIdx = 0; SrcVarIdx < History.Variables.Num(); SrcVarIdx++)
 				{
 					FNiagaraVariable& Var = History.Variables[SrcVarIdx];
-					Var = FNiagaraUtilities::ResolveAliases(Var, ResolveAliasesContext);
+					Var = FNiagaraParameterMapHistory::ResolveAliases(Var, RenameMap);
 
 					int32 ExistingIdx = OutHistory.Histories[ParamMapIdx].FindVariable(Var.GetName(), Var.GetType());
 					if (ExistingIdx == INDEX_NONE)

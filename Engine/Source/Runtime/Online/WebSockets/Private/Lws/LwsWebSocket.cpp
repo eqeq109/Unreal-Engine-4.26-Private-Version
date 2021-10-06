@@ -650,6 +650,7 @@ void FLwsWebSocket::ConnectInternal(struct lws_context &LwsContext)
 	FTCHARToUTF8 UrlUtf8(*Url);
 	const char *UrlProtocol;
 	const char *TmpUrlPath;
+	char UrlPath[300];
 	const char* ParsedAddress;
 	int ParsedPort;
 	if (lws_parse_uri((char*)UrlUtf8.Get(), &UrlProtocol, &ParsedAddress, &ParsedPort, &TmpUrlPath))
@@ -665,13 +666,9 @@ void FLwsWebSocket::ConnectInternal(struct lws_context &LwsContext)
 		}
 		return;
 	}
-
-	int32 UrlPathLength = FCStringAnsi::Strlen(TmpUrlPath) + 2;
-	TArray<ANSICHAR> UrlPath;
-	UrlPath.Reserve(UrlPathLength);
-	UrlPath.Add('/');
-	UrlPath.Append(TmpUrlPath, UrlPathLength - 2);
-	UrlPath.Add('\0');
+	UrlPath[0] = '/';
+	FCStringAnsi::Strncpy(UrlPath + 1, TmpUrlPath, sizeof(UrlPath) - 2);
+	UrlPath[sizeof(UrlPath) - 1] = '\0';
 
 	int SslConnection = 0;
 
@@ -720,7 +717,7 @@ void FLwsWebSocket::ConnectInternal(struct lws_context &LwsContext)
 	ConnectInfo.address = ParsedAddress;
 	ConnectInfo.port = ParsedPort;
 	ConnectInfo.ssl_connection = SslConnection;
-	ConnectInfo.path = UrlPath.GetData();
+	ConnectInfo.path = UrlPath;
 	ConnectInfo.host = ConnectInfo.address;
 	ConnectInfo.origin = ConnectInfo.address;
 	ConnectInfo.protocol = CombinedProtocolsUTF8;

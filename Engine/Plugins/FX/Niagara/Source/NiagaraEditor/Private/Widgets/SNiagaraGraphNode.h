@@ -19,9 +19,7 @@ public:
 
 	//~ SGraphNode api
 	virtual void UpdateGraphNode() override;
-	virtual void CreateInputSideAddButton(TSharedPtr<SVerticalBox> InputBox) override;
-	virtual void CreateOutputSideAddButton(TSharedPtr<SVerticalBox> OutputBox) override;
-
+	
 protected:
 	void RegisterNiagaraGraphNode(UEdGraphNode* InNode);
 	void HandleNiagaraNodeChanged(UNiagaraNode* InNode);

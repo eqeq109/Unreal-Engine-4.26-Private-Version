@@ -101,7 +101,7 @@ struct FUNCTIONALTESTING_API FTraceQueryTestResultsInnerMost
 
 	/** The true/false value returned from the single sweep */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Utility|Collision")
-	bool bSingleResult = false;
+	bool bSingleResult;
 
 	/** Result from doing a multi sweep */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Utility|Collision")
@@ -113,7 +113,7 @@ struct FUNCTIONALTESTING_API FTraceQueryTestResultsInnerMost
 
 	/** The true/false value returned from the multi sweep */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Utility|Collision")
-	bool bMultiResult = false;
+	bool bMultiResult;
 
 	FString ToString() const;
 

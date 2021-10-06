@@ -2,8 +2,6 @@
 
 #pragma once
 
-#define MAX_PHYSICS_FIELD_TARGETS 32
-
 #ifndef PHYSICS_INTERFACE_PHYSX
 #define PHYSICS_INTERFACE_PHYSX 0
 #endif
@@ -19,19 +17,19 @@
 #if WITH_CHAOS
 
 #include "ChaosSQTypes.h"
-#include "PhysicsProxy/SingleParticlePhysicsProxyFwd.h"
 
 namespace Chaos
 {
 	class FImplicitObject;
 
-	class FCapsule;
+	template<class T>
+	class TCapsule;
 
 	template <typename T, int d>
 	class TGeometryParticle;
-	using FGeometryParticle = TGeometryParticle<FReal, 3>;
 
-	struct FMassProperties;
+	template<class T, int d>
+	struct TMassProperties;
 
 	class FPerShapeData;
 
@@ -75,10 +73,10 @@ using FPhysicsTransform = FTransform;
 
 using FPhysicsShape = Chaos::FPerShapeData;
 using FPhysicsGeometry = Chaos::FImplicitObject;
-using FPhysicsCapsuleGeometry = Chaos::FCapsule;
+using FPhysicsCapsuleGeometry = Chaos::TCapsule<float>;
 using FPhysicsMaterial = Chaos::FChaosPhysicsMaterial;
 using FPhysicsMaterialMask = Chaos::FChaosPhysicsMaterialMask; 
-using FPhysicsActor = Chaos::FGeometryParticle;
+using FPhysicsActor = Chaos::TGeometryParticle<float,3>;
 
 template <typename T>
 using FPhysicsHitCallback = ChaosInterface::FSQHitBuffer<T>;
@@ -207,7 +205,7 @@ extern FPhysicsActorHandle DefaultPhysicsActorHandle();
 
 #elif WITH_CHAOS
 
-using FPhysicsActorHandle = FSingleParticlePhysicsProxy*;
+using FPhysicsActorHandle = Chaos::TGeometryParticle<float, 3>*;
 
 class FChaosSceneId;
 class FPhysInterface_Chaos;

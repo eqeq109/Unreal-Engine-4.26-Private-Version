@@ -13,7 +13,7 @@ class PLAYTIMELIMIT_API FPlayTimeLimitUser :
 {
 public:
 	/** Constructor */
-	explicit FPlayTimeLimitUser(const FUniqueNetIdRef& InUserId)
+	explicit FPlayTimeLimitUser(const TSharedRef<const FUniqueNetId>& InUserId)
 		: UserId(InUserId)
 		, NextNotificationTime(0)
 		, LastKnownRewardRate(0.0f)
@@ -31,7 +31,7 @@ public:
 	 * Get the user's unique id
 	 * @return the user's unique id
 	 */
-	FUniqueNetIdRef GetUserId() const { return UserId; }
+	TSharedRef<const FUniqueNetId> GetUserId() const { return UserId; }
 
 	/**
 	 * Tick
@@ -97,7 +97,7 @@ public:
 
 protected:
 	/** The user id */
-	FUniqueNetIdRef UserId;
+	TSharedRef<const FUniqueNetId> UserId;
 	/** Time for the next notification (or empty for no notification) */
 	TOptional<double> NextNotificationTime;
 	/** Last known reward rate so we can alert on changes */

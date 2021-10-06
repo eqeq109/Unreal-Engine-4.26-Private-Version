@@ -9,8 +9,6 @@
 #include "Fonts/FontMeasure.h"
 #include "Styling/CoreStyle.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Widgets/SCompoundWidget.h"
-#include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Textures/SlateIcon.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -28,7 +26,6 @@
 #include "Compilation/MovieSceneCompiledDataManager.h"
 #include "Evaluation/MovieSceneSequenceHierarchy.h"
 
-#include "Misc/NotifyHook.h"
 #include "IDetailsView.h"
 #include "PropertyEditorModule.h"
 #include "ISinglePropertyView.h"
@@ -760,8 +757,6 @@ FReply FSequencerTimeSliderController::OnMouseButtonDown( SWidget& WidgetOwner, 
 {
 	MouseDragType = DRAG_NONE;
 	DistanceDragged = 0;
-	MouseDownPlaybackRange = TimeSliderArgs.PlaybackRange.Get();
-	MouseDownSelectionRange = TimeSliderArgs.SelectionRange.Get();
 	MouseDownPosition[0] = MouseDownPosition[1] = MouseEvent.GetScreenSpacePosition();
 	MouseDownGeometry = MyGeometry;
 	bMouseDownInRegion = false;
@@ -923,26 +918,7 @@ FReply FSequencerTimeSliderController::OnMouseMove( SWidget& WidgetOwner, const 
 				bPanning = true;
 			}
 		}
-		else if (MouseEvent.IsShiftDown() && MouseEvent.IsAltDown())
-		{
-			float MouseFractionX = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X / MyGeometry.GetLocalSize().X;
-
-			// If zooming on the current time, adjust mouse fractionX
-			if (Sequencer->GetSequencerSettings()->GetZoomPosition() == ESequencerZoomPosition::SZP_CurrentTime)
-			{
-				const double ScrubPosition = TimeSliderArgs.ScrubPosition.Get() / GetTickResolution();
-				if (GetViewRange().Contains(ScrubPosition))
-				{
-					FScrubRangeToScreen RangeToScreen(GetViewRange(), MyGeometry.Size);
-					float TimePosition = RangeToScreen.InputToLocalX(ScrubPosition);
-					MouseFractionX = TimePosition / MyGeometry.GetLocalSize().X;
-				}
-			}
-
-			const float ZoomDelta = -0.01f * MouseEvent.GetCursorDelta().X;
-			ZoomByDelta(ZoomDelta, MouseFractionX);
-		}
-		else 
+		else
 		{
 			TRange<double> LocalViewRange = GetViewRange();
 			double LocalViewRangeMin = LocalViewRange.GetLowerBoundValue();
@@ -1025,59 +1001,25 @@ FReply FSequencerTimeSliderController::OnMouseMove( SWidget& WidgetOwner, const 
 		{
 			FFrameTime MouseTime = ComputeFrameTimeFromMouse(MyGeometry, MouseEvent.GetScreenSpacePosition(), RangeToScreen);
 			FFrameTime ScrubTime = ComputeScrubTimeFromMouse(MyGeometry, MouseEvent.GetScreenSpacePosition(), RangeToScreen);
-			FFrameTime MouseDownTime = ComputeFrameTimeFromMouse(MyGeometry, MouseDownPosition[0], RangeToScreen);
-			FFrameNumber DiffFrame = MouseTime.FrameNumber - MouseDownTime.FrameNumber;
 
 			// Set the start range time?
 			if (MouseDragType == DRAG_PLAYBACK_START)
 			{
-				if (MouseEvent.IsShiftDown())
-				{
-					SetPlaybackRangeStart(MouseDownPlaybackRange.GetLowerBoundValue() + DiffFrame);
-					SetPlaybackRangeEnd(MouseDownPlaybackRange.GetUpperBoundValue() + DiffFrame);
-				}
-				else
-				{
-					SetPlaybackRangeStart(MouseTime.FrameNumber);
-				}
+				SetPlaybackRangeStart(MouseTime.FrameNumber);
 			}
 			// Set the end range time?
 			else if(MouseDragType == DRAG_PLAYBACK_END)
 			{
-				if (MouseEvent.IsShiftDown())
-				{
-					SetPlaybackRangeStart(MouseDownPlaybackRange.GetLowerBoundValue() + DiffFrame);
-					SetPlaybackRangeEnd(MouseDownPlaybackRange.GetUpperBoundValue() + DiffFrame);
-				}
-				else
-				{		
-					SetPlaybackRangeEnd(MouseTime.FrameNumber);
-				}
+				SetPlaybackRangeEnd(MouseTime.FrameNumber);
 			}
 			else if (MouseDragType == DRAG_SELECTION_START)
 			{
-				if (MouseEvent.IsShiftDown())
-				{
-					SetSelectionRangeStart(MouseDownSelectionRange.GetLowerBoundValue() + DiffFrame);
-					SetSelectionRangeEnd(MouseDownSelectionRange.GetUpperBoundValue() + DiffFrame);
-				}
-				else
-				{
-					SetSelectionRangeStart(MouseTime.FrameNumber);
-				}
+				SetSelectionRangeStart(MouseTime.FrameNumber);
 			}
 			// Set the end range time?
 			else if(MouseDragType == DRAG_SELECTION_END)
 			{
-				if (MouseEvent.IsShiftDown())
-				{
-					SetSelectionRangeStart(MouseDownSelectionRange.GetLowerBoundValue() + DiffFrame);
-					SetSelectionRangeEnd(MouseDownSelectionRange.GetUpperBoundValue() + DiffFrame);
-				}
-				else 
-				{
-					SetSelectionRangeEnd(MouseTime.FrameNumber);
-				}
+				SetSelectionRangeEnd(MouseTime.FrameNumber);
 			}
 			else if (MouseDragType == DRAG_MARK)
 			{
@@ -1450,57 +1392,25 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 
 		if (MarkedIndex != INDEX_NONE)
 		{
-			class SMarkedFramePropertyWidget : public SCompoundWidget, public FNotifyHook
-			{
-			public:
-				UMovieScene* MovieSceneToModify;
-				TSharedPtr<IStructureDetailsView> DetailsView;
+			FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
+			FDetailsViewArgs DetailsViewArgs;
+			DetailsViewArgs.bAllowSearch = false;
+			DetailsViewArgs.bShowScrollBar = false;
+			DetailsViewArgs.NameAreaSettings = FDetailsViewArgs::HideNameArea;
 
-				SLATE_BEGIN_ARGS(SMarkedFramePropertyWidget){}
-				SLATE_END_ARGS()
+			FStructureDetailsViewArgs StructureDetailsViewArgs;
+			StructureDetailsViewArgs.bShowObjects = true;
+			StructureDetailsViewArgs.bShowAssets = true;
+			StructureDetailsViewArgs.bShowClasses = true;
+			StructureDetailsViewArgs.bShowInterfaces = true;
+			
+			TSharedPtr<FStructOnScope> StructOnScope = MakeShared<FStructOnScope>(FMovieSceneMarkedFrame::StaticStruct(), (uint8 *)&MovieScene->GetMarkedFrames()[MarkedIndex]);
 
-				void Construct(const FArguments& InArgs, UMovieScene* InMovieScene, int32 InMarkedFrameIndex)
-				{
-					MovieSceneToModify = InMovieScene;
+			TSharedRef<IStructureDetailsView> DetailsView = PropertyEditorModule.CreateStructureDetailView(DetailsViewArgs, StructureDetailsViewArgs, nullptr);
+			DetailsView->GetDetailsView()->RegisterInstancedCustomPropertyTypeLayout("FrameNumber", FOnGetPropertyTypeCustomizationInstance::CreateSP(this, &FSequencerTimeSliderController::CreateFrameNumberCustomization));
+			DetailsView->SetStructureData(StructOnScope);
 
-					FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-					FDetailsViewArgs DetailsViewArgs;
-					DetailsViewArgs.bAllowSearch = false;
-					DetailsViewArgs.bShowScrollBar = false;
-					DetailsViewArgs.NameAreaSettings = FDetailsViewArgs::HideNameArea;
-					DetailsViewArgs.NotifyHook = this;
-
-					FStructureDetailsViewArgs StructureDetailsViewArgs;
-					StructureDetailsViewArgs.bShowObjects = true;
-					StructureDetailsViewArgs.bShowAssets = true;
-					StructureDetailsViewArgs.bShowClasses = true;
-					StructureDetailsViewArgs.bShowInterfaces = true;
-
-					TSharedPtr<FStructOnScope> StructOnScope = MakeShared<FStructOnScope>(FMovieSceneMarkedFrame::StaticStruct(), (uint8 *)&InMovieScene->GetMarkedFrames()[InMarkedFrameIndex]);
-
-					DetailsView = PropertyEditorModule.CreateStructureDetailView(DetailsViewArgs, StructureDetailsViewArgs, nullptr);
-					DetailsView->SetStructureData(StructOnScope);
-
-					ChildSlot
-					[
-						DetailsView->GetWidget().ToSharedRef()
-					];
-				}
-
-				virtual void NotifyPreChange( FProperty* PropertyAboutToChange ) override
-				{
-					MovieSceneToModify->Modify();
-				}
-
-				virtual void NotifyPreChange( class FEditPropertyChain* PropertyAboutToChange ) override
-				{
-					MovieSceneToModify->Modify();
-				}
-			};
-
-			TSharedRef<SMarkedFramePropertyWidget> Widget = SNew(SMarkedFramePropertyWidget, MovieScene, MarkedIndex);
-			Widget->DetailsView->GetDetailsView()->RegisterInstancedCustomPropertyTypeLayout("FrameNumber", FOnGetPropertyTypeCustomizationInstance::CreateSP(this, &FSequencerTimeSliderController::CreateFrameNumberCustomization));
-			MenuBuilder.AddWidget(Widget, FText::GetEmpty(), false);
+			MenuBuilder.AddWidget(DetailsView->GetWidget().ToSharedRef(), FText::GetEmpty(), false);
 		}
 
 		if (MarkedIndex == INDEX_NONE)
@@ -1623,11 +1533,6 @@ void FSequencerTimeSliderController::SetPlayRange( FFrameNumber RangeStart, int3
 		// The  output is not bound to a delegate so we'll manage the value ourselves (no animation)
 		TimeSliderArgs.PlaybackRange.Set(NewRange);
 	}
-}
-
-void FSequencerTimeSliderController::SetSelectionRange(const TRange<FFrameNumber>& NewRange)
-{
-	TimeSliderArgs.OnSelectionRangeChanged.ExecuteIfBound(NewRange);
 }
 
 bool FSequencerTimeSliderController::ZoomByDelta( float InDelta, float MousePositionFraction )

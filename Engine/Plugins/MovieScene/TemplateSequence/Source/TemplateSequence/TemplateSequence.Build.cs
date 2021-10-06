@@ -16,7 +16,6 @@ public class TemplateSequence : ModuleRules
 				"MovieScene",
 				"MovieSceneTracks",
 				"TimeManagement",
-				"CinematicCamera",
 				"LevelSequence"
 				}
 		);
