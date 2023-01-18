@@ -2,7 +2,7 @@
 =============
 Changes
 
-- Json Deserialize To Struct First letter to UpperCase
+- When serialize struct to json, change first letter lowercase to uppercase
 
 
 Unreal Engine
